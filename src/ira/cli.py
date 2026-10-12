@@ -1,6 +1,7 @@
 """The ``ira`` command line.
 
 ira init FOLDER [--provider P]    create a business folder: ira.yaml, tools.py, README
+ira doctor [FOLDER] [--no-models] check a business folder; non-zero exit on a failure
 ira setup                         create the owner account
 ira serve                         run the API, web chat, console and enabled channels
 ira pin set [--user E]            set a user's action PIN (default: the first owner)
@@ -262,6 +263,14 @@ def cmd_init(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_doctor(args: argparse.Namespace) -> int:
+    from ira.doctor import DoctorOptions
+    from ira.doctor import main as doctor
+
+    options = DoctorOptions(models=not args.no_models, public=args.public, timeout=args.timeout)
+    return doctor(args.folder, args.config, options)
+
+
 def cmd_version(args: argparse.Namespace) -> int:
     print(f"ira {__version__}")
     return 0
@@ -297,6 +306,20 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--region", help="Bedrock Mantle region (default: us-east-1)")
     p.add_argument("--voice", help="Polly voice (default: Kajal, Indian English)")
     p.add_argument("--public-url", help="the address people open, e.g. https://ira.example.com")
+
+    p = add("doctor", cmd_doctor, "check a business folder: config, tools, models, voice, owner")
+    p.add_argument("folder", nargs="?", help="the business folder (default: ./ira.yaml)")
+    p.add_argument(
+        "--no-models",
+        action="store_true",
+        help="do not call the models or the voice providers (nothing leaves this machine)",
+    )
+    p.add_argument(
+        "--public", action="store_true", help="require public_url: people open it from elsewhere"
+    )
+    p.add_argument(
+        "--timeout", type=float, default=30.0, help="seconds per model or voice call (default 30)"
+    )
 
     p = add("setup", cmd_setup, "create the owner account")
     p.add_argument("--email")

@@ -226,8 +226,8 @@ def build_runtime(
         accounts=Accounts(store),
         conversations=conversations,
         assistant=assistant,
-        stt=_build_stt(settings, https),
-        tts=_build_tts(settings, https),
+        stt=build_stt(settings, https),
+        tts=build_tts(settings, https),
         http_clients=list(https.values()),
     )
     overrides.apply(runtime)
@@ -240,7 +240,7 @@ def _voice_http(kind: str, provider: str | None, https: dict[str, HttpClient]) -
     return https[provider]
 
 
-def _build_stt(settings: Settings, https: dict[str, HttpClient]) -> SpeechToText | None:
+def build_stt(settings: Settings, https: dict[str, HttpClient]) -> SpeechToText | None:
     cfg = settings.voice.stt
     if cfg.type == "none":
         return None
@@ -254,7 +254,7 @@ def _build_stt(settings: Settings, https: dict[str, HttpClient]) -> SpeechToText
     return ChatAudioSTT(http, cfg.model, prompt=cfg.prompt, vocabulary=cfg.vocabulary)
 
 
-def _build_tts(settings: Settings, https: dict[str, HttpClient]) -> TextToSpeech | None:
+def build_tts(settings: Settings, https: dict[str, HttpClient]) -> TextToSpeech | None:
     cfg = settings.voice.tts
     if cfg.type == "none":
         return None
