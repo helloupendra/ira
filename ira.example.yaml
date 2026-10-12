@@ -95,3 +95,9 @@ actions:
   expiry_seconds: 120
   max_wrong_pins: 3
   lock_minutes: 15
+  # Who may confirm an action with their own PIN (viewers never can).
+  confirm_roles: [owner, admin, staff]
+  # Narrow it for one action tool:
+  # tools:
+  #   reorder:
+  #     confirm_roles: [owner]

@@ -57,12 +57,18 @@ proposal by raising `ToolError`.
 
 A pending action stores the validated parameters, the summary and an expiry
 (120 seconds by default). The model is told that nothing has happened yet.
-The owner confirms with the PIN on the web card, over the API, or by typing it
-in Telegram; then your function runs exactly once.
+Someone allowed to confirm it enters their PIN on the web card, over the API,
+or by typing it in Telegram; then your function runs exactly once.
 
 ## The action PIN
 
-- Set with `ira pin set`; 4 to 12 digits; stored as a salted PBKDF2 hash.
+- Each person has their own PIN: 4 to 12 digits, stored as a salted PBKDF2
+  hash. Set it with `ira pin set` (`--user` for someone else) or
+  `PUT /v1/me/pin`, which asks for the account password again. An owner can
+  clear anyone's PIN; that person sets a new one before confirming again.
+- Who may confirm is a rule in `ira.yaml`: `actions.confirm_roles` (owner,
+  admin and staff by default), narrowed per action with
+  `actions.tools.<name>.confirm_roles`. A refused role uses no PIN attempt.
 - Three wrong PINs in a row lock **all** actions for 15 minutes.
 - A message consisting only of a PIN is never sent to a model, on any channel.
 - Every proposal and every confirmation outcome (executed, failed, wrong PIN,
@@ -116,7 +122,9 @@ tokens**, which belong to a user and carry scopes (`ask`, `voice`, `actions`,
 
 - **Web chat** at `/`: streamed answers, confirm cards, mic and speaker.
 - **HTTP API** under `/v1`: the same features for your own apps.
-- **Admin API** under `/v1/admin`: read-only views for dashboards.
+- **Admin API** under `/v1/admin`: views for dashboards, and the writes an
+  admin console needs (users, tokens, tools, model chains, settings), each
+  from a signed-in session and recorded in a change log.
 - **Telegram**: a paired private chat; voice notes in, voice out.
 
 ## Voice

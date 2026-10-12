@@ -11,9 +11,11 @@ on its own it can never change anything.
 - An action tool call only creates a **pending action**: validated
   parameters, a summary written by your code, and a 120-second expiry.
 - It runs only after `POST /v1/actions/{id}/confirm` (or a typed PIN on
-  Telegram) with the correct **PIN**.
-- The PIN is stored as a salted PBKDF2-SHA256 hash (600,000 iterations by
-  default) and checked off the event loop.
+  Telegram) with the confirming person's own **PIN**, and only if their role
+  may confirm that action (`actions.confirm_roles`, narrowed per tool).
+- Each PIN is stored as a salted PBKDF2-SHA256 hash (600,000 iterations by
+  default) and checked off the event loop. Setting one over the API needs
+  the account password again.
 - **Three wrong PINs lock every action for 15 minutes**, including attempts
   with the right PIN during the lock.
 - A compare-and-set on the action's status means it **runs at most once**,
@@ -40,17 +42,30 @@ on its own it can never change anything.
   SameSite=Strict cookie, marked Secure over HTTPS.
 - CSRF: cookie-authenticated requests that change state must carry
   `X-Ira-Request: 1`, a header a cross-site page cannot add without a CORS
-  preflight that IRA never allows.
+  preflight that IRA never allows. They are also refused when `Origin` names
+  another host or `Sec-Fetch-Site` is not `same-origin`.
 - API tokens: random, stored hashed, owned by a user, scoped, revocable. A
-  token can never hold user-management or settings rights.
+  token can never hold user-management or settings rights, and every write
+  under `/v1/admin` refuses tokens outright: it needs a signed-in session.
+- Console changes (users, invitations, tokens, tools, model chains,
+  settings) are written to a change log with who, what, when, and the value
+  before and after. Secrets never appear in it.
+- Invitations: one-time links whose token is stored as a SHA-256 hash and
+  expires after 72 hours. The token travels in the URL fragment, which
+  browsers do not send to servers. The last owner can never be removed or
+  demoted.
 - Roles are checked on every route; conversation ids are namespaced by user.
-- Setup: the first-owner endpoint needs a one-time code printed in the server
-  log, and closes for good once a user exists.
+- Setup: the first-owner endpoint needs a one-time code printed by
+  `ira serve`, throttles wrong codes per address, creates the owner inside a
+  write transaction so two racing requests cannot both succeed, and closes
+  for good once a user exists.
 
 ### Secrets
 
 - `ira.yaml` never contains a key, only the *name* of the environment
   variable that holds it.
+- Keys are never stored in the database. The admin API shows only whether
+  each named variable is set (`GET /v1/admin/keys`), never its value.
 - Errors from model, voice and Telegram calls are scrubbed of the credential
   before they are raised or logged (some servers echo keys back, and the
   Telegram token is part of every URL).
@@ -71,7 +86,6 @@ on its own it can never change anything.
 
 - **No TLS of its own.** Put a reverse proxy with HTTPS in front of any
   non-local deployment ([Deployment](deployment.md)).
-- **One PIN per installation.** Per-user PINs are planned.
 - **Conversations are stored in plain SQLite.** Protect the data folder and
   its backups like any customer database; retention settings are planned.
 - **Prompt injection through tool results is not filtered.** If a tool

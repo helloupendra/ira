@@ -27,7 +27,9 @@ assistant.example.com {
 }
 ```
 
-With nginx, disable buffering for `/v1/ask/stream` (`proxy_buffering off;`);
+With nginx, pass the original host through (`proxy_set_header Host $host;`):
+the API refuses a browser write whose `Origin` names a different host. Also
+disable buffering for `/v1/ask/stream` (`proxy_buffering off;`);
 IRA also sends `X-Accel-Buffering: no`.
 
 The proxy should pass the real client address if you rely on per-address
@@ -77,5 +79,6 @@ The bot uses long polling, so it needs outbound HTTPS to
 ## Upgrades
 
 Stop the service, back up `data_dir`, upgrade the package, start it again.
-The schema is created with `IF NOT EXISTS`; v0.x releases note any manual
+The schema is created with `IF NOT EXISTS`, and columns added since an older
+release are added in place on start-up. v0.x releases note any manual
 migration in the changelog.

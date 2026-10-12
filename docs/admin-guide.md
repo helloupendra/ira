@@ -7,13 +7,15 @@ Everything here is done with the `ira` command, run in the folder that holds
 
 ```bash
 ira setup          # owner account; asks for email and password
-ira pin set        # the action PIN (4-12 digits)
+ira pin set        # the owner's action PIN (4-12 digits)
 ira serve
 ```
 
 Without a terminal, start `ira serve` first: while no account exists it prints
-a one-time setup code, and the web page asks for it. The setup form and its
-endpoint stop working as soon as the owner exists.
+a one-time setup code and a link that carries it
+(`http://127.0.0.1:8765/admin/setup#code=...`, or `/#code=...` while no
+console is built). The setup form and its endpoint stop working as soon as
+the owner exists. See [Getting started](getting-started.md#set-up-from-the-browser-instead).
 
 Both `ira setup` and `ira pin set` read from the terminal without echo. When
 stdin is not a terminal they read one line from it, which is handy for
@@ -40,10 +42,32 @@ ira user add --email accountant@example.com --role viewer
 ira user list
 ```
 
-Managing users from the admin console arrives in v0.2.
+An owner can also invite people by link, change roles, remove accounts and
+reset PINs over the API, from a signed-in session; the admin console arriving
+in v0.2 is built on these routes. See [Console API](api.md#console-api). The
+last owner can never be removed or demoted.
 
-The **action PIN** is one per installation in v0.1: whoever confirms an action
-must know it. Staff can propose and the owner can confirm on the same screen.
+Each person has their own **action PIN**:
+
+```bash
+ira pin set                            # the first owner's
+ira pin set --user desk@example.com    # someone else's
+```
+
+People can also set their own with `PUT /v1/me/pin`, which asks for their
+password again. Staff can propose an action and someone else allowed to
+confirm it can enter their PIN on the same screen. Which roles may confirm
+is set in `ira.yaml`:
+
+```yaml
+actions:
+  confirm_roles: [owner, admin, staff]   # the default
+  tools:
+    cancel_appointment:
+      confirm_roles: [owner]
+```
+
+`ira pin set` also lifts a wrong-PIN lock; a PIN set over the API does not.
 
 ## API tokens
 

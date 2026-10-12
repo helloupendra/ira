@@ -22,14 +22,18 @@ src/ira/
     audio.py         WAV checks, mono 16 kHz conversion, OGG/Opus decoding
   channels/
     http.py          FastAPI app: auth, ask, stream, voice, actions; web + admin mounts
+    account.py       first-run setup, invitations, your own PIN
     admin.py         /v1/admin read endpoints
-    deps.py          bearer/cookie auth, CSRF header, permission checks
+    admin_write.py   /v1/admin writes: users, tokens, tools, model chains, settings
+    deps.py          bearer/cookie auth, CSRF checks, permission and session-only checks
     schemas.py       request/response models (the OpenAPI document)
     telegram.py      Bot API client, pairing, the bot loop
   web/static/      the chat page, AudioWorklet recorder, service worker, manifest
   assistant.py     the conversation loop
   conversations.py history in SQLite
-  accounts.py      users, roles, sessions, API tokens, sign-in throttling
+  accounts.py      users, roles, sessions, API tokens, invitations, sign-in throttling
+  changes.py       the change log of console writes
+  overrides.py     console settings kept on top of ira.yaml: tool switches, chain order, name, voice
   security.py      PIN, token and code hashing
   store.py         the SQLite schema and helpers
   config.py        ira.yaml + environment secrets
@@ -95,12 +99,14 @@ One SQLite file (`<data_dir>/ira.db`) holds Ira's own state:
 
 | Table | Holds |
 | --- | --- |
-| `users`, `sessions`, `api_tokens` | accounts; hashes only, never a password or token |
+| `users`, `sessions`, `api_tokens` | accounts and each user's PIN; hashes only, never a password, PIN or token |
+| `invites` | one-time invitation links (hashed) with role and expiry |
+| `change_log` | console changes: who, what, when, before and after |
 | `conversations`, `messages` | history, including tool calls and results |
 | `calls` | one row per model request: model, tried, attempts, seconds, tokens, cost |
 | `pending_actions` | proposals and their final status and result |
 | `audit_log` | every action outcome, with actor and channel |
-| `pin_state`, `settings` | wrong-PIN count, lock, PIN hash, assistant name |
+| `pin_state`, `settings` | wrong-PIN count and lock; console overrides (assistant name, voice, tool switches, chain order) |
 | `telegram_chats`, `pairing_codes` | paired chats and one-time codes (hashed) |
 
 Your tools keep their own data wherever they like; the clinic example uses a

@@ -129,7 +129,7 @@ schema the model sees and the validation Ira applies, from the same object.
 | --- | --- |
 | **Web chat** (`/`) | Streams answers, shows a confirm card with a PIN box, records 16 kHz WAV with an AudioWorklet, speaks replies. Installable as a PWA. |
 | **HTTP API** (`/v1`) | `POST /v1/ask`, `/v1/ask/stream` (SSE), `/v1/voice/transcribe`, `/v1/voice/speak`, `/v1/actions/{id}/confirm`. OpenAPI at `/v1/docs`. |
-| **Admin API** (`/v1/admin`) | Read-only views of calls, cost, latency, conversations, actions, tools, channels and the audit log. The console arrives in v0.2. |
+| **Admin API** (`/v1/admin`) | Calls, cost, latency, conversations, actions, tools, channels and the audit log; and, from a signed-in session, user invitations and roles, API tokens, tool switches and tests, model chains and tests, and the assistant's name and voice, each recorded in a change log. The console that uses it arrives in v0.2. |
 | **Telegram** | Long polling, paired with a one-time code. Text and voice notes in; text, and voice when TTS is set up, out. `/name` renames the assistant. |
 
 Voice: speech-to-text through an OpenAI-compatible chat model with
@@ -143,7 +143,8 @@ sentence with "Full details are in the text above."
 - **Actions are proposals.** An action tool call stores a pending action with
   a human summary, the validated parameters and a 120-second expiry. It does
   not run.
-- **A PIN releases it, once.** The PIN is stored as a salted PBKDF2 hash.
+- **A PIN releases it, once.** Each person has their own PIN, stored as a
+  salted PBKDF2 hash, and `ira.yaml` says which roles may confirm each action.
   A database compare-and-set moves the action from `pending` to `executing`,
   so two confirmations cannot run it twice. Three wrong PINs lock all actions
   for 15 minutes. Every outcome is written to the audit log.
