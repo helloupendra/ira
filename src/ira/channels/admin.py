@@ -485,6 +485,7 @@ def security(
     action_tools = [t.name for t in runtime.registry if t.kind == "action"]
     return SecurityView(
         locked_seconds=None if locked is None else max(0, round(locked - guard.clock())),
+        locked_until=locked,
         wrong_pins=guard.wrong_pins(),
         max_wrong_pins=guard.max_wrong_pins,
         lock_minutes=round(guard.lock_seconds / 60, 1),

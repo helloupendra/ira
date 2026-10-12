@@ -6,6 +6,8 @@ from typing import Annotated, Any, Literal
 
 from pydantic import BaseModel, Field, RootModel
 
+from ira.security import PIN_MAX_LENGTH, PIN_MIN_LENGTH
+
 CONVERSATION_ID = r"^[A-Za-z0-9_-]{1,64}$"
 
 
@@ -170,7 +172,13 @@ class SpeakRequest(BaseModel):
 
 
 class ConfirmRequest(BaseModel):
-    pin: str = Field(min_length=4, max_length=12)
+    pin: str = Field(min_length=PIN_MIN_LENGTH, max_length=PIN_MAX_LENGTH)
+
+
+LOCKED_UNTIL = (
+    "When the wrong-PIN lock ends (epoch seconds); null when actions are not locked. "
+    "locked_seconds is the same moment as seconds from now."
+)
 
 
 class ActionOutcome(BaseModel):
@@ -180,6 +188,7 @@ class ActionOutcome(BaseModel):
     result: Any = None
     attempts_left: int | None = None
     locked_seconds: int | None = None
+    locked_until: float | None = Field(default=None, description=LOCKED_UNTIL)
 
 
 class LoginRequest(BaseModel):
@@ -504,11 +513,27 @@ class PinStatus(BaseModel):
     locked_seconds: int | None = Field(
         default=None, description="Actions are locked after wrong PINs, for this long."
     )
+    locked_until: float | None = Field(default=None, description=LOCKED_UNTIL)
+    pin_set_at: float | None = Field(
+        default=None,
+        description="When you last set your PIN (epoch seconds). null without a PIN, and for "
+        "a PIN set before IRA recorded this.",
+    )
+    pin_min_length: int = Field(
+        default=PIN_MIN_LENGTH, description="The fewest digits a PIN may have."
+    )
+    pin_max_length: int = Field(
+        default=PIN_MAX_LENGTH, description="The most digits a PIN may have."
+    )
 
 
 class PinSetRequest(BaseModel):
     password: str = Field(max_length=1024, description="Your account password, checked again.")
-    pin: str = Field(min_length=4, max_length=12, pattern=r"^\d{4,12}$")
+    pin: str = Field(
+        min_length=PIN_MIN_LENGTH,
+        max_length=PIN_MAX_LENGTH,
+        pattern=rf"^\d{{{PIN_MIN_LENGTH},{PIN_MAX_LENGTH}}}$",
+    )
 
 
 # Signed-in sessions. Never the session token or its hash.
@@ -685,6 +710,7 @@ class ActionRule(BaseModel):
 
 class SecurityView(BaseModel):
     locked_seconds: int | None
+    locked_until: float | None = Field(default=None, description=LOCKED_UNTIL)
     wrong_pins: int
     max_wrong_pins: int
     lock_minutes: float

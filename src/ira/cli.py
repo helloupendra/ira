@@ -22,7 +22,7 @@ from collections.abc import Callable
 from ira import __version__
 from ira.accounts import ROLES, TOKEN_SCOPES, AccountError, Accounts, User, parse_scopes
 from ira.config import ConfigError, Settings, load_settings
-from ira.security import valid_pin
+from ira.security import PIN_RULE, valid_pin
 from ira.store import Store
 
 
@@ -123,9 +123,9 @@ def cmd_pin_set(args: argparse.Namespace) -> int:
     settings = _settings(args)
     store = _store(settings)
     user = _pick_user(Accounts(store), args.user)
-    pin = _secret_input(f"New action PIN for {user.email} (4-12 digits): ", confirm=True)
+    pin = _secret_input(f"New action PIN for {user.email} ({PIN_RULE}): ", confirm=True)
     if not valid_pin(pin):
-        print("Error: the PIN must be 4 to 12 digits.", file=sys.stderr)
+        print(f"Error: the PIN must be {PIN_RULE}.", file=sys.stderr)
         return 1
     # Run on the server itself, so it also lifts a wrong-PIN lock.
     ActionGuard(store, ToolRegistry()).set_pin(

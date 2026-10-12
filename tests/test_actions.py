@@ -190,7 +190,10 @@ async def test_a_user_without_a_pin_cannot_confirm(store, registry, people, ledg
     guard.set_pin(PIN)  # the installation PIN does not stand in for a user's own
     outcome = await guard.confirm(propose(guard).id, PIN, user_id=owner.id, role="owner")
     assert outcome.status == "no_pin"
-    assert "Account" in outcome.message
+    # There is no Account page: say where a PIN is really set.
+    assert outcome.message.endswith(
+        "Set your PIN in the Ira app's menu, or ask an owner to reset it."
+    )
     assert ledger.refunds == []
 
 

@@ -177,9 +177,9 @@ The PIN is the confirming user's own (set with `PUT /v1/me/pin` or
 | `not_allowed` | 403 | your role may not confirm this action; no PIN attempt is used |
 | `not_found` | 404 | no such action |
 | `already_done` | 409 | executed, cancelled or failed before |
-| `no_pin` | 409 | you have not set a PIN yet |
+| `no_pin` | 409 | you have not set a PIN yet; the message says to set one in the Ira app's menu or ask an owner to reset it |
 | `expired` | 410 | past its 120 seconds, whether or not anything had marked it expired yet |
-| `locked` | 423 | too many wrong PINs; `locked_seconds` left |
+| `locked` | 423 | too many wrong PINs; `locked_seconds` left, and `locked_until` (epoch seconds) when the lock ends |
 
 `POST /v1/actions/{id}/cancel` drops a pending action. Cancelling one past
 its expiry answers `expired` (410) too; nothing changes.
@@ -324,8 +324,26 @@ history, the new password and the invited role.
 
 | Route | Needs | Body | Returns |
 | --- | --- | --- | --- |
-| `GET /v1/me/pin` | any credential | | `PinStatus`: `has_pin`, `can_confirm`, `locked_seconds` |
+| `GET /v1/me/pin` | any credential | | `PinStatus` (below) |
 | `PUT /v1/me/pin` | session, `actions` | `PinSetRequest`: `password` (your account password, checked again), `pin` (4-12 digits) | `OkResponse` |
+
+`PinStatus`:
+
+```json
+{"has_pin": true, "can_confirm": true, "pin_set_at": 1791800000.0,
+ "locked_seconds": null, "locked_until": null,
+ "pin_min_length": 4, "pin_max_length": 12}
+```
+
+- `pin_set_at`: when you last set your PIN (epoch seconds); `null` without
+  a PIN, and for a PIN set before IRA recorded the moment.
+- `locked_until`: when the wrong-PIN lock ends (epoch seconds), next to
+  `locked_seconds` (the same moment as seconds from now); both `null` when
+  actions are not locked. `GET /v1/admin/security` and every
+  `ActionOutcome` carry `locked_until` too.
+- `pin_min_length`, `pin_max_length`: the PIN rule, read from the one place
+  it lives in the server (`ira.security`). `PinSetRequest` and
+  `ConfirmRequest` in `/v1/openapi.json` use the same numbers.
 
 A wrong password gives `403`; five in 15 minutes give `429`. Setting a PIN
 here does not lift a wrong-PIN lock; `ira pin set` on the server does. The

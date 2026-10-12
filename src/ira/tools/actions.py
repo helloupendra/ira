@@ -103,6 +103,7 @@ class Outcome:
             body["attempts_left"] = self.attempts_left
         if self.locked_until is not None:
             body["locked_seconds"] = max(0, round(self.locked_until - time.time()))
+            body["locked_until"] = self.locked_until
         return body
 
 
@@ -200,6 +201,15 @@ class ActionGuard:
 
     def has_pin(self, user_id: int | None = None) -> bool:
         return self._stored_pin(user_id) is not None
+
+    def pin_set_at(self, user_id: int) -> float | None:
+        """When a user last set their PIN; None without one, or when it was not recorded."""
+        row = self.store.one(
+            "SELECT pin_set_at FROM users WHERE id = ? AND pin_hash IS NOT NULL "
+            "AND disabled_at IS NULL",
+            (user_id,),
+        )
+        return row["pin_set_at"] if row else None
 
     def wrong_pins(self) -> int:
         row = self.store.one("SELECT failures FROM pin_state WHERE id = 1")
@@ -350,7 +360,8 @@ class ActionGuard:
             message = (
                 "No action PIN is set. Run `ira pin set` first."
                 if user_id is None
-                else "You have no action PIN yet. Set one in the admin console under Account."
+                else "You have no action PIN yet. "
+                "Set your PIN in the Ira app's menu, or ask an owner to reset it."
             )
             return self._finish(pending, "no_pin", message, actor, channel)
         # PBKDF2 is deliberately slow; keep it off the event loop.

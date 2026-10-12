@@ -15,7 +15,11 @@ import re
 import secrets
 
 PIN_ITERATIONS = 600_000
-PIN_PATTERN = re.compile(r"\d{4,12}")
+# The one place the PIN length rule lives; the API, the CLI and /v1/me/pin read it here.
+PIN_MIN_LENGTH = 4
+PIN_MAX_LENGTH = 12
+PIN_PATTERN = re.compile(rf"\d{{{PIN_MIN_LENGTH},{PIN_MAX_LENGTH}}}")
+PIN_RULE = f"{PIN_MIN_LENGTH} to {PIN_MAX_LENGTH} digits"
 
 
 def valid_pin(pin: str) -> bool:
@@ -23,13 +27,13 @@ def valid_pin(pin: str) -> bool:
 
 
 def looks_like_pin(text: str) -> bool:
-    """A bare 4-12 digit message: treated as a PIN, never sent to a model."""
+    """A message that is only a PIN's digits: treated as a PIN, never sent to a model."""
     return valid_pin(text.strip())
 
 
 def hash_pin(pin: str, *, iterations: int = PIN_ITERATIONS, salt: bytes | None = None) -> str:
     if not valid_pin(pin):
-        raise ValueError("the PIN must be 4 to 12 digits")
+        raise ValueError(f"the PIN must be {PIN_RULE}")
     salt = salt or secrets.token_bytes(16)
     digest = hashlib.pbkdf2_hmac("sha256", pin.encode(), salt, iterations)
     salt_b64 = base64.b64encode(salt).decode()
