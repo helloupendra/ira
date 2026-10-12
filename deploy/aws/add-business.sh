@@ -33,8 +33,9 @@ hostname=${3:-}
 
 [[ $business =~ ^[a-z0-9][a-z0-9-]{0,30}$ ]] ||
     die "the business name must be lowercase letters, digits and dashes, e.g. sunrise-dental"
-[[ $port =~ ^[0-9]{4,5}$ ]] && [ "$port" -ge 1024 ] && [ "$port" -le 65535 ] ||
+if ! [[ $port =~ ^[0-9]{4,5}$ ]] || [ "$port" -lt 1024 ] || [ "$port" -gt 65535 ]; then
     die "the port must be a number from 1024 to 65535"
+fi
 if [ -n "$hostname" ]; then
     [[ $hostname =~ ^[A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?(\.[A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?)+$ ]] ||
         die "'$hostname' is not a hostname, e.g. clinic.example.com"
