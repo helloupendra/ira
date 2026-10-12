@@ -55,10 +55,15 @@ class Runtime:
     http_clients: list[HttpClient] = field(default_factory=list)
     channel_state: dict[str, dict[str, Any]] = field(default_factory=dict)
     setup_code: str | None = None
+    setup_code_shown: bool = False
 
     def ensure_setup_code(self) -> str | None:
-        """While no user exists, a one-time code guards the web setup form."""
-        if self.accounts.count() > 0:
+        """While no account exists, a one-time code guards the web setup form.
+
+        The code is printed by ``ira serve`` (and logged), so only someone who
+        can see the server's output can claim a freshly exposed install.
+        """
+        if not self.accounts.needs_owner():
             self.setup_code = None
         elif self.setup_code is None:
             self.setup_code = "-".join(secrets.token_hex(2).upper() for _ in range(3))

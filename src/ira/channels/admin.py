@@ -9,12 +9,14 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 
+from ira import changes
 from ira.accounts import Principal
 from ira.channels.deps import get_runtime, require
 from ira.channels.schemas import (
     ActionRow,
     AuditRow,
     CallRow,
+    ChangeRow,
     ChannelView,
     ConversationRow,
     MessageRow,
@@ -209,3 +211,13 @@ def tokens(
     _: Principal = Depends(reader), runtime: Runtime = Depends(get_runtime)
 ) -> list[TokenRow]:
     return [TokenRow(**t) for t in runtime.accounts.tokens()]
+
+
+@router.get("/changes", response_model=list[ChangeRow], summary="Console changes, newest first")
+def change_log(
+    limit: int = Query(100, ge=1, le=1000),
+    before_id: int | None = Query(None, description="Page: only changes older than this id."),
+    _: Principal = Depends(reader),
+    runtime: Runtime = Depends(get_runtime),
+) -> list[ChangeRow]:
+    return [ChangeRow(**row) for row in changes.recent(runtime.store, limit, before_id)]

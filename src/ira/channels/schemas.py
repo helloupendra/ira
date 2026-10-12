@@ -227,3 +227,28 @@ class TokenRow(BaseModel):
     created_at: float
     last_used_at: float | None
     revoked_at: float | None
+
+
+# First-run setup (public: it carries its own one-time secret).
+
+
+class SetupStatus(BaseModel):
+    needs_owner: bool
+    name: str
+    version: str
+
+
+class SetupOwnerRequest(BaseModel):
+    code: str = Field(max_length=64, description="Printed by `ira serve` while no user exists.")
+    email: str = Field(max_length=254)
+    password: str = Field(max_length=1024)
+
+
+class ChangeRow(BaseModel):
+    id: int
+    at: float
+    actor: str
+    what: str
+    target: str | None
+    before: Any = None
+    after: Any = None

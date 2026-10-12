@@ -108,6 +108,17 @@ def _user(row: Any) -> User:
     )
 
 
+def _check_role(role: str) -> Role:
+    if role not in ROLES:
+        raise AccountError(f"role must be one of {', '.join(ROLES)}")
+    return role  # type: ignore[return-value]
+
+
+def _check_password(password: str) -> None:
+    if len(password) < MIN_PASSWORD:
+        raise AccountError(f"the password must be at least {MIN_PASSWORD} characters")
+
+
 def normalise_email(email: str) -> str:
     email = email.strip().lower()
     if not EMAIL.fullmatch(email):
@@ -178,27 +189,40 @@ class Accounts:
         row = self.store.one("SELECT COUNT(*) AS n FROM users WHERE disabled_at IS NULL")
         return int(row["n"]) if row else 0
 
-    def create_user(self, email: str, password: str, role: Role) -> User:
-        if role not in ROLES:
-            raise AccountError(f"role must be one of {', '.join(ROLES)}")
-        email = normalise_email(email)
-        if len(password) < MIN_PASSWORD:
-            raise AccountError(f"the password must be at least {MIN_PASSWORD} characters")
+    def needs_owner(self) -> bool:
+        """True only for a brand-new installation: no account has ever been made."""
+        return self.store.one("SELECT 1 FROM users LIMIT 1") is None
+
+    def _insert_user(self, email: str, password_hash: str, role: Role) -> int:
         if self.store.one("SELECT id FROM users WHERE email = ?", (email,)):
             raise AccountError("a user with that email already exists")
         cursor = self.store.execute(
             "INSERT INTO users (email, password_hash, role, created_at) VALUES (?, ?, ?, ?)",
-            (email, _hasher.hash(password), role, self.clock()),
+            (email, password_hash, role, self.clock()),
         )
-        user = self.get_user(int(cursor.lastrowid or 0))
+        return int(cursor.lastrowid or 0)
+
+    def create_user(self, email: str, password: str, role: Role) -> User:
+        role = _check_role(role)
+        email = normalise_email(email)
+        _check_password(password)
+        user = self.get_user(self._insert_user(email, _hasher.hash(password), role))
         assert user is not None
         return user
 
     def create_first_owner(self, email: str, password: str) -> User:
-        """Create the owner account. Refused once any user exists."""
-        if self.count() > 0:
-            raise AccountError("setup is already done; sign in instead")
-        return self.create_user(email, password, "owner")
+        """Create the owner account. Refused once any user exists, even under a race."""
+        email = normalise_email(email)
+        _check_password(password)
+        password_hash = _hasher.hash(password)  # slow on purpose: outside the write lock
+        with self.store.transaction():
+            if not self.needs_owner():
+                raise AccountError("setup is already done; sign in instead")
+            user_id = self._insert_user(email, password_hash, "owner")
+        self.store.adopt_shared_pin()
+        user = self.get_user(user_id)
+        assert user is not None
+        return user
 
     def get_user(self, user_id: int) -> User | None:
         row = self.store.one("SELECT * FROM users WHERE id = ? AND disabled_at IS NULL", (user_id,))

@@ -17,8 +17,9 @@ from fastapi.responses import HTMLResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
 from ira import __version__
-from ira.accounts import AccountError, Principal
-from ira.channels import admin
+from ira.accounts import Principal
+from ira.channels import account, admin
+from ira.channels.account import claim_setup
 from ira.channels.deps import (
     SESSION_COOKIE,
     client_ip,
@@ -48,7 +49,7 @@ from ira.models.base import ProviderError
 from ira.runtime import Runtime
 from ira.voice.audio import AudioError, check_wav, to_mono16k
 from ira.voice.shorten import speakable
-from ira.web import ADMIN_DIR, STATIC_DIR
+from ira.web import ADMIN_DIR, STATIC_DIR, setup_page
 
 log = logging.getLogger("ira.http")
 
@@ -88,32 +89,22 @@ def auth_status(runtime: Runtime = Depends(get_runtime)) -> StatusResponse:
     return StatusResponse(
         name=runtime.assistant.name,
         version=__version__,
-        setup_required=runtime.accounts.count() == 0,
+        setup_required=runtime.accounts.needs_owner(),
     )
 
 
-@auth.post("/setup", response_model=SessionResponse, summary="Create the first owner (once)")
+@auth.post(
+    "/setup",
+    response_model=SessionResponse,
+    summary="Create the first owner (once); same as POST /v1/setup/owner",
+)
 def auth_setup(
     body: SetupRequest,
     request: Request,
     response: Response,
     runtime: Runtime = Depends(get_runtime),
 ) -> SessionResponse:
-    code = runtime.ensure_setup_code()
-    if code is None:
-        raise HTTPException(409, detail="setup is already done; sign in instead")
-    if not secrets.compare_digest(body.setup_code.strip().upper(), code):
-        raise HTTPException(403, detail="wrong setup code; it is printed in the server log")
-    try:
-        user = runtime.accounts.create_first_owner(body.email, body.password)
-    except AccountError as exc:
-        raise HTTPException(400, detail=str(exc)) from None
-    runtime.setup_code = None
-    token, expires = runtime.accounts.start_session(user)
-    set_session_cookie(response, request, token, expires)
-    principal = runtime.accounts.session_principal(token)
-    assert principal is not None
-    return session_body(principal, expires)
+    return claim_setup(runtime, request, response, body.setup_code, body.email, body.password)
 
 
 @auth.post("/login", response_model=SessionResponse, summary="Sign in with email and password")
@@ -364,10 +355,10 @@ def create_app(runtime: Runtime, *, start_channels: bool = True) -> FastAPI:
     @contextlib.asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         code = runtime.ensure_setup_code()
-        if code:
+        if code and not runtime.setup_code_shown:
             log.warning(
-                "No account exists yet. Open the web page and use setup code %s, "
-                "or run `ira setup`.",
+                "No account exists yet. Open %s#code=%s to create the owner, or run `ira setup`.",
+                setup_page(),
                 code,
             )
         tasks: list[asyncio.Task] = []
@@ -413,6 +404,7 @@ def create_app(runtime: Runtime, *, start_channels: bool = True) -> FastAPI:
         return OkResponse()
 
     app.include_router(auth)
+    app.include_router(account.router)
     app.include_router(api)
     app.include_router(admin.router)
 

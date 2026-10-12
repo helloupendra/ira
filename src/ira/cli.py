@@ -1,7 +1,7 @@
 """The ``ira`` command line.
 
 ira setup                         create the owner account
-ira serve                         run the API, web chat and enabled channels
+ira serve                         run the API, web chat, console and enabled channels
 ira pin set [--user E]            set a user's action PIN (default: the first owner)
 ira user add --email E --role R   add an admin, staff or viewer account
 ira user list
@@ -87,8 +87,29 @@ def cmd_serve(args: argparse.Namespace) -> int:
     host = args.host or settings.channels.http.host
     port = args.port or settings.channels.http.port
     print(f"{runtime.assistant.name} is listening on http://{host}:{port}  (API docs: /v1/docs)")
+    code = runtime.ensure_setup_code()
+    if code:
+        print(setup_banner(code, host, port))
+        runtime.setup_code_shown = True
     uvicorn.run(create_app(runtime), host=host, port=port, log_level="info")
     return 0
+
+
+def setup_banner(code: str, host: str, port: int) -> str:
+    """What `ira serve` prints while no account exists, so the owner can claim it."""
+    from ira.web import setup_page
+
+    shown = "127.0.0.1" if host in ("0.0.0.0", "::", "") else host
+    if ":" in shown:
+        shown = f"[{shown}]"
+    page = setup_page()
+    # The code rides in the fragment, which the browser never sends to a server or proxy log.
+    return (
+        "\n    No account exists yet. To create the owner account, open:\n\n"
+        f"        http://{shown}:{port}{page}#code={code}\n\n"
+        f"    or enter the setup code {code} on that page. It works once, and only\n"
+        "    until the owner exists. (`ira setup` in a terminal does the same.)\n"
+    )
 
 
 def cmd_pin_set(args: argparse.Namespace) -> int:
