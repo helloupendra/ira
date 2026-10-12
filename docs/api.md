@@ -201,6 +201,7 @@ All need `admin.read` (owner, admin, viewer), from a session or a token.
 | `GET /v1/admin/calls?limit=&before_id=` | `CallRow[]`: model calls, newest first, paged by id |
 | `GET /v1/admin/conversations?limit=&before=&before_id=` | `ConversationRow[]`: by last activity, with a `preview` of the first question |
 | `GET /v1/admin/conversations/{id}` | `MessageRow[]`: messages, with typed `tool_calls` and tool results; `404` if unknown |
+| `GET /v1/admin/conversations/{id}/info` | `ConversationRow`: one conversation's header (`channel`, `user_id`, `email`, `started_at`, `last_at`, `turns`, `preview`), as in the list; `404` if unknown |
 | `GET /v1/admin/actions?status=&limit=&before=&before_id=` | `ActionRow[]`: proposals with parameters, status, result, `actor` (who proposed) and `decided_by` / `decided_at` (who confirmed or cancelled) |
 | `GET /v1/admin/actions/counts?since=` | `ActionCounts`: how many actions stand at each status (`pending`, `executing`, `executed`, `failed`, `cancelled`, `expired`) and `total`, over all time, or proposed at or after `since` (epoch seconds) |
 | `GET /v1/admin/audit?limit=&before_id=` | `AuditRow[]`: action outcomes and PIN events with actor and channel, newest first |

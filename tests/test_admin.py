@@ -98,3 +98,22 @@ def test_actions_audit_tools_channels_users_tokens(setup):
     runtime.accounts.create_token(runtime.accounts.users()[0], "phone", ["ask"])
     tokens = client.get("/v1/admin/tokens", headers=headers).json()
     assert tokens[0]["label"] == "phone" and "token_hash" not in tokens[0]
+
+
+def test_one_conversation_header_and_its_declared_404(setup):
+    client, headers, _ = setup
+    listed = client.get("/v1/admin/conversations", headers=headers).json()[0]
+    info = client.get(f"/v1/admin/conversations/{listed['id']}/info", headers=headers)
+    assert info.status_code == 200 and info.json() == listed
+    assert info.json()["email"] == "owner@example.com" and info.json()["turns"] == 2
+    missing = client.get("/v1/admin/conversations/nope/info", headers=headers)
+    assert missing.status_code == 404 and missing.json() == {"detail": "no such conversation"}
+
+    paths = client.get("/v1/openapi.json").json()["paths"]
+    for path in (
+        "/v1/admin/conversations/{conversation_id}",
+        "/v1/admin/conversations/{conversation_id}/info",
+        "/v1/conversations/{conversation_id}",
+    ):
+        not_found = paths[path]["get"]["responses"]["404"]
+        assert "ErrorDetail" in str(not_found), path

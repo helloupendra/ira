@@ -325,13 +325,13 @@ class CallRow(BaseModel):
 
 
 class ConversationRow(BaseModel):
-    id: str
-    channel: str
-    user_id: int | None
-    email: str | None
+    id: str = Field(description="The stored id, e.g. http:3:kitchen or telegram:5550100.")
+    channel: str = Field(description="Where it started: web, api or telegram.")
+    user_id: int | None = Field(description="Whose it is; null for rows from before accounts.")
+    email: str | None = Field(description="That user's email.")
     started_at: float
-    last_at: float
-    turns: int
+    last_at: float = Field(description="Its latest message.")
+    turns: int = Field(description="Questions asked in it.")
     preview: str | None = Field(
         default=None, description="The first thing the user said, cut to 120 characters."
     )

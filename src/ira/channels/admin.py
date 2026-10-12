@@ -32,6 +32,7 @@ from ira.channels.schemas import (
     ChannelView,
     ConversationRow,
     CostDay,
+    ErrorDetail,
     InviteView,
     KeyView,
     MessageRow,
@@ -166,10 +167,31 @@ def conversations(
     ]
 
 
+NO_CONVERSATION: dict[int | str, dict[str, Any]] = {
+    404: {"model": ErrorDetail, "description": "No conversation with that id"}
+}
+
+
+@router.get(
+    "/conversations/{conversation_id}/info",
+    response_model=ConversationRow,
+    summary="One conversation's header: channel, who, when, turns",
+    responses=NO_CONVERSATION,
+)
+def conversation_info(
+    conversation_id: str, _: Principal = Depends(reader), runtime: Runtime = Depends(get_runtime)
+) -> ConversationRow:
+    row = runtime.conversations.get(conversation_id)
+    if row is None:
+        raise HTTPException(404, detail="no such conversation")
+    return ConversationRow(**{k: row[k] for k in ConversationRow.model_fields})
+
+
 @router.get(
     "/conversations/{conversation_id}",
     response_model=list[MessageRow],
     summary="One conversation's messages, including tool calls",
+    responses=NO_CONVERSATION,
 )
 def conversation(
     conversation_id: str, _: Principal = Depends(reader), runtime: Runtime = Depends(get_runtime)
