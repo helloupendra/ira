@@ -32,6 +32,18 @@ log = logging.getLogger("ira.gateway")
 
 PROBE_PROMPT = "This is a connection test. Reply with the single word: ready"
 
+# Why a model is cooling down, in words of our own. A provider's error text can
+# quote the request (and so the prompt), so it is never shown.
+COOLING_MESSAGES = {
+    "capacity": "The provider is busy or rate-limited.",
+    "timeout": "No answer in time.",
+    "auth": "The provider refused the key.",
+    "bad_request": "The provider rejected the request.",
+    "server": "The provider answered with an error.",
+    "network": "The provider could not be reached.",
+    "error": "The call failed.",
+}
+
 
 @dataclass(frozen=True)
 class Price:
@@ -86,6 +98,7 @@ class Gateway:
         self.max_tokens = max_tokens
         self.clock = clock
         self._cool_until: dict[str, float] = {}
+        self._cool_reason: dict[str, tuple[str, int | None]] = {}  # ref -> (kind, status)
 
     def chain(self, tier: str) -> list[str]:
         """The tier's models in the order they will be tried right now."""
@@ -104,6 +117,24 @@ class Gateway:
         return {
             ref: round(until - now, 1) for ref, until in self._cool_until.items() if until > now
         }
+
+    def cooling_reasons(self) -> dict[str, dict[str, Any]]:
+        """Why each cooling model is cooling: its last error's kind and HTTP status, and a
+        short message of our own. Never the provider's text, a key or a prompt."""
+        out = {}
+        for ref in self.cooling():
+            kind, status = self._cool_reason.get(ref, ("error", None))
+            message = COOLING_MESSAGES.get(kind, COOLING_MESSAGES["error"])
+            out[ref] = {
+                "error_kind": kind,
+                "status": status,
+                "message": f"{message[:-1]} (HTTP {status})." if status else message,
+            }
+        return out
+
+    def _warm(self, ref: str) -> None:
+        self._cool_until.pop(ref, None)
+        self._cool_reason.pop(ref, None)
 
     async def probe(self, ref: str) -> tuple[ChatResponse | None, ProviderError | None, float]:
         """Ask one model a fixed short question, outside any chain.
@@ -137,7 +168,7 @@ class Gateway:
         if response is not None:
             response.model = ref
             response.cost_usd = self.cost(ref, response.usage)
-            self._cool_until.pop(ref, None)
+            self._warm(ref)
         self._record("(test)", "test", [ref], response, error, started)
         return response, error, seconds
 
@@ -152,6 +183,7 @@ class Gateway:
         if error.retry_after:
             seconds = min(max(seconds, error.retry_after), 10 * self.cooldown_seconds)
         self._cool_until[ref] = self.clock() + seconds
+        self._cool_reason[ref] = (error.kind, error.status)
         log.warning("model %s failed (%s); cooling down %.0fs", ref, error.kind, seconds)
 
     async def chat(
@@ -190,7 +222,7 @@ class Gateway:
                 errors.append((ref, error))
                 self._cool_down(ref, error)
                 continue
-            self._cool_until.pop(ref, None)
+            self._warm(ref)
             response.model = ref
             response.attempts = len(tried)
             response.cost_usd = self.cost(ref, response.usage)
@@ -242,7 +274,7 @@ class Gateway:
                         response.model = ref
                         response.attempts = len(tried)
                         response.cost_usd = self.cost(ref, response.usage)
-                        self._cool_until.pop(ref, None)
+                        self._warm(ref)
                         self._record(tier, purpose, tried, response, None, started)
                         yield StreamDone(response)
                         return

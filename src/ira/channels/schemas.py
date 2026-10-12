@@ -710,10 +710,45 @@ class ProviderView(BaseModel):
     last_error_kind: str | None = None
 
 
+class CoolingReason(BaseModel):
+    """Why a model is on a cool-down. Never the provider's own text, a key or a prompt."""
+
+    error_kind: str = Field(
+        description="The last error's class: capacity, timeout, auth, bad_request, server, "
+        "network or error."
+    )
+    status: int | None = Field(description="The HTTP status, when the provider answered one.")
+    message: str = Field(
+        description="A short sentence of the server's own, such as: The provider is busy or "
+        "rate-limited (HTTP 429)."
+    )
+
+
+class VoiceOption(BaseModel):
+    """A voice id the configured text-to-speech provider accepts."""
+
+    id: str = Field(description="The value for voice.tts.voice, or for PATCH /v1/admin/settings.")
+    languages: list[str] = Field(
+        description="BCP-47 codes it speaks, e.g. en-IN; empty when it speaks the language of "
+        "whatever text it is given."
+    )
+    gender: str | None = Field(description="female or male, where the provider says.")
+
+
 class ModelsView(BaseModel):
     tiers: list[TierView]
     providers: list[ProviderView]
     cooling: dict[str, float] = Field(description="Models on a cool-down: seconds left.")
+    cooling_reasons: dict[str, CoolingReason] = Field(
+        default_factory=dict,
+        description="For each model in cooling (the same keys): why it is cooling down.",
+    )
+    voices: list[VoiceOption] = Field(
+        default_factory=list,
+        description="Valid voice ids for the text-to-speech provider in use: for polly, its "
+        "neural voices for en-IN, hi-IN, en-US and en-GB; for openai, the voices every model "
+        "accepts; empty when text-to-speech is off. A static list; ira.yaml may name others.",
+    )
 
 
 class ModelTestRequest(BaseModel):

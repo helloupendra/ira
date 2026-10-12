@@ -213,7 +213,7 @@ All need `admin.read` (owner, admin, viewer), from a session or a token.
 | `GET /v1/admin/costs?days=30` | `CostDay[]`: calls, failures, tokens and cost per day (server local time) |
 | `GET /v1/admin/tools` | `ToolDetail[]`: `kind` (`read` or `action`), JSON schema, `enabled`, and for actions `confirm_roles` |
 | `GET /v1/admin/channels` | `ChannelView[]`: HTTP, web and Telegram status; Telegram says whether its token variable is set. The `http` channel's `address` (`ServerAddress`) has the `host` and `port` that `ira serve` bound (its `--host` and `--port`, else `ira.yaml`), `configured_host` and `configured_port` from `ira.yaml`, `public_url` (`channels.http.public_url` or `IRA_PUBLIC_URL`, else `null`) and `url`, the base URL to open: `public_url` when set, else `http://host:port` |
-| `GET /v1/admin/models` | `ModelsView`: each tier's chain as configured and in use, cool-downs, providers with key status and last success or failure |
+| `GET /v1/admin/models` | `ModelsView`: each tier's chain as configured and in use, cool-downs, providers with key status and last success or failure. `cooling_reasons` has, for each model in `cooling`, a `CoolingReason`: the last error's `error_kind` (`capacity`, `timeout`, `auth`, `bad_request`, `server`, `network`, `error`), its HTTP `status` if any, and a short `message` the server writes itself (never the provider's text, which can quote the prompt, and never a key). `voices` (`VoiceOption[]`: `id`, `languages`, `gender`) lists valid voice ids for the text-to-speech provider in use |
 | `GET /v1/admin/keys` | `KeyView[]`: each secret variable `ira.yaml` names, who uses it, and whether it is set. Never the value |
 | `GET /v1/admin/settings` | `SettingsView`: assistant name and voice, each with its `ira.yaml` default and whether it is overridden |
 | `GET /v1/admin/security` | `SecurityView`: PIN lock, wrong PINs so far, session length, cookie SameSite, token scopes, users without a PIN, confirm roles per action |
@@ -479,5 +479,11 @@ Notes:
   effect at once. The voice is the text-to-speech voice id (Polly, for
   example `Joanna`; OpenAI, for example `alloy`); it cannot be set while
   text-to-speech is off (`SettingValue.editable` is false).
+  `GET /v1/admin/models` lists the valid ids in `voices`, a static list kept
+  in `ira/voice/voices.py`: for Polly, its neural voices for Indian English
+  and Hindi (`Kajal`, who speaks both), US English and British English; for
+  OpenAI, the nine voices every model accepts (`alloy` to `shimmer`); the
+  demo voice for `fake`; nothing when text-to-speech is off. The server does
+  not refuse other ids: Polly has more voices than the list shows.
 - **Keys** stay in the environment or `.env`. The console can only see
   whether each variable is set.

@@ -50,9 +50,11 @@ from ira.channels.schemas import (
     TierView,
     TokenRow,
     ToolDetail,
+    VoiceOption,
 )
 from ira.runtime import Runtime
 from ira.tools.actions import ACTION_STATUSES
+from ira.voice.voices import voices_for
 
 router = APIRouter(prefix="/v1/admin", tags=["admin"], responses=ERRORS)
 reader = require("admin.read")
@@ -544,7 +546,16 @@ def models(_: Principal = Depends(reader), runtime: Runtime = Depends(get_runtim
                 last_error_kind=last_error["error_kind"] if last_error else None,
             )
         )
-    return ModelsView(tiers=tiers, providers=providers, cooling=runtime.gateway.cooling())
+    return ModelsView(
+        tiers=tiers,
+        providers=providers,
+        cooling=runtime.gateway.cooling(),
+        cooling_reasons=runtime.gateway.cooling_reasons(),
+        voices=[
+            VoiceOption(id=v.id, languages=list(v.languages), gender=v.gender)
+            for v in voices_for(getattr(runtime.tts, "name", None))
+        ],
+    )
 
 
 @router.get(
