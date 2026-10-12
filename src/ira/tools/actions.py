@@ -4,7 +4,9 @@ The model never executes an action tool. Calling one stores a *pending
 action*: the validated parameters, a human summary and an expiry. Code runs
 it later, once, after the owner confirms with a PIN:
 
-* the PIN is stored as a salted PBKDF2 hash;
+* each user has their own PIN, stored as a salted PBKDF2 hash, and confirms
+  with it (a guard used without accounts has one installation PIN);
+* an action can be limited to the roles that may confirm it;
 * three wrong PINs in a row lock every action for 15 minutes;
 * a pending action expires after 120 seconds;
 * a database compare-and-set moves it from ``pending`` to ``executing``, so
@@ -19,19 +21,20 @@ import inspect
 import json
 import logging
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any, Literal
 
 from pydantic import BaseModel
 
 from ira.security import PIN_ITERATIONS, hash_pin, new_id, verify_pin
-from ira.store import Store
+from ira.store import CONFIRMING_ROLES, SHARED_PIN_SETTING, Store
 from ira.tools.registry import Tool, ToolError, ToolRegistry
 
 log = logging.getLogger("ira.actions")
 
-PIN_SETTING = "actions.pin_hash"
+# The installation PIN, used when confirm() is called without a user.
+PIN_SETTING = SHARED_PIN_SETTING
 
 OutcomeStatus = Literal[
     "executed",
@@ -43,6 +46,7 @@ OutcomeStatus = Literal[
     "already_done",
     "cancelled",
     "no_pin",
+    "not_allowed",
 ]
 
 
@@ -122,6 +126,8 @@ class ActionGuard:
         max_wrong_pins: int = 3,
         lock_seconds: float = 15 * 60,
         pin_iterations: int = PIN_ITERATIONS,
+        confirm_roles: Sequence[str] = CONFIRMING_ROLES,
+        tool_confirm_roles: Mapping[str, Sequence[str]] | None = None,
         clock: Callable[[], float] = time.time,
     ) -> None:
         self.store = store
@@ -130,17 +136,69 @@ class ActionGuard:
         self.max_wrong_pins = max_wrong_pins
         self.lock_seconds = lock_seconds
         self.pin_iterations = pin_iterations
+        self.confirm_roles = tuple(confirm_roles)
+        self.tool_confirm_roles = {k: tuple(v) for k, v in (tool_confirm_roles or {}).items()}
         self.clock = clock
+
+    def confirm_roles_for(self, tool: str) -> tuple[str, ...]:
+        """The roles allowed to confirm this action (they also need the actions permission)."""
+        return self.tool_confirm_roles.get(tool, self.confirm_roles)
 
     # PIN management.
 
-    def set_pin(self, pin: str) -> None:
-        self.store.set_setting(PIN_SETTING, hash_pin(pin, iterations=self.pin_iterations))
-        self.store.execute("UPDATE pin_state SET failures = 0, locked_until = 0 WHERE id = 1")
-        self._audit(None, None, "pin_set", "owner", "cli", None)
+    def set_pin(
+        self,
+        pin: str,
+        *,
+        user_id: int | None = None,
+        actor: str = "owner",
+        channel: str = "cli",
+        unlock: bool = False,
+    ) -> None:
+        """Set a user's PIN, or the installation PIN when there is no user.
 
-    def has_pin(self) -> bool:
-        return self.store.get_setting(PIN_SETTING) is not None
+        ``unlock`` also lifts a wrong-PIN lock; only the server's operator (the
+        CLI) does that, so a new PIN cannot be used to skip a lock.
+        """
+        hashed = hash_pin(pin, iterations=self.pin_iterations)
+        if user_id is None:
+            self.store.set_setting(PIN_SETTING, hashed)
+            unlock = True
+        else:
+            cursor = self.store.execute(
+                "UPDATE users SET pin_hash = ?, pin_set_at = ? "
+                "WHERE id = ? AND disabled_at IS NULL",
+                (hashed, self.clock(), user_id),
+            )
+            if cursor.rowcount != 1:
+                raise ValueError("no such user")
+        if unlock:
+            self.store.execute("UPDATE pin_state SET failures = 0, locked_until = 0 WHERE id = 1")
+        self._audit(None, None, "pin_set", actor, channel, None)
+
+    def clear_pin(self, user_id: int, *, actor: str, channel: str = "web") -> bool:
+        """Remove a user's PIN. They cannot confirm actions until they set a new one."""
+        cursor = self.store.execute(
+            "UPDATE users SET pin_hash = NULL, pin_set_at = NULL WHERE id = ?", (user_id,)
+        )
+        if cursor.rowcount == 1:
+            self._audit(None, None, "pin_cleared", actor, channel, None)
+        return cursor.rowcount == 1
+
+    def _stored_pin(self, user_id: int | None) -> str | None:
+        if user_id is None:
+            return self.store.get_setting(PIN_SETTING)
+        row = self.store.one(
+            "SELECT pin_hash FROM users WHERE id = ? AND disabled_at IS NULL", (user_id,)
+        )
+        return row["pin_hash"] if row else None
+
+    def has_pin(self, user_id: int | None = None) -> bool:
+        return self._stored_pin(user_id) is not None
+
+    def wrong_pins(self) -> int:
+        row = self.store.one("SELECT failures FROM pin_state WHERE id = 1")
+        return int(row["failures"]) if row else 0
 
     def locked_until(self) -> float | None:
         row = self.store.one("SELECT locked_until FROM pin_state WHERE id = 1")
@@ -210,8 +268,20 @@ class ActionGuard:
     # Confirming and cancelling.
 
     async def confirm(
-        self, action_id: str, pin: str, *, actor: str | None = None, channel: str | None = None
+        self,
+        action_id: str,
+        pin: str,
+        *,
+        actor: str | None = None,
+        channel: str | None = None,
+        user_id: int | None = None,
+        role: str | None = None,
     ) -> Outcome:
+        """Check the PIN and run the action once.
+
+        With ``user_id`` the PIN is that user's own and ``role`` must be allowed
+        to confirm this action; without, the installation PIN is checked.
+        """
         locked = self.locked_until()
         if locked is not None:
             return self._finish(
@@ -241,11 +311,24 @@ class ActionGuard:
                 channel,
             )
 
-        stored = self.store.get_setting(PIN_SETTING)
-        if stored is None:
+        allowed = self.confirm_roles_for(pending.tool)
+        if role is not None and role not in allowed:
             return self._finish(
-                pending, "no_pin", "No action PIN is set. Run `ira pin set` first.", actor, channel
+                pending,
+                "not_allowed",
+                f"Your role cannot confirm this action. Allowed: {', '.join(allowed) or 'nobody'}.",
+                actor,
+                channel,
             )
+
+        stored = self._stored_pin(user_id)
+        if stored is None:
+            message = (
+                "No action PIN is set. Run `ira pin set` first."
+                if user_id is None
+                else "You have no action PIN yet. Set one in the admin console under Account."
+            )
+            return self._finish(pending, "no_pin", message, actor, channel)
         # PBKDF2 is deliberately slow; keep it off the event loop.
         if not await asyncio.to_thread(verify_pin, pin, stored):
             return self._wrong_pin(pending, actor, channel)
@@ -314,6 +397,8 @@ class ActionGuard:
         try:
             if tool is None:
                 raise ToolError(f"the tool '{pending.tool}' is no longer registered")
+            if not self.registry.is_enabled(tool.name):
+                raise ToolError(f"the tool '{tool.name}' is switched off")
             args = tool.validate(pending.params)
             positional, keywords = tool.call_args(args)
             if inspect.iscoroutinefunction(tool.fn):

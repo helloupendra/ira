@@ -155,7 +155,15 @@ def build_runtime(
         expiry_seconds=settings.actions.expiry_seconds,
         max_wrong_pins=settings.actions.max_wrong_pins,
         lock_seconds=settings.actions.lock_minutes * 60,
+        confirm_roles=settings.actions.confirm_roles,
+        tool_confirm_roles={
+            name: rule.confirm_roles for name, rule in settings.actions.tools.items()
+        },
     )
+    for name in settings.actions.tools:
+        tool = registry.get(name)
+        if tool is None or tool.kind != "action":
+            log.warning("actions.tools names '%s', which is not a registered action tool", name)
     conversations = Conversations(store)
     assistant = Assistant(
         gateway,

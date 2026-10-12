@@ -57,6 +57,7 @@ OUTCOME_STATUS = {
     "no_pin": 409,
     "expired": 410,
     "locked": 423,
+    "not_allowed": 403,
 }
 
 CSP = (
@@ -342,7 +343,12 @@ async def confirm_action(
     runtime: Runtime = Depends(get_runtime),
 ) -> ActionOutcome:
     outcome = await runtime.guard.confirm(
-        action_id, body.pin, actor=principal.actor, channel=principal.channel
+        action_id,
+        body.pin,
+        actor=principal.actor,
+        channel=principal.channel,
+        user_id=principal.user.id,
+        role=principal.user.role,
     )
     return _outcome_response(response, outcome)
 

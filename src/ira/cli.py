@@ -2,7 +2,7 @@
 
 ira setup                         create the owner account
 ira serve                         run the API, web chat and enabled channels
-ira pin set                       set the action PIN
+ira pin set [--user E]            set a user's action PIN (default: the first owner)
 ira user add --email E --role R   add an admin, staff or viewer account
 ira user list
 ira token create --label phone    create an API token (shown once)
@@ -96,12 +96,17 @@ def cmd_pin_set(args: argparse.Namespace) -> int:
     from ira.tools.registry import ToolRegistry
 
     settings = _settings(args)
-    pin = _secret_input("New action PIN (4-12 digits): ", confirm=True)
+    store = _store(settings)
+    user = _pick_user(Accounts(store), args.user)
+    pin = _secret_input(f"New action PIN for {user.email} (4-12 digits): ", confirm=True)
     if not valid_pin(pin):
         print("Error: the PIN must be 4 to 12 digits.", file=sys.stderr)
         return 1
-    ActionGuard(_store(settings), ToolRegistry()).set_pin(pin)
-    print("Action PIN set. Wrong PINs lock actions after 3 tries.")
+    # Run on the server itself, so it also lifts a wrong-PIN lock.
+    ActionGuard(store, ToolRegistry()).set_pin(
+        pin, user_id=user.id, actor=f"{user.email} via cli", channel="cli", unlock=True
+    )
+    print(f"Action PIN set for {user.email}. Wrong PINs lock actions after 3 tries.")
     return 0
 
 
@@ -223,7 +228,8 @@ def build_parser() -> argparse.ArgumentParser:
     pin = sub.add_parser("pin", help="manage the action PIN").add_subparsers(
         dest="pin_command", required=True
     )
-    add("set", cmd_pin_set, "set or change the action PIN", pin)
+    p = add("set", cmd_pin_set, "set or change a user's action PIN", pin)
+    p.add_argument("--user", help="whose PIN (default: the first owner)")
 
     token = sub.add_parser("token", help="manage API tokens").add_subparsers(
         dest="token_command", required=True

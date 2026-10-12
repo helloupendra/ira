@@ -301,7 +301,12 @@ class TelegramBot:
             await self._send(chat_id, "No action is waiting for a PIN. It may have expired.")
             return
         outcome = await self.runtime.guard.confirm(
-            pending.id, pin, actor=principal.actor, channel="telegram"
+            pending.id,
+            pin,
+            actor=principal.actor,
+            channel="telegram",
+            user_id=principal.user.id,
+            role=principal.user.role,
         )
         await self._send(chat_id, outcome.message)
 

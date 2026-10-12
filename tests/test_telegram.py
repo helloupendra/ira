@@ -59,14 +59,14 @@ def provider():
 
 @pytest.fixture
 def runtime(registry, provider):
-    rt = make_runtime(provider=provider, registry=registry, stt=FakeSTT(), tts=FakeTTS())
-    rt.guard.set_pin(PIN)
-    return rt
+    return make_runtime(provider=provider, registry=registry, stt=FakeSTT(), tts=FakeTTS())
 
 
 @pytest.fixture
 def owner(runtime):
-    return runtime.accounts.create_first_owner("owner@example.com", PASSWORD)
+    user = runtime.accounts.create_first_owner("owner@example.com", PASSWORD)
+    runtime.guard.set_pin(PIN, user_id=user.id)
+    return user
 
 
 @pytest.fixture

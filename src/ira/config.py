@@ -99,10 +99,22 @@ class ChannelsConfig(_Strict):
     telegram: TelegramConfig = Field(default_factory=TelegramConfig)
 
 
+RoleName = Literal["owner", "admin", "staff", "viewer"]
+
+
+class ActionRuleConfig(_Strict):
+    confirm_roles: list[RoleName]
+
+
 class ActionsConfig(_Strict):
     expiry_seconds: float = 120
     max_wrong_pins: int = 3
     lock_minutes: float = 15
+    # Who may confirm an action with their own PIN. A role also needs the
+    # "actions" permission, which viewers never have.
+    confirm_roles: list[RoleName] = Field(default_factory=lambda: ["owner", "admin", "staff"])
+    # Per action tool, e.g. {cancel_appointment: {confirm_roles: [owner]}}.
+    tools: dict[str, ActionRuleConfig] = Field(default_factory=dict)
 
 
 class AssistantConfig(_Strict):
