@@ -68,3 +68,24 @@ def test_config_errors_are_reported_not_raised(tmp_path, capsys):
     bad.write_text("assistant: [not, a, mapping]\n", encoding="utf-8")
     assert run(str(bad), "user", "list") == 2
     assert "Config error" in capsys.readouterr().err
+
+
+def test_each_user_gets_their_own_pin(config, capsys):
+    from ira.accounts import Accounts
+    from ira.config import load_settings
+    from ira.store import Store
+    from ira.tools.actions import ActionGuard
+    from ira.tools.registry import ToolRegistry
+
+    run(config, "setup", "--email", "owner@example.com", stdin=PASSWORD + "\n")
+    run(config, "user", "add", "--email", "desk@example.com", "--role", "staff",
+        stdin=PASSWORD + "\n")  # fmt: skip
+    assert run(config, "pin", "set", "--user", "desk@example.com", stdin="2468\n") == 0
+    assert "desk@example.com" in capsys.readouterr().out
+    with pytest.raises(SystemExit, match="No user"):
+        run(config, "pin", "set", "--user", "nobody@example.com", stdin="2468\n")
+
+    store = Store(load_settings(config).db_path)
+    accounts, guard = Accounts(store), ActionGuard(store, ToolRegistry())
+    assert guard.has_pin(accounts.find_user("desk@example.com").id)
+    assert not guard.has_pin(accounts.find_user("owner@example.com").id)
