@@ -1,0 +1,17 @@
+# gitleaks: the default rules plus a short allowlist of reviewed false positives.
+# Keep entries narrow (one file or one literal) and say why each is safe.
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Reviewed false positives"
+paths = [
+  # The detect-secrets baseline stores SHA-1 hashes of strings already reviewed
+  # as not secret; the hashes look like keys to the generic rule.
+  '''^\.secrets\.baseline$''',
+]
+regexes = [
+  # A fake key in tests/test_gateway.py that proves errors are scrubbed of credentials.
+  '''^sk-test-0123456789abcdef$''',
+]

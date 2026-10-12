@@ -1,0 +1,61 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+  schedule:
+    - cron: "17 3 * * 1" # weekly full-history secret scan
+
+permissions:
+  contents: read
+
+# No cloud, chat or model credentials exist in this workflow on purpose.
+# Every test runs against fakes.
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - run: pip install "ruff==0.16.9"
+      - run: ruff check .
+      - run: ruff format --check .
+
+  test:
+    needs: lint
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.12"]
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: ${{ matrix.python-version }}
+      - run: pip install -e ".[dev,aws,ogg]"
+      - run: pytest
+
+  secrets:
+    needs: test
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write # lets gitleaks comment on a PR that adds a secret
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      # Scans the pushed or PR commits (and everything on dispatch/schedule).
+      # GITHUB_TOKEN is the automatic per-run token; no stored secret is needed
+      # for a repository owned by a personal account.
+      - uses: gitleaks/gitleaks-action@v3
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      # The action scans only the new commits on a push. The binary it put on
+      # PATH also scans every commit on every branch, every time.
+      - name: Full-history scan
+        run: gitleaks git --redact --verbose --exit-code 1 .
