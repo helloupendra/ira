@@ -242,7 +242,10 @@ def _current_name(settings: Settings) -> str:
 
 
 def check_owner(report: Report, settings: Settings) -> None:
-    hint = "start `ira serve` and open the one-time setup link it prints, or run `ira setup`"
+    hint = (
+        "open the one-time setup link `ira serve` prints (under systemd, in its journal), "
+        "or run `ira setup`"
+    )
     try:
         rows = _read_db(
             settings,
