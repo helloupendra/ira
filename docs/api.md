@@ -25,7 +25,7 @@ field errors on `422`).
 | `POST /v1/invites/lookup`, `POST /v1/invites/accept` | nothing (the invitation token) |
 | `GET /v1/auth/me`, `GET /v1/info`, `POST /v1/auth/logout`, `GET /v1/me/pin` | any credential |
 | `PUT /v1/me/pin` | a session with `actions` |
-| `POST /v1/ask`, `POST /v1/ask/stream` | `ask` |
+| `POST /v1/ask`, `POST /v1/ask/stream`, `GET /v1/conversations`, `GET /v1/conversations/{id}` | `ask` |
 | `POST /v1/voice/transcribe`, `POST /v1/voice/speak` | `voice` |
 | `POST /v1/actions/{id}/confirm`, `POST /v1/actions/{id}/cancel` | `actions` (and your own PIN to confirm) |
 | `GET /v1/admin/*` | `admin.read` (`GET /v1/admin/users/invites`: `users`) |
@@ -120,6 +120,22 @@ one JSON object per `data:` line. Each is a `StreamEvent` in
 
 A `tool_result` follows its `tool` before the next `tool` starts. When a call
 proposes an action, its `action` event comes right after its `tool_result`.
+
+### Your conversations
+
+Any credential with `ask` (a phone token with scope `ask` too) can read back
+its user's own conversations from the web chat and the API:
+
+| Route | Returns |
+| --- | --- |
+| `GET /v1/conversations?limit=&before=` | `MyConversationRow[]`: `id`, `channel` (`web` or `api`), `started_at`, `last_at`, `turns`, `preview` (the first question, cut to 120 characters); by last activity, newest first. Page with `before`, a `last_at` |
+| `GET /v1/conversations/{id}` | `MessageRow[]`: the messages, with tool calls and tool results, as in the admin transcript |
+
+`id` is the `conversation_id` the client sent to `/v1/ask`: send it again to
+continue. Someone else's conversation answers `404`, as an unknown one does,
+so the answer does not say whether it exists. Telegram chats and
+conversations that record no user (from before accounts) are not listed
+here; the admin list has them.
 
 ## Voice
 

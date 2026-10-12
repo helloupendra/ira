@@ -104,13 +104,31 @@ class Conversations:
             "UPDATE conversations SET reset_at = ? WHERE id = ?", (self.clock(), conversation_id)
         )
 
-    def recent(self, limit: int = 50, before: float | None = None) -> list[dict[str, Any]]:
+    def recent(
+        self,
+        limit: int = 50,
+        before: float | None = None,
+        *,
+        user_id: int | None = None,
+        prefix: str = "",
+    ) -> list[dict[str, Any]]:
+        """Conversations by last activity, newest first.
+
+        ``user_id`` keeps one user's; ``prefix`` keeps ids that start with it.
+        """
+        where, params = ["c.last_at < ?"], [before if before is not None else float("inf")]
+        if user_id is not None:
+            where.append("c.user_id = ?")
+            params.append(user_id)
+        if prefix:
+            where.append("substr(c.id, 1, ?) = ?")
+            params += [len(prefix), prefix]
         rows = self.store.query(
             "SELECT c.*, u.email, (SELECT substr(m.content, 1, 120) FROM messages m "
             "WHERE m.conversation_id = c.id AND m.role = 'user' ORDER BY m.id LIMIT 1) AS preview "
             "FROM conversations c LEFT JOIN users u ON u.id = c.user_id "
-            "WHERE c.last_at < ? ORDER BY c.last_at DESC LIMIT ?",
-            (before if before is not None else float("inf"), limit),
+            f"WHERE {' AND '.join(where)} ORDER BY c.last_at DESC LIMIT ?",
+            (*params, limit),
         )
         return [dict(r) for r in rows]
 

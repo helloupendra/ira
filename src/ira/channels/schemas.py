@@ -315,6 +315,19 @@ class ConversationRow(BaseModel):
     )
 
 
+class MyConversationRow(BaseModel):
+    """One of the caller's own conversations from the web chat or the API."""
+
+    id: str = Field(description="The conversation_id: send it to /v1/ask to continue.")
+    channel: str = Field(description="Where it started: web (signed in) or api (a token).")
+    started_at: float
+    last_at: float
+    turns: int = Field(description="Questions asked in it.")
+    preview: str | None = Field(
+        default=None, description="The first thing you said, cut to 120 characters."
+    )
+
+
 class ToolCallView(BaseModel):
     id: str
     name: str

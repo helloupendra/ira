@@ -9,11 +9,12 @@ import asyncio
 import contextlib
 import json
 import logging
+import re
 import secrets
 from collections.abc import AsyncIterator
 from typing import Any
 
-from fastapi import APIRouter, Depends, FastAPI, HTTPException, Request, Response
+from fastapi import APIRouter, Depends, FastAPI, HTTPException, Query, Request, Response
 from fastapi.responses import HTMLResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.exceptions import HTTPException as StarletteHTTPException
@@ -33,13 +34,18 @@ from ira.channels.deps import (
     set_session_cookie,
 )
 from ira.channels.schemas import (
+    CONVERSATION_ID,
+    ERRORS,
     ActionOutcome,
     ActionView,
     AskRequest,
     AskResponse,
     ConfirmRequest,
+    ErrorDetail,
     InfoResponse,
     LoginRequest,
+    MessageRow,
+    MyConversationRow,
     OkResponse,
     SessionResponse,
     SetupRequest,
@@ -211,6 +217,56 @@ async def ask(
     if data["action"] is not None:
         data["action"] = action_view(runtime, principal, data["action"])
     return AskResponse(**data)
+
+
+@api.get(
+    "/conversations",
+    response_model=list[MyConversationRow],
+    tags=["ask"],
+    summary="Your recent conversations from the web chat and the API",
+    responses=ERRORS,
+)
+def my_conversations(
+    limit: int = Query(50, ge=1, le=500),
+    before: float | None = Query(
+        None, description="Page: only conversations active before this (a last_at)."
+    ),
+    principal: Principal = Depends(require("ask")),
+    runtime: Runtime = Depends(get_runtime),
+) -> list[MyConversationRow]:
+    prefix = _conversation_key(principal, "")
+    rows = runtime.conversations.recent(limit, before, user_id=principal.user.id, prefix=prefix)
+    return [
+        MyConversationRow(
+            **{k: row[k] for k in MyConversationRow.model_fields if k != "id"},
+            id=row["id"][len(prefix) :],
+        )
+        for row in rows
+    ]
+
+
+@api.get(
+    "/conversations/{conversation_id}",
+    response_model=list[MessageRow],
+    tags=["ask"],
+    summary="One of your conversations, message by message",
+    responses={
+        **ERRORS,
+        404: {"model": ErrorDetail, "description": "Not one of your conversations"},
+    },
+)
+def my_conversation(
+    conversation_id: str,
+    principal: Principal = Depends(require("ask")),
+    runtime: Runtime = Depends(get_runtime),
+) -> list[MessageRow]:
+    key = _conversation_key(principal, conversation_id)
+    # Someone else's conversation is "not found", so the answer does not say it exists.
+    if not re.fullmatch(CONVERSATION_ID, conversation_id) or (
+        runtime.conversations.owner(key) != principal.user.id
+    ):
+        raise HTTPException(404, detail="no such conversation")
+    return [MessageRow(**m) for m in runtime.conversations.transcript(key)]
 
 
 class EventStream(StreamingResponse):

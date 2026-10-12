@@ -630,3 +630,45 @@ def test_ask_shows_each_tool_call_with_a_capped_result(registry):
         assert result["id"] == "c1" and result["ok"] is True and result["truncated"] is True
         assert len(result["result"]) == 501 and result["result"].endswith("…")
         assert events[-1]["type"] == "done"
+
+
+# The caller's own conversations.
+
+
+def test_callers_read_only_their_own_conversations(registry):
+    runtime = make_runtime(provider=ScriptedProvider(["answer"] * 10), registry=registry)
+    people = People(runtime)
+    phone = people.token(people.owner, ["ask"])  # a phone token can read its own history
+    staff = people.session(people.staff)
+    with TestClient(create_app(runtime, start_channels=False)) as client:
+        for text in ("is Tuesday free", "and Wednesday"):
+            client.post("/v1/ask", json={"text": text, "conversation_id": "kitchen"}, headers=phone)
+        client.post("/v1/ask", json={"text": "hello", "conversation_id": "hall"}, headers=phone)
+        client.post("/v1/ask", json={"text": "desk only", "conversation_id": "desk"}, headers=staff)
+        # A row that records no user stays visible only through the admin API.
+        runtime.conversations.ensure(f"http:{people.owner.id}:legacy", channel="api", user_id=None)
+
+        mine = client.get("/v1/conversations", headers=phone).json()
+        assert [c["id"] for c in mine] == ["hall", "kitchen"]
+        kitchen = mine[1]
+        assert kitchen["channel"] == "api" and kitchen["turns"] == 2
+        assert kitchen["preview"] == "is Tuesday free"
+        older = client.get(f"/v1/conversations?before={mine[0]['last_at']}", headers=phone)
+        assert [c["id"] for c in older.json()] == ["kitchen"]
+        assert len(client.get("/v1/conversations?limit=1", headers=phone).json()) == 1
+
+        transcript = client.get("/v1/conversations/kitchen", headers=phone).json()
+        assert [m["role"] for m in transcript] == ["user", "assistant", "user", "assistant"]
+        assert transcript[0]["content"] == "is Tuesday free"
+
+        # Someone else's conversation is not found, by its id or by its internal key.
+        assert client.get("/v1/conversations/kitchen", headers=staff).status_code == 404
+        internal = f"/v1/conversations/http:{people.owner.id}:kitchen"
+        assert client.get(internal, headers=staff).status_code == 404
+        assert client.get("/v1/conversations/desk", headers=phone).status_code == 404
+        assert client.get("/v1/conversations/legacy", headers=phone).status_code == 404
+        assert [c["id"] for c in client.get("/v1/conversations", headers=staff).json()] == ["desk"]
+
+        # A viewer cannot ask, so has no conversations of their own to read.
+        viewer = people.session(people.viewer)
+        assert client.get("/v1/conversations", headers=viewer).status_code == 403
