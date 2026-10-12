@@ -546,6 +546,21 @@ class Accounts:
         )
         return [dict(r) for r in rows]
 
+    def get_token(self, token_id: str) -> dict[str, Any] | None:
+        row = self.store.one(
+            "SELECT t.id, t.label, t.scopes, t.created_at, t.last_used_at, t.revoked_at, "
+            "u.email FROM api_tokens t JOIN users u ON u.id = t.user_id WHERE t.id = ?",
+            (token_id,),
+        )
+        return dict(row) if row else None
+
+    def revoke_token_id(self, token_id: str) -> bool:
+        cursor = self.store.execute(
+            "UPDATE api_tokens SET revoked_at = ? WHERE id = ? AND revoked_at IS NULL",
+            (self.clock(), token_id),
+        )
+        return cursor.rowcount == 1
+
     def revoke_token(self, id_or_label: str) -> int:
         cursor = self.store.execute(
             "UPDATE api_tokens SET revoked_at = ? "

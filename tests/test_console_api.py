@@ -65,6 +65,8 @@ WRITES = [
     ("patch", "/v1/admin/users/1", {"role": "admin"}),
     ("delete", "/v1/admin/users/3", None),
     ("post", "/v1/admin/users/3/reset-pin", None),
+    ("post", "/v1/admin/tokens", {"label": "x", "scopes": ["ask"]}),
+    ("delete", "/v1/admin/tokens/tok_x", None),
 ]
 
 
@@ -250,3 +252,33 @@ def test_a_viewer_cannot_set_a_pin(client, people):
     body = {"password": PASSWORD, "pin": "1357"}
     assert client.put("/v1/me/pin", json=body, headers=viewer).status_code == 403
     assert client.get("/v1/me/pin", headers=viewer).json()["can_confirm"] is False
+
+
+# Tokens.
+
+
+def test_tokens_are_shown_once_and_can_be_revoked(client, people):
+    admin = people.session(people.admin)
+    created = client.post(
+        "/v1/admin/tokens", json={"label": "phone", "scopes": ["ask", "voice"]}, headers=admin
+    ).json()
+    token = created["token"]
+    assert token.startswith("ira_t_") and created["scopes"] == ["ask", "voice"]
+    listing = client.get("/v1/admin/tokens", headers=admin).text
+    assert token not in listing and "phone" in listing
+
+    use = {"Authorization": f"Bearer {token}"}
+    assert client.post("/v1/ask", json={"text": "hi"}, headers=use).status_code == 200
+    assert client.delete(f"/v1/admin/tokens/{created['id']}", headers=admin).status_code == 200
+    assert client.post("/v1/ask", json={"text": "hi"}, headers=use).status_code == 401
+    assert client.delete(f"/v1/admin/tokens/{created['id']}", headers=admin).status_code == 404
+    latest = changes(client, people)[0]
+    assert latest["what"] == "token.revoked" and token not in str(latest)
+
+
+def test_token_scopes_are_checked(client, people):
+    admin = people.session(people.admin)
+    for scopes in (["admin.write"], ["users"], [], ["nonsense"]):
+        body = {"label": "x", "scopes": scopes}
+        response = client.post("/v1/admin/tokens", json=body, headers=admin)
+        assert response.status_code in (400, 422), scopes

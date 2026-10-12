@@ -307,6 +307,18 @@ class RoleChange(BaseModel):
     role: str
 
 
+class TokenCreateRequest(BaseModel):
+    label: str = Field(min_length=1, max_length=64)
+    scopes: list[str] = Field(min_length=1)
+
+
+class TokenCreated(BaseModel):
+    id: str
+    label: str
+    scopes: list[str]
+    token: str = Field(description="Shown once. Only its hash is stored.")
+
+
 class ChangeRow(BaseModel):
     id: int
     at: float
