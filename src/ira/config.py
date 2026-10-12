@@ -171,10 +171,22 @@ class Settings(_Strict):
 
 
 def load_dotenv(path: Path) -> None:
-    """Minimal .env reader: KEY=VALUE lines; never overrides the real environment."""
-    if not path.is_file():
+    """Minimal .env reader: KEY=VALUE lines; never overrides the real environment.
+
+    A folder this user may not look into counts as having no .env: ``sudo -u
+    ira ira doctor /srv/ira/x`` starts in the admin's home, which ira cannot
+    read. A .env that is there but unreadable is an error worth naming.
+    """
+    try:
+        if not path.is_file():
+            return
+    except OSError:
         return
-    for raw in path.read_text(encoding="utf-8").splitlines():
+    try:
+        text = path.read_text(encoding="utf-8")
+    except OSError as exc:
+        raise ConfigError(f"cannot read {path}: {exc.strerror or exc}") from None
+    for raw in text.splitlines():
         line = raw.strip()
         if not line or line.startswith("#") or "=" not in line:
             continue
@@ -201,9 +213,17 @@ def find_config(explicit: str | Path | None = None) -> Path | None:
 def load_settings(path: str | Path | None = None) -> Settings:
     """Read ``ira.yaml`` (or defaults), resolving relative paths against its folder."""
     config_path = find_config(path)
-    config_dir = (config_path.parent if config_path else Path.cwd()).resolve()
+    try:
+        cwd: Path | None = Path.cwd()
+    except OSError:  # some systems refuse getcwd() in a folder this user cannot read
+        cwd = None
+    base = config_path.parent if config_path else cwd
+    if base is None:
+        raise ConfigError("no ira.yaml given, and the working directory cannot be read")
+    config_dir = base.resolve()
     load_dotenv(config_dir / ".env")
-    load_dotenv(Path.cwd() / ".env")
+    if cwd is not None:
+        load_dotenv(cwd / ".env")
     raw: dict = {}
     if config_path:
         loaded = yaml.safe_load(config_path.read_text(encoding="utf-8"))

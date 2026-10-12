@@ -65,3 +65,31 @@ def test_example_configs_are_valid(monkeypatch):
     root = Path(__file__).resolve().parent.parent
     for path in [root / "ira.example.yaml", root / "examples" / "clinic" / "ira.yaml"]:
         load_settings(path)
+
+
+@pytest.mark.skipif(not hasattr(os, "geteuid") or os.geteuid() == 0, reason="root reads anything")
+def test_a_working_directory_this_user_cannot_read_is_skipped(tmp_path, monkeypatch):
+    # sudo -u ira ira doctor /srv/ira/x starts in the admin's home, closed to ira.
+    (tmp_path / "ira.yaml").write_text("data_dir: ./data\n", encoding="utf-8")
+    closed = tmp_path / "home"
+    closed.mkdir()
+    monkeypatch.chdir(closed)
+    closed.chmod(0)
+    try:
+        settings = load_settings(tmp_path / "ira.yaml")
+    finally:
+        closed.chmod(0o700)
+    assert settings.data_dir == (tmp_path / "data").resolve()
+
+
+@pytest.mark.skipif(not hasattr(os, "geteuid") or os.geteuid() == 0, reason="root reads anything")
+def test_an_unreadable_env_file_is_named(tmp_path):
+    (tmp_path / "ira.yaml").write_text("data_dir: ./data\n", encoding="utf-8")
+    env = tmp_path / ".env"
+    env.write_text("EXAMPLE=1\n", encoding="utf-8")
+    env.chmod(0)
+    try:
+        with pytest.raises(ConfigError, match="cannot read .*\\.env"):
+            load_settings(tmp_path / "ira.yaml")
+    finally:
+        env.chmod(0o600)
