@@ -281,7 +281,20 @@ class ModelUsage(BaseModel):
 
 
 class Overview(BaseModel):
-    since: float = Field(description="Start of today, server local time (epoch seconds).")
+    """Today at a glance. "Today" starts at the server's local midnight: see since."""
+
+    since: float = Field(
+        description="The server's local midnight today (epoch seconds). Every count here is "
+        "since this moment, in the server's time zone (timezone), not the viewer's."
+    )
+    since_iso: str = Field(
+        description="since as ISO 8601 with the server's UTC offset, e.g. "
+        "2026-10-12T00:00:00+05:30."
+    )
+    timezone: str = Field(
+        description="The server's time zone: an IANA name such as Asia/Kolkata when the system "
+        "names one, else its UTC offset such as +05:30."
+    )
     questions: int = Field(
         description="Questions people asked today, on every channel: the user turns stored "
         "since the start of today. A bare PIN typed into chat is never stored or counted."

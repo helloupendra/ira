@@ -131,3 +131,37 @@ def test_calls_list_the_models_tried_and_tools_say_their_kind(setup):
     schema = client.get("/v1/openapi.json").json()["components"]["schemas"]
     assert schema["ToolDetail"]["properties"]["kind"]["enum"] == ["read", "action"]
     assert "tried_list" in schema["CallRow"]["properties"]
+
+
+def test_the_overview_says_when_its_day_starts_and_where(setup):
+    import datetime as dt
+
+    client, headers, _ = setup
+    data = client.get("/v1/admin/overview", headers=headers).json()
+    start = dt.datetime.fromisoformat(data["since_iso"])
+    assert start.timestamp() == data["since"]
+    assert (start.hour, start.minute, start.second) == (0, 0, 0)
+    assert start.utcoffset() == dt.datetime.now().astimezone().utcoffset()
+    assert data["timezone"]
+
+
+def test_the_time_zone_is_a_name_when_known_else_an_offset(monkeypatch):
+    import re
+
+    from ira.channels import admin
+
+    monkeypatch.setenv("TZ", "Asia/Kolkata")
+    assert admin.local_timezone() == "Asia/Kolkata"
+    monkeypatch.setenv("TZ", ":Europe/London")
+    assert admin.local_timezone() == "Europe/London"
+
+    monkeypatch.setenv("TZ", "IST-5:30")  # a POSIX rule, not a name
+    monkeypatch.setattr(admin.os, "readlink", lambda path: "/usr/share/zoneinfo/America/Chicago")
+    assert admin.local_timezone() == "America/Chicago"
+
+    def nowhere(*args, **kwargs):
+        raise OSError("not here")
+
+    monkeypatch.setattr(admin.os, "readlink", nowhere)
+    monkeypatch.setattr(admin, "Path", lambda path: type("P", (), {"read_text": nowhere})())
+    assert re.fullmatch(r"[+-]\d\d:\d\d", admin.local_timezone())

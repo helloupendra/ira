@@ -201,7 +201,7 @@ All need `admin.read` (owner, admin, viewer), from a session or a token.
 
 | Route | Returns |
 | --- | --- |
-| `GET /v1/admin/overview` | `Overview`: today's `questions` (user turns stored since the start of today, every channel), model `calls` (one question can make several), failures, cost, tokens, latency p50/p95, per model, actions by status, active conversations, users |
+| `GET /v1/admin/overview` | `Overview`: today's `questions` (user turns stored since the start of today, every channel), model `calls` (one question can make several), failures, cost, tokens, latency p50/p95, per model, actions by status, active conversations, users. "Today" starts at `since`, the server's local midnight (epoch seconds); `since_iso` is the same moment with the server's offset (`2026-10-12T00:00:00+05:30`) and `timezone` the server's zone: an IANA name (`Asia/Kolkata`) when the system names one, else its offset (`+05:30`) |
 | `GET /v1/admin/calls?limit=&before_id=` | `CallRow[]`: model calls, newest first, paged by id. `tried` is the models tried in order, joined by commas with no spaces; `tried_list` has them as a list |
 | `GET /v1/admin/conversations?limit=&before=&before_id=` | `ConversationRow[]`: by last activity, with a `preview` of the first question |
 | `GET /v1/admin/conversations/{id}` | `MessageRow[]`: messages, with typed `tool_calls` and tool results; `404` if unknown |

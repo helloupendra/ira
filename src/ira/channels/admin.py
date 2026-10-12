@@ -9,6 +9,8 @@ import datetime as dt
 import json
 import os
 import statistics
+import zoneinfo
+from pathlib import Path
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
@@ -59,6 +61,42 @@ def start_of_today() -> float:
     return dt.datetime.combine(dt.date.today(), dt.time()).timestamp()
 
 
+def _zone_name(name: str | None) -> str | None:
+    name = (name or "").strip().lstrip(":")
+    if not name or name.startswith("/"):
+        return None
+    try:
+        zoneinfo.ZoneInfo(name)
+    except (zoneinfo.ZoneInfoNotFoundError, ValueError):
+        return None
+    return name
+
+
+def local_timezone() -> str:
+    """The server's time zone: its IANA name when the system says it, else its UTC offset.
+
+    Looks at ``TZ``, then where ``/etc/localtime`` points, then ``/etc/timezone``.
+    The offset reads like ``+05:30``.
+    """
+    name = _zone_name(os.environ.get("TZ"))
+    if name is None:
+        try:
+            target = os.readlink("/etc/localtime")
+        except OSError:
+            target = ""
+        if "zoneinfo/" in target:
+            name = _zone_name(target.split("zoneinfo/", 1)[1])
+    if name is None:
+        try:
+            name = _zone_name(Path("/etc/timezone").read_text(encoding="utf-8"))
+        except OSError:
+            name = None
+    if name is not None:
+        return name
+    offset = dt.datetime.now().astimezone().strftime("%z")  # +0530
+    return f"{offset[:3]}:{offset[3:]}"
+
+
 def _percentile(values: list[float], fraction: float) -> float | None:
     if not values:
         return None
@@ -94,6 +132,8 @@ def overview(_: Principal = Depends(reader), runtime: Runtime = Depends(get_runt
     )
     return Overview(
         since=since,
+        since_iso=dt.datetime.fromtimestamp(since).astimezone().isoformat(),
+        timezone=local_timezone(),
         questions=questions["n"] if questions else 0,
         calls=len(calls),
         failures=sum(1 for c in calls if not c["ok"]),
