@@ -2,9 +2,17 @@
 
 from __future__ import annotations
 
+from types import SimpleNamespace
+from typing import Any
+
 import pytest
 
+from ira.assistant import Assistant
+from ira.conversations import Conversations
+from ira.models.fake import ScriptedProvider
+from ira.models.gateway import Gateway
 from ira.store import Store
+from ira.tools.actions import ActionGuard
 from ira.tools.registry import ToolError, ToolRegistry
 
 FAST_PIN_ITERATIONS = 1_000  # the real default is slow on purpose; tests need speed
@@ -71,3 +79,31 @@ def registry(ledger: Ledger) -> ToolRegistry:
         return {"refunded": amount}
 
     return reg
+
+
+def make_runtime(
+    *,
+    provider: Any = None,
+    registry: ToolRegistry | None = None,
+    store: Store | None = None,
+    clock: Any = None,
+) -> SimpleNamespace:
+    store = store or Store(":memory:")
+    registry = registry if registry is not None else ToolRegistry()
+    gateway = Gateway(
+        {"fake": provider or ScriptedProvider()}, {"default": ["fake:m"]}, store=store
+    )
+    guard_kwargs: dict[str, Any] = {"pin_iterations": FAST_PIN_ITERATIONS}
+    if clock is not None:
+        guard_kwargs["clock"] = clock
+    guard = ActionGuard(store, registry, **guard_kwargs)
+    conversations = Conversations(store)
+    assistant = Assistant(gateway, registry, guard, store, conversations)
+    return SimpleNamespace(
+        store=store,
+        registry=registry,
+        gateway=gateway,
+        guard=guard,
+        conversations=conversations,
+        assistant=assistant,
+    )
