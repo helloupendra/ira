@@ -63,4 +63,5 @@ def test_example_configs_are_valid(monkeypatch):
     from pathlib import Path
 
     root = Path(__file__).resolve().parent.parent
-    load_settings(root / "ira.example.yaml")
+    for path in [root / "ira.example.yaml", root / "examples" / "clinic" / "ira.yaml"]:
+        load_settings(path)

@@ -1,0 +1,42 @@
+# Sunrise Dental Clinic (fictional). Runs with no API key: the "demo" provider
+# is a keyword router, not a language model. See README.md to switch to a real one.
+
+assistant:
+  name: Ira
+  business: Sunrise Dental Clinic, a small dental practice
+  instructions: |
+    You are the clinic's receptionist. Help people find a free slot, check their
+    appointments, book and cancel. Appointments are 30 minutes, in clinic local time.
+    Before booking, confirm the patient's full name and the exact slot.
+
+data_dir: ./data          # ira.db and clinic.db go here (gitignored)
+
+tools:
+  - ./clinic.py
+
+models:
+  providers:
+    demo:
+      type: fake
+    # openai:
+    #   type: openai
+    #   api_key_env: OPENAI_API_KEY
+  tiers:
+    default: [demo:router]
+    # default: [openai:gpt-4o-mini, demo:router]
+
+voice:
+  # The demo transcriber returns a fixed sentence so the mic pipeline can be
+  # tried without a key. Replace it with chat_audio or whisper (see ira.example.yaml).
+  stt:
+    type: fake
+    fake_text: what are the clinic hours
+  tts:
+    type: none            # the web page falls back to the browser's own voice
+
+channels:
+  http:
+    host: 127.0.0.1
+    port: 8765
+  telegram:
+    enabled: false
