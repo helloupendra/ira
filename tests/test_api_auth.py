@@ -186,3 +186,30 @@ def test_conversations_are_private_to_their_user(client, runtime, owner):
 
     ids = {row["id"] for row in runtime.conversations.recent()}
     assert ids == {f"http:{owner.id}:c1", f"http:{other.id}:c1"}
+
+
+def test_cookie_writes_from_another_site_are_refused(client, owner):
+    login = client.post("/v1/auth/login", json={"email": "owner@example.com", "password": PASSWORD})
+    assert "samesite=strict" in login.headers["set-cookie"].lower()
+    body = {"text": "hi"}
+
+    header = {"X-Ira-Request": "1"}
+    evil = {**header, "Origin": "https://evil.example.com"}
+    assert client.post("/v1/ask", json=body, headers=evil).status_code == 403
+    cross = {**header, "Sec-Fetch-Site": "cross-site"}
+    assert client.post("/v1/ask", json=body, headers=cross).status_code == 403
+    sibling = {**header, "Sec-Fetch-Site": "same-site"}
+    assert client.post("/v1/ask", json=body, headers=sibling).status_code == 403
+
+    same = {**header, "Origin": "http://testserver", "Sec-Fetch-Site": "same-origin"}
+    assert client.post("/v1/ask", json=body, headers=same).status_code == 200
+    assert client.post("/v1/ask", json=body, headers=header).status_code == 200
+    # Behind a proxy that rewrites Host, the original host arrives as X-Forwarded-Host.
+    proxied = {**header, "Origin": "https://ira.example.com", "X-Forwarded-Host": "ira.example.com"}
+    assert client.post("/v1/ask", json=body, headers=proxied).status_code == 200
+
+
+def test_a_bearer_session_needs_no_csrf_header(client, runtime, owner):
+    session, _ = runtime.accounts.start_session(owner)
+    evil = {**bearer(session), "Origin": "https://evil.example.com"}
+    assert client.post("/v1/ask", json={"text": "hi"}, headers=evil).status_code == 200

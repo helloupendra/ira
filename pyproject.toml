@@ -81,6 +81,7 @@ extend-immutable-calls = [
     "fastapi.Depends",
     "fastapi.Query",
     "ira.channels.deps.require",
+    "ira.channels.deps.require_session",
 ]
 
 [tool.ruff.lint.isort]

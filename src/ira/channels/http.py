@@ -10,7 +10,6 @@ import contextlib
 import json
 import logging
 import secrets
-import time
 from collections.abc import AsyncIterator
 
 from fastapi import APIRouter, Depends, FastAPI, HTTPException, Request, Response
@@ -20,7 +19,15 @@ from fastapi.staticfiles import StaticFiles
 from ira import __version__
 from ira.accounts import AccountError, Principal
 from ira.channels import admin
-from ira.channels.deps import SESSION_COOKIE, get_principal, get_runtime, require
+from ira.channels.deps import (
+    SESSION_COOKIE,
+    client_ip,
+    get_principal,
+    get_runtime,
+    require,
+    session_body,
+    set_session_cookie,
+)
 from ira.channels.schemas import (
     ActionOutcome,
     AskRequest,
@@ -71,15 +78,6 @@ def _conversation_key(principal: Principal, client_id: str) -> str:
     return f"http:{principal.user.id}:{client_id}"
 
 
-def _session_body(principal: Principal, expires_at: float | None, token: str | None = None):
-    return SessionResponse(
-        user=UserView(**principal.user.public()),
-        permissions=sorted(principal.permissions),
-        expires_at=expires_at,
-        session_token=token,
-    )
-
-
 # --- auth -------------------------------------------------------------------------
 
 auth = APIRouter(prefix="/v1/auth", tags=["auth"])
@@ -112,10 +110,10 @@ def auth_setup(
         raise HTTPException(400, detail=str(exc)) from None
     runtime.setup_code = None
     token, expires = runtime.accounts.start_session(user)
-    _set_cookie(response, request, token, expires)
+    set_session_cookie(response, request, token, expires)
     principal = runtime.accounts.session_principal(token)
     assert principal is not None
-    return _session_body(principal, expires)
+    return session_body(principal, expires)
 
 
 @auth.post("/login", response_model=SessionResponse, summary="Sign in with email and password")
@@ -126,7 +124,7 @@ def auth_login(
     runtime: Runtime = Depends(get_runtime),
 ) -> SessionResponse:
     limiter = runtime.accounts.limiter
-    keys = (f"email:{body.email.strip().lower()}", f"ip:{_client_ip(request)}")
+    keys = (f"email:{body.email.strip().lower()}", f"ip:{client_ip(request)}")
     if limiter.blocked(*keys):
         raise HTTPException(429, detail="too many failed sign-ins; try again in 15 minutes")
     user = runtime.accounts.authenticate(body.email, body.password)
@@ -138,9 +136,9 @@ def auth_login(
     principal = runtime.accounts.session_principal(token)
     assert principal is not None
     if body.use_cookie:
-        _set_cookie(response, request, token, expires)
-        return _session_body(principal, expires)
-    return _session_body(principal, expires, token)
+        set_session_cookie(response, request, token, expires)
+        return session_body(principal, expires)
+    return session_body(principal, expires, token)
 
 
 @auth.post("/logout", response_model=OkResponse, summary="End this session")
@@ -161,23 +159,7 @@ def auth_logout(
 
 @auth.get("/me", response_model=SessionResponse, summary="Who am I, and what may I do")
 def auth_me(principal: Principal = Depends(get_principal)) -> SessionResponse:
-    return _session_body(principal, None)
-
-
-def _client_ip(request: Request) -> str:
-    return request.client.host if request.client else "unknown"
-
-
-def _set_cookie(response: Response, request: Request, token: str, expires: float) -> None:
-    response.set_cookie(
-        SESSION_COOKIE,
-        token,
-        max_age=int(expires - time.time()),
-        httponly=True,
-        samesite="strict",
-        secure=request.url.scheme == "https",
-        path="/",
-    )
+    return session_body(principal, None)
 
 
 # --- end-user API -----------------------------------------------------------------
