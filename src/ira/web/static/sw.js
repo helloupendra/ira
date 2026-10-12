@@ -2,8 +2,18 @@
 // available offline. It never touches /v1 (the API) or /admin: answers,
 // audio and actions must always come from the server, never from a cache.
 
-const CACHE = "ira-shell-v1";
-const SHELL = ["/", "/app.js", "/style.css", "/recorder-worklet.js", "/manifest.webmanifest", "/icon.svg"];
+const CACHE = "ira-shell-v2";
+const SHELL = [
+  "/",
+  "/app.js",
+  "/style.css",
+  "/tokens.css",
+  "/recorder-worklet.js",
+  "/manifest.webmanifest",
+  "/icon.svg",
+  "/icon-192.png",
+  "/icon-512.png",
+];
 
 self.addEventListener("install", (event) => {
   event.waitUntil(caches.open(CACHE).then((cache) => cache.addAll(SHELL)));

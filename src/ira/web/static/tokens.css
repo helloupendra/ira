@@ -1,0 +1,144 @@
+/* IRA design tokens: the one file both surfaces share.
+   The Ira app at / links it as /tokens.css; the admin console imports it at
+   build time. Colours are the brand already on the landing page and the icon:
+   deep green on warm paper, and the same green lightened on near-black.
+
+   Themes: the system setting by default; data-theme="light" or "dark" on
+   <html> overrides it (the console's toggle writes that attribute). */
+
+:root {
+  color-scheme: light dark;
+
+  /* Surfaces */
+  --bg: #f6f4ef;
+  --bg-sunken: #efece5;
+  --panel: #ffffff;
+  --line: #dcd8cf;
+  --line-strong: #8f8a7d;
+
+  /* Text */
+  --text: #1d2321;
+  --muted: #5d6763;
+
+  /* Brand */
+  --accent: #1f6f5c;
+  --accent-strong: #185a4b;
+  --accent-text: #ffffff;
+  --accent-soft: #e3efe9;
+  --accent-soft-text: #17533f;
+
+  /* Meaning: ok (done), warn (pending, expiring), danger (failed, locked, errors) */
+  --ok: #166534;
+  --ok-soft: #e2f1e5;
+  --warn: #7a4d00;
+  --warn-soft: #fbefd3;
+  --danger: #a3302a;
+  --danger-soft: #fbe5e2;
+
+  /* Shape and depth */
+  --radius-s: 8px;
+  --radius: 12px;
+  --radius-l: 16px;
+  --shadow: 0 1px 2px rgb(29 35 33 / 0.05), 0 12px 32px -20px rgb(29 35 33 / 0.3);
+  --focus-ring: 0 0 0 2px var(--bg), 0 0 0 4px var(--accent);
+
+  /* Type: the system font, with Devanagari fallbacks so Hindi transcripts
+     render well. Line height stays generous for the matras above and below. */
+  --font: system-ui, -apple-system, "Segoe UI", Roboto, "Noto Sans",
+    "Noto Sans Devanagari", "Kohinoor Devanagari", "Nirmala UI", "Mangal", sans-serif;
+  --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+  --text-xs: 0.75rem;
+  --text-s: 0.8125rem;
+  --text-m: 0.875rem;
+  --text-base: 1rem;
+  --text-l: 1.25rem;
+  --text-xl: 1.5rem;
+  --text-xxl: 2rem;
+  --leading: 1.55;
+  --leading-tight: 1.25;
+
+  /* Space on a 4px grid, and the smallest touch target */
+  --s-1: 4px;
+  --s-2: 8px;
+  --s-3: 12px;
+  --s-4: 16px;
+  --s-5: 24px;
+  --s-6: 32px;
+  --s-7: 48px;
+  --tap: 44px;
+
+  /* Motion: only ever used to show a state */
+  --ease: 160ms ease;
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #121615;
+  --bg-sunken: #0d1110;
+  --panel: #1a201e;
+  --line: #2c3532;
+  --line-strong: #6b7772;
+  --text: #e7ece9;
+  --muted: #9aa7a2;
+  --accent: #4fb397;
+  --accent-strong: #6cc5ab;
+  --accent-text: #0c1311;
+  --accent-soft: #20342d;
+  --accent-soft-text: #a9dfcb;
+  --ok: #6fd39a;
+  --ok-soft: #173224;
+  --warn: #e5b45b;
+  --warn-soft: #3a2d12;
+  --danger: #f29088;
+  --danger-soft: #3d1f1c;
+  --shadow: 0 1px 2px rgb(0 0 0 / 0.3), 0 12px 32px -20px rgb(0 0 0 / 0.7);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --bg: #121615;
+    --bg-sunken: #0d1110;
+    --panel: #1a201e;
+    --line: #2c3532;
+    --line-strong: #6b7772;
+    --text: #e7ece9;
+    --muted: #9aa7a2;
+    --accent: #4fb397;
+    --accent-strong: #6cc5ab;
+    --accent-text: #0c1311;
+    --accent-soft: #20342d;
+    --accent-soft-text: #a9dfcb;
+    --ok: #6fd39a;
+    --ok-soft: #173224;
+    --warn: #e5b45b;
+    --warn-soft: #3a2d12;
+    --danger: #f29088;
+    --danger-soft: #3d1f1c;
+    --shadow: 0 1px 2px rgb(0 0 0 / 0.3), 0 12px 32px -20px rgb(0 0 0 / 0.7);
+  }
+}
+
+/* The few rules every surface wants the same way. */
+
+*,
+*::before,
+*::after { box-sizing: border-box; }
+
+html { -webkit-text-size-adjust: 100%; }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font: var(--text-base) / var(--leading) var(--font);
+  text-rendering: optimizeLegibility;
+}
+
+:focus-visible { outline: none; box-shadow: var(--focus-ring); }
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; }
+}

@@ -1,11 +1,50 @@
-// IRA web chat: sign-in, streamed answers, PIN-confirmed actions, and voice.
-// Plain JavaScript on purpose: no build step, nothing to install.
+// The Ira app: sign in, ask by voice or text, see how an answer was found,
+// and release an action with a PIN. Plain JavaScript on purpose: no build
+// step, nothing to install.
 "use strict";
 
 const $ = (selector, root = document) => root.querySelector(selector);
-const state = { name: "Ira", info: null, conversationId: null, recorder: null };
+
+const SPEECH_LEVEL = 0.02; // RMS above this counts as speech
+const SILENCE_MS = 1500; // a pause this long after speech ends the recording
+const NO_SPEECH_MS = 8000; // give up when nothing was said at all
+const MAX_RECORD_MS = 60000;
+const REST_HEIGHTS = [6, 14, 20, 10]; // the four bars of the mark, at rest
+
+const state = {
+  name: "Ira",
+  info: null,
+  conversationId: null,
+  mode: "idle", // idle | listening | transcribing | thinking | answering | speaking
+  recorder: null,
+  player: null,
+  turns: [], // today's conversation, so a reload keeps it
+  lastInputWasVoice: false,
+  pendingText: null, // a question kept across a sign-in
+  notice: "", // shown once the app is idle again
+  online: navigator.onLine,
+};
+
+try {
+  const theme = localStorage.getItem("ira.theme");
+  if (theme === "light" || theme === "dark") document.documentElement.dataset.theme = theme;
+} catch {
+  /* storage can be unavailable in private windows */
+}
 
 // --- API --------------------------------------------------------------------------
+
+class Unreachable extends Error {
+  constructor() {
+    super(
+      navigator.onLine
+        ? "Can't reach Ira. Check your connection and try again."
+        : "You're offline. Ira needs a connection to answer.",
+    );
+  }
+}
+
+class ModelFailure extends Error {}
 
 async function api(path, { method = "GET", json, body, headers = {} } = {}) {
   const init = { method, credentials: "same-origin", headers: { "X-Ira-Request": "1", ...headers } };
@@ -15,23 +54,52 @@ async function api(path, { method = "GET", json, body, headers = {} } = {}) {
   } else if (body !== undefined) {
     init.body = body;
   }
-  return fetch(path, init);
+  try {
+    return await fetch(path, init);
+  } catch {
+    throw new Unreachable();
+  }
 }
 
 async function detail(response) {
   try {
     const data = await response.json();
-    return typeof data.detail === "string" ? data.detail : data.message || response.statusText;
+    if (typeof data.detail === "string") return data.detail;
+    if (Array.isArray(data.detail)) return data.detail.map((d) => d.msg).join("; ");
+    return data.message || response.statusText;
   } catch {
     return response.statusText || `HTTP ${response.status}`;
   }
 }
 
+const storage = {
+  get(key) {
+    try {
+      return JSON.parse(localStorage.getItem(key));
+    } catch {
+      return null;
+    }
+  },
+  set(key, value) {
+    try {
+      localStorage.setItem(key, JSON.stringify(value));
+    } catch {
+      /* ignore */
+    }
+  },
+  remove(key) {
+    try {
+      localStorage.removeItem(key);
+    } catch {
+      /* ignore */
+    }
+  },
+};
+
 // --- views ------------------------------------------------------------------------
 
 function show(view) {
   for (const section of document.querySelectorAll(".view")) section.hidden = section.id !== `view-${view}`;
-  if (view === "chat") $("#text").focus();
 }
 
 function setName(name) {
@@ -40,37 +108,150 @@ function setName(name) {
   for (const el of document.querySelectorAll(".brand-name")) el.textContent = name;
 }
 
-function setStatus(text) {
-  $("#status").textContent = text || "";
+function gateMessage(text) {
+  $("#view-loading p").textContent = text;
+  show("loading");
 }
 
 async function start() {
+  let status;
   try {
-    const status = await (await api("/v1/auth/status")).json();
-    setName(status.name);
-    if (status.setup_required) return show("setup");
+    status = await (await api("/v1/auth/status")).json();
   } catch {
-    $("#view-loading p").textContent = "Cannot reach the server.";
+    return gateMessage("Can't reach the server. Is Ira running?");
+  }
+  setName(status.name);
+  if (status.setup_required) {
+    // The setup link carries the code in the fragment, which never reaches the server.
+    const code = new URLSearchParams(location.hash.slice(1)).get("code");
+    if (code) $("#setup-form input[name=code]").value = code;
+    show("setup");
+    $(`#setup-form input[name=${code ? "email" : "code"}]`).focus();
     return;
   }
-  const response = await api("/v1/info");
+  let response;
+  try {
+    response = await api("/v1/info");
+  } catch (error) {
+    return gateMessage(error.message);
+  }
   if (response.status === 401) return show("login");
-  if (!response.ok) return show("login");
+  if (!response.ok) return gateMessage(await detail(response));
   state.info = await response.json();
   setName(state.info.name);
   enterChat();
 }
 
 function enterChat() {
-  const canVoice = state.info.permissions.includes("voice");
-  $("#mic").hidden = !canVoice || !state.info.stt || !window.AudioWorkletNode;
-  if (state.info.stt === "fake") setStatus("Demo speech-to-text: the mic returns a fixed sentence.");
-  try {
-    $("#speak-toggle").checked = localStorage.getItem("ira.speak") === "1";
-  } catch {
-    /* storage can be unavailable in private windows */
+  const { user, permissions } = state.info;
+  $("#menu-email").textContent = user.email;
+  $("#menu-role").textContent = user.role;
+  $("#menu-admin").hidden = !permissions.includes("admin.read");
+  $("#speak-toggle").checked = storage.get("ira.speak") === true;
+  $("#handsfree-toggle").checked = storage.get("ira.handsfree") === true;
+  $("#login-note").hidden = true;
+  loadPinStatus();
+  restoreToday();
+  updateBanner();
+  const canAsk = permissions.includes("ask");
+  $("#text").disabled = !canAsk;
+  for (const button of document.querySelectorAll(".voice-mark")) {
+    button.classList.toggle("off", !canAsk || voiceProblem() !== null);
+  }
+  if (!canAsk) {
+    $("#hero-hint").textContent = `Your role (${user.role}) can't ask Ira. The admin console is in the menu.`;
+  } else if (voiceProblem()) {
+    $("#hero-hint").textContent = "Type below to ask. The mic explains why it is off.";
+  } else {
+    $("#hero-hint").textContent = "Tap to talk, or type below.";
   }
   show("chat");
+  setMode("idle");
+  if (state.pendingText) {
+    $("#text").value = state.pendingText;
+    state.pendingText = null;
+  }
+  if (canAsk && matchMedia("(hover: hover)").matches) $("#text").focus({ preventScroll: true });
+}
+
+function updateBanner() {
+  const banner = $("#banner");
+  let text = "";
+  let danger = false;
+  if (!state.online) {
+    text = "You're offline. Ira needs a connection to answer.";
+    danger = true;
+  } else if (state.info && state.info.stt === "fake") {
+    text = "Demo speech-to-text: the mic returns a fixed sentence.";
+  }
+  banner.textContent = text;
+  banner.classList.toggle("danger", danger);
+  banner.hidden = !text;
+}
+
+// --- state in words ---------------------------------------------------------------
+
+function setMode(mode) {
+  state.mode = mode;
+  $("#view-chat").className = `view chat mode-${mode}`;
+  const busy = mode !== "idle";
+  $("#send").disabled = busy || !state.online || !$("#text") || $("#text").disabled;
+  $("#mic").setAttribute("aria-pressed", mode === "listening" ? "true" : "false");
+  $("#listen").hidden = !(mode === "listening" || mode === "transcribing");
+  if (mode === "idle") {
+    setStatus(state.notice);
+    state.notice = "";
+  }
+}
+
+function setStatus(text, button) {
+  const el = $("#status");
+  el.replaceChildren();
+  if (text) el.append(document.createTextNode(text));
+  if (button) {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.className = "text-btn";
+    b.textContent = button.label;
+    b.addEventListener("click", button.onClick);
+    el.append(" ", b);
+  }
+}
+
+function announce(text) {
+  const live = $("#announce");
+  live.textContent = "";
+  setTimeout(() => {
+    live.textContent = text;
+  }, 50);
+}
+
+function humanize(name) {
+  return name.replace(/[_-]+/g, " ");
+}
+
+function toolFor(name) {
+  return (state.info.tools || []).find((t) => t.name === name);
+}
+
+function toolPhrase(name) {
+  const tool = toolFor(name);
+  return `${tool && tool.kind === "action" ? "Preparing" : "Checking"} ${humanize(name)}…`;
+}
+
+function listWords(items) {
+  if (items.length <= 1) return items.join("");
+  return `${items.slice(0, -1).join(", ")} or ${items[items.length - 1]}`;
+}
+
+function mmss(seconds) {
+  const m = Math.floor(seconds / 60);
+  const s = seconds % 60;
+  return `${m}:${String(s).padStart(2, "0")}`;
+}
+
+function clockTime(date) {
+  return date.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" });
 }
 
 // --- sign-in ----------------------------------------------------------------------
@@ -79,56 +260,254 @@ function formJson(form) {
   return Object.fromEntries(new FormData(form).entries());
 }
 
-$("#setup-form").addEventListener("submit", async (event) => {
-  event.preventDefault();
-  const response = await api("/v1/auth/setup", { method: "POST", json: formJson(event.target) });
-  if (!response.ok) return ($(".error", event.target).textContent = await detail(response));
-  start();
-});
-
 $("#login-form").addEventListener("submit", async (event) => {
   event.preventDefault();
-  const response = await api("/v1/auth/login", { method: "POST", json: formJson(event.target) });
-  if (!response.ok) return ($(".error", event.target).textContent = await detail(response));
-  event.target.reset();
-  start();
-});
-
-$("#logout").addEventListener("click", async () => {
-  await api("/v1/auth/logout", { method: "POST" });
-  $("#messages").replaceChildren();
-  state.conversationId = null;
-  show("login");
-});
-
-$("#new-chat").addEventListener("click", () => {
-  state.conversationId = null;
-  $("#messages").replaceChildren();
-  setStatus("");
-});
-
-$("#speak-toggle").addEventListener("change", (event) => {
+  const form = event.target;
+  const error = $(".error", form);
+  error.textContent = "";
+  $("button", form).disabled = true;
   try {
-    localStorage.setItem("ira.speak", event.target.checked ? "1" : "0");
-  } catch {
-    /* ignore */
+    const response = await api("/v1/auth/login", { method: "POST", json: formJson(form) });
+    if (response.status === 429) {
+      error.textContent = "Too many failed sign-ins. Try again in 15 minutes.";
+    } else if (!response.ok) {
+      error.textContent = await detail(response);
+    } else {
+      form.reset();
+      await start();
+    }
+  } catch (problem) {
+    error.textContent = problem.message;
+  } finally {
+    $("button", form).disabled = false;
   }
 });
 
-// --- chat -------------------------------------------------------------------------
+$("#setup-form").addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const form = event.target;
+  const error = $(".error", form);
+  error.textContent = "";
+  $("button", form).disabled = true;
+  try {
+    const response = await api("/v1/setup/owner", { method: "POST", json: formJson(form) });
+    if (response.status === 403) error.textContent = "That setup code is wrong. It is printed where the server runs.";
+    else if (response.status === 429) error.textContent = "Too many wrong codes. Try again in 15 minutes.";
+    else if (response.status === 409) error.textContent = "Setup is already done. Sign in instead.";
+    else if (!response.ok) error.textContent = await detail(response);
+    else {
+      form.reset();
+      history.replaceState(null, "", location.pathname); // drop the code from the address
+      state.notice = "Welcome. Next, set your action PIN in the menu: it releases actions.";
+      await start();
+    }
+  } catch (problem) {
+    error.textContent = problem.message;
+  } finally {
+    $("button", form).disabled = false;
+  }
+});
 
-function scrollDown() {
-  const list = $("#messages");
-  list.scrollTop = list.scrollHeight;
+function sessionExpired(text) {
+  stopSpeaking();
+  state.pendingText = text || null;
+  state.info = null;
+  const note = $("#login-note");
+  note.textContent = "Your session expired. Sign in to continue.";
+  note.hidden = false;
+  show("login");
+  $("#login-form input[name=email]").focus();
 }
 
-function bubble(role, text = "") {
-  const item = document.createElement("li");
-  item.className = `msg ${role}`;
-  item.textContent = text; // never innerHTML: answers are untrusted text
-  $("#messages").append(item);
+$("#logout").addEventListener("click", async () => {
+  $("#menu").close();
+  stopSpeaking();
+  try {
+    await api("/v1/auth/logout", { method: "POST" });
+  } catch {
+    /* signing out locally is enough */
+  }
+  storage.remove("ira.today");
+  state.info = null;
+  state.turns = [];
+  state.conversationId = null;
+  $("#messages").replaceChildren();
+  show("login");
+});
+
+// --- settings sheet ---------------------------------------------------------------
+
+$("#menu-open").addEventListener("click", () => $("#menu").showModal());
+$("#menu-close").addEventListener("click", () => $("#menu").close());
+$("#menu").addEventListener("click", (event) => {
+  if (event.target === event.currentTarget) event.currentTarget.close();
+});
+$("#speak-toggle").addEventListener("change", (event) => storage.set("ira.speak", event.target.checked));
+$("#handsfree-toggle").addEventListener("change", (event) => storage.set("ira.handsfree", event.target.checked));
+$("#new-chat").addEventListener("click", newConversation);
+
+async function loadPinStatus() {
+  const text = $("#pin-status");
+  const open = $("#pin-open");
+  text.className = "menu-user";
+  open.hidden = true;
+  let pin;
+  try {
+    const response = await api("/v1/me/pin");
+    if (!response.ok) throw new Error(await detail(response));
+    pin = await response.json();
+  } catch {
+    text.textContent = "";
+    return;
+  }
+  if (!pin.can_confirm) {
+    text.textContent = "Your role can't confirm actions, so no PIN is needed.";
+    return;
+  }
+  if (pin.locked_seconds) {
+    const until = new Date(Date.now() + pin.locked_seconds * 1000);
+    text.textContent = `Actions are locked after wrong PINs until ${clockTime(until)}.`;
+  } else if (pin.has_pin) {
+    text.textContent = "Your action PIN is set.";
+  } else {
+    text.textContent = "You have no action PIN yet. You need one to confirm actions.";
+  }
+  open.textContent = pin.has_pin ? "Change your PIN" : "Set your PIN";
+  open.hidden = false;
+}
+
+function openPinForm() {
+  const menu = $("#menu");
+  if (!menu.open) menu.showModal();
+  $("#pin-form").hidden = false;
+  $("#pin-open").hidden = true;
+  $("#pin-form input[name=password]").focus();
+}
+
+$("#pin-open").addEventListener("click", openPinForm);
+$("#pin-cancel").addEventListener("click", () => {
+  $("#pin-form").reset();
+  $("#pin-form").hidden = true;
+  $("#pin-open").hidden = false;
+});
+$("#pin-form").addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const form = event.target;
+  const error = $(".error", form);
+  const body = formJson(form);
+  form.reset(); // neither the password nor the PIN is kept
+  error.textContent = "";
+  try {
+    const response = await api("/v1/me/pin", { method: "PUT", json: body });
+    if (response.status === 401) return sessionExpired();
+    if (response.status === 429) error.textContent = "Too many wrong passwords. Try again in 15 minutes.";
+    else if (response.status === 403) error.textContent = "That is not your password.";
+    else if (response.status === 422) error.textContent = "A PIN is 4 to 12 digits.";
+    else if (!response.ok) error.textContent = await detail(response);
+    else {
+      form.hidden = true;
+      $("#pin-status").textContent = "PIN saved. Wrong PINs lock actions after three tries.";
+      $("#pin-status").className = "menu-user ok";
+      $("#pin-open").textContent = "Change your PIN";
+      $("#pin-open").hidden = false;
+    }
+  } catch (problem) {
+    error.textContent = problem.message;
+  }
+});
+
+function speakOn() {
+  return $("#speak-toggle").checked;
+}
+
+function handsFreeOn() {
+  return $("#handsfree-toggle").checked;
+}
+
+// --- today's conversation ---------------------------------------------------------
+
+function today() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
+function remember(turn) {
+  state.turns.push(turn);
+  storage.set("ira.today", {
+    user: state.info.user.id,
+    day: today(),
+    conversationId: state.conversationId,
+    turns: state.turns,
+  });
+}
+
+function restoreToday() {
+  $("#messages").replaceChildren();
+  state.turns = [];
+  state.conversationId = null;
+  const saved = storage.get("ira.today");
+  if (saved && saved.user === state.info.user.id && saved.day === today() && Array.isArray(saved.turns)) {
+    state.conversationId = saved.conversationId;
+    state.turns = saved.turns;
+    for (const turn of saved.turns) {
+      const li = addTurn(turn.role, turn.text);
+      if (turn.role === "ira" && turn.how) explain(li, turn.how);
+    }
+  }
+  $("#hero").hidden = state.turns.length > 0;
+}
+
+function newConversation() {
+  stopSpeaking();
+  state.turns = [];
+  state.conversationId = null;
+  storage.remove("ira.today");
+  $("#messages").replaceChildren();
+  $("#hero").hidden = false;
+  state.notice = "";
+  setMode("idle");
+  if (matchMedia("(hover: hover)").matches) $("#text").focus();
+}
+
+// --- turns ------------------------------------------------------------------------
+
+function scrollDown() {
+  const scroll = $("#scroll");
+  scroll.scrollTop = scroll.scrollHeight;
+}
+
+function addTurn(kind, text = "") {
+  const template = $(`#turn-${kind}`) || $("#turn-note");
+  const li = template.content.firstElementChild.cloneNode(true);
+  $(".turn-text", li).textContent = text; // never innerHTML: answers are untrusted text
+  $("#messages").append(li);
+  $("#hero").hidden = true;
   scrollDown();
-  return item;
+  return li;
+}
+
+function explain(li, how) {
+  const list = $(".how-list", li);
+  list.replaceChildren();
+  for (const name of how.tools || []) {
+    const tool = toolFor(name);
+    const item = document.createElement("li");
+    const verb = document.createElement("b");
+    verb.textContent = tool && tool.kind === "action" ? "Prepared " : "Looked up ";
+    item.append(verb, humanize(name));
+    if (tool && tool.description) item.append(`: ${tool.description}`);
+    if (tool && tool.kind === "action") item.append(" (needs a PIN)");
+    list.append(item);
+  }
+  if (!how.tools || !how.tools.length) {
+    const item = document.createElement("li");
+    item.textContent = "No tools were needed: answered from the conversation.";
+    list.append(item);
+  }
+  const model = document.createElement("li");
+  model.textContent = how.model ? `Answered by the model ${how.model}.` : "No model answered.";
+  list.append(model);
+  $(".how", li).hidden = false;
 }
 
 async function* sseEvents(response) {
@@ -150,39 +529,80 @@ async function* sseEvents(response) {
   }
 }
 
-async function send(text) {
+async function send(text, { voice = false, retry = false } = {}) {
   text = text.trim();
-  if (!text) return;
-  bubble("user", text);
-  const answer = bubble("assistant");
-  answer.classList.add("pending");
+  if (!text || state.mode !== "idle" || !state.info) return;
+  if (!state.online) return setStatus(new Unreachable().message);
+  state.lastInputWasVoice = voice;
+  if (!retry) addTurn("user", text);
+  const li = addTurn("ira");
+  const textEl = $(".turn-text", li);
+  const how = { tools: [], model: null };
   let full = "";
+  setMode("thinking");
+  setStatus("Thinking…");
   try {
     const response = await api("/v1/ask/stream", {
       method: "POST",
       json: { text, conversation_id: state.conversationId },
     });
-    if (response.status === 401) return show("login");
+    if (response.status === 401) {
+      li.remove();
+      return sessionExpired(text);
+    }
     if (!response.ok) throw new Error(await detail(response));
     for await (const event of sseEvents(response)) {
       if (event.type === "start") state.conversationId = event.conversation_id;
-      else if (event.type === "delta") {
-        full += event.text;
-        answer.textContent = full;
-        scrollDown();
+      else if (event.type === "tool") {
+        how.tools.push(event.name);
+        setStatus(toolPhrase(event.name));
       } else if (event.type === "action") actionCard(event.action);
+      else if (event.type === "delta") {
+        if (!full) {
+          setMode("answering");
+          setStatus("");
+        }
+        full += event.text;
+        textEl.textContent = full;
+        scrollDown();
+      } else if (event.type === "error") throw new ModelFailure(event.message);
       else if (event.type === "done") {
-        if (event.text) answer.textContent = full = event.text;
+        if (event.text) full = event.text;
+        textEl.textContent = full;
+        how.model = event.model || null;
       }
     }
+    explain(li, how);
+    remember({ role: "user", text });
+    remember({ role: "ira", text: full, how });
+    announce(full);
+    if (full && (speakOn() || voice)) await speak(full);
   } catch (error) {
-    answer.textContent = `Something went wrong: ${error.message}`;
-    answer.classList.add("failed");
+    failTurn(li, error, text);
   } finally {
-    answer.classList.remove("pending");
-    scrollDown();
+    if (state.info) {
+      setMode("idle");
+      scrollDown();
+      if (handsFreeOn() && voice && !li.classList.contains("failed")) listen();
+    }
   }
-  if (full && $("#speak-toggle").checked) speak(full);
+}
+
+function failTurn(li, error, text) {
+  li.classList.add("failed");
+  const textEl = $(".turn-text", li);
+  textEl.textContent =
+    error instanceof ModelFailure ? `No model could answer right now. ${error.message}` : error.message;
+  const retry = document.createElement("button");
+  retry.type = "button";
+  retry.className = "text-btn retry";
+  retry.textContent = "Try again";
+  retry.addEventListener("click", () => {
+    li.remove();
+    send(text, { voice: state.lastInputWasVoice, retry: true });
+  });
+  li.append(retry);
+  announce(textEl.textContent);
 }
 
 $("#composer").addEventListener("submit", (event) => {
@@ -193,53 +613,160 @@ $("#composer").addEventListener("submit", (event) => {
   send(text);
 });
 
-// --- actions ----------------------------------------------------------------------
+// --- the PIN card -----------------------------------------------------------------
+
+const KICKER = {
+  pending: "Needs a PIN",
+  expiring: "Needs a PIN",
+  wrong_pin: "Needs a PIN",
+  executed: "Done",
+  failed: "Failed",
+  expired: "Expired",
+  cancelled: "Cancelled",
+  locked: "Locked",
+  already_done: "Already done",
+  not_allowed: "Not allowed for your role",
+  no_pin: "No PIN set yet",
+};
 
 function actionCard(action) {
   const card = $("#action-template").content.firstElementChild.cloneNode(true);
-  $(".action-summary", card).textContent = action.summary;
+  const kicker = $(".action-kicker", card);
+  const who = $(".action-who", card);
+  const expiry = $(".action-expiry", card);
   const status = $(".action-status", card);
   const form = $(".action-form", card);
-  let left = action.expires_in;
+  const pin = $(".pin", card);
+  $(".action-summary", card).textContent = action.summary;
+  if (Array.isArray(action.confirm_roles) && action.confirm_roles.length) {
+    who.textContent = `${listWords(action.confirm_roles)} can confirm.`;
+    who.hidden = false;
+  }
+
+  const deadline = Date.now() + action.expires_in * 1000;
+  let timer = 0;
   const tick = () => {
-    status.textContent = left > 0 ? `Expires in ${left}s` : "Expired. Ask again to re-propose it.";
-    if (left <= 0) finish();
-    left -= 1;
+    const left = Math.max(0, Math.round((deadline - Date.now()) / 1000));
+    expiry.textContent = left > 0 ? `Expires in ${mmss(left)}` : "";
+    if (left <= 20 && card.dataset.status === "pending") card.dataset.status = "expiring";
+    if (left <= 0) settle("expired", "This action expired. Ask again to re-propose it.");
   };
-  const timer = setInterval(tick, 1000);
-  const finish = () => {
+  const settle = (outcome, message, result) => {
     clearInterval(timer);
+    card.dataset.status = outcome;
+    kicker.textContent = KICKER[outcome] || outcome;
     for (const el of form.elements) el.disabled = true;
+    pin.value = "";
+    form.hidden = true;
+    expiry.textContent = "";
+    status.textContent = message || "";
+    if (result !== undefined && result !== null) {
+      const details = document.createElement("details");
+      details.className = "action-result";
+      const summary = document.createElement("summary");
+      summary.textContent = "What the action returned";
+      const pre = document.createElement("pre");
+      pre.textContent = typeof result === "string" ? result : JSON.stringify(result, null, 2);
+      details.append(summary, pre);
+      card.append(details);
+    }
+    remember({ role: "note", text: `${KICKER[outcome] || outcome}: ${action.summary}` });
+    announce(`${KICKER[outcome] || outcome}. ${message || ""}`);
   };
+  const waiting = (on) => {
+    for (const el of form.elements) el.disabled = on;
+  };
+  timer = setInterval(tick, 1000);
   tick();
 
   form.addEventListener("submit", async (event) => {
     event.preventDefault();
-    const pin = $(".pin", form);
-    const response = await api(`/v1/actions/${encodeURIComponent(action.id)}/confirm`, {
-      method: "POST",
-      json: { pin: pin.value },
-    });
-    pin.value = "";
-    const outcome = await response.json().catch(() => ({ message: response.statusText }));
-    if (outcome.status === "wrong_pin") {
-      status.textContent = outcome.message;
+    const value = pin.value;
+    pin.value = ""; // the PIN is never kept
+    waiting(true);
+    let response;
+    try {
+      response = await api(`/v1/actions/${encodeURIComponent(action.id)}/confirm`, {
+        method: "POST",
+        json: { pin: value },
+      });
+    } catch (error) {
+      status.textContent = error.message;
+      waiting(false);
       return;
     }
-    finish();
-    status.textContent = outcome.message || outcome.detail;
-    card.classList.add(outcome.status === "executed" ? "done" : "failed");
+    if (response.status === 401) return sessionExpired();
+    const outcome = await response.json().catch(() => ({ status: "error", message: response.statusText }));
+    if (response.status === 422) {
+      status.textContent = "A PIN is 4 to 12 digits.";
+      waiting(false);
+      pin.focus();
+      return;
+    }
+    switch (outcome.status) {
+      case "wrong_pin":
+        card.dataset.status = "wrong_pin";
+        status.textContent = outcome.message;
+        waiting(false);
+        pin.focus();
+        break;
+      case "locked": {
+        const until = new Date(Date.now() + (outcome.locked_seconds || 0) * 1000);
+        settle("locked", `${outcome.message} Try again after ${clockTime(until)}.`);
+        break;
+      }
+      case "no_pin": {
+        settle("no_pin", "You have no action PIN yet.");
+        const set = document.createElement("button");
+        set.type = "button";
+        set.className = "text-btn";
+        set.textContent = "Set your PIN";
+        set.addEventListener("click", openPinForm);
+        status.append(" ", set);
+        break;
+      }
+      case "executed":
+        settle(
+          "executed",
+          `Done. Confirmed by ${state.info.user.email} at ${clockTime(new Date())}.`,
+          outcome.result,
+        );
+        break;
+      case "failed":
+        settle("failed", outcome.message, outcome.result);
+        break;
+      case "expired":
+      case "cancelled":
+      case "already_done":
+      case "not_allowed":
+        settle(outcome.status, outcome.message);
+        break;
+      case "not_found":
+        settle("already_done", outcome.message);
+        break;
+      default:
+        status.textContent = outcome.message || outcome.detail || "Something went wrong.";
+        waiting(false);
+    }
   });
+
   $(".cancel", form).addEventListener("click", async () => {
-    const response = await api(`/v1/actions/${encodeURIComponent(action.id)}/cancel`, { method: "POST" });
-    const outcome = await response.json().catch(() => ({}));
-    finish();
-    status.textContent = outcome.message || "Cancelled.";
+    waiting(true);
+    try {
+      const response = await api(`/v1/actions/${encodeURIComponent(action.id)}/cancel`, { method: "POST" });
+      if (response.status === 401) return sessionExpired();
+      const outcome = await response.json().catch(() => ({}));
+      settle(outcome.status === "already_done" ? "already_done" : "cancelled", outcome.message || "Cancelled. Nothing was changed.");
+    } catch (error) {
+      status.textContent = error.message;
+      waiting(false);
+    }
   });
 
   $("#messages").append(card);
+  $("#hero").hidden = true;
   scrollDown();
-  $(".pin", card).focus({ preventScroll: true });
+  pin.focus({ preventScroll: true });
 }
 
 // --- voice out --------------------------------------------------------------------
@@ -254,24 +781,142 @@ function plainForSpeech(text) {
 }
 
 async function speak(text) {
-  const tts = state.info && state.info.tts;
-  if (tts && tts !== "fake" && state.info.permissions.includes("voice")) {
-    const response = await api("/v1/voice/speak", { method: "POST", json: { text } });
-    if (response.ok) {
-      const url = URL.createObjectURL(await response.blob());
-      const audio = new Audio(url);
-      audio.addEventListener("ended", () => URL.revokeObjectURL(url));
-      audio.play().catch(() => setStatus("Tap the page once to allow audio."));
-      return;
+  const { tts, permissions } = state.info;
+  stopSpeaking();
+  setMode("speaking");
+  setStatus("Speaking…", { label: "Stop", onClick: stopSpeaking });
+  try {
+    if (tts && tts !== "fake" && permissions.includes("voice")) {
+      const response = await api("/v1/voice/speak", { method: "POST", json: { text } });
+      if (!response.ok) throw new Error(await detail(response));
+      await playBlob(await response.blob());
+    } else if ("speechSynthesis" in window) {
+      await speakWithBrowser(plainForSpeech(text));
     }
-  }
-  if ("speechSynthesis" in window) {
-    speechSynthesis.cancel();
-    speechSynthesis.speak(new SpeechSynthesisUtterance(plainForSpeech(text)));
+  } catch (error) {
+    state.notice = `Couldn't speak the reply: ${error.message}`;
   }
 }
 
-// --- voice in: AudioWorklet -> 16 kHz mono WAV ---------------------------------------
+function playBlob(blob) {
+  return new Promise((resolve) => {
+    const url = URL.createObjectURL(blob);
+    const audio = new Audio(url);
+    let context = null;
+    let analyser = null;
+    let data = null;
+    let finished = false;
+    const done = () => {
+      if (finished) return;
+      finished = true;
+      URL.revokeObjectURL(url);
+      if (context) context.close().catch(() => {});
+      if (state.player === player) state.player = null;
+      resolve();
+    };
+    const player = {
+      stop() {
+        audio.pause();
+        done();
+      },
+    };
+    state.player = player;
+    try {
+      context = new AudioContext();
+      const source = context.createMediaElementSource(audio);
+      analyser = context.createAnalyser();
+      analyser.fftSize = 512;
+      source.connect(analyser);
+      analyser.connect(context.destination);
+      data = new Float32Array(analyser.fftSize);
+    } catch {
+      /* no meter, but the reply still plays */
+    }
+    audio.addEventListener("ended", done);
+    audio.addEventListener("error", done);
+    if (analyser) {
+      animateMeter(
+        () => {
+          analyser.getFloatTimeDomainData(data);
+          return rms(data);
+        },
+        () => state.player === player,
+      );
+    }
+    audio.play().catch(() => {
+      state.notice = "Tap the page once to allow sound, then ask again.";
+      done();
+    });
+  });
+}
+
+function speakWithBrowser(text) {
+  return new Promise((resolve) => {
+    speechSynthesis.cancel();
+    const utterance = new SpeechSynthesisUtterance(text);
+    let finished = false;
+    const done = () => {
+      if (finished) return;
+      finished = true;
+      if (state.player === player) state.player = null;
+      resolve();
+    };
+    const player = {
+      stop() {
+        speechSynthesis.cancel();
+        done();
+      },
+    };
+    state.player = player;
+    utterance.addEventListener("end", done);
+    utterance.addEventListener("error", done);
+    speechSynthesis.speak(utterance);
+  });
+}
+
+function stopSpeaking() {
+  const player = state.player;
+  state.player = null;
+  if (player) player.stop();
+}
+
+// --- voice in: AudioWorklet -> level meter -> 16 kHz mono WAV -----------------------
+
+function voiceProblem() {
+  const { permissions, stt } = state.info;
+  if (!permissions.includes("voice")) return "Your role can't use the microphone.";
+  if (!stt) return "Speech-to-text isn't set up on this server, so the mic is off. You can type.";
+  if (!window.isSecureContext) return "The microphone needs a secure (HTTPS) address.";
+  if (!navigator.mediaDevices || !window.AudioWorkletNode) return "This browser can't record audio.";
+  return null;
+}
+
+function micMessage(error) {
+  const name = error && error.name;
+  if (name === "NotAllowedError" || name === "SecurityError") {
+    return "The microphone is blocked. Allow it for this site in your browser's site settings (the icon next to the address), then tap the mic again.";
+  }
+  if (name === "NotFoundError" || name === "OverconstrainedError") return "No microphone was found on this device.";
+  if (name === "NotReadableError") return "Another app is using the microphone.";
+  return `The microphone didn't start: ${(error && error.message) || name || "unknown error"}.`;
+}
+
+async function listen() {
+  if (!state.info || !state.info.permissions.includes("ask")) return;
+  const problem = voiceProblem();
+  if (problem) return setStatus(problem);
+  if (state.mode !== "idle") return;
+  stopSpeaking();
+  try {
+    await startRecording();
+  } catch (error) {
+    return setStatus(micMessage(error));
+  }
+  $("#handsfree-chip").hidden = !handsFreeOn();
+  $("#listen-label").textContent = "Listening…";
+  setMode("listening");
+  setStatus("");
+}
 
 async function startRecording() {
   const stream = await navigator.mediaDevices.getUserMedia({
@@ -281,20 +926,112 @@ async function startRecording() {
   await context.audioWorklet.addModule("/recorder-worklet.js");
   const source = context.createMediaStreamSource(stream);
   const node = new AudioWorkletNode(context, "recorder");
-  const chunks = [];
-  node.port.onmessage = (event) => chunks.push(event.data);
+  const rec = { stream, context, node, chunks: [], started: Date.now(), lastLoud: 0, spoke: false, level: 0 };
+  node.port.onmessage = (event) => {
+    const samples = event.data;
+    rec.chunks.push(samples);
+    rec.level = rms(samples);
+    const now = Date.now();
+    if (rec.level > SPEECH_LEVEL) {
+      rec.spoke = true;
+      rec.lastLoud = now;
+    }
+    if (state.recorder !== rec || state.mode !== "listening") return;
+    if (rec.spoke && now - rec.lastLoud > SILENCE_MS) finishListening();
+    else if (!rec.spoke && now - rec.started > NO_SPEECH_MS) cancelListening("I didn't hear anything. Tap the mic to try again.");
+    else if (now - rec.started > MAX_RECORD_MS) finishListening();
+  };
   source.connect(node);
-  state.recorder = { stream, context, node, chunks, started: Date.now() };
+  state.recorder = rec;
+  animateMeter(
+    () => rec.level,
+    () => state.recorder === rec,
+  );
 }
 
 async function stopRecording() {
-  const { stream, context, node, chunks } = state.recorder;
+  const rec = state.recorder;
   state.recorder = null;
-  node.disconnect();
-  stream.getTracks().forEach((track) => track.stop());
-  const rate = context.sampleRate;
-  await context.close();
-  return encodeWav(downsample(chunks, rate, 16000), 16000);
+  if (!rec) return null;
+  rec.node.disconnect();
+  rec.stream.getTracks().forEach((track) => track.stop());
+  const rate = rec.context.sampleRate;
+  await rec.context.close();
+  return encodeWav(downsample(rec.chunks, rate, 16000), 16000);
+}
+
+async function finishListening() {
+  if (!state.recorder || state.mode !== "listening") return;
+  setMode("transcribing");
+  $("#listen-label").textContent = "Transcribing…";
+  let wav;
+  try {
+    wav = await stopRecording();
+  } catch {
+    return setMode("idle");
+  }
+  try {
+    const response = await api("/v1/voice/transcribe", {
+      method: "POST",
+      body: wav,
+      headers: { "Content-Type": "audio/wav" },
+    });
+    if (response.status === 401) return sessionExpired();
+    if (!response.ok) throw new Error(await detail(response));
+    const { text } = await response.json();
+    setMode("idle");
+    if (text && text.trim()) send(text, { voice: true });
+    else setStatus("I didn't catch that. Tap the mic to try again.");
+  } catch (error) {
+    state.notice = `Voice failed: ${error.message}`;
+    setMode("idle");
+  }
+}
+
+async function cancelListening(message) {
+  try {
+    await stopRecording();
+  } catch {
+    /* already stopped */
+  }
+  state.notice = message || "";
+  setMode("idle");
+}
+
+function rms(samples) {
+  let sum = 0;
+  for (let i = 0; i < samples.length; i++) sum += samples[i] * samples[i];
+  return samples.length ? Math.sqrt(sum / samples.length) : 0;
+}
+
+const bars = {
+  hero: [...document.querySelectorAll("#hero-mic .bar")],
+  mic: [...document.querySelectorAll("#mic .bar")],
+  meter: [...document.querySelectorAll("#listen .bar")],
+};
+
+function setBars(level) {
+  for (const set of Object.values(bars)) {
+    set.forEach((bar, i) => {
+      const max = 30 / REST_HEIGHTS[i];
+      const weight = [0.8, 1, 0.9, 0.7][i];
+      const scale = 1 + (max - 1) * Math.min(1, level * weight);
+      bar.style.transform = level > 0.01 ? `scaleY(${scale.toFixed(3)})` : "";
+    });
+  }
+}
+
+function animateMeter(getLevel, alive) {
+  if (matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+  let smooth = 0;
+  const frame = () => {
+    if (!alive()) return setBars(0);
+    const level = Math.min(1, getLevel() * 8);
+    smooth = level > smooth ? level : smooth * 0.85; // quick to rise, slow to settle
+    setBars(smooth);
+    requestAnimationFrame(frame);
+  };
+  requestAnimationFrame(frame);
 }
 
 function downsample(chunks, from, to) {
@@ -343,41 +1080,30 @@ function encodeWav(samples, rate) {
   return new Blob([buffer], { type: "audio/wav" });
 }
 
-$("#mic").addEventListener("click", async () => {
-  const mic = $("#mic");
-  if (!state.recorder) {
-    try {
-      await startRecording();
-    } catch (error) {
-      setStatus(`Microphone unavailable: ${error.message}`);
-      return;
-    }
-    mic.setAttribute("aria-pressed", "true");
-    setStatus("Listening... tap the mic again to send.");
-    return;
-  }
-  mic.setAttribute("aria-pressed", "false");
-  setStatus("Transcribing...");
-  try {
-    const wav = await stopRecording();
-    const response = await api("/v1/voice/transcribe", {
-      method: "POST",
-      body: wav,
-      headers: { "Content-Type": "audio/wav" },
-    });
-    if (!response.ok) throw new Error(await detail(response));
-    const { text } = await response.json();
-    setStatus(state.info.stt === "fake" ? "Demo speech-to-text: the mic returns a fixed sentence." : "");
-    if (text) {
-      $("#speak-toggle").checked = true; // spoke to it: it speaks back
-      send(text);
-    } else {
-      setStatus("I didn't catch that.");
-    }
-  } catch (error) {
-    setStatus(`Voice failed: ${error.message}`);
-  }
+for (const button of [$("#hero-mic"), $("#mic")]) {
+  button.addEventListener("click", () => {
+    if (state.mode === "listening") finishListening();
+    else if (state.mode === "speaking") {
+      stopSpeaking();
+      listen();
+    } else listen();
+  });
+}
+$("#listen-done").addEventListener("click", finishListening);
+$("#listen-cancel").addEventListener("click", () => cancelListening(""));
+document.addEventListener("keydown", (event) => {
+  if (event.key === "Escape" && state.mode === "listening") cancelListening("");
 });
+
+// --- connection -------------------------------------------------------------------
+
+function setOnline(online) {
+  state.online = online;
+  updateBanner();
+  if (state.info) $("#send").disabled = !online || state.mode !== "idle" || $("#text").disabled;
+}
+window.addEventListener("online", () => setOnline(true));
+window.addEventListener("offline", () => setOnline(false));
 
 // --- boot -------------------------------------------------------------------------
 

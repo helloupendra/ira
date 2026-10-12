@@ -1,13 +1,16 @@
 {
-  "name": "IRA",
+  "name": "Ira",
   "short_name": "Ira",
   "description": "Hey Ira: your own voice assistant.",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",
   "background_color": "#f6f4ef",
-  "theme_color": "#1f6f5c",
+  "theme_color": "#f6f4ef",
   "icons": [
-    { "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }
+    { "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" },
+    { "src": "/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/icon-512-maskable.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
   ]
 }
