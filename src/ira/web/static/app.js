@@ -486,17 +486,45 @@ function addTurn(kind, text = "") {
   return li;
 }
 
+function argumentsText(raw) {
+  if (raw === undefined || raw === null || raw === "") return "";
+  let value = raw;
+  if (typeof raw === "string") {
+    try {
+      value = JSON.parse(raw);
+    } catch {
+      return raw;
+    }
+  }
+  if (value && typeof value === "object" && !Array.isArray(value)) {
+    return Object.entries(value)
+      .map(([k, v]) => `${k}: ${typeof v === "string" ? v : JSON.stringify(v)}`)
+      .join(", ");
+  }
+  return JSON.stringify(value);
+}
+
 function explain(li, how) {
   const list = $(".how-list", li);
   list.replaceChildren();
-  for (const name of how.tools || []) {
-    const tool = toolFor(name);
+  for (const used of how.tools || []) {
+    const call = typeof used === "string" ? { name: used } : used;
+    const tool = toolFor(call.name);
     const item = document.createElement("li");
     const verb = document.createElement("b");
     verb.textContent = tool && tool.kind === "action" ? "Prepared " : "Looked up ";
-    item.append(verb, humanize(name));
+    item.append(verb, humanize(call.name));
+    const args = argumentsText(call.arguments);
+    if (args) item.append(` (${args})`);
     if (tool && tool.description) item.append(`: ${tool.description}`);
     if (tool && tool.kind === "action") item.append(" (needs a PIN)");
+    if (call.result !== undefined && call.result !== null && call.result !== "") {
+      const data = document.createElement("pre");
+      data.className = "how-data";
+      const text = typeof call.result === "string" ? call.result : JSON.stringify(call.result, null, 2);
+      data.textContent = call.ok === false ? `The tool failed: ${text}` : text;
+      item.append(data);
+    }
     list.append(item);
   }
   if (!how.tools || !how.tools.length) {
@@ -554,8 +582,16 @@ async function send(text, { voice = false, retry = false } = {}) {
     for await (const event of sseEvents(response)) {
       if (event.type === "start") state.conversationId = event.conversation_id;
       else if (event.type === "tool") {
-        how.tools.push(event.name);
+        how.tools.push({ name: event.name, id: event.id, arguments: event.arguments });
         setStatus(toolPhrase(event.name));
+      } else if (event.type === "tool_result") {
+        const call =
+          how.tools.find((t) => t.id !== undefined && t.id === event.id) ||
+          [...how.tools].reverse().find((t) => t.name === event.name && t.result === undefined);
+        if (call) {
+          call.result = event.result;
+          call.ok = event.ok;
+        }
       } else if (event.type === "action") actionCard(event.action);
       else if (event.type === "delta") {
         if (!full) {
@@ -640,6 +676,14 @@ function actionCard(action) {
   $(".action-summary", card).textContent = action.summary;
   if (Array.isArray(action.confirm_roles) && action.confirm_roles.length) {
     who.textContent = `${listWords(action.confirm_roles)} can confirm.`;
+    who.hidden = false;
+  }
+  if (action.can_confirm === false) {
+    // This person may still cancel the proposal, but not release it.
+    pin.hidden = true;
+    $("button[type=submit]", form).hidden = true;
+    const role = state.info ? state.info.user.role : "your role";
+    who.textContent = `${who.textContent} Not ${role}: ask someone who can.`.trim();
     who.hidden = false;
   }
 

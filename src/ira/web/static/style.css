@@ -210,6 +210,7 @@ code { font-family: var(--mono); font-size: 0.9em; background: var(--bg-sunken);
 .how[open] summary::before { transform: rotate(45deg); }
 .how-list { margin: var(--s-1) 0 0; padding-left: var(--s-4); display: grid; gap: 2px; list-style: disc; }
 .how-list b { color: var(--text); font-weight: 600; }
+.how-data { margin: var(--s-1) 0 var(--s-1); padding: var(--s-2) var(--s-3); background: var(--bg-sunken); border-radius: var(--radius-s); font: var(--text-xs) / 1.5 var(--mono); color: var(--text); white-space: pre-wrap; overflow-wrap: anywhere; max-height: 12rem; overflow: auto; }
 
 /* The PIN card: a proposal, then one of its outcomes */
 
