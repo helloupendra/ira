@@ -1,0 +1,8 @@
+/* Accept an invitation: the heading block the gate has no class for. */
+
+/* The heading and the lines under it sit closer than the card's gap */
+.invite-head { display: grid; gap: var(--s-2); }
+
+/* Who the invitation is for; an email can be long, so it may break anywhere */
+.invite-who { font-size: var(--text-m); overflow-wrap: anywhere; }
+.invite-who strong { font-weight: 600; }
