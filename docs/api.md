@@ -66,13 +66,22 @@ POST /v1/ask
 Omit `conversation_id` to start a new conversation; the response returns the
 new id. Conversation ids are private to the user who made them.
 
-When the turn proposed an action, `action` is:
+When the turn proposed an action, `action` is an `ActionView`:
 
 ```json
 {"id": "act_1f2e...", "tool": "cancel_appointment",
  "summary": "Cancel appointment #3: Riley Demo on Tuesday 13 October at 15:00",
- "status": "pending", "expires_in": 120}
+ "status": "pending", "expires_in": 120,
+ "confirm_roles": ["owner", "admin"], "can_confirm": false}
 ```
+
+`confirm_roles` are the roles that may confirm this action:
+`actions.tools.<name>.confirm_roles` in `ira.yaml`, or else
+`actions.confirm_roles`. `can_confirm` is for the caller: true when their
+credential has the `actions` permission and their role is in
+`confirm_roles`. When it is false, a client shows no PIN box ("your role
+can't confirm this"). It does not say whether the caller has set a PIN;
+`GET /v1/me/pin` does. Confirm and cancel responses carry the same fields.
 
 ### Streaming
 

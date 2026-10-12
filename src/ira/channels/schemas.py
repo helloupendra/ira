@@ -22,8 +22,17 @@ class ActionView(BaseModel):
     id: str
     tool: str
     summary: str
-    status: str
+    status: str = Field(description="pending, executing, executed, failed, cancelled or expired.")
     expires_in: int = Field(description="Seconds left to confirm.")
+    confirm_roles: list[str] = Field(
+        description="The roles that may confirm this action: "
+        "actions.tools.<name>.confirm_roles in ira.yaml, or else actions.confirm_roles."
+    )
+    can_confirm: bool = Field(
+        description="Whether the caller may confirm it: their credential has the actions "
+        "permission and their role is in confirm_roles. A missing PIN is not counted here; "
+        "GET /v1/me/pin says that."
+    )
 
 
 class AskResponse(BaseModel):

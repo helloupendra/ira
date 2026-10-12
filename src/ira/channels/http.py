@@ -11,6 +11,7 @@ import json
 import logging
 import secrets
 from collections.abc import AsyncIterator
+from typing import Any
 
 from fastapi import APIRouter, Depends, FastAPI, HTTPException, Request, Response
 from fastapi.responses import HTMLResponse, StreamingResponse
@@ -33,6 +34,7 @@ from ira.channels.deps import (
 )
 from ira.channels.schemas import (
     ActionOutcome,
+    ActionView,
     AskRequest,
     AskResponse,
     ConfirmRequest,
@@ -79,6 +81,16 @@ CSP = (
 
 def _conversation_key(principal: Principal, client_id: str) -> str:
     return f"http:{principal.user.id}:{client_id}"
+
+
+def action_view(runtime: Runtime, principal: Principal, action: dict[str, Any]) -> ActionView:
+    """An action as the caller sees it: who may confirm it, and whether the caller can."""
+    roles = runtime.guard.confirm_roles_for(action["tool"])
+    return ActionView(
+        **action,
+        confirm_roles=list(roles),
+        can_confirm=principal.can("actions") and principal.user.role in roles,
+    )
 
 
 # --- auth -------------------------------------------------------------------------
@@ -195,6 +207,8 @@ async def ask(
     )
     data = reply.public()
     data["conversation_id"] = client_id
+    if data["action"] is not None:
+        data["action"] = action_view(runtime, principal, data["action"])
     return AskResponse(**data)
 
 
@@ -223,6 +237,9 @@ async def ask_stream(
         ):
             if event["type"] == "done":
                 event = {**event, "conversation_id": client_id}
+            elif event["type"] == "action":
+                view = action_view(runtime, principal, event["action"])
+                event = {**event, "action": view.model_dump()}
             yield _sse(event)
 
     return StreamingResponse(
@@ -301,9 +318,14 @@ async def speak(
     return Response(content=audio, media_type="audio/mpeg")
 
 
-def _outcome_response(response: Response, outcome) -> ActionOutcome:
+def _outcome_response(
+    response: Response, outcome: Any, runtime: Runtime, principal: Principal
+) -> ActionOutcome:
     response.status_code = OUTCOME_STATUS.get(outcome.status, 200)
-    return ActionOutcome(**outcome.public())
+    body = outcome.public()
+    if "action" in body:
+        body["action"] = action_view(runtime, principal, body["action"])
+    return ActionOutcome(**body)
 
 
 @api.post(
@@ -327,7 +349,7 @@ async def confirm_action(
         user_id=principal.user.id,
         role=principal.user.role,
     )
-    return _outcome_response(response, outcome)
+    return _outcome_response(response, outcome, runtime, principal)
 
 
 @api.post(
@@ -343,7 +365,7 @@ def cancel_action(
     runtime: Runtime = Depends(get_runtime),
 ) -> ActionOutcome:
     outcome = runtime.guard.cancel(action_id, actor=principal.actor, channel=principal.channel)
-    return _outcome_response(response, outcome)
+    return _outcome_response(response, outcome, runtime, principal)
 
 
 # --- app ---------------------------------------------------------------------------

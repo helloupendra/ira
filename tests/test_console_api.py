@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import json
+
 import pytest
 from fastapi.testclient import TestClient
 
@@ -552,3 +554,47 @@ def test_actions_show_who_confirmed_and_the_confirm_roles(registry):
         assert "manager@example.com" in security["users_without_pin"]
         costs = client.get("/v1/admin/costs?days=7", headers=owner).json()
         assert costs[0]["calls"] == 2
+
+
+def sse_events(response) -> list[dict]:
+    return [
+        json.loads(line.removeprefix("data: "))
+        for line in response.text.splitlines()
+        if line.startswith("data: ")
+    ]
+
+
+def test_a_proposed_action_says_who_may_confirm_it(registry):
+    refund = ChatResponse(
+        text="", tool_calls=[ToolCall("c", "refund", '{"order_id": "A1", "amount": 5}')]
+    )
+    runtime = make_runtime(provider=ScriptedProvider([refund, "ok"] * 4), registry=registry)
+    runtime.guard.tool_confirm_roles = {"refund": ("owner", "admin")}
+    people = People(runtime)
+    ask = {"text": "refund A1"}
+    with TestClient(create_app(runtime, start_channels=False)) as client:
+        # A staff member may propose it, but their role cannot confirm it.
+        staff = client.post("/v1/ask", json=ask, headers=people.session(people.staff)).json()
+        assert staff["action"]["confirm_roles"] == ["owner", "admin"]
+        assert staff["action"]["can_confirm"] is False
+
+        streamed = client.post("/v1/ask/stream", json=ask, headers=people.session(people.owner))
+        action = next(e["action"] for e in sse_events(streamed) if e["type"] == "action")
+        assert action["confirm_roles"] == ["owner", "admin"] and action["can_confirm"] is True
+
+        # The owner's phone token may ask but not confirm, so it cannot confirm this either.
+        phone = people.token(people.owner, ["ask"])
+        assert (
+            client.post("/v1/ask", json=ask, headers=phone).json()["action"]["can_confirm"] is False
+        )
+
+        # Without a per-tool rule, actions.confirm_roles applies.
+        runtime.guard.tool_confirm_roles = {}
+        staff = client.post("/v1/ask", json=ask, headers=people.session(people.staff)).json()
+        assert staff["action"]["confirm_roles"] == ["owner", "admin", "staff"]
+        assert staff["action"]["can_confirm"] is True
+        cancelled = client.post(
+            f"/v1/actions/{staff['action']['id']}/cancel", headers=people.session(people.staff)
+        ).json()
+        assert cancelled["action"]["status"] == "cancelled"
+        assert cancelled["action"]["confirm_roles"] == ["owner", "admin", "staff"]
