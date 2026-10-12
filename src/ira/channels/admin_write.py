@@ -89,8 +89,12 @@ def create_invite(
         raise HTTPException(400, detail=str(exc)) from None
     _log(runtime, who, "user.invited", invite.email, after=invite.role)
     # The token travels in the fragment, which browsers never send to a server.
+    path = f"/admin/invite#token={token}"
     return InviteCreated(
-        invite=invite_view(runtime, invite), token=token, path=f"/admin/invite#token={token}"
+        invite=invite_view(runtime, invite),
+        token=token,
+        path=path,
+        url=f"{runtime.public_url}{path}" if runtime.public_url else None,
     )
 
 

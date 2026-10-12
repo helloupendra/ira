@@ -163,6 +163,28 @@ scripted installs:
 printf '%s\n' "$OWNER_PASSWORD" | ira setup --email owner@example.com
 ```
 
+### The address people open
+
+`ira serve --host 0.0.0.0 --port 9000` overrides `channels.http` for that
+run, and `GET /v1/admin/channels` reports what was really bound (the `http`
+channel's `address.host` and `address.port`, next to `configured_host` and
+`configured_port` from `ira.yaml`).
+
+Behind a proxy, or to open Ira on a phone, tell the server where people
+reach it:
+
+```yaml
+channels:
+  http:
+    public_url: https://ira.example.com   # or set IRA_PUBLIC_URL
+```
+
+`IRA_PUBLIC_URL` in the environment (or `.env`) wins over `ira.yaml`. The
+value must be an `http://` or `https://` URL; a trailing `/` is dropped.
+When it is set, the setup link that `ira serve` prints starts with it,
+`POST /v1/admin/users/invites` returns the whole invitation link in `url`,
+and the `http` channel's `address.public_url` and `address.url` carry it.
+
 ### Users and roles from the command line
 
 | Role | For |

@@ -212,7 +212,7 @@ All need `admin.read` (owner, admin, viewer), from a session or a token.
 | `GET /v1/admin/changes?limit=&before_id=` | `ChangeRow[]`: the console change log, newest first |
 | `GET /v1/admin/costs?days=30` | `CostDay[]`: calls, failures, tokens and cost per day (server local time) |
 | `GET /v1/admin/tools` | `ToolDetail[]`: `kind` (`read` or `action`), JSON schema, `enabled`, and for actions `confirm_roles` |
-| `GET /v1/admin/channels` | `ChannelView[]`: HTTP, web and Telegram status; Telegram says whether its token variable is set |
+| `GET /v1/admin/channels` | `ChannelView[]`: HTTP, web and Telegram status; Telegram says whether its token variable is set. The `http` channel's `address` (`ServerAddress`) has the `host` and `port` that `ira serve` bound (its `--host` and `--port`, else `ira.yaml`), `configured_host` and `configured_port` from `ira.yaml`, `public_url` (`channels.http.public_url` or `IRA_PUBLIC_URL`, else `null`) and `url`, the base URL to open: `public_url` when set, else `http://host:port` |
 | `GET /v1/admin/models` | `ModelsView`: each tier's chain as configured and in use, cool-downs, providers with key status and last success or failure |
 | `GET /v1/admin/keys` | `KeyView[]`: each secret variable `ira.yaml` names, who uses it, and whether it is set. Never the value |
 | `GET /v1/admin/settings` | `SettingsView`: assistant name and voice, each with its `ira.yaml` default and whether it is overridden |
@@ -310,7 +310,8 @@ http://127.0.0.1:8765/admin/setup#code=7F3A-91C2-0B4E
 
 When no console is built into `src/ira/web/admin/`, the link is
 `http://127.0.0.1:8765/#code=...` instead, and the chat page's setup form
-asks for the code. The code rides in the URL fragment, which browsers never
+asks for the code. With `public_url` set, the link starts with it
+(`https://ira.example.com/admin/setup#code=...`). The code rides in the URL fragment, which browsers never
 send to the server or a proxy log. Whatever page receives the link reads
 `location.hash`, then posts the code:
 
@@ -348,7 +349,9 @@ POST /v1/admin/users/invites
 ```
 
 The link is the server's origin plus `path`, for example
-`https://ira.example.com/admin/invite#token=ira_i_...`. The owner sends it
+`https://ira.example.com/admin/invite#token=ira_i_...`. When `public_url` is
+set (`channels.http.public_url` or `IRA_PUBLIC_URL`), the response's `url`
+is that whole link; otherwise `url` is `null`. The owner sends it
 themselves: IRA sends no email. Only the token's SHA-256 hash is stored; it
 works once and expires after 72 hours, and a newer invitation for the same
 email replaces an open one.

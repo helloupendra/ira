@@ -32,6 +32,11 @@ the API refuses a browser write whose `Origin` names a different host. Also
 disable buffering for `/v1/ask/stream` (`proxy_buffering off;`);
 IRA also sends `X-Accel-Buffering: no`.
 
+Tell IRA the address people use, so the links it prints and sends (the
+setup link, invitations) point there rather than at `127.0.0.1`:
+`channels.http.public_url: https://assistant.example.com` in `ira.yaml`, or
+`IRA_PUBLIC_URL=https://assistant.example.com` in the environment.
+
 The proxy should pass the real client address if you rely on per-address
 sign-in throttling (run uvicorn with `--proxy-headers` and
 `--forwarded-allow-ips` set to the proxy's address).

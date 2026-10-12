@@ -11,11 +11,13 @@ from __future__ import annotations
 import os
 from pathlib import Path
 from typing import Literal
+from urllib.parse import urlsplit
 
 import yaml
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
 
 CONFIG_ENV = "IRA_CONFIG"
+PUBLIC_URL_ENV = "IRA_PUBLIC_URL"
 
 
 class ConfigError(Exception):
@@ -85,6 +87,28 @@ class VoiceConfig(_Strict):
 class HttpConfig(_Strict):
     host: str = "127.0.0.1"
     port: int = 8765
+    # Where people reach this server, e.g. https://ira.example.com behind a TLS
+    # proxy. Used for links: the setup banner, invitations, "open on your phone".
+    # IRA_PUBLIC_URL overrides it.
+    public_url: str | None = None
+
+    @field_validator("public_url")
+    @classmethod
+    def _check_public_url(cls, value: str | None) -> str | None:
+        return check_public_url(value)
+
+
+def check_public_url(value: str | None) -> str | None:
+    """An http(s) origin, optionally with a path; no trailing slash, query or fragment."""
+    value = (value or "").strip()
+    if not value:
+        return None
+    parts = urlsplit(value)
+    if parts.scheme not in ("http", "https") or not parts.netloc:
+        raise ValueError("public_url must start with http:// or https:// and name a host")
+    if parts.query or parts.fragment:
+        raise ValueError("public_url cannot have a query or a fragment")
+    return value.rstrip("/")
 
 
 class TelegramConfig(_Strict):
@@ -192,6 +216,12 @@ def load_settings(path: str | Path | None = None) -> Settings:
         raise ConfigError(f"invalid config {config_path or '(defaults)'}:\n{exc}") from None
     if not settings.data_dir.is_absolute():
         settings.data_dir = config_dir / settings.data_dir
+    if os.environ.get(PUBLIC_URL_ENV):
+        try:
+            public_url = check_public_url(os.environ[PUBLIC_URL_ENV])
+        except ValueError as exc:
+            raise ConfigError(f"{PUBLIC_URL_ENV}: {exc}") from None
+        settings.channels.http.public_url = public_url
     return settings
 
 

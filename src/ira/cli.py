@@ -86,31 +86,34 @@ def cmd_serve(args: argparse.Namespace) -> int:
     runtime = build_runtime(settings)
     host = args.host or settings.channels.http.host
     port = args.port or settings.channels.http.port
+    # The console reports what was bound, not what ira.yaml says.
+    runtime.bound_host, runtime.bound_port = host, port
     # Flushed: under a service manager stdout is a pipe, and the setup code must show.
     print(
         f"{runtime.assistant.name} is listening on http://{host}:{port}  (API docs: /v1/docs)",
         flush=True,
     )
+    if runtime.public_url:
+        print(f"People open it at {runtime.public_url}", flush=True)
     code = runtime.ensure_setup_code()
     if code:
-        print(setup_banner(code, host, port), flush=True)
+        print(setup_banner(code, host, port, runtime.public_url), flush=True)
         runtime.setup_code_shown = True
     uvicorn.run(create_app(runtime), host=host, port=port, log_level="info")
     return 0
 
 
-def setup_banner(code: str, host: str, port: int) -> str:
+def setup_banner(code: str, host: str, port: int, public_url: str | None = None) -> str:
     """What `ira serve` prints while no account exists, so the owner can claim it."""
+    from ira.runtime import local_url
     from ira.web import setup_page
 
-    shown = "127.0.0.1" if host in ("0.0.0.0", "::", "") else host
-    if ":" in shown:
-        shown = f"[{shown}]"
+    base = public_url or local_url(host, port)
     page = setup_page()
     # The code rides in the fragment, which the browser never sends to a server or proxy log.
     return (
         "\n    No account exists yet. To create the owner account, open:\n\n"
-        f"        http://{shown}:{port}{page}#code={code}\n\n"
+        f"        {base}{page}#code={code}\n\n"
         f"    or enter the setup code {code} on that page. It works once, and only\n"
         "    until the owner exists. (`ira setup` in a terminal does the same.)\n"
     )

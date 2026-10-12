@@ -483,7 +483,8 @@ def create_app(runtime: Runtime, *, start_channels: bool = True) -> FastAPI:
         code = runtime.ensure_setup_code()
         if code and not runtime.setup_code_shown:
             log.warning(
-                "No account exists yet. Open %s#code=%s to create the owner, or run `ira setup`.",
+                "No account exists yet. Open %s%s#code=%s to create the owner, or run `ira setup`.",
+                runtime.public_url or "",
                 setup_page(),
                 code,
             )

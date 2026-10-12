@@ -58,6 +58,25 @@ class Runtime:
     channel_state: dict[str, dict[str, Any]] = field(default_factory=dict)
     setup_code: str | None = None
     setup_code_shown: bool = False
+    # What `ira serve` bound, which --host and --port can change from ira.yaml.
+    bound_host: str | None = None
+    bound_port: int | None = None
+
+    @property
+    def host(self) -> str:
+        return self.bound_host if self.bound_host is not None else self.settings.channels.http.host
+
+    @property
+    def port(self) -> int:
+        return self.bound_port if self.bound_port is not None else self.settings.channels.http.port
+
+    @property
+    def public_url(self) -> str | None:
+        return self.settings.channels.http.public_url
+
+    def base_url(self) -> str:
+        """Where to open this server: public_url when set, else the address it listens on."""
+        return self.public_url or local_url(self.host, self.port)
 
     def ensure_setup_code(self) -> str | None:
         """While no account exists, a one-time code guards the web setup form.
@@ -74,6 +93,14 @@ class Runtime:
     async def aclose(self) -> None:
         for client in self.http_clients:
             await client.aclose()
+
+
+def local_url(host: str, port: int) -> str:
+    """http://host:port, with 127.0.0.1 for a wildcard address and brackets for IPv6."""
+    shown = "127.0.0.1" if host in ("0.0.0.0", "::", "") else host
+    if ":" in shown:
+        shown = f"[{shown}]"
+    return f"http://{shown}:{port}"
 
 
 def _auth(name: str, cfg: ProviderConfig) -> Auth:

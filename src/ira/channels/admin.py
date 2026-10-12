@@ -44,6 +44,7 @@ from ira.channels.schemas import (
     ProviderView,
     RoleView,
     SecurityView,
+    ServerAddress,
     SettingsView,
     SettingValue,
     TierView,
@@ -374,11 +375,20 @@ def channels(
     paired = runtime.store.one("SELECT COUNT(*) AS n FROM telegram_chats")
     telegram = dict(runtime.channel_state.get("telegram", {}))
     telegram["paired_chats"] = paired["n"] if paired else 0
+    http = settings.channels.http
     return [
         ChannelView(
             name="http",
             enabled=True,
-            detail={"host": settings.channels.http.host, "port": settings.channels.http.port},
+            detail={"host": runtime.host, "port": runtime.port, "public_url": runtime.public_url},
+            address=ServerAddress(
+                host=runtime.host,
+                port=runtime.port,
+                configured_host=http.host,
+                configured_port=http.port,
+                public_url=runtime.public_url,
+                url=runtime.base_url(),
+            ),
         ),
         ChannelView(
             name="web",

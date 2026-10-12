@@ -86,6 +86,9 @@ channels:
   http:
     host: 127.0.0.1               # put a TLS reverse proxy in front for remote use
     port: 8765
+    # Where people reach this server, for the links Ira prints and sends (the
+    # setup link, invitations, "open this on your phone"). IRA_PUBLIC_URL wins.
+    # public_url: https://ira.example.com
   telegram:
     enabled: false
     token_env: TELEGRAM_BOT_TOKEN

@@ -485,10 +485,38 @@ class ToolDetail(BaseModel):
     )
 
 
+class ServerAddress(BaseModel):
+    """Where the server listens, and where people open it."""
+
+    host: str = Field(
+        description="The address `ira serve` bound: its --host, else channels.http.host."
+    )
+    port: int = Field(
+        description="The port `ira serve` bound: its --port, else channels.http.port."
+    )
+    configured_host: str = Field(description="channels.http.host in ira.yaml.")
+    configured_port: int = Field(description="channels.http.port in ira.yaml.")
+    public_url: str | None = Field(
+        description="channels.http.public_url, or IRA_PUBLIC_URL: where people reach the "
+        "server (for example on a phone, through a TLS proxy). null when not set."
+    )
+    url: str = Field(
+        description="The base URL to open: public_url when set, else http://host:port "
+        "(127.0.0.1 for a wildcard host such as 0.0.0.0)."
+    )
+
+
 class ChannelView(BaseModel):
     name: str
     enabled: bool
-    detail: dict[str, Any] = Field(default_factory=dict)
+    detail: dict[str, Any] = Field(
+        default_factory=dict,
+        description="Untyped details kept for older clients. For http, host and port are "
+        "what `ira serve` bound; address has them typed.",
+    )
+    address: ServerAddress | None = Field(
+        default=None, description="For the http channel only: where it listens and is opened."
+    )
 
 
 class TokenRow(BaseModel):
@@ -622,6 +650,11 @@ class InviteCreated(BaseModel):
     invite: InviteView
     token: str = Field(description="Shown once. Only its hash is stored.")
     path: str = Field(description="Open this path on the server to accept the invitation.")
+    url: str | None = Field(
+        default=None,
+        description="The whole link to send: public_url followed by path, when public_url "
+        "is set; null otherwise (join the server's origin and path yourself).",
+    )
 
 
 class RoleChange(BaseModel):
