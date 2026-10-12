@@ -135,6 +135,7 @@ def _args_model(fn: Callable[..., Any], name: str) -> tuple[type[BaseModel], boo
 class ToolRegistry:
     def __init__(self) -> None:
         self._tools: dict[str, Tool] = {}
+        self._disabled: set[str] = set()
 
     def register(
         self,
@@ -205,8 +206,26 @@ class ToolRegistry:
     def get(self, name: str) -> Tool | None:
         return self._tools.get(name)
 
+    # Switching tools off: a switched-off tool stays registered, but the model
+    # does not see it and a pending action for it does not run.
+
+    def is_enabled(self, name: str) -> bool:
+        return name in self._tools and name not in self._disabled
+
+    def set_enabled(self, name: str, enabled: bool) -> None:
+        if name not in self._tools:
+            raise KeyError(name)
+        if enabled:
+            self._disabled.discard(name)
+        else:
+            self._disabled.add(name)
+
+    def disabled(self) -> set[str]:
+        return set(self._disabled)
+
     def schemas(self) -> list[dict[str, Any]]:
-        return [t.schema() for t in self._tools.values()]
+        """Schemas of the tools the model may call (switched-off tools are left out)."""
+        return [t.schema() for t in self._tools.values() if t.name not in self._disabled]
 
     def __iter__(self) -> Iterator[Tool]:
         return iter(self._tools.values())

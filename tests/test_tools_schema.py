@@ -128,3 +128,26 @@ def test_schemas_list_every_tool_in_registration_order():
 
     assert [s["name"] for s in reg.schemas()] == ["a", "b"]
     assert [t.kind for t in reg] == ["read", "action"]
+
+
+def test_a_switched_off_tool_stays_registered_but_the_model_cannot_see_it():
+    reg = ToolRegistry()
+
+    @reg.tool
+    def a() -> dict:
+        """A."""
+        return {}
+
+    @reg.tool
+    def b() -> dict:
+        """B."""
+        return {}
+
+    reg.set_enabled("a", False)
+    assert [s["name"] for s in reg.schemas()] == ["b"]
+    assert "a" in reg and not reg.is_enabled("a") and reg.disabled() == {"a"}
+    reg.set_enabled("a", True)
+    assert [s["name"] for s in reg.schemas()] == ["a", "b"]
+    assert not reg.is_enabled("missing")
+    with pytest.raises(KeyError):
+        reg.set_enabled("missing", False)

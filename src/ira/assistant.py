@@ -260,7 +260,7 @@ class Assistant:
         safe_call = ToolCall(call.id, call.name, call.replay_arguments())
 
         tool = self.registry.get(call.name)
-        if tool is None:
+        if tool is None or not self.registry.is_enabled(call.name):
             return _result({"error": f"unknown tool '{call.name}'"}), safe_call, None
         try:
             args = tool.validate(arguments)
