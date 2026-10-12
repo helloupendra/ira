@@ -247,7 +247,7 @@ link from the journal, and the next steps. The new `ira.yaml` uses:
 | | Models |
 | --- | --- |
 | `default` tier, in fallback order | `moonshotai.kimi-k2.5`, `zai.glm-5`, `deepseek.v3.2` |
-| `fast` tier | `openai.gpt-oss-120b`, `mistral.mistral-large-3` |
+| `fast` tier | `openai.gpt-oss-120b`, `mistral.mistral-large-3-675b-instruct` |
 | Speech-to-text | `chat_audio` with `mistral.voxtral-small-24b-2507` on Bedrock |
 | Text-to-speech | Polly in `ap-south-1`, voice Kajal, neural, `en-IN` |
 

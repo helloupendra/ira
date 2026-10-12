@@ -108,7 +108,9 @@ def test_each_bedrock_model_is_asked_once(tmp_path):
     bedrock = ByModel(
         {
             "zai.glm-5": ProviderError("bedrock: HTTP 403: not allowed", kind="auth", status=403),
-            "mistral.mistral-large-3": ProviderError("bedrock: busy", kind="capacity"),
+            "mistral.mistral-large-3-675b-instruct": ProviderError(
+                "bedrock: busy", kind="capacity"
+            ),
         }
     )
     stt, tts = FakeSTT(""), FakeTTS("Kajal")

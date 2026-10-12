@@ -29,7 +29,7 @@ PROVIDERS = ("demo", "bedrock")
 # still answer. Change them here, and only here.
 BEDROCK_REGION = "us-east-1"
 BEDROCK_DEFAULT_CHAIN = ("moonshotai.kimi-k2.5", "zai.glm-5", "deepseek.v3.2")
-BEDROCK_FAST_CHAIN = ("openai.gpt-oss-120b", "mistral.mistral-large-3")
+BEDROCK_FAST_CHAIN = ("openai.gpt-oss-120b", "mistral.mistral-large-3-675b-instruct")
 BEDROCK_STT_MODEL = "mistral.voxtral-small-24b-2507"
 POLLY_REGION = "ap-south-1"
 POLLY_VOICE = "Kajal"

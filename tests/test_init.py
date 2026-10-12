@@ -77,7 +77,7 @@ def test_bedrock_folder_uses_the_tested_ids(tmp_path):
     ]
     assert settings.models.tiers["fast"] == [
         "bedrock:openai.gpt-oss-120b",
-        "bedrock:mistral.mistral-large-3",
+        "bedrock:mistral.mistral-large-3-675b-instruct",
     ]
     stt, tts = settings.voice.stt, settings.voice.tts
     assert (stt.type, stt.provider, stt.model) == ("chat_audio", "bedrock", BEDROCK_STT_MODEL)
