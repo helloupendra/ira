@@ -5,6 +5,9 @@ from __future__ import annotations
 import pytest
 
 from ira.store import Store
+from ira.tools.registry import ToolError, ToolRegistry
+
+FAST_PIN_ITERATIONS = 1_000  # the real default is slow on purpose; tests need speed
 
 
 class Clock:
@@ -33,3 +36,38 @@ def clock() -> Clock:
 @pytest.fixture
 def store() -> Store:
     return Store(":memory:")
+
+
+class Ledger:
+    """What the sample action tools did, so tests can count real executions."""
+
+    def __init__(self) -> None:
+        self.refunds: list[tuple[str, int]] = []
+
+
+@pytest.fixture
+def ledger() -> Ledger:
+    return Ledger()
+
+
+@pytest.fixture
+def registry(ledger: Ledger) -> ToolRegistry:
+    reg = ToolRegistry()
+
+    @reg.tool
+    def order_status(order_id: str) -> dict:
+        """Look up an order."""
+        return {"order_id": order_id, "status": "shipped"}
+
+    def refund_summary(order_id: str, amount: int) -> str:
+        if order_id == "missing":
+            raise ToolError("there is no order 'missing'")
+        return f"Refund {amount} on order {order_id}"
+
+    @reg.action(summary=refund_summary)
+    def refund(order_id: str, amount: int) -> dict:
+        """Refund an order."""
+        ledger.refunds.append((order_id, amount))
+        return {"refunded": amount}
+
+    return reg
