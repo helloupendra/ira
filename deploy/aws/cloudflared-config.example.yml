@@ -2,9 +2,13 @@
 #
 # Each IRA instance listens on 127.0.0.1 only. cloudflared connects out to
 # Cloudflare, so the server needs no inbound port besides SSH, and Cloudflare
-# serves HTTPS (which the browser's microphone requires). cloudflared passes the
-# public Host header through, which IRA's same-origin check needs: do not set
-# originRequest.httpHostHeader. See docs/deployment.md, "AWS with Bedrock".
+# serves HTTPS (which the browser's microphone requires).
+#
+# IRA refuses a browser write whose Origin is not the Host it receives. If the
+# app answers 403 "cross-origin request refused" once signed in, give that rule
+#   originRequest:
+#     httpHostHeader: clinic.example.com
+# See docs/deployment.md, "AWS with Bedrock".
 
 tunnel: ira # the name (or id) given to `cloudflared tunnel create`
 credentials-file: /etc/cloudflared/TUNNEL-ID.json # written by `tunnel create`

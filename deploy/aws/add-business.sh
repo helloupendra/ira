@@ -96,9 +96,10 @@ if [ -n "$hostname" ]; then
   - hostname: $hostname
     service: http://127.0.0.1:$port
 
-   then point the name at the tunnel and reload it:
+   then point the name at the tunnel (as the user who ran
+   "cloudflared tunnel login") and restart the tunnel:
 
-     sudo cloudflared tunnel route dns <tunnel-name> $hostname
+     cloudflared tunnel route dns <tunnel-name> $hostname
      sudo systemctl restart cloudflared
 EOF
 else
