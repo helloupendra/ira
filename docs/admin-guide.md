@@ -153,7 +153,7 @@ Without a terminal, start `ira serve` first: while no account exists it prints
 a one-time setup code and a link that carries it
 (`http://127.0.0.1:8765/admin/setup#code=...`, or `/#code=...` while no
 console is built). The setup form and its endpoint stop working as soon as
-the owner exists. See [Getting started](getting-started.md#set-up-from-the-browser-instead).
+the owner exists. See [Getting started](getting-started.md#set-up-from-the-browser-the-setup-wizard).
 
 Both `ira setup` and `ira pin set` read from the terminal without echo. When
 stdin is not a terminal they read one line from it, which is handy for
