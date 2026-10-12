@@ -2,7 +2,7 @@
 
 Roles, from most to least trusted:
 
-* ``owner``  - everything, including (from v0.2) managing users;
+* ``owner``  - everything, including managing users;
 * ``admin``  - everything except user management;
 * ``staff``  - talks to Ira and can confirm actions with the PIN;
 * ``viewer`` - read-only access to the admin views.
@@ -42,6 +42,8 @@ PERMISSIONS: dict[str, frozenset[str]] = {
 TOKEN_SCOPES = ("ask", "voice", "actions", "admin.read")
 
 SESSION_SECONDS = 14 * 24 * 3600
+COOKIE_DAYS = SESSION_SECONDS / 86400
+INVITE_SECONDS = 72 * 3600
 MIN_PASSWORD = 10
 EMAIL = re.compile(r"[^@\s]+@[^@\s]+\.[^@\s]+")
 
@@ -62,6 +64,7 @@ class User:
     role: Role
     created_at: float
     last_login_at: float | None = None
+    has_pin: bool = False
 
     @property
     def permissions(self) -> frozenset[str]:
@@ -105,6 +108,7 @@ def _user(row: Any) -> User:
         role=row["role"],
         created_at=row["created_at"],
         last_login_at=row["last_login_at"],
+        has_pin=row["pin_hash"] is not None,
     )
 
 
@@ -117,6 +121,42 @@ def _check_role(role: str) -> Role:
 def _check_password(password: str) -> None:
     if len(password) < MIN_PASSWORD:
         raise AccountError(f"the password must be at least {MIN_PASSWORD} characters")
+
+
+class LastOwnerError(AccountError):
+    """Removing or demoting this user would leave nobody who can manage users."""
+
+
+@dataclass(frozen=True)
+class Invite:
+    id: str
+    email: str
+    role: Role
+    created_by: str
+    created_at: float
+    expires_at: float
+    used_at: float | None = None
+    revoked_at: float | None = None
+
+    def state(self, now: float) -> str:
+        if self.used_at is not None:
+            return "used"
+        if self.revoked_at is not None:
+            return "revoked"
+        return "expired" if self.expires_at <= now else "pending"
+
+
+def _invite(row: Any) -> Invite:
+    return Invite(
+        id=row["id"],
+        email=row["email"],
+        role=row["role"],
+        created_by=row["created_by"],
+        created_at=row["created_at"],
+        expires_at=row["expires_at"],
+        used_at=row["used_at"],
+        revoked_at=row["revoked_at"],
+    )
 
 
 def normalise_email(email: str) -> str:
@@ -220,6 +260,173 @@ class Accounts:
                 raise AccountError("setup is already done; sign in instead")
             user_id = self._insert_user(email, password_hash, "owner")
         self.store.adopt_shared_pin()
+        user = self.get_user(user_id)
+        assert user is not None
+        return user
+
+    def check_password(self, user_id: int, password: str) -> bool:
+        """Re-check a signed-in user's password before a sensitive change."""
+        row = self.store.one(
+            "SELECT password_hash FROM users WHERE id = ? AND disabled_at IS NULL", (user_id,)
+        )
+        try:
+            return row is not None and _hasher.verify(row["password_hash"], password)
+        except (VerifyMismatchError, VerificationError, InvalidHashError):
+            return False
+
+    def _owners_besides(self, user_id: int) -> int:
+        row = self.store.one(
+            "SELECT COUNT(*) AS n FROM users "
+            "WHERE role = 'owner' AND disabled_at IS NULL AND id != ?",
+            (user_id,),
+        )
+        return int(row["n"]) if row else 0
+
+    def set_role(self, user_id: int, role: str) -> tuple[User, Role]:
+        """Change a user's role. Returns (updated user, previous role)."""
+        new_role = _check_role(role)
+        with self.store.transaction():
+            user = self.get_user(user_id)
+            if user is None:
+                raise AccountError("no such user")
+            if user.role == "owner" and new_role != "owner" and self._owners_besides(user_id) == 0:
+                raise LastOwnerError("this is the last owner; make someone else owner first")
+            self.store.execute("UPDATE users SET role = ? WHERE id = ?", (new_role, user_id))
+        updated = self.get_user(user_id)
+        assert updated is not None
+        return updated, user.role
+
+    def remove_user(self, user_id: int) -> User:
+        """Disable an account and end everything it holds: sessions, tokens, paired chats.
+
+        The row stays so that conversations and the audit log keep their author.
+        """
+        now = self.clock()
+        with self.store.transaction():
+            user = self.get_user(user_id)
+            if user is None:
+                raise AccountError("no such user")
+            if user.role == "owner" and self._owners_besides(user_id) == 0:
+                raise LastOwnerError("this is the last owner and cannot be removed")
+            self.store.execute(
+                "UPDATE users SET disabled_at = ?, pin_hash = NULL, pin_set_at = NULL WHERE id = ?",
+                (now, user_id),
+            )
+            self.store.execute(
+                "UPDATE sessions SET revoked_at = ? WHERE user_id = ? AND revoked_at IS NULL",
+                (now, user_id),
+            )
+            self.store.execute(
+                "UPDATE api_tokens SET revoked_at = ? WHERE user_id = ? AND revoked_at IS NULL",
+                (now, user_id),
+            )
+            self.store.execute("DELETE FROM telegram_chats WHERE user_id = ?", (user_id,))
+        return user
+
+    # Invitations.
+
+    def create_invite(self, email: str, role: str, created_by: str) -> tuple[str, Invite]:
+        """Return (token, invite). The token is shown once; only its hash is kept.
+
+        A newer invite for the same email replaces any that is still open.
+        """
+        role = _check_role(role)
+        email = normalise_email(email)
+        if self.find_user(email) is not None:
+            raise AccountError("a user with that email already exists")
+        now = self.clock()
+        token = "ira_i_" + secrets.token_urlsafe(32)
+        invite = Invite(
+            id=new_id("inv_"),
+            email=email,
+            role=role,
+            created_by=created_by,
+            created_at=now,
+            expires_at=now + INVITE_SECONDS,
+        )
+        with self.store.transaction():
+            self.store.execute(
+                "UPDATE invites SET revoked_at = ? "
+                "WHERE email = ? AND used_at IS NULL AND revoked_at IS NULL",
+                (now, email),
+            )
+            self.store.execute(
+                "INSERT INTO invites (id, token_hash, email, role, created_by, created_at, "
+                "expires_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                (
+                    invite.id,
+                    sha256_hex(token),
+                    email,
+                    role,
+                    created_by,
+                    invite.created_at,
+                    invite.expires_at,
+                ),
+            )
+        return token, invite
+
+    def invites(self, *, include_closed: bool = False) -> list[Invite]:
+        rows = self.store.query("SELECT * FROM invites ORDER BY created_at DESC")
+        now = self.clock()
+        found = [_invite(r) for r in rows]
+        return found if include_closed else [i for i in found if i.state(now) == "pending"]
+
+    def get_invite(self, invite_id: str) -> Invite | None:
+        row = self.store.one("SELECT * FROM invites WHERE id = ?", (invite_id,))
+        return _invite(row) if row else None
+
+    def revoke_invite(self, invite_id: str) -> bool:
+        cursor = self.store.execute(
+            "UPDATE invites SET revoked_at = ? WHERE id = ? AND used_at IS NULL "
+            "AND revoked_at IS NULL",
+            (self.clock(), invite_id),
+        )
+        return cursor.rowcount == 1
+
+    def open_invite(self, token: str) -> Invite | None:
+        """The invite a token belongs to, if it can still be used."""
+        row = self.store.one(
+            "SELECT * FROM invites WHERE token_hash = ?", (sha256_hex(token.strip()),)
+        )
+        if row is None:
+            return None
+        invite = _invite(row)
+        return invite if invite.state(self.clock()) == "pending" else None
+
+    def accept_invite(self, token: str, password: str) -> User:
+        """Create the invited account. The token works once, and only within 72 hours.
+
+        Inviting the email of a removed account brings that account back, with
+        its history, the new password and the invited role.
+        """
+        _check_password(password)
+        password_hash = _hasher.hash(password)
+        now = self.clock()
+        with self.store.transaction():
+            invite = self.open_invite(token)
+            if invite is None:
+                raise AccountError("this invitation is not valid any more; ask for a new one")
+            claimed = self.store.execute(
+                "UPDATE invites SET used_at = ? WHERE id = ? AND used_at IS NULL "
+                "AND revoked_at IS NULL AND expires_at > ?",
+                (now, invite.id, now),
+            )
+            if claimed.rowcount != 1:
+                raise AccountError("this invitation is not valid any more; ask for a new one")
+            row = self.store.one(
+                "SELECT id, disabled_at FROM users WHERE email = ?", (invite.email,)
+            )
+            if row is not None and row["disabled_at"] is None:
+                raise AccountError("a user with that email already exists; sign in instead")
+            if row is not None:
+                user_id = int(row["id"])
+                self.store.execute(
+                    "UPDATE users SET password_hash = ?, role = ?, disabled_at = NULL, "
+                    "pin_hash = NULL, pin_set_at = NULL WHERE id = ?",
+                    (password_hash, invite.role, user_id),
+                )
+            else:
+                user_id = self._insert_user(invite.email, password_hash, invite.role)
         user = self.get_user(user_id)
         assert user is not None
         return user

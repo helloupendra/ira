@@ -18,7 +18,7 @@ from fastapi.staticfiles import StaticFiles
 
 from ira import __version__
 from ira.accounts import Principal
-from ira.channels import account, admin
+from ira.channels import account, admin, admin_write
 from ira.channels.account import claim_setup
 from ira.channels.deps import (
     SESSION_COOKIE,
@@ -407,6 +407,7 @@ def create_app(runtime: Runtime, *, start_channels: bool = True) -> FastAPI:
     app.include_router(account.router)
     app.include_router(api)
     app.include_router(admin.router)
+    app.include_router(admin_write.router)
 
     if (ADMIN_DIR / "index.html").is_file():
         app.mount("/admin", StaticFiles(directory=ADMIN_DIR, html=True), name="admin")

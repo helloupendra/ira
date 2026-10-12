@@ -229,7 +229,7 @@ class TokenRow(BaseModel):
     revoked_at: float | None
 
 
-# First-run setup (public: it carries its own one-time secret).
+# First-run setup and invitations (public: they carry their own one-time secret).
 
 
 class SetupStatus(BaseModel):
@@ -242,6 +242,69 @@ class SetupOwnerRequest(BaseModel):
     code: str = Field(max_length=64, description="Printed by `ira serve` while no user exists.")
     email: str = Field(max_length=254)
     password: str = Field(max_length=1024)
+
+
+class InviteTokenRequest(BaseModel):
+    token: str = Field(max_length=200)
+
+
+class InviteAcceptRequest(BaseModel):
+    token: str = Field(max_length=200)
+    password: str = Field(max_length=1024)
+
+
+class InviteView(BaseModel):
+    id: str
+    email: str
+    role: str
+    created_by: str
+    created_at: float
+    expires_at: float
+    state: str = Field(description="pending, used, revoked or expired")
+
+
+class PublicInvite(BaseModel):
+    email: str
+    role: str
+    expires_at: float
+
+
+# The signed-in user's own action PIN.
+
+
+class PinStatus(BaseModel):
+    has_pin: bool
+    can_confirm: bool = Field(description="The role has the actions permission.")
+    locked_seconds: int | None = Field(
+        default=None, description="Actions are locked after wrong PINs, for this long."
+    )
+
+
+class PinSetRequest(BaseModel):
+    password: str = Field(max_length=1024, description="Your account password, checked again.")
+    pin: str = Field(min_length=4, max_length=12, pattern=r"^\d{4,12}$")
+
+
+# Console writes.
+
+
+class AdminUserRow(UserView):
+    has_pin: bool
+
+
+class InviteCreateRequest(BaseModel):
+    email: str = Field(max_length=254)
+    role: str
+
+
+class InviteCreated(BaseModel):
+    invite: InviteView
+    token: str = Field(description="Shown once. Only its hash is stored.")
+    path: str = Field(description="Open this path on the server to accept the invitation.")
+
+
+class RoleChange(BaseModel):
+    role: str
 
 
 class ChangeRow(BaseModel):

@@ -1,7 +1,8 @@
-"""First-run setup: the first owner account, guarded by a one-time code.
+"""First-run setup, accepting an invitation, and the signed-in user's own PIN.
 
-The setup routes are public: they carry their own secret, the code printed by
-``ira serve``, and they sign the new owner in with the session cookie.
+Setup and invitations are public routes: each carries its own one-time secret
+(the setup code printed by ``ira serve``, or the invitation token), and each
+signs the new user in with the session cookie.
 """
 
 from __future__ import annotations
@@ -11,12 +12,28 @@ import secrets
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 
 from ira import __version__, changes
-from ira.accounts import AccountError
-from ira.channels.deps import client_ip, get_runtime, start_browser_session
-from ira.channels.schemas import SessionResponse, SetupOwnerRequest, SetupStatus
+from ira.accounts import AccountError, Principal
+from ira.channels.deps import (
+    client_ip,
+    get_principal,
+    get_runtime,
+    require_session,
+    start_browser_session,
+)
+from ira.channels.schemas import (
+    InviteAcceptRequest,
+    InviteTokenRequest,
+    OkResponse,
+    PinSetRequest,
+    PinStatus,
+    PublicInvite,
+    SessionResponse,
+    SetupOwnerRequest,
+    SetupStatus,
+)
 from ira.runtime import Runtime
 
-router = APIRouter(prefix="/v1", tags=["setup"])
+router = APIRouter(prefix="/v1", tags=["setup and account"])
 
 
 def claim_setup(
@@ -72,3 +89,86 @@ def setup_owner(
     runtime: Runtime = Depends(get_runtime),
 ) -> SessionResponse:
     return claim_setup(runtime, request, response, body.code, body.email, body.password)
+
+
+# Invitations.
+
+
+@router.post(
+    "/invites/lookup",
+    response_model=PublicInvite,
+    summary="Public: who an invitation is for, if it is still open",
+)
+def invite_lookup(
+    body: InviteTokenRequest, runtime: Runtime = Depends(get_runtime)
+) -> PublicInvite:
+    invite = runtime.accounts.open_invite(body.token)
+    if invite is None:
+        raise HTTPException(410, detail="this invitation is not valid any more; ask for a new one")
+    return PublicInvite(email=invite.email, role=invite.role, expires_at=invite.expires_at)
+
+
+@router.post(
+    "/invites/accept",
+    response_model=SessionResponse,
+    summary="Public: set a password for an invitation and sign in",
+)
+def invite_accept(
+    body: InviteAcceptRequest,
+    request: Request,
+    response: Response,
+    runtime: Runtime = Depends(get_runtime),
+) -> SessionResponse:
+    try:
+        user = runtime.accounts.accept_invite(body.token, body.password)
+    except AccountError as exc:
+        gone = "not valid any more" in str(exc)
+        raise HTTPException(410 if gone else 400, detail=str(exc)) from None
+    changes.record(
+        runtime.store, f"{user.email} via invite", "user.joined", user.email, after=user.role
+    )
+    return start_browser_session(runtime, request, response, user.id)
+
+
+# The signed-in user's own action PIN.
+
+
+def _pin_status(runtime: Runtime, principal: Principal) -> PinStatus:
+    locked = runtime.guard.locked_until()
+    return PinStatus(
+        has_pin=runtime.guard.has_pin(principal.user.id),
+        can_confirm="actions" in principal.user.permissions,
+        locked_seconds=None if locked is None else max(0, round(locked - runtime.guard.clock())),
+    )
+
+
+@router.get("/me/pin", response_model=PinStatus, summary="Whether you have an action PIN")
+def my_pin(
+    principal: Principal = Depends(get_principal), runtime: Runtime = Depends(get_runtime)
+) -> PinStatus:
+    return _pin_status(runtime, principal)
+
+
+@router.put(
+    "/me/pin",
+    response_model=OkResponse,
+    summary="Set or change your action PIN (needs your password again)",
+)
+def set_my_pin(
+    body: PinSetRequest,
+    request: Request,
+    principal: Principal = Depends(require_session("actions")),
+    runtime: Runtime = Depends(get_runtime),
+) -> OkResponse:
+    limiter = runtime.accounts.limiter
+    key = f"pin-password:{principal.user.id}"
+    if limiter.blocked(key, f"ip:{client_ip(request)}"):
+        raise HTTPException(429, detail="too many wrong passwords; try again in 15 minutes")
+    if not runtime.accounts.check_password(principal.user.id, body.password):
+        limiter.fail(key)
+        raise HTTPException(403, detail="that is not your password")
+    limiter.clear(key)
+    runtime.guard.set_pin(
+        body.pin, user_id=principal.user.id, actor=principal.actor, channel=principal.channel
+    )
+    return OkResponse()

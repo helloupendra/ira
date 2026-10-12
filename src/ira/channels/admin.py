@@ -14,17 +14,18 @@ from ira.accounts import Principal
 from ira.channels.deps import get_runtime, require
 from ira.channels.schemas import (
     ActionRow,
+    AdminUserRow,
     AuditRow,
     CallRow,
     ChangeRow,
     ChannelView,
     ConversationRow,
+    InviteView,
     MessageRow,
     ModelUsage,
     Overview,
     TokenRow,
     ToolDetail,
-    UserView,
 )
 from ira.runtime import Runtime
 
@@ -199,11 +200,32 @@ def audit(
     return [AuditRow(**row) for row in runtime.guard.audit(limit)]
 
 
-@router.get("/users", response_model=list[UserView], summary="Accounts (no password hashes)")
+@router.get("/users", response_model=list[AdminUserRow], summary="Accounts (no password hashes)")
 def users(
     _: Principal = Depends(reader), runtime: Runtime = Depends(get_runtime)
-) -> list[UserView]:
-    return [UserView(**u.public()) for u in runtime.accounts.users()]
+) -> list[AdminUserRow]:
+    return [AdminUserRow(**u.public(), has_pin=u.has_pin) for u in runtime.accounts.users()]
+
+
+def invite_view(runtime: Runtime, invite: Any) -> InviteView:
+    return InviteView(
+        id=invite.id,
+        email=invite.email,
+        role=invite.role,
+        created_by=invite.created_by,
+        created_at=invite.created_at,
+        expires_at=invite.expires_at,
+        state=invite.state(runtime.accounts.clock()),
+    )
+
+
+@router.get(
+    "/users/invites", response_model=list[InviteView], summary="Open invitations (owner only)"
+)
+def invites(
+    _: Principal = Depends(require("users")), runtime: Runtime = Depends(get_runtime)
+) -> list[InviteView]:
+    return [invite_view(runtime, i) for i in runtime.accounts.invites()]
 
 
 @router.get("/tokens", response_model=list[TokenRow], summary="API tokens (no token values)")
