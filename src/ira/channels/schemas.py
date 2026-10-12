@@ -386,6 +386,12 @@ class MessageRow(BaseModel):
     tool_calls: list[ToolCallView] = Field(description="Tools an assistant message called.")
     tool_call_id: str | None = Field(description="For role tool: the call this answers.")
     name: str | None = Field(description="For role tool: the tool's name.")
+    model: str | None = Field(
+        default=None,
+        description="For role assistant: the provider:model that wrote it (each tool round "
+        "can fall back to another). null when no model wrote it (an error or the step limit), "
+        "for other roles, and for messages stored before this field.",
+    )
     action: MessageAction | None = Field(
         default=None,
         description="For a tool result that proposed an action: that action now, with its "

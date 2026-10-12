@@ -56,6 +56,7 @@ class Message:
     name: str | None = None  # tool name on role="tool"
     # Kept with the transcript only; providers never send it.
     action_id: str | None = None  # role="tool": the action this call proposed
+    model: str | None = None  # role="assistant": the provider:model that wrote it
 
     @property
     def text(self) -> str:

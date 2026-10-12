@@ -159,7 +159,8 @@ CREATE TABLE IF NOT EXISTS messages (
     tool_calls      TEXT,
     tool_call_id    TEXT,
     name            TEXT,
-    action_id       TEXT  -- a tool result that proposed an action: that action
+    action_id       TEXT, -- a tool result that proposed an action: that action
+    model           TEXT  -- an assistant message: the provider:model that wrote it
 );
 CREATE INDEX IF NOT EXISTS messages_conversation ON messages (conversation_id, id);
 
@@ -206,6 +207,7 @@ class Store:
         ("sessions", "user_agent", "TEXT"),
         ("messages", "action_id", "TEXT"),
         ("change_log", "channel", "TEXT"),
+        ("messages", "model", "TEXT"),
     )
 
     def _add_missing_columns(self) -> None:

@@ -247,7 +247,7 @@ class Assistant:
 
             if not response.tool_calls:
                 final_text = response.text
-                history.append(Message(role="assistant", content=response.text))
+                history.append(Message(role="assistant", content=response.text, model=model))
                 break
 
             replayed: list[ToolCall] = []
@@ -280,7 +280,9 @@ class Assistant:
                 }
                 if run.pending is not None:
                     yield {"type": "action", "action": run.pending.public()}
-            history.append(Message(role="assistant", content=response.text, tool_calls=replayed))
+            history.append(
+                Message(role="assistant", content=response.text, tool_calls=replayed, model=model)
+            )
             history.extend(results)
         else:
             final_text = "I could not finish that in the allowed number of steps."

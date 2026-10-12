@@ -138,6 +138,10 @@ so the answer does not say whether it exists. Telegram chats and
 conversations that record no user (from before accounts) are not listed
 here; the admin list has them.
 
+An assistant message carries `model`, the `provider:model` that wrote it
+(each tool round can fall back to a different one); it is `null` when no
+model answered, on other roles, and on messages stored before this field.
+
 A tool result that proposed an action carries that action as it stands now,
 in `action` (`MessageAction`: `id`, `tool`, `summary`, `status`,
 `expires_at`). Its `content` keeps what the model was told
