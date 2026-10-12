@@ -1,5 +1,25 @@
 # Changelog
 
+## [Unreleased]
+
+- **`ira init <folder>`** makes a new business folder from templates in the
+  package: a commented `ira.yaml`, a placeholder `tools.py` (one read tool,
+  one action tool), a README and a `.gitignore`. `--provider bedrock` fills
+  in Bedrock fallback chains, Voxtral speech-to-text and Polly (Kajal,
+  `en-IN`). It refuses a folder that is not empty and never writes a secret.
+- **`ira doctor [folder]`** checks one business folder: the config, the data
+  folder, the port, each tool module, one tiny call to each model and to
+  speech-to-text and text-to-speech, the owner's PIN and `public_url`. It
+  exits non-zero on a failure; `--no-models` makes no calls.
+- **`deploy/aws/`**: run several businesses on one small EC2 server with
+  Bedrock and Polly through the instance role and a Cloudflare tunnel.
+  `bootstrap.sh` installs IRA from a git ref and is safe to run again to
+  upgrade; the `ira@.service` template runs one hardened, capped instance
+  per business; `add-business.sh` adds one; plus example tunnel and IAM
+  policy files. The walkthrough is in the deployment guide.
+- The config loads when the working directory cannot be read, and an
+  unreadable `.env` is named in the error.
+
 ## 0.2.0 (2026-10-12)
 
 The admin console, a rebuilt Ira app, and the API behind both.

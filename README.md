@@ -94,6 +94,22 @@ models:
 
 The key goes in your environment or a `.env` file, never in `ira.yaml`.
 
+## Start a business folder
+
+```bash
+ira init ~/ira/shop --business "Example Shop, a hardware store"   # the demo router, no key
+ira init ~/ira/clinic --provider bedrock --port 8811              # Amazon Bedrock and Polly
+ira doctor ~/ira/clinic                                           # is it ready?
+```
+
+`ira init` writes a commented `ira.yaml`, a `tools.py` with one read tool and
+one action tool to replace, and a README, and never a secret. `ira doctor`
+checks the config, the data folder, the port, each tool module, one tiny call
+to each model and voice, the owner's PIN and `public_url`, and exits non-zero
+when anything fails; `--no-models` makes no calls. To run several businesses
+on one small AWS server, see
+[AWS with Bedrock](docs/deployment.md#aws-with-bedrock).
+
 ## Write your own tools
 
 ```python

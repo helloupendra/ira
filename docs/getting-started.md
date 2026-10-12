@@ -133,6 +133,42 @@ Any OpenAI-compatible server works the same way with a `base_url`, including
 local ones (llama.cpp, vLLM, Ollama). See `ira.example.yaml` in the
 repository root for every option.
 
+## Start your own folder
+
+`ira init` makes a new folder for one business: a commented `ira.yaml`, a
+`tools.py` with one read tool and one action tool to replace, a README and a
+`.gitignore`. It refuses a folder that is not empty and never writes a
+secret.
+
+```bash
+ira init ~/ira/shop --business "Example Shop, a hardware store"
+ira init ~/ira/clinic --provider bedrock --port 8811 --public-url https://clinic.example.com
+```
+
+| Option | Default | |
+| --- | --- | --- |
+| `--name` | `Ira` | The assistant's name |
+| `--business` | `your business` | One line about the business, for the model |
+| `--port` | `8765` | Its port on `127.0.0.1` |
+| `--provider` | `demo` | `demo`: the keyword router, no key. `bedrock`: Amazon Bedrock models, Voxtral speech-to-text and Polly speech, signed by your AWS credentials |
+| `--region` | `us-east-1` | The Bedrock Mantle region (bedrock only) |
+| `--voice` | `Kajal` | The Polly voice, Indian English (bedrock only) |
+| `--public-url` | none | The address people open, for the links Ira sends |
+
+Then check it with `ira doctor`:
+
+```bash
+cd ~/ira/shop
+ira doctor --no-models     # config, data folder, port, tools, owner: no calls
+ira serve                  # prints the one-time setup link
+ira doctor                 # once the owner has a PIN: models and voice too
+```
+
+Each check prints `ok`, `warn`, `FAIL` or `skip`, and the command exits
+non-zero when anything failed. It opens the database read-only and never
+creates it or the data folder, so it is safe to run against a live instance.
+Run it as the user that runs IRA.
+
 ## Try the API
 
 ```bash
