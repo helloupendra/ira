@@ -1,0 +1,1 @@
+import{j as e,P as n}from"./index-BS8UvErF.js";function a({id:s}){return e.jsx(n,{title:"Conversation",subtitle:e.jsx("span",{className:"mono",children:s}),children:e.jsx("p",{className:"muted",children:"Coming in this release."})})}export{a as default};

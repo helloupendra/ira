@@ -39,6 +39,27 @@ jobs:
       - run: pip install -e ".[dev,aws,ogg]"
       - run: pytest
 
+  frontend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: admin
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v5
+        with:
+          node-version-file: admin/.nvmrc
+          cache: npm
+          cache-dependency-path: admin/package-lock.json
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test -- --run
+      - run: npm run build
+      # The console build is committed so `pip install` needs no Node. This
+      # proves the committed bundle is the one the source produces.
+      - name: Committed console build matches the source
+        run: git diff --exit-code -- ../src/ira/web/admin
+
   secrets:
     needs: test
     runs-on: ubuntu-latest

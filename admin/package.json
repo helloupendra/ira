@@ -1,0 +1,32 @@
+{
+  "name": "ira-admin",
+  "private": true,
+  "version": "0.2.0",
+  "description": "The IRA admin console, built into src/ira/web/admin and served at /admin.",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit -p tsconfig.json && vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "vitest",
+    "api:types": "openapi-typescript openapi.json -o src/api/schema.d.ts",
+    "screenshots": "node scripts/screenshots.mjs"
+  },
+  "dependencies": {
+    "react": "18.3.1",
+    "react-dom": "18.3.1",
+    "wouter": "3.13.0"
+  },
+  "devDependencies": {
+    "@types/node": "22.20.5",
+    "@types/react": "18.3.31",
+    "@types/react-dom": "18.3.7",
+    "@vitejs/plugin-react": "5.2.0",
+    "openapi-typescript": "7.13.0",
+    "playwright": "1.64.0",
+    "typescript": "5.9.3",
+    "vite": "7.3.7",
+    "vitest": "5.0.3"
+  }
+}
