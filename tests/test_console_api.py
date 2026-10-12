@@ -222,7 +222,7 @@ def test_changing_a_role_is_recorded_before_and_after(client, people):
     latest = changes(client, people)[0]
     assert latest["what"] == "user.role" and latest["target"] == "desk@example.com"
     assert (latest["before"], latest["after"]) == ("staff", "admin")
-    assert latest["actor"] == "owner@example.com via web"
+    assert (latest["actor"], latest["channel"]) == ("owner@example.com", "web")
 
 
 def test_the_last_owner_cannot_be_removed_or_demoted(client, runtime, people):
@@ -546,8 +546,9 @@ def test_actions_show_who_confirmed_and_the_confirm_roles(registry):
         assert done.json()["status"] == "executed"
 
         rows = client.get("/v1/admin/actions", headers=owner).json()
-        assert rows[0]["actor"] == "desk@example.com via web"
-        assert rows[0]["decided_by"] == "owner@example.com via web"
+        assert (rows[0]["actor"], rows[0]["channel"]) == ("desk@example.com", "web")
+        assert rows[0]["decided_by"] == "owner@example.com"
+        assert rows[0]["decided_channel"] == "web"
         security = client.get("/v1/admin/security", headers=owner).json()
         assert security["action_rules"] == [{"tool": "refund", "confirm_roles": ["owner"]}]
         assert security["cookie_samesite"] == "strict"
@@ -768,5 +769,6 @@ def test_only_the_owner_sees_and_ends_everyone_s_sessions(client, people):
     assert client.get("/v1/auth/me", headers=staff).status_code == 401
     assert client.delete(f"/v1/admin/sessions/{staff_id}", headers=owner).status_code == 404
     latest = changes(client, people)[0]
-    assert latest["what"] == "session.revoked" and latest["actor"] == "owner@example.com via web"
+    assert latest["what"] == "session.revoked" and latest["actor"] == "owner@example.com"
+    assert latest["channel"] == "web"
     assert latest["before"] == {"user": "desk@example.com"}

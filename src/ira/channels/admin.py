@@ -15,6 +15,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 
 from ira import changes, overrides
 from ira.accounts import COOKIE_DAYS, PERMISSIONS, ROLE_DESCRIPTIONS, ROLES, TOKEN_SCOPES, Principal
+from ira.changes import split_actor
 from ira.channels.account import current_flag
 from ira.channels.deps import COOKIE_SAMESITE, get_runtime, require
 from ira.channels.schemas import (
@@ -177,11 +178,12 @@ def actions(
     out = []
     for row in rows:
         item = dict(row)
+        item["actor"], item["channel"] = split_actor(row["actor"], row["channel"])
         item["params"] = json.loads(row["params"])
         item["result"] = json.loads(row["result"]) if row["result"] else None
         decided = decisions.get(row["id"])
         if decided:
-            item["decided_by"], item["decided_at"] = decided
+            item["decided_by"], item["decided_channel"], item["decided_at"] = decided
         out.append(ActionRow(**item))
     return out
 
@@ -212,8 +214,8 @@ def action_counts(
 DECISIONS = ("executed", "failed", "cancelled")
 
 
-def _decisions(runtime: Runtime, ids: list[str]) -> dict[str, tuple[str | None, float]]:
-    """Who confirmed or cancelled each action, read back from the audit log."""
+def _decisions(runtime: Runtime, ids: list[str]) -> dict[str, tuple[str | None, str | None, float]]:
+    """Who confirmed or cancelled each action, and on which channel, from the audit log."""
     if not ids:
         return {}
     marks = ",".join("?" for _ in ids)
@@ -222,7 +224,9 @@ def _decisions(runtime: Runtime, ids: list[str]) -> dict[str, tuple[str | None, 
         f"AND outcome IN ({','.join('?' for _ in DECISIONS)}) ORDER BY id",
         (*ids, *DECISIONS),
     )
-    return {row["action_id"]: (row["actor"], row["at"]) for row in rows}
+    return {
+        row["action_id"]: (*split_actor(row["actor"], row["channel"]), row["at"]) for row in rows
+    }
 
 
 def tool_detail(runtime: Runtime, name: str) -> ToolDetail:
@@ -286,7 +290,11 @@ def audit(
     _: Principal = Depends(reader),
     runtime: Runtime = Depends(get_runtime),
 ) -> list[AuditRow]:
-    return [AuditRow(**row) for row in runtime.guard.audit(limit)]
+    out = []
+    for row in runtime.guard.audit(limit):
+        row["actor"], row["channel"] = split_actor(row["actor"], row["channel"])
+        out.append(AuditRow(**row))
+    return out
 
 
 @router.get("/users", response_model=list[AdminUserRow], summary="Accounts (no password hashes)")

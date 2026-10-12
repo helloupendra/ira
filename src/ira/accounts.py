@@ -106,7 +106,8 @@ class Principal:
 
     @property
     def actor(self) -> str:
-        return f"{self.user.email} via {self.channel}"
+        """Who, for the logs: the person's email. The channel is recorded on its own."""
+        return self.user.email
 
 
 def _user(row: Any) -> User:

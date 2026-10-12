@@ -112,7 +112,8 @@ CREATE TABLE IF NOT EXISTS change_log (
     what    TEXT NOT NULL,
     target  TEXT,
     before  TEXT,
-    after   TEXT
+    after   TEXT,
+    channel TEXT
 );
 
 CREATE TABLE IF NOT EXISTS sessions (
@@ -204,6 +205,7 @@ class Store:
         ("users", "pin_set_at", "REAL"),
         ("sessions", "user_agent", "TEXT"),
         ("messages", "action_id", "TEXT"),
+        ("change_log", "channel", "TEXT"),
     )
 
     def _add_missing_columns(self) -> None:

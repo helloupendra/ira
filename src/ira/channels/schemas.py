@@ -388,21 +388,31 @@ class MessageRow(BaseModel):
     )
 
 
+ACTOR = (
+    "Who: the person's email (older rows may hold another name, such as owner or "
+    "telegram:<name>). Never the channel; that is in channel."
+)
+
+
 class ActionRow(BaseModel):
     id: str
     tool: str
     params: dict[str, Any]
     summary: str
     conversation_id: str | None
-    channel: str | None
-    actor: str | None = Field(description="Who proposed it.")
+    channel: str | None = Field(description="Where it was proposed: web, api or telegram.")
+    actor: str | None = Field(description="Who proposed it. " + ACTOR)
     created_at: float
     expires_at: float
     status: str
     result: Any = None
     finished_at: float | None
     decided_by: str | None = Field(
-        default=None, description="Who confirmed or cancelled it, from the audit log."
+        default=None,
+        description="Who confirmed or cancelled it, from the audit log: an email, as actor.",
+    )
+    decided_channel: str | None = Field(
+        default=None, description="Where it was confirmed or cancelled: web, api or telegram."
     )
     decided_at: float | None = None
 
@@ -432,8 +442,8 @@ class AuditRow(BaseModel):
     action_id: str | None
     tool: str | None
     outcome: str
-    actor: str | None
-    channel: str | None
+    actor: str | None = Field(description=ACTOR)
+    channel: str | None = Field(description="web, api, telegram or cli.")
     detail: str | None
 
 
@@ -687,7 +697,12 @@ class SettingsUpdate(BaseModel):
 class ChangeRow(BaseModel):
     id: int
     at: float
-    actor: str
+    actor: str = Field(description=ACTOR)
+    channel: str | None = Field(
+        default=None,
+        description="Where the change was made: web (a signed-in session). Older rows that "
+        "named no channel give it from their actor.",
+    )
     what: str
     target: str | None
     before: Any = None

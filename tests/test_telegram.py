@@ -137,6 +137,8 @@ async def test_a_typed_pin_is_deleted_and_never_sent_to_a_model(
     assert api.sent()[-1].startswith("Done: Refund 9 on order A1")
     assert ledger.refunds == [("A1", 9)]
     assert len(provider.calls) == model_calls_before
+    done = runtime.store.one("SELECT actor, channel FROM audit_log WHERE outcome = 'executed'")
+    assert (done["actor"], done["channel"]) == ("owner@example.com", "telegram")
     every_message_sent_to_models = [m.text for call in provider.calls for m in call["messages"]]
     assert all(PIN not in text for text in every_message_sent_to_models)
 

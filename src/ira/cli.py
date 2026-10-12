@@ -129,7 +129,7 @@ def cmd_pin_set(args: argparse.Namespace) -> int:
         return 1
     # Run on the server itself, so it also lifts a wrong-PIN lock.
     ActionGuard(store, ToolRegistry()).set_pin(
-        pin, user_id=user.id, actor=f"{user.email} via cli", channel="cli", unlock=True
+        pin, user_id=user.id, actor=user.email, channel="cli", unlock=True
     )
     print(f"Action PIN set for {user.email}. Wrong PINs lock actions after 3 tries.")
     return 0

@@ -71,7 +71,7 @@ MAX_RESULT_CHARS = 20_000
 
 
 def _log(runtime: Runtime, who: Principal, what: str, target: str | None, **values: Any) -> None:
-    changes.record(runtime.store, who.actor, what, target, **values)
+    changes.record(runtime.store, who.actor, what, target, channel=who.channel, **values)
 
 
 # Users and invitations (owner only).

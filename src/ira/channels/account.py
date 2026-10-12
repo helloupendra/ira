@@ -74,7 +74,7 @@ def claim_setup(
         status = 409 if not runtime.accounts.needs_owner() else 400
         raise HTTPException(status, detail=str(exc)) from None
     runtime.setup_code = None
-    changes.record(runtime.store, f"{user.email} via setup", "setup.owner", user.email)
+    changes.record(runtime.store, user.email, "setup.owner", user.email, channel="web")
     return start_browser_session(runtime, request, response, user.id)
 
 
@@ -148,7 +148,7 @@ def invite_accept(
         gone = "not valid any more" in str(exc)
         raise HTTPException(410 if gone else 400, detail=str(exc)) from None
     changes.record(
-        runtime.store, f"{user.email} via invite", "user.joined", user.email, after=user.role
+        runtime.store, user.email, "user.joined", user.email, channel="web", after=user.role
     )
     return start_browser_session(runtime, request, response, user.id)
 
@@ -228,6 +228,7 @@ def end_session(
         who.actor,
         "session.revoked",
         session["id"],
+        channel=who.channel,
         before={"user": session["email"]},
     )
     if session["id"] == who.credential_id:
@@ -289,6 +290,7 @@ def end_my_other_sessions(
             principal.actor,
             "session.revoked_others",
             principal.user.email,
+            channel=principal.channel,
             after={"ended": ended},
         )
     return SessionsEnded(ended=ended)

@@ -204,6 +204,15 @@ All need `admin.read` (owner, admin, viewer), from a session or a token.
 | `GET /v1/admin/actions?status=&limit=` | `ActionRow[]`: proposals with parameters, status, result, `actor` (who proposed) and `decided_by` / `decided_at` (who confirmed or cancelled) |
 | `GET /v1/admin/actions/counts?since=` | `ActionCounts`: how many actions stand at each status (`pending`, `executing`, `executed`, `failed`, `cancelled`, `expired`) and `total`, over all time, or proposed at or after `since` (epoch seconds) |
 | `GET /v1/admin/audit?limit=` | `AuditRow[]`: action outcomes and PIN events with actor and channel |
+
+**`actor` is the person, `channel` is where.** In `ActionRow`, `AuditRow`
+and `ChangeRow`, `actor` is the person's email and `channel` is `web`,
+`api`, `telegram` or `cli`; `ActionRow` adds `decided_channel` next to
+`decided_by`. Older rows put the channel into the actor
+(`owner@example.com via web`); reads drop that ending when it names the
+row's channel, and the change log, which had no `channel` column, takes its
+channel from it. An actor that is not an email (`owner` from an early CLI)
+is returned as stored.
 | `GET /v1/admin/changes?limit=&before_id=` | `ChangeRow[]`: the console change log, newest first |
 | `GET /v1/admin/costs?days=30` | `CostDay[]`: calls, failures, tokens and cost per day (server local time) |
 | `GET /v1/admin/tools` | `ToolDetail[]`: kind, JSON schema, `enabled`, and for actions `confirm_roles` |
@@ -236,8 +245,8 @@ handler names (`create_invite`, `test_tool`, ...).
   `admin.write` (owner, admin). Staff and viewers get `403`.
 - **CSRF.** With the cookie, send `X-Ira-Request: 1`. See below.
 - **The change log.** Every successful change writes one row: who
-  (`actor`, e.g. `owner@example.com via web`), what, the target, and the
-  value before and after where there is one. Read it at
+  (`actor`, e.g. `owner@example.com`), where (`channel`, `web`), what, the
+  target, and the value before and after where there is one. Read it at
   `GET /v1/admin/changes`. Secrets (passwords, PINs, tokens, keys) are never
   written to it.
 
