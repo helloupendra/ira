@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Annotated, Any, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, RootModel
 
 CONVERSATION_ID = r"^[A-Za-z0-9_-]{1,64}$"
 
@@ -35,14 +35,128 @@ class ActionView(BaseModel):
     )
 
 
+CALL_ID = (
+    "Unique within the turn: the model's own call id (the transcript's tool_call_id), "
+    "with a suffix such as -2 if the model repeated one."
+)
+CALL_ARGUMENTS = (
+    "The arguments the model passed, as a JSON object; {} when they were not valid JSON."
+)
+CALL_OK = (
+    "False when the call failed: arguments that were not valid JSON or did not fit the "
+    "tool's schema, an unknown or switched-off tool, or an error from the tool. "
+    "Proposing an action is ok."
+)
+CALL_RESULT = (
+    "The result the model was given, as text (usually JSON), cut to its first 500 "
+    'characters. Errors read {"error": "..."}.'
+)
+CALL_TRUNCATED = 'True when result was cut; it then ends with "…".'
+
+
+class AskToolCall(BaseModel):
+    """A tool the model called while answering, and what it got back."""
+
+    id: str = Field(description=CALL_ID)
+    name: str
+    arguments: dict[str, Any] = Field(description=CALL_ARGUMENTS)
+    ok: bool = Field(description=CALL_OK)
+    result: str = Field(description=CALL_RESULT)
+    truncated: bool = Field(description=CALL_TRUNCATED)
+
+
 class AskResponse(BaseModel):
     text: str
     conversation_id: str
     action: ActionView | None = Field(
         default=None, description="An action proposed in this turn, waiting for the PIN."
     )
-    tools_used: list[str] = Field(default_factory=list)
+    tools_used: list[str] = Field(
+        default_factory=list,
+        description="The names of the tools called, in order. Kept for v0.1 clients; "
+        "tool_calls has the details.",
+    )
+    tool_calls: list[AskToolCall] = Field(
+        default_factory=list, description="Each tool call in this turn, in order."
+    )
     model: str | None = None
+
+
+# Server-sent events from POST /v1/ask/stream: one JSON object per `data:` line.
+
+
+class StartEvent(BaseModel):
+    """The turn began."""
+
+    type: Literal["start"]
+    conversation_id: str
+
+
+class ToolEvent(BaseModel):
+    """The model called a tool; a tool_result event with the same id follows."""
+
+    type: Literal["tool"]
+    id: str = Field(description=CALL_ID)
+    name: str
+    arguments: dict[str, Any] = Field(description=CALL_ARGUMENTS)
+
+
+class ToolResultEvent(BaseModel):
+    """A tool call finished."""
+
+    type: Literal["tool_result"]
+    id: str = Field(description="The id of the tool event this answers.")
+    name: str
+    ok: bool = Field(description=CALL_OK)
+    result: str = Field(description=CALL_RESULT)
+    truncated: bool = Field(description=CALL_TRUNCATED)
+
+
+class ActionEvent(BaseModel):
+    """An action was proposed. It waits for a PIN; nothing has run."""
+
+    type: Literal["action"]
+    action: ActionView
+
+
+class DeltaEvent(BaseModel):
+    """More answer text."""
+
+    type: Literal["delta"]
+    text: str
+
+
+class ErrorEvent(BaseModel):
+    """No model could answer. A done event follows."""
+
+    type: Literal["error"]
+    message: str
+
+
+class DoneEvent(BaseModel):
+    """The turn is over. Always the last event."""
+
+    type: Literal["done"]
+    text: str = Field(description="The full answer.")
+    model: str | None = Field(description="provider:model that answered; null if none did.")
+    conversation_id: str
+
+
+class StreamEvent(
+    RootModel[
+        Annotated[
+            StartEvent
+            | ToolEvent
+            | ToolResultEvent
+            | ActionEvent
+            | DeltaEvent
+            | ErrorEvent
+            | DoneEvent,
+            Field(discriminator="type"),
+        ]
+    ]
+):
+    """One server-sent event from POST /v1/ask/stream, told apart by `type`."""
 
 
 class TranscribeResponse(BaseModel):

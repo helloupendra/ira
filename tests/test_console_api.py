@@ -598,3 +598,35 @@ def test_a_proposed_action_says_who_may_confirm_it(registry):
         ).json()
         assert cancelled["action"]["status"] == "cancelled"
         assert cancelled["action"]["confirm_roles"] == ["owner", "admin", "staff"]
+
+
+def test_ask_shows_each_tool_call_with_a_capped_result(registry):
+    @registry.tool
+    def read_notes(day: str) -> str:
+        """Read a day's notes."""
+        return "n" * 2000
+
+    notes = ChatResponse(text="", tool_calls=[ToolCall("c1", "read_notes", '{"day": "today"}')])
+    runtime = make_runtime(provider=ScriptedProvider([notes, "ok"] * 2), registry=registry)
+    people = People(runtime)
+    headers = people.token(people.staff, ["ask"])
+    with TestClient(create_app(runtime, start_channels=False)) as client:
+        reply = client.post("/v1/ask", json={"text": "notes?"}, headers=headers).json()
+        assert reply["tools_used"] == ["read_notes"]
+        (call,) = reply["tool_calls"]
+        assert call["id"] == "c1" and call["arguments"] == {"day": "today"} and call["ok"]
+        assert call["truncated"] and call["result"] == "n" * 500 + "…"
+
+        streamed = client.post("/v1/ask/stream", json={"text": "notes?"}, headers=headers)
+        events = sse_events(streamed)
+        assert [e["type"] for e in events][:3] == ["start", "tool", "tool_result"]
+        tool, result = events[1], events[2]
+        assert tool == {
+            "type": "tool",
+            "id": "c1",
+            "name": "read_notes",
+            "arguments": {"day": "today"},
+        }
+        assert result["id"] == "c1" and result["ok"] is True and result["truncated"] is True
+        assert len(result["result"]) == 501 and result["result"].endswith("…")
+        assert events[-1]["type"] == "done"

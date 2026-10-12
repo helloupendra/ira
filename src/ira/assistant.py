@@ -30,6 +30,9 @@ log = logging.getLogger("ira.assistant")
 
 NAME_SETTING = "assistant.name"
 MAX_TOOL_RESULT_CHARS = 8000
+# A tool's result in the event stream and the ask response: enough to show, not to page.
+RESULT_PREVIEW_CHARS = 500
+CUT_MARK = "…"
 INVALID_JSON = "arguments were not valid JSON"
 
 SYSTEM_PROMPT = """\
@@ -52,6 +55,7 @@ class Reply:
     conversation_id: str
     action: PendingAction | None = None
     tools_used: list[str] = field(default_factory=list)
+    tool_calls: list[dict[str, Any]] = field(default_factory=list)
     model: str | None = None
 
     def public(self) -> dict[str, Any]:
@@ -60,8 +64,19 @@ class Reply:
             "conversation_id": self.conversation_id,
             "action": self.action.public() if self.action else None,
             "tools_used": self.tools_used,
+            "tool_calls": self.tool_calls,
             "model": self.model,
         }
+
+
+@dataclass
+class ToolRun:
+    """One tool call's outcome."""
+
+    content: str  # the result as the model sees it
+    ok: bool
+    call: ToolCall  # the call as it is replayed in the history
+    pending: PendingAction | None = None
 
 
 class Assistant:
@@ -134,6 +149,7 @@ class Assistant:
     ) -> Reply:
         reply = Reply(text="", conversation_id=conversation_id)
         parts: list[str] = []
+        calls: dict[str, dict[str, Any]] = {}
         async for event in self.events(
             text,
             conversation_id=conversation_id,
@@ -148,6 +164,13 @@ class Assistant:
                 reply.action = self.guard.get(event["action"]["id"])
             elif event["type"] == "tool":
                 reply.tools_used.append(event["name"])
+                entry = {"id": event["id"], "name": event["name"], "arguments": event["arguments"]}
+                calls[event["id"]] = {**entry, "ok": False, "result": "", "truncated": False}
+                reply.tool_calls.append(calls[event["id"]])
+            elif event["type"] == "tool_result":
+                calls[event["id"]].update(
+                    ok=event["ok"], result=event["result"], truncated=event["truncated"]
+                )
             elif event["type"] == "done":
                 reply.model = event.get("model")
                 reply.text = event["text"]
@@ -165,7 +188,7 @@ class Assistant:
         user_id: int | None = None,
         stream: bool = True,
     ) -> AsyncIterator[dict[str, Any]]:
-        """Run one user turn, yielding events: delta, tool, action, done, error."""
+        """Run one user turn, yielding events: delta, tool, tool_result, action, done, error."""
         text = text.strip()
         if looks_like_pin(text):
             # A bare PIN typed into chat: keep it away from every model.
@@ -192,6 +215,7 @@ class Assistant:
         tools = self.registry.schemas() or None
         model: str | None = None
         final_text = ""
+        call_ids: set[str] = set()
 
         for _ in range(self.max_tool_rounds):
             messages = [Message(role="system", content=self.system_prompt()), *history]
@@ -229,16 +253,27 @@ class Assistant:
             replayed: list[ToolCall] = []
             results: list[Message] = []
             for call in response.tool_calls:
-                yield {"type": "tool", "name": call.name}
-                content, safe_call, pending = await self._run_tool(
-                    call, conversation_id, channel, actor
-                )
-                replayed.append(safe_call)
+                event_id = _unique(call.id, call_ids)
+                yield {
+                    "type": "tool",
+                    "id": event_id,
+                    "name": call.name,
+                    "arguments": call.parsed_arguments() or {},
+                }
+                run = await self._run_tool(call, conversation_id, channel, actor)
+                replayed.append(run.call)
                 results.append(
-                    Message(role="tool", content=content, tool_call_id=call.id, name=call.name)
+                    Message(role="tool", content=run.content, tool_call_id=call.id, name=call.name)
                 )
-                if pending is not None:
-                    yield {"type": "action", "action": pending.public()}
+                yield {
+                    "type": "tool_result",
+                    "id": event_id,
+                    "name": call.name,
+                    "ok": run.ok,
+                    **_preview(run.content),
+                }
+                if run.pending is not None:
+                    yield {"type": "action", "action": run.pending.public()}
             history.append(Message(role="assistant", content=response.text, tool_calls=replayed))
             history.extend(results)
         else:
@@ -251,22 +286,21 @@ class Assistant:
 
     async def _run_tool(
         self, call: ToolCall, conversation_id: str, channel: str, actor: str
-    ) -> tuple[str, ToolCall, PendingAction | None]:
-        """Run or propose one tool call. Returns (result text, call to replay, proposal)."""
+    ) -> ToolRun:
+        """Run a read tool, or propose an action."""
         arguments = call.parsed_arguments()
         if arguments is None:
             # Replay as {}: providers reject a history holding non-object arguments.
-            return _result({"error": INVALID_JSON}), ToolCall(call.id, call.name, "{}"), None
+            return _failed(INVALID_JSON, ToolCall(call.id, call.name, "{}"))
         safe_call = ToolCall(call.id, call.name, call.replay_arguments())
 
         tool = self.registry.get(call.name)
         if tool is None or not self.registry.is_enabled(call.name):
-            return _result({"error": f"unknown tool '{call.name}'"}), safe_call, None
+            return _failed(f"unknown tool '{call.name}'", safe_call)
         try:
             args = tool.validate(arguments)
         except ValidationError as exc:
-            message = f"invalid arguments: {validation_message(exc)}"
-            return _result({"error": message}), safe_call, None
+            return _failed(f"invalid arguments: {validation_message(exc)}", safe_call)
 
         if tool.kind == "action":
             try:
@@ -274,20 +308,15 @@ class Assistant:
                     tool, args, conversation_id=conversation_id, channel=channel, actor=actor
                 )
             except ToolError as exc:
-                return _result({"error": str(exc)}), safe_call, None
+                return _failed(str(exc), safe_call)
             seconds = round(pending.expires_at - pending.created_at)
-            return (
-                _result(
-                    {
-                        "status": "pending_confirmation",
-                        "summary": pending.summary,
-                        "note": "Nothing has happened yet. The owner must confirm with "
-                        f"their PIN within {seconds} seconds.",
-                    }
-                ),
-                safe_call,
-                pending,
-            )
+            proposal = {
+                "status": "pending_confirmation",
+                "summary": pending.summary,
+                "note": "Nothing has happened yet. The owner must confirm with "
+                f"their PIN within {seconds} seconds.",
+            }
+            return ToolRun(_result(proposal), True, safe_call, pending)
 
         try:
             positional, keywords = tool.call_args(args)
@@ -296,11 +325,11 @@ class Assistant:
             else:
                 value = await asyncio.to_thread(tool.fn, *positional, **keywords)
         except ToolError as exc:
-            return _result({"error": str(exc)}), safe_call, None
+            return _failed(str(exc), safe_call)
         except Exception as exc:
             log.exception("tool %s raised", call.name)
-            return _result({"error": f"the tool failed ({type(exc).__name__})"}), safe_call, None
-        return _result(value), safe_call, None
+            return _failed(f"the tool failed ({type(exc).__name__})", safe_call)
+        return ToolRun(_result(value), True, safe_call)
 
 
 def _result(value: Any) -> str:
@@ -308,3 +337,27 @@ def _result(value: Any) -> str:
     if len(text) > MAX_TOOL_RESULT_CHARS:
         text = text[:MAX_TOOL_RESULT_CHARS] + "... (truncated)"
     return text
+
+
+def _failed(message: str, call: ToolCall) -> ToolRun:
+    return ToolRun(_result({"error": message}), False, call)
+
+
+def _preview(content: str) -> dict[str, Any]:
+    """A tool result short enough for an event: the first 500 characters, then a mark."""
+    if len(content) <= RESULT_PREVIEW_CHARS:
+        return {"result": content, "truncated": False}
+    return {"result": content[:RESULT_PREVIEW_CHARS] + CUT_MARK, "truncated": True}
+
+
+def _unique(call_id: str, seen: set[str]) -> str:
+    """The model's call id, made unique within the turn.
+
+    Some providers number calls afresh each round, or send none at all.
+    """
+    candidate, n = call_id or "call", 1
+    while candidate in seen:
+        n += 1
+        candidate = f"{call_id or 'call'}-{n}"
+    seen.add(candidate)
+    return candidate

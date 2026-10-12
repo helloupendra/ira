@@ -59,12 +59,31 @@ POST /v1/ask
   "conversation_id": "kitchen-tablet",
   "action": null,
   "tools_used": ["find_slots"],
+  "tool_calls": [
+    {"id": "call_1", "name": "find_slots", "arguments": {"day": "2026-10-13"},
+     "ok": true, "result": "{\"slots\": [\"14:00\", \"14:30\"]}", "truncated": false}
+  ],
   "model": "openai:gpt-4o-mini"
 }
 ```
 
 Omit `conversation_id` to start a new conversation; the response returns the
 new id. Conversation ids are private to the user who made them.
+
+`tool_calls` (`AskToolCall[]`) lists each tool the model called, in order:
+
+- `id`: unique within the turn; the model's own call id (the transcript's
+  `tool_call_id`), with a suffix such as `-2` if the model repeated one;
+- `arguments`: what the model passed, as a JSON object (`{}` when it was not
+  valid JSON);
+- `ok`: false when the call failed (bad arguments, an unknown or switched-off
+  tool, or an error from the tool). Proposing an action is ok;
+- `result`: the result the model was given, as text, cut to its first 500
+  characters; `truncated` is then true and the text ends with `…`. An error
+  reads `{"error": "..."}`.
+
+These are results of the caller's own question, which the model has already
+seen. `tools_used` (just the names) stays for v0.1 clients.
 
 When the turn proposed an action, `action` is an `ActionView`:
 
@@ -86,16 +105,21 @@ can't confirm this"). It does not say whether the caller has set a PIN;
 ### Streaming
 
 `POST /v1/ask/stream` takes the same body and answers with server-sent events,
-one JSON object per `data:` line:
+one JSON object per `data:` line. Each is a `StreamEvent` in
+`/v1/openapi.json`, told apart by `type`:
 
 | `type` | Fields | Meaning |
 | --- | --- | --- |
 | `start` | `conversation_id` | the turn began |
-| `tool` | `name` | a tool was called |
-| `action` | `action` | an action was proposed (as above) |
+| `tool` | `id`, `name`, `arguments` | a tool was called; `arguments` is a JSON object |
+| `tool_result` | `id`, `name`, `ok`, `result`, `truncated` | that call (same `id`) finished; `result` is cut at 500 characters, as in `tool_calls` above |
+| `action` | `action` | an action was proposed: an `ActionView` with `confirm_roles` and `can_confirm`, as above |
 | `delta` | `text` | more answer text |
 | `error` | `message` | no model could answer |
-| `done` | `text`, `model`, `conversation_id` | the full answer |
+| `done` | `text`, `model`, `conversation_id` | the full answer; always last |
+
+A `tool_result` follows its `tool` before the next `tool` starts. When a call
+proposes an action, its `action` event comes right after its `tool_result`.
 
 ## Voice
 

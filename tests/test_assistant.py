@@ -179,3 +179,61 @@ async def test_rename_changes_the_system_prompt(registry):
     await runtime.assistant.ask("hello", conversation_id="t")
     assert runtime.assistant.name == "Nova"
     assert sent_messages(provider, 0)[0].text.startswith("You are Nova")
+
+
+async def test_tool_events_carry_the_call_and_a_capped_result(registry):
+    @registry.tool
+    def read_notes(day: str) -> str:
+        """Read a day's notes."""
+        return "n" * 2000
+
+    calls = ChatResponse(
+        text="",
+        tool_calls=[
+            ToolCall("c1", "read_notes", '{"day": "2026-10-13"}'),
+            ToolCall("c1", "order_status", "{oops"),
+        ],
+    )
+    provider = ScriptedProvider([calls, "Here you are."])
+    runtime = make_runtime(provider=provider, registry=registry)
+
+    events = [e async for e in runtime.assistant.events("notes?", conversation_id="t")]
+
+    kinds = [e["type"] for e in events if e["type"] in ("tool", "tool_result")]
+    assert kinds == ["tool", "tool_result", "tool", "tool_result"]
+    tool, result, bad_tool, bad_result = [e for e in events if e["type"].startswith("tool")]
+    assert tool == {
+        "type": "tool",
+        "id": "c1",
+        "name": "read_notes",
+        "arguments": {"day": "2026-10-13"},
+    }
+    assert result["id"] == "c1" and result["ok"] is True and result["truncated"] is True
+    assert len(result["result"]) == 501 and result["result"].endswith("…")
+    # A repeated call id is made unique, and arguments that are not JSON read as {}.
+    assert bad_tool["id"] == bad_result["id"] == "c1-2"
+    assert bad_tool["arguments"] == {}
+    assert bad_result["ok"] is False and bad_result["truncated"] is False
+    assert json.loads(bad_result["result"]) == {"error": INVALID_JSON}
+    # The model still saw the whole result.
+    assert len(sent_messages(provider, 1)[-2].text) == 2000
+
+
+async def test_the_reply_lists_each_tool_call(registry):
+    provider = ScriptedProvider(
+        [
+            tool_call("order_status", '{"order_id": "A1"}'),
+            tool_call("refund", '{"order_id": "A1", "amount": 5}', call_id="c2"),
+            "Proposed.",
+        ]
+    )
+    runtime = make_runtime(provider=provider, registry=registry)
+
+    reply = await runtime.assistant.ask("refund A1 if it shipped", conversation_id="t")
+
+    assert reply.tools_used == ["order_status", "refund"]
+    status, refund = reply.tool_calls
+    assert status["arguments"] == {"order_id": "A1"} and status["ok"] is True
+    assert json.loads(status["result"]) == {"order_id": "A1", "status": "shipped"}
+    assert refund["id"] == "c2" and refund["ok"] is True
+    assert json.loads(refund["result"])["status"] == "pending_confirmation"

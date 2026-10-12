@@ -45,6 +45,7 @@ from ira.channels.schemas import (
     SetupRequest,
     SpeakRequest,
     StatusResponse,
+    StreamEvent,
     ToolView,
     TranscribeResponse,
     UserView,
@@ -212,12 +213,25 @@ async def ask(
     return AskResponse(**data)
 
 
+class EventStream(StreamingResponse):
+    media_type = "text/event-stream"
+
+
 @api.post(
     "/ask/stream",
     tags=["ask"],
     summary="Ask and stream the answer as server-sent events",
-    response_class=StreamingResponse,
-    responses={200: {"content": {"text/event-stream": {}}}},
+    response_class=EventStream,
+    responses={
+        200: {
+            "model": StreamEvent,
+            "description": "Server-sent events. Each `data:` line is one JSON object, a "
+            "StreamEvent: start, then tool / tool_result / action / delta / error events, "
+            "then done.",
+            # Each event is an object, although the body as a whole is text.
+            "content": {"text/event-stream": {"schema": {"type": "object"}}},
+        }
+    },
 )
 async def ask_stream(
     body: AskRequest,
@@ -238,19 +252,16 @@ async def ask_stream(
             if event["type"] == "done":
                 event = {**event, "conversation_id": client_id}
             elif event["type"] == "action":
-                view = action_view(runtime, principal, event["action"])
-                event = {**event, "action": view.model_dump()}
+                event = {**event, "action": action_view(runtime, principal, event["action"])}
             yield _sse(event)
 
-    return StreamingResponse(
-        events(),
-        media_type="text/event-stream",
-        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
-    )
+    return EventStream(events(), headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
 
 
-def _sse(event: dict) -> str:
-    return f"data: {json.dumps(event, default=str)}\n\n"
+def _sse(event: dict[str, Any]) -> str:
+    # Through the typed model, so an event carries exactly its documented fields.
+    data = StreamEvent.model_validate(event).model_dump(mode="json")
+    return f"data: {json.dumps(data)}\n\n"
 
 
 @api.post(
