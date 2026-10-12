@@ -80,6 +80,7 @@ WRITES = [
     ("post", "/v1/admin/tools/order_status/test", {"params": {"order_id": "A1"}}),
     ("post", "/v1/admin/models/test", {"ref": "fake:m"}),
     ("put", "/v1/admin/models/tiers/default", {"order": None}),
+    ("patch", "/v1/admin/settings", {"name": "Sunny"}),
 ]
 
 
@@ -104,6 +105,9 @@ def test_an_admin_cannot_manage_users(client, people):
         response = call(client, method, path, body, headers)
         assert response.status_code == 403, (path, response.status_code)
     assert client.get("/v1/admin/users/invites", headers=headers).status_code == 403
+    # ...but can make the changes an admin is for.
+    response = call(client, "patch", "/v1/admin/settings", {"name": "Sunny"}, headers)
+    assert response.status_code == 200
 
 
 def test_an_api_token_can_never_write(client, people):
@@ -457,3 +461,37 @@ def test_keys_show_presence_never_values(two_model_runtime, monkeypatch):
     assert "value-that-must-not-leak" not in keys.text + models.text
     providers = {p["name"]: p for p in models.json()["providers"]}
     assert providers["spare"]["in_use"] is False and providers["demo"]["auth"] == "none"
+
+
+# Settings.
+
+
+def test_the_name_and_voice_override_the_config_and_reset(client, runtime, people):
+    admin = people.session(people.admin)
+    view = client.get("/v1/admin/settings", headers=admin).json()
+    assert view["name"] == {"value": "Ira", "default": "Ira", "overridden": False, "editable": True}
+
+    changed = client.patch(
+        "/v1/admin/settings", json={"name": "Sunny", "voice": "nova"}, headers=admin
+    ).json()
+    assert changed["name"]["value"] == "Sunny" and changed["name"]["overridden"]
+    assert changed["voice"]["value"] == "nova" and runtime.tts.voice == "nova"
+    assert runtime.assistant.name == "Sunny"
+
+    # Only the field sent changes; null goes back to the config.
+    reset = client.patch("/v1/admin/settings", json={"name": None}, headers=admin).json()
+    assert reset["name"]["value"] == "Ira" and not reset["name"]["overridden"]
+    assert reset["voice"]["value"] == "nova"
+    whats = [c["what"] for c in changes(client, people)[:3]]
+    assert whats == ["settings.name", "settings.voice", "settings.name"]
+
+
+def test_the_voice_cannot_be_set_without_text_to_speech(registry):
+    runtime = make_runtime(registry=registry)
+    people = People(runtime)
+    with TestClient(create_app(runtime, start_channels=False)) as client:
+        admin = people.session(people.admin)
+        view = client.get("/v1/admin/settings", headers=admin).json()
+        assert view["voice"]["editable"] is False
+        response = client.patch("/v1/admin/settings", json={"voice": "nova"}, headers=admin)
+        assert response.status_code == 400

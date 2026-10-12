@@ -5,7 +5,7 @@ role, and writes one row to the change log: who, what, when, and the value
 before and after where there is one.
 
 * Users and invitations need ``users`` (owner only).
-* Tokens, tools and model chains need ``admin.write`` (owner, admin).
+* Tokens, tools, model chains and settings need ``admin.write`` (owner, admin).
 """
 
 from __future__ import annotations
@@ -21,7 +21,7 @@ from pydantic import ValidationError
 
 from ira import changes, overrides
 from ira.accounts import AccountError, LastOwnerError, Principal, parse_scopes
-from ira.channels.admin import invite_view, tool_detail
+from ira.channels.admin import invite_view, settings_view, tool_detail
 from ira.channels.deps import get_runtime, require_session
 from ira.channels.schemas import (
     AdminUserRow,
@@ -31,6 +31,8 @@ from ira.channels.schemas import (
     ModelTestResult,
     OkResponse,
     RoleChange,
+    SettingsUpdate,
+    SettingsView,
     TierOrderRequest,
     TierView,
     TokenCreated,
@@ -307,3 +309,32 @@ def order_tier(
         overridden=overrides.tier_override(runtime, tier) is not None,
         used_by_assistant=tier == runtime.assistant.tier,
     )
+
+
+# Settings.
+
+
+@router.patch(
+    "/settings",
+    response_model=SettingsView,
+    summary="Rename the assistant or choose its voice (null goes back to ira.yaml)",
+)
+def update_settings(
+    body: SettingsUpdate,
+    who: Principal = Depends(writer),
+    runtime: Runtime = Depends(get_runtime),
+) -> SettingsView:
+    try:
+        if "name" in body.model_fields_set:
+            before = runtime.assistant.name
+            after = overrides.set_name(runtime, body.name)
+            if after != before:
+                _log(runtime, who, "settings.name", None, before=before, after=after)
+        if "voice" in body.model_fields_set:
+            before_voice = overrides.current_voice(runtime)
+            after_voice = overrides.set_voice(runtime, body.voice)
+            if after_voice != before_voice:
+                _log(runtime, who, "settings.voice", None, before=before_voice, after=after_voice)
+    except overrides.OverrideError as exc:
+        raise HTTPException(400, detail=str(exc)) from None
+    return settings_view(runtime)

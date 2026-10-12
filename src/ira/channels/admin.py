@@ -28,6 +28,8 @@ from ira.channels.schemas import (
     ModelUsage,
     Overview,
     ProviderView,
+    SettingsView,
+    SettingValue,
     TierView,
     TokenRow,
     ToolDetail,
@@ -261,7 +263,7 @@ def change_log(
     return [ChangeRow(**row) for row in changes.recent(runtime.store, limit, before_id)]
 
 
-# Models and keys.
+# Models, keys and settings.
 
 
 def _auth_mode(cfg: Any) -> str:
@@ -333,3 +335,31 @@ def keys(_: Principal = Depends(reader), runtime: Runtime = Depends(get_runtime)
         KeyView(env=env, used_by=who, present=bool(os.environ.get(env)))
         for env, who in sorted(used.items())
     ]
+
+
+def settings_view(runtime: Runtime) -> SettingsView:
+    tts_on = hasattr(runtime.tts, "voice")
+    return SettingsView(
+        name=SettingValue(
+            value=runtime.assistant.name,
+            default=runtime.settings.assistant.name,
+            overridden=overrides.name_overridden(runtime),
+        ),
+        voice=SettingValue(
+            value=overrides.current_voice(runtime),
+            default=overrides.default_voice(runtime) if tts_on else None,
+            overridden=overrides.voice_overridden(runtime),
+            editable=tts_on,
+        ),
+        business=runtime.settings.assistant.business,
+        tier=runtime.assistant.tier,
+        stt=getattr(runtime.stt, "name", None),
+        tts=getattr(runtime.tts, "name", None),
+    )
+
+
+@router.get("/settings", response_model=SettingsView, summary="Assistant name and voice")
+def settings(
+    _: Principal = Depends(reader), runtime: Runtime = Depends(get_runtime)
+) -> SettingsView:
+    return settings_view(runtime)

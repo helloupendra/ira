@@ -389,6 +389,27 @@ class KeyView(BaseModel):
     present: bool
 
 
+class SettingValue(BaseModel):
+    value: str | None
+    default: str | None
+    overridden: bool
+    editable: bool = True
+
+
+class SettingsView(BaseModel):
+    name: SettingValue
+    voice: SettingValue
+    business: str
+    tier: str
+    stt: str | None
+    tts: str | None
+
+
+class SettingsUpdate(BaseModel):
+    name: str | None = Field(default=None, max_length=64, description="null resets to ira.yaml")
+    voice: str | None = Field(default=None, max_length=64, description="null resets to ira.yaml")
+
+
 class ChangeRow(BaseModel):
     id: int
     at: float

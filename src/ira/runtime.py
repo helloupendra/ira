@@ -18,6 +18,7 @@ from ira.models.fake import RouterProvider
 from ira.models.gateway import Gateway, Price
 from ira.models.http import Auth, BearerAuth, HeaderKeyAuth, HttpClient, NoAuth
 from ira.models.openai_compat import OpenAICompatProvider
+from ira.overrides import DEFAULT_VOICES
 from ira.store import Store
 from ira.tools.actions import ActionGuard
 from ira.tools.loader import load_tool_modules
@@ -226,12 +227,14 @@ def _build_tts(settings: Settings, https: dict[str, HttpClient]) -> TextToSpeech
     if cfg.type == "none":
         return None
     if cfg.type == "fake":
-        return FakeTTS()
+        return FakeTTS(cfg.voice or DEFAULT_VOICES["fake"])
     if cfg.type == "polly":
         return PollyTTS(
-            voice=cfg.voice or "Joanna",
+            voice=cfg.voice or DEFAULT_VOICES["polly"],
             engine=cfg.engine,
             region=cfg.region,
             language_code=cfg.language_code,
         )
-    return OpenAITTS(_voice_http("tts", cfg.provider, https), cfg.model, cfg.voice or "alloy")
+    return OpenAITTS(
+        _voice_http("tts", cfg.provider, https), cfg.model, cfg.voice or DEFAULT_VOICES["openai"]
+    )

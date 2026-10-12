@@ -207,7 +207,8 @@ class FakeSTT:
 class FakeTTS:
     name = "fake"
 
-    def __init__(self) -> None:
+    def __init__(self, voice: str = "demo") -> None:
+        self.voice = voice
         self.spoken: list[str] = []
 
     async def speak(self, text: str) -> bytes:
