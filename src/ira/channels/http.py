@@ -15,8 +15,10 @@ from collections.abc import AsyncIterator
 from fastapi import APIRouter, Depends, FastAPI, HTTPException, Request, Response
 from fastapi.responses import HTMLResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
+from starlette.exceptions import HTTPException as StarletteHTTPException
+from starlette.types import Scope
 
-from ira import __version__
+from ira import __version__, web
 from ira.accounts import Principal
 from ira.channels import account, admin, admin_write
 from ira.channels.account import claim_setup
@@ -49,7 +51,7 @@ from ira.models.base import ProviderError
 from ira.runtime import Runtime
 from ira.voice.audio import AudioError, check_wav, to_mono16k
 from ira.voice.shorten import speakable
-from ira.web import ADMIN_DIR, STATIC_DIR, setup_page
+from ira.web import STATIC_DIR, setup_page
 
 log = logging.getLogger("ira.http")
 
@@ -353,6 +355,20 @@ ADMIN_PLACEHOLDER = """<!doctype html><html lang="en"><head><meta charset="utf-8
 <a href="/v1/docs">/v1/docs</a> (see the <code>admin</code> section).</p></body></html>"""
 
 
+class ConsoleFiles(StaticFiles):
+    """The console's files. A path with no file behind it and no file extension is one of the
+    console's own routes (``/admin/setup``, ``/admin/invite``), so it gets ``index.html`` and the
+    console routes it in the browser. A missing asset still answers 404."""
+
+    async def get_response(self, path: str, scope: Scope) -> Response:
+        try:
+            return await super().get_response(path, scope)
+        except StarletteHTTPException as exc:
+            if exc.status_code != 404 or "." in path.rsplit("/", 1)[-1]:
+                raise
+            return await super().get_response("index.html", scope)
+
+
 def create_app(runtime: Runtime, *, start_channels: bool = True) -> FastAPI:
     @contextlib.asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
@@ -414,8 +430,8 @@ def create_app(runtime: Runtime, *, start_channels: bool = True) -> FastAPI:
     app.include_router(admin.router)
     app.include_router(admin_write.router)
 
-    if (ADMIN_DIR / "index.html").is_file():
-        app.mount("/admin", StaticFiles(directory=ADMIN_DIR, html=True), name="admin")
+    if (web.ADMIN_DIR / "index.html").is_file():
+        app.mount("/admin", ConsoleFiles(directory=web.ADMIN_DIR, html=True), name="admin")
     else:
 
         @app.get("/admin", include_in_schema=False, response_class=HTMLResponse)
