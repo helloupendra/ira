@@ -10,9 +10,9 @@ and on Telegram, by text or voice. It only **proposes** an action; your code
 runs it after the owner confirms with a PIN.
 
 !!! note "Status: alpha"
-    IRA is at v0.1. It runs end to end, and the configuration and API may
-    still change. The admin console arrives in v0.2; the read-only admin API
-    it will use is already here.
+    IRA is at v0.2: the Ira app, the admin console at `/admin` and the API
+    behind them are all in. It runs end to end; the configuration and API may
+    still change before 1.0.
 
 ## What you get
 
@@ -28,6 +28,9 @@ runs it after the owner confirms with a PIN.
   and not to translate, which matters for Hinglish.
 - **A log of every call.** Model, fallbacks tried, seconds, tokens and cost,
   never a key or a prompt.
+- **An admin console.** Today at a glance, every conversation with the data
+  each answer used, every action with who confirmed it, tools, models, users,
+  tokens and cost, on a phone or a laptop.
 - **Runs with no key.** A keyword-routing demo provider makes the example
   clinic work out of the box.
 
@@ -88,7 +91,8 @@ flowchart LR
 
     ---
 
-    Users, roles and tokens; Telegram, voice and backups.
+    Every console screen, then the `ira` command: users, tokens, Telegram,
+    voice and backups.
 
 -   **[Deployment](deployment.md)**
 

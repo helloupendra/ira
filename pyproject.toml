@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "ira-assistant"
-version = "0.1.0"
+version = "0.2.0"
 description = "A self-hosted voice assistant over your own data and tools, with PIN-confirmed actions."
 readme = "README.md"
 license = "MIT"

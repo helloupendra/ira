@@ -28,7 +28,9 @@ src/ira/
     deps.py          bearer/cookie auth, CSRF checks, permission and session-only checks
     schemas.py       request/response models (the OpenAPI document)
     telegram.py      Bot API client, pairing, the bot loop
-  web/static/      the chat page, AudioWorklet recorder, service worker, manifest
+  web/static/      the Ira app: page, script, styles, tokens.css, AudioWorklet recorder,
+                   service worker, manifest and icons
+  web/admin/       the admin console's build (committed; source in admin/ at the repo root)
   assistant.py     the conversation loop
   conversations.py history in SQLite
   accounts.py      users, roles, sessions, API tokens, invitations, sign-in throttling
@@ -122,6 +124,9 @@ second SQLite file.
 - **No SDKs for model providers.** Three small HTTP adapters keep the
   dependency list short and make the wire format testable with
   `httpx.MockTransport`.
-- **No front-end build.** The web chat is plain JavaScript so it can be read
-  and changed without a toolchain. The v0.2 admin console is the place for a
-  framework.
+- **No front-end build for the app.** The Ira app is plain JavaScript so it
+  can be read and changed without a toolchain, and it stays under 10 KB of
+  script. The admin console is React and TypeScript in `admin/`, built with
+  Vite into `src/ira/web/admin/`; the build is committed so `pip install`
+  needs no Node, and CI checks that it matches the source. Both share one
+  tokens file for colour, type and spacing.

@@ -392,7 +392,10 @@ const normal = await chromium.launch({
 });
 const strict = await chromium.launch({ channel: "chrome" }); // real permission prompts: denied
 let failures = 0;
-for (const scene of SCENES) {
+// The console only reads, while the app scenes create proposals and
+// conversations, so the console is shot first and sees clean data.
+const ordered = [...SCENES].sort((a, b) => (a.surface === b.surface ? 0 : a.surface === "console" ? -1 : 1));
+for (const scene of ordered) {
   if (ONLY && !ONLY.some((s) => scene.name.includes(s))) continue;
   if (scene.base === "setup" && !SETUP_BASE) {
     console.log(`${scene.name}: skipped (set IRA_SETUP_BASE to a server with no owner)`);

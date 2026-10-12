@@ -127,9 +127,10 @@ schema the model sees and the validation Ira applies, from the same object.
 
 | Channel | What it does |
 | --- | --- |
-| **Web chat** (`/`) | Streams answers, shows a confirm card with a PIN box, records 16 kHz WAV with an AudioWorklet, speaks replies. Installable as a PWA. |
+| **The Ira app** (`/`) | Tap the voice mark to talk, or type. Streamed answers, each with "How Ira got this"; the PIN card for actions; spoken replies; today's conversations. Installable on a phone. |
 | **HTTP API** (`/v1`) | `POST /v1/ask`, `/v1/ask/stream` (SSE), `/v1/voice/transcribe`, `/v1/voice/speak`, `/v1/actions/{id}/confirm`. OpenAPI at `/v1/docs`. |
-| **Admin API** (`/v1/admin`) | Calls, cost, latency, conversations, actions, tools, channels and the audit log; and, from a signed-in session, user invitations and roles, API tokens, tool switches and tests, model chains and tests, and the assistant's name and voice, each recorded in a change log. The console that uses it arrives in v0.2. |
+| **Admin console** (`/admin`) | Today at a glance, conversations and transcripts, actions, tools, models and voice, channels, users and roles, tokens and security, audit and cost. See below. |
+| **Admin API** (`/v1/admin`) | What the console uses: calls, cost, latency, conversations, actions, tools, channels and the audit log; and, from a signed-in session, invitations and roles, API tokens, tool switches and tests, model chains and tests, settings and sessions, each recorded in a change log. |
 | **Telegram** | Long polling, paired with a one-time code. Text and voice notes in; text, and voice when TTS is set up, out. `/name` renames the assistant. |
 
 Voice: speech-to-text through an OpenAI-compatible chat model with
@@ -137,6 +138,40 @@ Voice: speech-to-text through an OpenAI-compatible chat model with
 through Amazon Polly or OpenAI. Answers are shortened before they are spoken:
 markdown, tables and links are stripped, and a long answer is cut at a
 sentence with "Full details are in the text above."
+
+## The admin console
+
+![The Today screen of the admin console: questions, model calls, cost and latency for the day, a by-model table, actions by status and channel health](docs/images/console-overview-desktop-light.png)
+
+`/admin` is where the owner and the developer run Ira. It is a React app
+built into the package, so `pip install` is all it takes.
+
+- **Setup wizard** on first run, from the one-time link `ira serve` prints:
+  the owner's account, the assistant's name and voice, which model keys the
+  server has, the action PIN, channels.
+- **Today**: questions, model calls, failures, cost, p50 and p95 latency, a
+  by-model table, actions by status and channel health.
+- **Conversations** with the full transcript: every tool call, its
+  arguments and the data it returned.
+- **Actions**: who proposed each one, who confirmed or cancelled it and when,
+  the parameters and the result, and which roles may confirm it.
+- **Tools**: read or action, the schema, an on/off switch, and "Test this
+  tool" for read tools (never for actions).
+- **Models and voice**: each tier's fallback chain, reorderable; provider
+  and key status (set or missing, never the value); "Test this model" with
+  latency; the assistant's name and voice.
+- **Channels**: the web app, the HTTP API, Telegram pairing, and how to
+  install the app on a phone.
+- **Users and roles** (owner only): invite by link, change a role, remove a
+  user, reset a PIN. The last owner cannot be removed or demoted.
+- **Tokens and security**: API tokens with scopes, shown once; signed-in
+  devices; your own PIN; the PIN lock and the rules from `ira.yaml`.
+- **Audit and cost**: the change log (who did what), the action audit log,
+  cost per day and every model call.
+
+Every screen works on a phone, in light and dark, and shows plainly what
+your role cannot do. The design tokens are shared with the Ira app in
+[src/ira/web/static/tokens.css](src/ira/web/static/tokens.css).
 
 ## Safety model
 
@@ -173,9 +208,10 @@ This repository is public, so it guards itself:
     report shows `file:line` with a masked preview, never the match itself.
   - The identity check refuses a commit whose author or committer email is
     not a GitHub no-reply address.
-- CI runs ruff, the tests on Python 3.11 and 3.12, and **gitleaks** over the
-  full history. CI holds no cloud, chat or model credentials: every test uses
-  fakes.
+- CI runs ruff, the tests on Python 3.11 and 3.12, the console's typecheck,
+  tests and build (and checks the committed build matches the source), and
+  **gitleaks** over the full history. CI holds no cloud, chat or model
+  credentials: every test uses fakes.
 - Demo data is fictional: 555-01xx numbers and `example.com` addresses.
 
 ## Built from a production assistant
@@ -200,11 +236,10 @@ over a private operations system. Some lessons from running it are built in:
 
 ## Roadmap
 
-- **v0.2**: an admin console (React + TypeScript at `/admin`) on the admin API;
-  user management from the console; a hands-free wake word; proactive spoken
-  alerts; a Siri Shortcut endpoint; WhatsApp; a Docker image; docs site.
-- **v0.3**: an evaluation harness: scripted conversations scored for tool
-  choice, refusals and answer quality, run against every provider in a tier.
+- **v0.3**: a hands-free wake word; proactive spoken alerts and briefings; a
+  Siri Shortcut endpoint; WhatsApp; a Docker image; an evaluation harness:
+  scripted conversations scored for tool choice, refusals and answer quality,
+  run against every provider in a tier.
 
 ## Project
 

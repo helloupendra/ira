@@ -42,7 +42,7 @@ The last one shows a confirm card. Type the PIN to run it, or Cancel. The
 demo provider matches keywords rather than understanding language; with a
 real model you can talk normally.
 
-## Set up from the browser instead
+## Set up from the browser: the setup wizard
 
 `ira setup` needs a terminal on the server. Without one (a container, a
 service manager), just start `ira serve`. While no account exists it prints
@@ -59,9 +59,26 @@ Ira is listening on http://127.0.0.1:8765  (API docs: /v1/docs)
     until the owner exists. (`ira setup` in a terminal does the same.)
 ```
 
-Open the link, choose the owner's email and password, and you are signed in.
-Until the admin console is built into the package, the link opens the chat
-page at `/` instead, and its setup form asks for the code.
+The link opens the console's setup wizard with the code already filled in.
+Its six steps:
+
+1. **The owner's account**: email and a password of ten characters or more.
+   You are signed in as soon as it is created.
+2. **Name and voice**: what the assistant calls itself, and the
+   text-to-speech voice when one is configured. Both can be changed later
+   under Models & voice.
+3. **Model provider**: which models answer, and whether each provider's key
+   is set in the server's environment. Keys are never typed into the browser:
+   put them in the environment or in `.env` next to `ira.yaml` and restart
+   `ira serve`. The free demo router works with no key at all.
+4. **Action PIN**: your own 4 to 12 digit PIN, which releases actions. It
+   asks for your password again.
+5. **Channels**: the web app, the HTTP API, Telegram pairing and how to
+   install the app on a phone.
+6. **Done**: open Ira, open the console, or invite your staff.
+
+You can close the wizard at any step and come back to `/admin/setup`: it
+remembers where you were. The code itself is only used in step 1.
 
 - The code is only shown where the server's output goes (the terminal, or
   `journalctl -u ira` under systemd), so someone who merely reaches an
@@ -71,9 +88,9 @@ page at `/` instead, and its setup form asks for the code.
   for 15 minutes.
 - On a server bound to `0.0.0.0`, the printed link uses `127.0.0.1`; open the
   same path on your server's address instead.
-
-Then set your action PIN: `ira pin set` on the server, or
-`PUT /v1/me/pin` over the API, which asks for your password again.
+- If the console's files are missing (a source checkout without
+  `src/ira/web/admin`), the link opens the Ira app at `/` instead, and its
+  own setup form asks for the same three things.
 
 ## Action PINs
 
