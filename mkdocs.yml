@@ -1,0 +1,27 @@
+site_name: IRA
+site_description: "Hey Ira: a self-hosted voice assistant over your own data and tools."
+docs_dir: docs
+
+theme:
+  name: material
+
+nav:
+  - Home: index.md
+  - Getting started: getting-started.md
+  - Concepts: concepts.md
+  - Architecture: architecture.md
+  - Admin guide: admin-guide.md
+  - API: api.md
+  - Security: security.md
+  - Deployment: deployment.md
+  - Examples:
+      - Sunrise Dental Clinic: examples/clinic.md
+
+markdown_extensions:
+  - admonition
+  - tables
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
