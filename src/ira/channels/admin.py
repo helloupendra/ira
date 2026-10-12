@@ -19,6 +19,7 @@ from ira.channels.account import current_flag
 from ira.channels.deps import COOKIE_SAMESITE, get_runtime, require
 from ira.channels.schemas import (
     ERRORS,
+    ActionCounts,
     ActionRow,
     ActionRule,
     AdminSessionRow,
@@ -45,6 +46,7 @@ from ira.channels.schemas import (
     ToolDetail,
 )
 from ira.runtime import Runtime
+from ira.tools.actions import ACTION_STATUSES
 
 router = APIRouter(prefix="/v1/admin", tags=["admin"], responses=ERRORS)
 reader = require("admin.read")
@@ -67,6 +69,7 @@ def _percentile(values: list[float], fraction: float) -> float | None:
 def overview(_: Principal = Depends(reader), runtime: Runtime = Depends(get_runtime)) -> Overview:
     since = start_of_today()
     store = runtime.store
+    runtime.guard.expire_overdue()
     calls = store.query("SELECT * FROM calls WHERE at >= ?", (since,))
     latencies = [c["seconds"] for c in calls if c["ok"]]
     models: dict[Any, dict[str, Any]] = {}
@@ -149,6 +152,7 @@ def conversation(
 ) -> list[MessageRow]:
     if not runtime.conversations.exists(conversation_id):
         raise HTTPException(404, detail="no such conversation")
+    runtime.guard.expire_overdue()
     return [MessageRow(**m) for m in runtime.conversations.transcript(conversation_id)]
 
 
@@ -159,6 +163,7 @@ def actions(
     _: Principal = Depends(reader),
     runtime: Runtime = Depends(get_runtime),
 ) -> list[ActionRow]:
+    runtime.guard.expire_overdue()
     if status:
         rows = runtime.store.query(
             "SELECT * FROM pending_actions WHERE status = ? ORDER BY created_at DESC LIMIT ?",
@@ -179,6 +184,28 @@ def actions(
             item["decided_by"], item["decided_at"] = decided
         out.append(ActionRow(**item))
     return out
+
+
+@router.get(
+    "/actions/counts",
+    response_model=ActionCounts,
+    summary="Proposed actions by status, over all time or since a moment",
+)
+def action_counts(
+    since: float | None = Query(
+        None, description="Only actions proposed at or after this (epoch seconds)."
+    ),
+    _: Principal = Depends(reader),
+    runtime: Runtime = Depends(get_runtime),
+) -> ActionCounts:
+    runtime.guard.expire_overdue()
+    rows = runtime.store.query(
+        "SELECT status, COUNT(*) AS n FROM pending_actions WHERE created_at >= ? GROUP BY status",
+        (since if since is not None else float("-inf"),),
+    )
+    counts = {row["status"]: row["n"] for row in rows}
+    by_status = {status: counts.get(status, 0) for status in ACTION_STATUSES}
+    return ActionCounts(since=since, total=sum(counts.values()), **by_status)
 
 
 # Outcomes that are someone's decision; "expired" is the clock's, not a person's.

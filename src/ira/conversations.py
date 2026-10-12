@@ -65,7 +65,7 @@ class Conversations:
             content, calls = _encode(message)
             self.store.execute(
                 "INSERT INTO messages (conversation_id, at, role, content, tool_calls, "
-                "tool_call_id, name) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                "tool_call_id, name, action_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
                 (
                     conversation_id,
                     now,
@@ -74,6 +74,7 @@ class Conversations:
                     calls,
                     message.tool_call_id,
                     message.name,
+                    message.action_id,
                 ),
             )
         turns = sum(1 for m in messages if m.role == "user")
@@ -133,14 +134,30 @@ class Conversations:
         return [dict(r) for r in rows]
 
     def transcript(self, conversation_id: str) -> list[dict[str, Any]]:
+        """Every message, oldest first. A tool result that proposed an action carries
+        that action as it stands now (expire overdue actions before calling this)."""
         rows = self.store.query(
-            "SELECT id, at, role, content, tool_calls, tool_call_id, name FROM messages "
-            "WHERE conversation_id = ? ORDER BY id",
+            "SELECT m.id, m.at, m.role, m.content, m.tool_calls, m.tool_call_id, m.name, "
+            "a.id AS action_id, a.tool AS action_tool, a.summary AS action_summary, "
+            "a.status AS action_status, a.expires_at AS action_expires_at "
+            "FROM messages m LEFT JOIN pending_actions a ON a.id = m.action_id "
+            "WHERE m.conversation_id = ? ORDER BY m.id",
             (conversation_id,),
         )
         out = []
         for row in rows:
-            item = dict(row)
+            item = {k: row[k] for k in ("id", "at", "role", "content", "tool_call_id", "name")}
             item["tool_calls"] = json.loads(row["tool_calls"]) if row["tool_calls"] else []
+            item["action"] = (
+                {
+                    "id": row["action_id"],
+                    "tool": row["action_tool"],
+                    "summary": row["action_summary"],
+                    "status": row["action_status"],
+                    "expires_at": row["action_expires_at"],
+                }
+                if row["action_id"]
+                else None
+            )
             out.append(item)
         return out

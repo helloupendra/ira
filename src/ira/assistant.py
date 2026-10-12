@@ -263,7 +263,13 @@ class Assistant:
                 run = await self._run_tool(call, conversation_id, channel, actor)
                 replayed.append(run.call)
                 results.append(
-                    Message(role="tool", content=run.content, tool_call_id=call.id, name=call.name)
+                    Message(
+                        role="tool",
+                        content=run.content,
+                        tool_call_id=call.id,
+                        name=call.name,
+                        action_id=run.pending.id if run.pending else None,
+                    )
                 )
                 yield {
                     "type": "tool_result",

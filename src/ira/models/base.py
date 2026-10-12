@@ -54,6 +54,8 @@ class Message:
     tool_calls: list[ToolCall] = field(default_factory=list)
     tool_call_id: str | None = None  # set on role="tool"
     name: str | None = None  # tool name on role="tool"
+    # Kept with the transcript only; providers never send it.
+    action_id: str | None = None  # role="tool": the action this call proposed
 
     @property
     def text(self) -> str:

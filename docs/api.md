@@ -130,13 +130,21 @@ its user's own conversations from the web chat and the API:
 | Route | Returns |
 | --- | --- |
 | `GET /v1/conversations?limit=&before=` | `MyConversationRow[]`: `id`, `channel` (`web` or `api`), `started_at`, `last_at`, `turns`, `preview` (the first question, cut to 120 characters); by last activity, newest first. Page with `before`, a `last_at` |
-| `GET /v1/conversations/{id}` | `MessageRow[]`: the messages, with tool calls and tool results, as in the admin transcript |
+| `GET /v1/conversations/{id}` | `MessageRow[]`: the messages, with tool calls and tool results, as in the admin transcript; `404` if it is not yours |
 
 `id` is the `conversation_id` the client sent to `/v1/ask`: send it again to
 continue. Someone else's conversation answers `404`, as an unknown one does,
 so the answer does not say whether it exists. Telegram chats and
 conversations that record no user (from before accounts) are not listed
 here; the admin list has them.
+
+A tool result that proposed an action carries that action as it stands now,
+in `action` (`MessageAction`: `id`, `tool`, `summary`, `status`,
+`expires_at`). Its `content` keeps what the model was told
+(`pending_confirmation`), so read the status from `action`: an expired
+proposal says `expired` there. `action` is `null` on every other message,
+and on proposals stored before this field that could not be matched to
+their action when the database was upgraded.
 
 ## Voice
 
@@ -168,12 +176,20 @@ The PIN is the confirming user's own (set with `PUT /v1/me/pin` or
 | `wrong_pin` | 403 | `attempts_left` before the lock |
 | `not_allowed` | 403 | your role may not confirm this action; no PIN attempt is used |
 | `not_found` | 404 | no such action |
-| `already_done` | 409 | executed, cancelled, expired or failed before |
+| `already_done` | 409 | executed, cancelled or failed before |
 | `no_pin` | 409 | you have not set a PIN yet |
-| `expired` | 410 | past its 120 seconds |
+| `expired` | 410 | past its 120 seconds, whether or not anything had marked it expired yet |
 | `locked` | 423 | too many wrong PINs; `locked_seconds` left |
 
-`POST /v1/actions/{id}/cancel` drops a pending action.
+`POST /v1/actions/{id}/cancel` drops a pending action. Cancelling one past
+its expiry answers `expired` (410) too; nothing changes.
+
+**Expiry is the same everywhere.** A proposal past its `expires_at` is
+marked `expired` before any list, count or transcript is read (its
+`finished_at` is then its `expires_at`), so it never reads as `pending`:
+not in `GET /v1/admin/actions?status=pending`, not in the Overview's
+`actions` counts or `GET /v1/admin/actions/counts`, and not in a
+transcript's `action`.
 
 ## Admin (read-only)
 
@@ -184,8 +200,9 @@ All need `admin.read` (owner, admin, viewer), from a session or a token.
 | `GET /v1/admin/overview` | `Overview`: today's `questions` (user turns stored since the start of today, every channel), model `calls` (one question can make several), failures, cost, tokens, latency p50/p95, per model, actions by status, active conversations, users |
 | `GET /v1/admin/calls?limit=&before_id=` | `CallRow[]`: model calls, newest first, paged by id |
 | `GET /v1/admin/conversations?limit=&before=` | `ConversationRow[]`: by last activity, with a `preview` of the first question |
-| `GET /v1/admin/conversations/{id}` | `MessageRow[]`: messages, with typed `tool_calls` and tool results |
+| `GET /v1/admin/conversations/{id}` | `MessageRow[]`: messages, with typed `tool_calls` and tool results; `404` if unknown |
 | `GET /v1/admin/actions?status=&limit=` | `ActionRow[]`: proposals with parameters, status, result, `actor` (who proposed) and `decided_by` / `decided_at` (who confirmed or cancelled) |
+| `GET /v1/admin/actions/counts?since=` | `ActionCounts`: how many actions stand at each status (`pending`, `executing`, `executed`, `failed`, `cancelled`, `expired`) and `total`, over all time, or proposed at or after `since` (epoch seconds) |
 | `GET /v1/admin/audit?limit=` | `AuditRow[]`: action outcomes and PIN events with actor and channel |
 | `GET /v1/admin/changes?limit=&before_id=` | `ChangeRow[]`: the console change log, newest first |
 | `GET /v1/admin/costs?days=30` | `CostDay[]`: calls, failures, tokens and cost per day (server local time) |

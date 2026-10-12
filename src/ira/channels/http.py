@@ -268,6 +268,7 @@ def my_conversation(
         runtime.conversations.owner(key) != principal.user.id
     ):
         raise HTTPException(404, detail="no such conversation")
+    runtime.guard.expire_overdue()
     return [MessageRow(**m) for m in runtime.conversations.transcript(key)]
 
 

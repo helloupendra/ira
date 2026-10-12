@@ -291,7 +291,10 @@ class Overview(BaseModel):
     latency_p50: float | None
     latency_p95: float | None
     by_model: list[ModelUsage]
-    actions: dict[str, int]
+    actions: dict[str, int] = Field(
+        description="Actions proposed today, by status. A proposal past its expiry counts "
+        "as expired, never pending."
+    )
     conversations: int
     users: int
 
@@ -344,14 +347,36 @@ class ToolCallView(BaseModel):
     arguments: str = Field(description="JSON text exactly as the model produced it.")
 
 
+class MessageAction(BaseModel):
+    """The action a tool call proposed, as it stands now (not as it was then)."""
+
+    id: str
+    tool: str
+    summary: str
+    status: str = Field(
+        description="pending, executing, executed, failed, cancelled or expired. A proposal "
+        "past expires_at reads expired, never pending."
+    )
+    expires_at: float
+
+
 class MessageRow(BaseModel):
     id: int
     at: float
     role: str = Field(description="user, assistant or tool")
-    content: str | None = Field(description="For role tool: the tool's result as JSON text.")
+    content: str | None = Field(
+        description="For role tool: the tool's result as JSON text, exactly as the model saw "
+        "it. A proposal's result always reads pending_confirmation; action has its status now."
+    )
     tool_calls: list[ToolCallView] = Field(description="Tools an assistant message called.")
     tool_call_id: str | None = Field(description="For role tool: the call this answers.")
     name: str | None = Field(description="For role tool: the tool's name.")
+    action: MessageAction | None = Field(
+        default=None,
+        description="For a tool result that proposed an action: that action now, with its "
+        "current status. null for every other message, and for a proposal stored before "
+        "this field whose action could not be matched.",
+    )
 
 
 class ActionRow(BaseModel):
@@ -371,6 +396,25 @@ class ActionRow(BaseModel):
         default=None, description="Who confirmed or cancelled it, from the audit log."
     )
     decided_at: float | None = None
+
+
+class ActionCounts(BaseModel):
+    """Proposed actions by status, over all time or since a moment.
+
+    A proposal past its expiry counts as expired, never pending, here as in
+    every list.
+    """
+
+    since: float | None = Field(
+        description="Only actions proposed at or after this (epoch seconds); null for all time."
+    )
+    total: int = Field(description="Every action counted, whatever its status.")
+    pending: int = Field(default=0, description="Waiting for a PIN, and not yet expired.")
+    executing: int = Field(default=0, description="Confirmed and running right now.")
+    executed: int = Field(default=0, description="Confirmed and ran.")
+    failed: int = Field(default=0, description="Confirmed, ran and failed.")
+    cancelled: int = Field(default=0, description="Dropped by someone before it ran.")
+    expired: int = Field(default=0, description="Nobody confirmed it in time.")
 
 
 class AuditRow(BaseModel):

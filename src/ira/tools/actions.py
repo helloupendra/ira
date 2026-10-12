@@ -8,7 +8,9 @@ it later, once, after the owner confirms with a PIN:
   with it (a guard used without accounts has one installation PIN);
 * an action can be limited to the roles that may confirm it;
 * three wrong PINs in a row lock every action for 15 minutes;
-* a pending action expires after 120 seconds;
+* a pending action expires after 120 seconds. Reads mark overdue ones
+  ``expired`` first (``expire_overdue``), so a list, a count and a confirm
+  never disagree about one;
 * a database compare-and-set moves it from ``pending`` to ``executing``, so
   two confirmations racing each other cannot run it twice;
 * every outcome writes one audit row.
@@ -35,6 +37,9 @@ log = logging.getLogger("ira.actions")
 
 # The installation PIN, used when confirm() is called without a user.
 PIN_SETTING = SHARED_PIN_SETTING
+
+# Where a proposed action can stand. Only "pending" waits for a PIN.
+ACTION_STATUSES = ("pending", "executing", "executed", "failed", "cancelled", "expired")
 
 OutcomeStatus = Literal[
     "executed",
@@ -256,6 +261,26 @@ class ActionGuard:
         row = self.store.one("SELECT * FROM pending_actions WHERE id = ?", (action_id,))
         return _row_to_action(row) if row else None
 
+    def expire_overdue(self) -> int:
+        """Mark every pending action past its expiry as expired. Returns how many.
+
+        Called before anything reads action statuses, so an overdue proposal
+        never reads as pending. ``finished_at`` is the moment it expired.
+        """
+        cursor = self.store.execute(
+            "UPDATE pending_actions SET status = 'expired', finished_at = expires_at "
+            "WHERE status = 'pending' AND expires_at <= ?",
+            (self.clock(),),
+        )
+        return cursor.rowcount
+
+    def _expired(self, pending: PendingAction) -> bool:
+        """Whether this action has expired, marking it so if its time just ran out."""
+        if pending.status == "pending" and self.clock() >= pending.expires_at:
+            self.expire_overdue()
+            pending.status = "expired"
+        return pending.status == "expired"
+
     def latest_pending(self, conversation_id: str) -> PendingAction | None:
         """The newest still-valid proposal in a conversation (used by chat channels)."""
         row = self.store.one(
@@ -296,19 +321,18 @@ class ActionGuard:
         pending = self.get(action_id)
         if pending is None:
             return self._finish(None, "not_found", "No such action.", actor, channel)
-        if pending.status != "pending":
-            return self._finish(
-                pending, "already_done", f"This action is already {pending.status}.", actor, channel
-            )
-        if self.clock() >= pending.expires_at:
-            self._set_status(pending.id, "expired", "pending")
-            pending.status = "expired"
+        if self._expired(pending):
+            # Whether a read marked it already or its time ran out just now.
             return self._finish(
                 pending,
                 "expired",
                 "This action expired. Ask again to re-propose it.",
                 actor,
                 channel,
+            )
+        if pending.status != "pending":
+            return self._finish(
+                pending, "already_done", f"This action is already {pending.status}.", actor, channel
             )
 
         allowed = self.confirm_roles_for(pending.tool)
@@ -352,6 +376,9 @@ class ActionGuard:
         pending = self.get(action_id)
         if pending is None:
             return self._finish(None, "not_found", "No such action.", actor, channel)
+        if self._expired(pending):
+            message = "This action had already expired. Nothing was changed."
+            return self._finish(pending, "expired", message, actor, channel)
         if not self._set_status(pending.id, "cancelled", "pending"):
             current = self.get(pending.id) or pending
             return self._finish(

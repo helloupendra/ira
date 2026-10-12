@@ -59,6 +59,7 @@ CREATE TABLE IF NOT EXISTS pending_actions (
 );
 CREATE INDEX IF NOT EXISTS pending_actions_conversation
     ON pending_actions (conversation_id, created_at);
+CREATE INDEX IF NOT EXISTS pending_actions_status ON pending_actions (status, expires_at);
 
 CREATE TABLE IF NOT EXISTS audit_log (
     id        INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -156,7 +157,8 @@ CREATE TABLE IF NOT EXISTS messages (
     content         TEXT,
     tool_calls      TEXT,
     tool_call_id    TEXT,
-    name            TEXT
+    name            TEXT,
+    action_id       TEXT  -- a tool result that proposed an action: that action
 );
 CREATE INDEX IF NOT EXISTS messages_conversation ON messages (conversation_id, id);
 
@@ -201,13 +203,52 @@ class Store:
         ("users", "pin_hash", "TEXT"),
         ("users", "pin_set_at", "REAL"),
         ("sessions", "user_agent", "TEXT"),
+        ("messages", "action_id", "TEXT"),
     )
 
     def _add_missing_columns(self) -> None:
+        added = set()
         for table, column, declaration in self._ADDED_COLUMNS:
             present = {row["name"] for row in self._conn.execute(f"PRAGMA table_info({table})")}
             if column not in present:
                 self._conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {declaration}")
+                added.add((table, column))
+        if ("messages", "action_id") in added:
+            self._link_old_proposals()
+
+    def _link_old_proposals(self) -> None:
+        """Point tool results stored before ``messages.action_id`` at the actions they proposed.
+
+        A turn's messages are stored together with one ``at``, and the actions
+        it proposed were created during that turn: after the conversation's
+        previous turn was stored. Within a turn, proposals of one tool pair up
+        in order. Anything that does not line up is left unlinked.
+        """
+        rows = self._conn.execute(
+            "SELECT id, conversation_id, at, name FROM messages WHERE role = 'tool' "
+            "AND content LIKE ? ORDER BY id",
+            ('%"pending_confirmation"%',),
+        ).fetchall()
+        turns: dict[tuple[str, float, str], list[int]] = {}
+        for row in rows:
+            turns.setdefault((row["conversation_id"], row["at"], row["name"]), []).append(row["id"])
+        for (conversation, at, tool), message_ids in turns.items():
+            previous = self._conn.execute(
+                "SELECT MAX(at) AS at FROM messages WHERE conversation_id = ? AND at < ?",
+                (conversation, at),
+            ).fetchone()["at"]
+            actions = self._conn.execute(
+                "SELECT id FROM pending_actions WHERE conversation_id = ? AND tool = ? "
+                "AND created_at > ? AND created_at <= ? ORDER BY created_at, rowid",
+                (conversation, tool, -1.0 if previous is None else previous, at),
+            ).fetchall()
+            if len(actions) < len(message_ids):
+                continue
+            # More actions than results: the extra, earlier ones came from a turn never stored.
+            for message_id, action in zip(message_ids, actions[-len(message_ids) :], strict=True):
+                self._conn.execute(
+                    "UPDATE messages SET action_id = ? WHERE id = ?", (action["id"], message_id)
+                )
 
     def adopt_shared_pin(self) -> int:
         """Give a v0.1 installation PIN to every user who could confirm with it.
