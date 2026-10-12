@@ -511,6 +511,10 @@ class ActionGuard:
             (self.clock(), action_id, tool, outcome, actor, channel, detail),
         )
 
-    def audit(self, limit: int = 50) -> list[dict[str, Any]]:
-        rows = self.store.query("SELECT * FROM audit_log ORDER BY id DESC LIMIT ?", (limit,))
+    def audit(self, limit: int = 50, before_id: int | None = None) -> list[dict[str, Any]]:
+        """Audit rows, newest first; ``before_id`` keeps rows older than that id."""
+        rows = self.store.query(
+            "SELECT * FROM audit_log WHERE id < ? ORDER BY id DESC LIMIT ?",
+            (before_id if before_id is not None else 2**62, limit),
+        )
         return [dict(row) for row in rows]

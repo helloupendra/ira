@@ -532,19 +532,35 @@ class Accounts:
         "WHERE s.revoked_at IS NULL AND s.expires_at > ? AND u.disabled_at IS NULL"
     )
 
-    def sessions(self, user_id: int | None = None) -> list[dict[str, Any]]:
-        """Active sessions, most recently used first: one user's, or everyone's.
+    def sessions(
+        self,
+        user_id: int | None = None,
+        *,
+        limit: int | None = None,
+        before: float | None = None,
+        before_id: str | None = None,
+    ) -> list[dict[str, Any]]:
+        """Active sessions, most recently used first (ties by id): one user's, or everyone's.
 
-        Rows carry the session id, never the token or its hash.
+        Page with the last row's ``last_used_at`` as ``before`` and its id as
+        ``before_id``. Rows carry the session id, never the token or its hash.
         """
         sql, params = self._ACTIVE_SESSIONS, [self.clock()]
+        used = "COALESCE(s.last_seen_at, s.created_at)"
         if user_id is not None:
             sql += " AND s.user_id = ?"
             params.append(user_id)
-        rows = self.store.query(
-            sql + " ORDER BY COALESCE(s.last_seen_at, s.created_at) DESC", params
-        )
-        return [dict(r) for r in rows]
+        if before is not None and before_id is not None:
+            sql += f" AND ({used} < ? OR ({used} = ? AND s.id < ?))"
+            params += [before, before, before_id]
+        elif before is not None:
+            sql += f" AND {used} < ?"
+            params.append(before)
+        sql += f" ORDER BY {used} DESC, s.id DESC"
+        if limit is not None:
+            sql += " LIMIT ?"
+            params.append(limit)
+        return [dict(r) for r in self.store.query(sql, params)]
 
     def get_session(self, session_id: str) -> dict[str, Any] | None:
         """An active session by id."""

@@ -105,30 +105,49 @@ class Conversations:
             "UPDATE conversations SET reset_at = ? WHERE id = ?", (self.clock(), conversation_id)
         )
 
+    def get(self, conversation_id: str) -> dict[str, Any] | None:
+        """One conversation's row, as ``recent`` returns them."""
+        rows = self._rows(["c.id = ?"], [conversation_id], 1)
+        return rows[0] if rows else None
+
     def recent(
         self,
         limit: int = 50,
         before: float | None = None,
         *,
+        before_id: str | None = None,
         user_id: int | None = None,
         prefix: str = "",
     ) -> list[dict[str, Any]]:
-        """Conversations by last activity, newest first.
+        """Conversations by last activity, newest first (ties by id, highest first).
 
+        Page with the last row's ``last_at`` as ``before`` and its id as
+        ``before_id``: rows that share a ``last_at`` are then neither skipped
+        nor repeated. ``before`` alone keeps only strictly older rows.
         ``user_id`` keeps one user's; ``prefix`` keeps ids that start with it.
         """
-        where, params = ["c.last_at < ?"], [before if before is not None else float("inf")]
+        where: list[str] = []
+        params: list[Any] = []
+        if before is not None and before_id is not None:
+            where.append("(c.last_at < ? OR (c.last_at = ? AND c.id < ?))")
+            params += [before, before, before_id]
+        elif before is not None:
+            where.append("c.last_at < ?")
+            params.append(before)
         if user_id is not None:
             where.append("c.user_id = ?")
             params.append(user_id)
         if prefix:
             where.append("substr(c.id, 1, ?) = ?")
             params += [len(prefix), prefix]
+        return self._rows(where, params, limit)
+
+    def _rows(self, where: list[str], params: list[Any], limit: int) -> list[dict[str, Any]]:
         rows = self.store.query(
             "SELECT c.*, u.email, (SELECT substr(m.content, 1, 120) FROM messages m "
             "WHERE m.conversation_id = c.id AND m.role = 'user' ORDER BY m.id LIMIT 1) AS preview "
             "FROM conversations c LEFT JOIN users u ON u.id = c.user_id "
-            f"WHERE {' AND '.join(where)} ORDER BY c.last_at DESC LIMIT ?",
+            f"WHERE {' AND '.join(where) or '1'} ORDER BY c.last_at DESC, c.id DESC LIMIT ?",
             (*params, limit),
         )
         return [dict(r) for r in rows]

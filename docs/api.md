@@ -129,7 +129,7 @@ its user's own conversations from the web chat and the API:
 
 | Route | Returns |
 | --- | --- |
-| `GET /v1/conversations?limit=&before=` | `MyConversationRow[]`: `id`, `channel` (`web` or `api`), `started_at`, `last_at`, `turns`, `preview` (the first question, cut to 120 characters); by last activity, newest first. Page with `before`, a `last_at` |
+| `GET /v1/conversations?limit=&before=&before_id=` | `MyConversationRow[]`: `id`, `channel` (`web` or `api`), `started_at`, `last_at`, `turns`, `preview` (the first question, cut to 120 characters); by last activity, newest first. Page with the last row's `last_at` as `before` and its `id` as `before_id`; `X-Has-More` says whether more follow (see [Paging](#paging)) |
 | `GET /v1/conversations/{id}` | `MessageRow[]`: the messages, with tool calls and tool results, as in the admin transcript; `404` if it is not yours |
 
 `id` is the `conversation_id` the client sent to `/v1/ask`: send it again to
@@ -199,20 +199,11 @@ All need `admin.read` (owner, admin, viewer), from a session or a token.
 | --- | --- |
 | `GET /v1/admin/overview` | `Overview`: today's `questions` (user turns stored since the start of today, every channel), model `calls` (one question can make several), failures, cost, tokens, latency p50/p95, per model, actions by status, active conversations, users |
 | `GET /v1/admin/calls?limit=&before_id=` | `CallRow[]`: model calls, newest first, paged by id |
-| `GET /v1/admin/conversations?limit=&before=` | `ConversationRow[]`: by last activity, with a `preview` of the first question |
+| `GET /v1/admin/conversations?limit=&before=&before_id=` | `ConversationRow[]`: by last activity, with a `preview` of the first question |
 | `GET /v1/admin/conversations/{id}` | `MessageRow[]`: messages, with typed `tool_calls` and tool results; `404` if unknown |
-| `GET /v1/admin/actions?status=&limit=` | `ActionRow[]`: proposals with parameters, status, result, `actor` (who proposed) and `decided_by` / `decided_at` (who confirmed or cancelled) |
+| `GET /v1/admin/actions?status=&limit=&before=&before_id=` | `ActionRow[]`: proposals with parameters, status, result, `actor` (who proposed) and `decided_by` / `decided_at` (who confirmed or cancelled) |
 | `GET /v1/admin/actions/counts?since=` | `ActionCounts`: how many actions stand at each status (`pending`, `executing`, `executed`, `failed`, `cancelled`, `expired`) and `total`, over all time, or proposed at or after `since` (epoch seconds) |
-| `GET /v1/admin/audit?limit=` | `AuditRow[]`: action outcomes and PIN events with actor and channel |
-
-**`actor` is the person, `channel` is where.** In `ActionRow`, `AuditRow`
-and `ChangeRow`, `actor` is the person's email and `channel` is `web`,
-`api`, `telegram` or `cli`; `ActionRow` adds `decided_channel` next to
-`decided_by`. Older rows put the channel into the actor
-(`owner@example.com via web`); reads drop that ending when it names the
-row's channel, and the change log, which had no `channel` column, takes its
-channel from it. An actor that is not an email (`owner` from an early CLI)
-is returned as stored.
+| `GET /v1/admin/audit?limit=&before_id=` | `AuditRow[]`: action outcomes and PIN events with actor and channel, newest first |
 | `GET /v1/admin/changes?limit=&before_id=` | `ChangeRow[]`: the console change log, newest first |
 | `GET /v1/admin/costs?days=30` | `CostDay[]`: calls, failures, tokens and cost per day (server local time) |
 | `GET /v1/admin/tools` | `ToolDetail[]`: kind, JSON schema, `enabled`, and for actions `confirm_roles` |
@@ -225,7 +216,46 @@ is returned as stored.
 | `GET /v1/admin/roles` | `RoleView[]`: what each role may do |
 | `GET /v1/admin/tokens` | `TokenRow[]`: API tokens (no token values); `scopes` is comma-separated |
 | `GET /v1/admin/users/invites` | `InviteView[]`: open invitations. Needs `users` (owner) |
-| `GET /v1/admin/sessions` | `AdminSessionRow[]`: every user's active sessions, as in `GET /v1/me/sessions` plus `user_id` and `email`. Needs `users` (owner) |
+| `GET /v1/admin/sessions?limit=&before=&before_id=` | `AdminSessionRow[]`: every user's active sessions, as in `GET /v1/me/sessions` plus `user_id` and `email`. Needs `users` (owner) |
+
+**`actor` is the person, `channel` is where.** In `ActionRow`, `AuditRow`
+and `ChangeRow`, `actor` is the person's email and `channel` is `web`,
+`api`, `telegram` or `cli`; `ActionRow` adds `decided_channel` next to
+`decided_by`. Older rows put the channel into the actor
+(`owner@example.com via web`); reads drop that ending when it names the
+row's channel, and the change log, which had no `channel` column, takes its
+channel from it. An actor that is not an email (`owner` from an early CLI)
+is returned as stored.
+
+### Paging
+
+The lists stay JSON arrays. Every paged list answers with an
+`X-Has-More: true|false` header: the server fetches one row more than
+`limit`, so `true` means another page exists and `false` that this page is
+the last. The header is on `GET /v1/admin/calls`, `/v1/admin/conversations`,
+`/v1/admin/actions`, `/v1/admin/changes`, `/v1/admin/audit`,
+`/v1/admin/sessions`, `/v1/me/sessions` and `/v1/conversations`, and is
+declared on each in `/v1/openapi.json`.
+
+For the next page, send the cursor the last row gives:
+
+| List | Order | Cursor |
+| --- | --- | --- |
+| calls, changes, audit | id, newest first | `before_id` = the last row's `id` |
+| conversations (admin and yours) | `last_at`, newest first, then `id` | `before` = the last row's `last_at` and `before_id` = its `id` |
+| actions | `created_at`, newest first, then `id` | `before` = the last row's `created_at` and `before_id` = its `id` |
+| sessions (yours and everyone's) | `last_used_at`, newest first, then `id` | `before` = the last row's `last_used_at` and `before_id` = its `id` |
+
+With `before` and `before_id` together, rows that share the same moment are
+neither skipped nor repeated. `before` alone still works as it did (only
+strictly older rows) and `before_id` without `before` is ignored on these
+lists. Sessions default to 100 a page (`limit` up to 500); a session's
+`last_used_at` moves each time it is used, so a long walk through sessions
+can see one twice.
+
+IRA answers no cross-origin requests, so it sends no CORS headers. A proxy
+that adds CORS for a console on another origin must list `X-Has-More` in
+`Access-Control-Expose-Headers`, or the browser hides it.
 
 ## Console API
 
@@ -377,10 +407,10 @@ stored it.
 
 | Route | Needs | Returns |
 | --- | --- | --- |
-| `GET /v1/me/sessions` | a session | `SessionView[]`: yours |
+| `GET /v1/me/sessions?limit=&before=&before_id=` | a session | `SessionView[]`: yours, 100 a page, with `X-Has-More` (see [Paging](#paging)) |
 | `DELETE /v1/me/sessions/{id}` | a session | `OkResponse`; `404` if it is not one of your active sessions. Ending the current one also clears the cookie |
 | `POST /v1/me/sessions/revoke-others` | a session | `SessionsEnded`: `ended`, how many of your other sessions were signed out; this one stays |
-| `GET /v1/admin/sessions` | `users` | `AdminSessionRow[]`: everyone's, with `user_id` and `email` |
+| `GET /v1/admin/sessions?limit=&before=&before_id=` | `users` | `AdminSessionRow[]`: everyone's, with `user_id` and `email`, paged the same way |
 | `DELETE /v1/admin/sessions/{id}` | a session with `users` | `OkResponse`; `404` if not active |
 
 An API token cannot list or end sessions, even its own user's. The writes

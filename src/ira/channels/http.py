@@ -33,6 +33,7 @@ from ira.channels.deps import (
     session_body,
     set_session_cookie,
 )
+from ira.channels.paging import HAS_MORE_HEADER, page
 from ira.channels.schemas import (
     CONVERSATION_ID,
     ERRORS,
@@ -226,24 +227,39 @@ async def ask(
     response_model=list[MyConversationRow],
     tags=["ask"],
     summary="Your recent conversations from the web chat and the API",
-    responses=ERRORS,
+    responses={
+        **ERRORS,
+        200: {"description": "One page, newest first", "headers": HAS_MORE_HEADER},
+    },
 )
 def my_conversations(
+    response: Response,
     limit: int = Query(50, ge=1, le=500),
     before: float | None = Query(
-        None, description="Page: only conversations active before this (a last_at)."
+        None, description="Page: only conversations active before this (the last row's last_at)."
+    ),
+    before_id: str | None = Query(
+        None,
+        description="With before: the last row's id, so conversations that share its last_at "
+        "are neither skipped nor repeated. Ignored without before.",
     ),
     principal: Principal = Depends(require("ask")),
     runtime: Runtime = Depends(get_runtime),
 ) -> list[MyConversationRow]:
     prefix = _conversation_key(principal, "")
-    rows = runtime.conversations.recent(limit, before, user_id=principal.user.id, prefix=prefix)
+    rows = runtime.conversations.recent(
+        limit + 1,
+        before,
+        before_id=None if before_id is None else prefix + before_id,
+        user_id=principal.user.id,
+        prefix=prefix,
+    )
     return [
         MyConversationRow(
             **{k: row[k] for k in MyConversationRow.model_fields if k != "id"},
             id=row["id"][len(prefix) :],
         )
-        for row in rows
+        for row in page(rows, limit, response)
     ]
 
 

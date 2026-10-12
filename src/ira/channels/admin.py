@@ -11,13 +11,14 @@ import os
 import statistics
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Response
 
 from ira import changes, overrides
 from ira.accounts import COOKIE_DAYS, PERMISSIONS, ROLE_DESCRIPTIONS, ROLES, TOKEN_SCOPES, Principal
 from ira.changes import split_actor
-from ira.channels.account import current_flag
+from ira.channels.account import SESSIONS_BEFORE, SESSIONS_BEFORE_ID, current_flag
 from ira.channels.deps import COOKIE_SAMESITE, get_runtime, require
+from ira.channels.paging import PAGED, page
 from ira.channels.schemas import (
     ERRORS,
     ActionCounts,
@@ -116,8 +117,20 @@ def overview(_: Principal = Depends(reader), runtime: Runtime = Depends(get_runt
     )
 
 
-@router.get("/calls", response_model=list[CallRow], summary="Model calls, newest first")
+BEFORE_ID_CONVERSATION = (
+    "With before: the last row's id, so rows that share its last_at are neither skipped nor "
+    "repeated. Ignored without before."
+)
+
+
+@router.get(
+    "/calls",
+    response_model=list[CallRow],
+    summary="Model calls, newest first",
+    responses=PAGED,
+)
 def calls(
+    response: Response,
     limit: int = Query(50, ge=1, le=500),
     before_id: int | None = Query(None, description="Page: only calls older than this id."),
     _: Principal = Depends(reader),
@@ -125,21 +138,31 @@ def calls(
 ) -> list[CallRow]:
     rows = runtime.store.query(
         "SELECT * FROM calls WHERE id < ? ORDER BY id DESC LIMIT ?",
-        (before_id if before_id is not None else 2**62, limit),
+        (before_id if before_id is not None else 2**62, limit + 1),
     )
-    return [CallRow(**{**dict(r), "ok": bool(r["ok"])}) for r in rows]
+    return [CallRow(**{**dict(r), "ok": bool(r["ok"])}) for r in page(rows, limit, response)]
 
 
-@router.get("/conversations", response_model=list[ConversationRow], summary="Recent conversations")
+@router.get(
+    "/conversations",
+    response_model=list[ConversationRow],
+    summary="Recent conversations",
+    responses=PAGED,
+)
 def conversations(
+    response: Response,
     limit: int = Query(50, ge=1, le=500),
-    before: float | None = Query(None, description="Page: only conversations active before this."),
+    before: float | None = Query(
+        None, description="Page: only conversations active before this (the last row's last_at)."
+    ),
+    before_id: str | None = Query(None, description=BEFORE_ID_CONVERSATION),
     _: Principal = Depends(reader),
     runtime: Runtime = Depends(get_runtime),
 ) -> list[ConversationRow]:
+    rows = runtime.conversations.recent(limit + 1, before, before_id=before_id)
     return [
         ConversationRow(**{k: r[k] for k in ConversationRow.model_fields})
-        for r in runtime.conversations.recent(limit, before)
+        for r in page(rows, limit, response)
     ]
 
 
@@ -157,23 +180,48 @@ def conversation(
     return [MessageRow(**m) for m in runtime.conversations.transcript(conversation_id)]
 
 
-@router.get("/actions", response_model=list[ActionRow], summary="Proposed actions and outcomes")
+@router.get(
+    "/actions",
+    response_model=list[ActionRow],
+    summary="Proposed actions and outcomes, newest first",
+    responses=PAGED,
+)
 def actions(
+    response: Response,
     status: str | None = Query(None, description="pending, executed, failed, expired, ..."),
     limit: int = Query(50, ge=1, le=500),
+    before: float | None = Query(
+        None, description="Page: only actions proposed before this (the last row's created_at)."
+    ),
+    before_id: str | None = Query(
+        None,
+        description="With before: the last row's id, so actions proposed at the same moment "
+        "are neither skipped nor repeated. Ignored without before.",
+    ),
     _: Principal = Depends(reader),
     runtime: Runtime = Depends(get_runtime),
 ) -> list[ActionRow]:
     runtime.guard.expire_overdue()
+    where: list[str] = []
+    params: list[Any] = []
     if status:
-        rows = runtime.store.query(
-            "SELECT * FROM pending_actions WHERE status = ? ORDER BY created_at DESC LIMIT ?",
-            (status, limit),
-        )
-    else:
-        rows = runtime.store.query(
-            "SELECT * FROM pending_actions ORDER BY created_at DESC LIMIT ?", (limit,)
-        )
+        where.append("status = ?")
+        params.append(status)
+    if before is not None and before_id is not None:
+        where.append("(created_at < ? OR (created_at = ? AND id < ?))")
+        params += [before, before, before_id]
+    elif before is not None:
+        where.append("created_at < ?")
+        params.append(before)
+    rows = page(
+        runtime.store.query(
+            f"SELECT * FROM pending_actions WHERE {' AND '.join(where) or '1'} "
+            "ORDER BY created_at DESC, id DESC LIMIT ?",
+            (*params, limit + 1),
+        ),
+        limit,
+        response,
+    )
     decisions = _decisions(runtime, [row["id"] for row in rows])
     out = []
     for row in rows:
@@ -284,14 +332,21 @@ def channels(
     ]
 
 
-@router.get("/audit", response_model=list[AuditRow], summary="Action audit log, newest first")
+@router.get(
+    "/audit",
+    response_model=list[AuditRow],
+    summary="Action audit log, newest first",
+    responses=PAGED,
+)
 def audit(
+    response: Response,
     limit: int = Query(100, ge=1, le=1000),
+    before_id: int | None = Query(None, description="Page: only rows older than this id."),
     _: Principal = Depends(reader),
     runtime: Runtime = Depends(get_runtime),
 ) -> list[AuditRow]:
     out = []
-    for row in runtime.guard.audit(limit):
+    for row in page(runtime.guard.audit(limit + 1, before_id), limit, response):
         row["actor"], row["channel"] = split_actor(row["actor"], row["channel"])
         out.append(AuditRow(**row))
     return out
@@ -337,11 +392,18 @@ def invites(
     "/sessions",
     response_model=list[AdminSessionRow],
     summary="Every user's signed-in sessions (owner only; no session tokens)",
+    responses=PAGED,
 )
 def sessions(
-    principal: Principal = Depends(require("users")), runtime: Runtime = Depends(get_runtime)
+    response: Response,
+    limit: int = Query(100, ge=1, le=500),
+    before: float | None = Query(None, description=SESSIONS_BEFORE),
+    before_id: str | None = Query(None, description=SESSIONS_BEFORE_ID),
+    principal: Principal = Depends(require("users")),
+    runtime: Runtime = Depends(get_runtime),
 ) -> list[AdminSessionRow]:
-    return [AdminSessionRow(**current_flag(row, principal)) for row in runtime.accounts.sessions()]
+    rows = runtime.accounts.sessions(limit=limit + 1, before=before, before_id=before_id)
+    return [AdminSessionRow(**current_flag(row, principal)) for row in page(rows, limit, response)]
 
 
 @router.get("/tokens", response_model=list[TokenRow], summary="API tokens (no token values)")
@@ -456,14 +518,21 @@ def settings(
 # History.
 
 
-@router.get("/changes", response_model=list[ChangeRow], summary="Console changes, newest first")
+@router.get(
+    "/changes",
+    response_model=list[ChangeRow],
+    summary="Console changes, newest first",
+    responses=PAGED,
+)
 def change_log(
+    response: Response,
     limit: int = Query(100, ge=1, le=1000),
     before_id: int | None = Query(None, description="Page: only changes older than this id."),
     _: Principal = Depends(reader),
     runtime: Runtime = Depends(get_runtime),
 ) -> list[ChangeRow]:
-    return [ChangeRow(**row) for row in changes.recent(runtime.store, limit, before_id)]
+    rows = changes.recent(runtime.store, limit + 1, before_id)
+    return [ChangeRow(**row) for row in page(rows, limit, response)]
 
 
 @router.get("/costs", response_model=list[CostDay], summary="Calls and cost per day")

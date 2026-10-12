@@ -10,7 +10,7 @@ from __future__ import annotations
 import secrets
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException, Request, Response
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 
 from ira import __version__, changes
 from ira.accounts import AccountError, Principal
@@ -22,6 +22,7 @@ from ira.channels.deps import (
     require_session,
     start_browser_session,
 )
+from ira.channels.paging import HAS_MORE_HEADER, page
 from ira.channels.schemas import (
     ErrorDetail,
     InviteAcceptRequest,
@@ -235,19 +236,34 @@ def end_session(
         response.delete_cookie(SESSION_COOKIE, path="/")
 
 
+SESSIONS_BEFORE = "Page: only sessions last used before this (the last row's last_used_at)."
+SESSIONS_BEFORE_ID = (
+    "With before: the last row's id, so sessions last used at the same moment are neither "
+    "skipped nor repeated. Ignored without before."
+)
+
+
 @router.get(
     "/me/sessions",
     response_model=list[SessionView],
     summary="Your signed-in sessions, most recently used first",
-    responses=_errors(e401="Not signed in", e403="An API token: this needs a session"),
+    responses={
+        200: {"description": "One page, newest first", "headers": HAS_MORE_HEADER},
+        **_errors(e401="Not signed in", e403="An API token: this needs a session"),
+    },
 )
 def my_sessions(
-    principal: Principal = Depends(signed_in), runtime: Runtime = Depends(get_runtime)
+    response: Response,
+    limit: int = Query(100, ge=1, le=500),
+    before: float | None = Query(None, description=SESSIONS_BEFORE),
+    before_id: str | None = Query(None, description=SESSIONS_BEFORE_ID),
+    principal: Principal = Depends(signed_in),
+    runtime: Runtime = Depends(get_runtime),
 ) -> list[SessionView]:
-    return [
-        SessionView(**current_flag(row, principal))
-        for row in runtime.accounts.sessions(principal.user.id)
-    ]
+    rows = runtime.accounts.sessions(
+        principal.user.id, limit=limit + 1, before=before, before_id=before_id
+    )
+    return [SessionView(**current_flag(row, principal)) for row in page(rows, limit, response)]
 
 
 @router.delete(
