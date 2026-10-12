@@ -1,0 +1,18 @@
+# /etc/cloudflared/config.yml: one named tunnel, one hostname per business.
+#
+# Each IRA instance listens on 127.0.0.1 only. cloudflared connects out to
+# Cloudflare, so the server needs no inbound port besides SSH, and Cloudflare
+# serves HTTPS (which the browser's microphone requires). cloudflared passes the
+# public Host header through, which IRA's same-origin check needs: do not set
+# originRequest.httpHostHeader. See docs/deployment.md, "AWS with Bedrock".
+
+tunnel: ira # the name (or id) given to `cloudflared tunnel create`
+credentials-file: /etc/cloudflared/TUNNEL-ID.json # written by `tunnel create`
+
+ingress:
+  - hostname: clinic.example.com
+    service: http://127.0.0.1:8811
+  - hostname: shop.example.org
+    service: http://127.0.0.1:8812
+  # Every other hostname: not found. This rule must stay last.
+  - service: http_status:404

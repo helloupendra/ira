@@ -56,7 +56,7 @@ Issues = "https://github.com/helloupendra/ira/issues"
 packages = ["src/ira"]
 
 [tool.hatch.build.targets.sdist]
-include = ["src/ira", "tests", "examples", "docs", "README.md", "LICENSE"]
+include = ["src/ira", "tests", "examples", "docs", "deploy", "README.md", "LICENSE"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

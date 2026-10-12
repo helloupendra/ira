@@ -1,0 +1,22 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "BedrockMantleChatCompletions",
+      "Effect": "Allow",
+      "Action": "bedrock-mantle:CreateInference",
+      "Resource": "arn:aws:bedrock-mantle:us-east-1:*:project/default"
+    },
+    {
+      "Sid": "PollySynthesizeSpeech",
+      "Effect": "Allow",
+      "Action": "polly:SynthesizeSpeech",
+      "Resource": "*",
+      "Condition": {
+        "StringEquals": {
+          "aws:RequestedRegion": "ap-south-1"
+        }
+      }
+    }
+  ]
+}

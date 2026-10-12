@@ -1,0 +1,61 @@
+# One IRA instance per business: ira@clinic runs the folder /srv/ira/clinic.
+# Installed by deploy/aws/bootstrap.sh. See docs/deployment.md, "AWS with Bedrock".
+#
+#   systemctl enable --now ira@clinic     start it now and at every boot
+#   journalctl -u ira@clinic -f           its log, with the one-time setup link
+
+[Unit]
+Description=IRA assistant for %i
+Documentation=https://github.com/helloupendra/ira/blob/main/docs/deployment.md
+After=network-online.target
+Wants=network-online.target
+AssertPathExists=/srv/ira/%i/ira.yaml
+
+[Service]
+Type=simple
+User=ira
+Group=ira
+WorkingDirectory=/srv/ira/%i
+# Optional keys for providers other than the instance role; chmod 600, owned by ira.
+EnvironmentFile=-/srv/ira/%i/.env
+Environment=PYTHONUNBUFFERED=1
+ExecStart=/opt/ira/app/.venv/bin/ira serve
+Restart=on-failure
+RestartSec=5
+
+# Several businesses share one small server: cap each one.
+MemoryMax=400M
+CPUQuota=50%
+
+# Hardening. The whole file system is read-only except this business's folder,
+# and the other businesses' folders (their data and .env) are not visible at all.
+NoNewPrivileges=true
+ProtectSystem=strict
+ReadWritePaths=/srv/ira/%i
+TemporaryFileSystem=/srv/ira:ro
+BindPaths=/srv/ira/%i
+ProtectHome=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectKernelLogs=true
+ProtectControlGroups=true
+ProtectClock=true
+ProtectHostname=true
+RestrictSUIDSGID=true
+RestrictRealtime=true
+RestrictNamespaces=true
+LockPersonality=true
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+UMask=0027
+
+# The network stays on, on purpose. botocore gets the instance role's
+# short-lived credentials from the instance metadata service (169.254.169.254)
+# over HTTP and keeps them in memory; nothing is read from or written to disk.
+# Do not add PrivateNetwork=, IPAddressDeny= or drop AF_INET below.
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+
+[Install]
+WantedBy=multi-user.target
