@@ -1,0 +1,33 @@
+# Secrets and local configuration
+.env*
+!.env.example
+*.pem
+*.key
+ira.yaml
+!examples/**/ira.yaml
+
+# Runtime data: SQLite databases, logs, recordings
+data/
+logs/
+*.db
+*.db-journal
+*.sqlite*
+
+# Python
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+build/
+dist/
+
+# Tooling and editors
+node_modules/
+.DS_Store
+.idea/
+.vscode/
