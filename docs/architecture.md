@@ -80,7 +80,7 @@ sequenceDiagram
     A->>M: tool result: "pending_confirmation, nothing has happened yet"
     M-->>U: "I've proposed: Cancel appointment #3 ... It needs your PIN."
     U->>Q: confirm(id, PIN)  (web card, API, or a typed PIN on Telegram)
-    Q->>Q: locked? expired? PBKDF2 verify; UPDATE ... WHERE status='pending'
+    Q->>Q: locked? expired? PBKDF2 verify, then UPDATE ... WHERE status='pending'
     Q->>F: cancel_appointment(id=3)  (exactly once)
     F-->>Q: result
     Q-->>U: "Done: Cancel appointment #3 ..."  + audit "executed"
