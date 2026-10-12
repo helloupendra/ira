@@ -221,7 +221,7 @@ All need `admin.read` (owner, admin, viewer), from a session or a token.
 | `GET /v1/admin/roles` | `RoleView[]`: what each role may do |
 | `GET /v1/admin/tokens` | `TokenRow[]`: API tokens (no token values); `scopes` is comma-separated |
 | `GET /v1/admin/users/invites` | `InviteView[]`: open invitations. Needs `users` (owner) |
-| `GET /v1/admin/sessions?limit=&before=&before_id=` | `AdminSessionRow[]`: every user's active sessions, as in `GET /v1/me/sessions` plus `user_id` and `email`. Needs `users` (owner) |
+| `GET /v1/admin/sessions?limit=&before=&before_id=` | `AdminSessionRow[]`: every user's active sessions, as in `GET /v1/me/sessions` plus `user_id`, `email` and `role`. Needs `users` (owner) |
 
 **`actor` is the person, `channel` is where.** In `ActionRow`, `AuditRow`
 and `ChangeRow`, `actor` is the person's email and `channel` is `web`,
@@ -401,21 +401,26 @@ expired), most recently used first, as `SessionView`:
 ```json
 {"id": "ses_9b1c...", "created_at": 1791800000.0, "last_used_at": 1791803600.0,
  "expires_at": 1793009600.0, "current": true,
- "user_agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 14_6) Firefox/131.0"}
+ "user_agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 14_6) Firefox/131.0",
+ "device": "Firefox on macOS"}
 ```
 
 `id` names the session; it is not a credential, and the session token and
 its hash never appear. `current` marks the session making the request.
 `user_agent` is the browser's `User-Agent` at sign-in, cut to 200
 characters, and `null` when none was sent or the session started before IRA
-stored it.
+stored it. `device` is a short label the server reads from it: the browser
+and the system (`Chrome on macOS`, `Safari on iPhone`, `Samsung Internet on
+Android`), a known client (`curl`, `Python (httpx)`), or the name a client
+gives itself; `null` without a `user_agent`. IRA keeps no client IP
+addresses for sessions.
 
 | Route | Needs | Returns |
 | --- | --- | --- |
 | `GET /v1/me/sessions?limit=&before=&before_id=` | a session | `SessionView[]`: yours, 100 a page, with `X-Has-More` (see [Paging](#paging)) |
 | `DELETE /v1/me/sessions/{id}` | a session | `OkResponse`; `404` if it is not one of your active sessions. Ending the current one also clears the cookie |
 | `POST /v1/me/sessions/revoke-others` | a session | `SessionsEnded`: `ended`, how many of your other sessions were signed out; this one stays |
-| `GET /v1/admin/sessions?limit=&before=&before_id=` | `users` | `AdminSessionRow[]`: everyone's, with `user_id` and `email`, paged the same way |
+| `GET /v1/admin/sessions?limit=&before=&before_id=` | `users` | `AdminSessionRow[]`: everyone's, with `user_id`, `email` and `role`, paged the same way |
 | `DELETE /v1/admin/sessions/{id}` | a session with `users` | `OkResponse`; `404` if not active |
 
 An API token cannot list or end sessions, even its own user's. The writes

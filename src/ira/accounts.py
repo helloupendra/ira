@@ -527,7 +527,7 @@ class Accounts:
         return cursor.rowcount == 1
 
     _ACTIVE_SESSIONS = (
-        "SELECT s.id, s.user_id, u.email, s.created_at, s.last_seen_at AS last_used_at, "
+        "SELECT s.id, s.user_id, u.email, u.role, s.created_at, s.last_seen_at AS last_used_at, "
         "s.expires_at, s.user_agent FROM sessions s JOIN users u ON u.id = s.user_id "
         "WHERE s.revoked_at IS NULL AND s.expires_at > ? AND u.disabled_at IS NULL"
     )

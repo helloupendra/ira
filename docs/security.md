@@ -42,6 +42,16 @@ on its own it can never change anything.
   SameSite=Strict cookie, marked Secure over HTTPS. Each user can list and
   end their own sessions, or all but the current one; the owner can end
   anyone's. Lists show a separate session id, never the token or its hash.
+- IRA stores no client IP addresses: not with sessions, not in the audit
+  or change logs, nowhere in its database. A session keeps the browser's
+  `User-Agent` (cut to 200 characters) so people can tell their devices
+  apart, and the server reads a short label such as "Chrome on macOS" from
+  it. This is a privacy choice: an address says where someone was, which a
+  list of sessions does not need. Sign-in throttling counts recent failures
+  per address in memory only; they stop counting after 15 minutes and a
+  restart forgets them. The web server's access log, which `ira serve`
+  prints to the console, does show each request's address; whatever runs the
+  server (systemd, Docker) decides whether that output is kept.
 - CSRF: cookie-authenticated requests that change state must carry
   `X-Ira-Request: 1`, a header a cross-site page cannot add without a CORS
   preflight that IRA never allows. They are also refused when `Origin` names

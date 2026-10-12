@@ -38,6 +38,7 @@ from ira.channels.schemas import (
     SetupStatus,
 )
 from ira.runtime import Runtime
+from ira.useragent import device_label
 
 router = APIRouter(prefix="/v1", tags=["setup and account"])
 signed_in = require_session()
@@ -215,7 +216,12 @@ def set_my_pin(
 
 
 def current_flag(row: dict[str, Any], principal: Principal) -> dict[str, Any]:
-    return {**row, "current": row["id"] == principal.credential_id}
+    """A session row as the API shows it: which one is the caller's, and a device label."""
+    return {
+        **row,
+        "current": row["id"] == principal.credential_id,
+        "device": device_label(row.get("user_agent")),
+    }
 
 
 def end_session(

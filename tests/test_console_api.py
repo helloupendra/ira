@@ -704,7 +704,9 @@ def test_people_see_and_end_their_own_sessions(client, runtime, people):
         "expires_at",
         "current",
         "user_agent",
+        "device",
     }
+    assert laptop["device"] == "Firefox on macOS"
     assert "ira_s_" not in listed.text and "token" not in listed.text
     phone_id = current_session_id(client, phone)
     assert phone_id != laptop["id"]
@@ -762,6 +764,7 @@ def test_only_the_owner_sees_and_ends_everyone_s_sessions(client, people):
     rows = {r["id"]: r for r in listed.json()}
     assert rows[staff_id]["email"] == "desk@example.com" and not rows[staff_id]["current"]
     assert rows[staff_id]["user_id"] == people.staff.id
+    assert rows[staff_id]["role"] == "staff"
     assert sum(r["current"] for r in rows.values()) == 1
     assert "ira_s_" not in listed.text
 

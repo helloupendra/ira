@@ -589,11 +589,17 @@ class SessionView(BaseModel):
         description="The browser's User-Agent at sign-in, cut to 200 characters; "
         "null when none was sent or the session is older than this field.",
     )
+    device: str | None = Field(
+        default=None,
+        description='A short label read from user_agent on the server, such as "Chrome on '
+        'macOS", "Safari on iPhone" or "curl"; null when there is no user_agent to read.',
+    )
 
 
 class AdminSessionRow(SessionView):
     user_id: int
     email: str
+    role: str = Field(description="That user's role now: owner, admin, staff or viewer.")
 
 
 class SessionsEnded(BaseModel):
