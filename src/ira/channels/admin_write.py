@@ -5,18 +5,23 @@ role, and writes one row to the change log: who, what, when, and the value
 before and after where there is one.
 
 * Users and invitations need ``users`` (owner only).
-* Tokens need ``admin.write`` (owner, admin).
+* Tokens and tools need ``admin.write`` (owner, admin).
 """
 
 from __future__ import annotations
 
+import asyncio
+import inspect
+import json
+import time
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException
+from pydantic import ValidationError
 
-from ira import changes
+from ira import changes, overrides
 from ira.accounts import AccountError, LastOwnerError, Principal, parse_scopes
-from ira.channels.admin import invite_view
+from ira.channels.admin import invite_view, tool_detail
 from ira.channels.deps import get_runtime, require_session
 from ira.channels.schemas import (
     AdminUserRow,
@@ -26,12 +31,20 @@ from ira.channels.schemas import (
     RoleChange,
     TokenCreated,
     TokenCreateRequest,
+    ToolDetail,
+    ToolSwitch,
+    ToolTestRequest,
+    ToolTestResult,
 )
 from ira.runtime import Runtime
+from ira.tools.registry import ToolError, validation_message
 
 router = APIRouter(prefix="/v1/admin", tags=["admin: changes"])
 owner = require_session("users")
 writer = require_session("admin.write")
+
+TOOL_TEST_SECONDS = 30
+MAX_RESULT_CHARS = 20_000
 
 
 def _log(runtime: Runtime, who: Principal, what: str, target: str | None, **values: Any) -> None:
@@ -160,3 +173,76 @@ def revoke_token(
         before={"label": row["label"], "owner": row["email"], "scopes": row["scopes"]},
     )
     return OkResponse()
+
+
+# Tools.
+
+
+def _tool_or_404(runtime: Runtime, name: str) -> Any:
+    tool = runtime.registry.get(name)
+    if tool is None:
+        raise HTTPException(404, detail="no such tool")
+    return tool
+
+
+@router.patch("/tools/{name}", response_model=ToolDetail, summary="Switch a tool on or off")
+def switch_tool(
+    name: str,
+    body: ToolSwitch,
+    who: Principal = Depends(writer),
+    runtime: Runtime = Depends(get_runtime),
+) -> ToolDetail:
+    _tool_or_404(runtime, name)
+    before = runtime.registry.is_enabled(name)
+    overrides.set_tool_enabled(runtime, name, body.enabled)
+    if before != body.enabled:
+        _log(runtime, who, "tool.enabled", name, before=before, after=body.enabled)
+    return tool_detail(runtime, name)
+
+
+def _jsonable(value: Any) -> Any:
+    text = json.dumps(value, default=str)
+    if len(text) > MAX_RESULT_CHARS:
+        return text[:MAX_RESULT_CHARS] + "... (truncated)"
+    return json.loads(text)
+
+
+@router.post(
+    "/tools/{name}/test",
+    response_model=ToolTestResult,
+    summary="Run a read tool with test parameters (never an action)",
+    responses={409: {"description": "The tool is an action; actions only run after a PIN."}},
+)
+async def test_tool(
+    name: str,
+    body: ToolTestRequest,
+    who: Principal = Depends(writer),
+    runtime: Runtime = Depends(get_runtime),
+) -> ToolTestResult:
+    tool = _tool_or_404(runtime, name)
+    if tool.kind != "read":
+        raise HTTPException(
+            409, detail="action tools cannot be tested here; they only run after a PIN"
+        )
+    _log(runtime, who, "tool.tested", name, after=body.params)
+    started = time.monotonic()
+    try:
+        args = tool.validate(body.params)
+        positional, keywords = tool.call_args(args)
+        if inspect.iscoroutinefunction(tool.fn):
+            call = tool.fn(*positional, **keywords)
+        else:
+            call = asyncio.to_thread(tool.fn, *positional, **keywords)
+        value = await asyncio.wait_for(call, timeout=TOOL_TEST_SECONDS)
+    except ValidationError as exc:
+        error = f"invalid parameters: {validation_message(exc)}"
+    except ToolError as exc:
+        error = str(exc)
+    except TimeoutError:
+        error = f"no result in {TOOL_TEST_SECONDS} seconds"
+    except Exception as exc:
+        error = f"the tool raised {type(exc).__name__}"
+    else:
+        seconds = round(time.monotonic() - started, 3)
+        return ToolTestResult(ok=True, seconds=seconds, result=_jsonable(value))
+    return ToolTestResult(ok=False, seconds=round(time.monotonic() - started, 3), error=error)

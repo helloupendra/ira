@@ -7,6 +7,8 @@ from fastapi.testclient import TestClient
 
 from ira.channels.http import create_app
 from ira.models.fake import ScriptedProvider
+from ira.overrides import apply as apply_overrides
+from ira.tools.registry import ToolRegistry
 from ira.voice.providers import FakeTTS
 
 from .conftest import FAST_PIN_ITERATIONS, make_runtime
@@ -67,6 +69,8 @@ WRITES = [
     ("post", "/v1/admin/users/3/reset-pin", None),
     ("post", "/v1/admin/tokens", {"label": "x", "scopes": ["ask"]}),
     ("delete", "/v1/admin/tokens/tok_x", None),
+    ("patch", "/v1/admin/tools/order_status", {"enabled": False}),
+    ("post", "/v1/admin/tools/order_status/test", {"params": {"order_id": "A1"}}),
 ]
 
 
@@ -282,3 +286,67 @@ def test_token_scopes_are_checked(client, people):
         body = {"label": "x", "scopes": scopes}
         response = client.post("/v1/admin/tokens", json=body, headers=admin)
         assert response.status_code in (400, 422), scopes
+
+
+# Tools.
+
+
+def test_switching_a_tool_off_hides_it_from_the_model_and_persists(client, runtime, people):
+    admin = people.session(people.admin)
+    switched = client.patch(
+        "/v1/admin/tools/order_status", json={"enabled": False}, headers=admin
+    ).json()
+    assert switched["enabled"] is False
+    assert "order_status" not in [s["name"] for s in runtime.registry.schemas()]
+    names = [t["name"] for t in client.get("/v1/info", headers=admin).json()["tools"]]
+    assert "order_status" not in names
+
+    # A fresh registry picks the switch up from the database.
+    fresh = ToolRegistry()
+
+    @fresh.tool
+    def order_status(order_id: str) -> dict:
+        """Look up an order."""
+        return {}
+
+    again = make_runtime(store=runtime.store, registry=fresh)
+    apply_overrides(again)
+    assert not fresh.is_enabled("order_status")
+
+    client.patch("/v1/admin/tools/order_status", json={"enabled": True}, headers=admin)
+    assert runtime.registry.is_enabled("order_status")
+    whats = [(c["what"], c["after"]) for c in changes(client, people)[:2]]
+    assert whats == [("tool.enabled", True), ("tool.enabled", False)]
+    missing = client.patch("/v1/admin/tools/nope", json={"enabled": False}, headers=admin)
+    assert missing.status_code == 404
+
+
+def test_a_read_tool_can_be_tested_but_an_action_never(client, people, ledger):
+    admin = people.session(people.admin)
+    ok = client.post(
+        "/v1/admin/tools/order_status/test", json={"params": {"order_id": "A1"}}, headers=admin
+    ).json()
+    assert ok["ok"] is True and ok["result"] == {"order_id": "A1", "status": "shipped"}
+
+    invalid = client.post(
+        "/v1/admin/tools/order_status/test", json={"params": {"nope": 1}}, headers=admin
+    ).json()
+    assert invalid["ok"] is False and "invalid parameters" in invalid["error"]
+
+    action = client.post(
+        "/v1/admin/tools/refund/test",
+        json={"params": {"order_id": "A1", "amount": 5}},
+        headers=admin,
+    )
+    assert action.status_code == 409
+    assert ledger.refunds == []
+    assert client.post("/v1/admin/tools/nope/test", json={}, headers=admin).status_code == 404
+
+
+def test_tools_show_who_may_confirm_actions(client, people):
+    tools = {
+        t["name"]: t
+        for t in client.get("/v1/admin/tools", headers=people.session(people.viewer)).json()
+    }
+    assert tools["refund"]["confirm_roles"] == ["owner", "admin", "staff"]
+    assert tools["order_status"]["confirm_roles"] is None

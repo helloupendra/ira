@@ -156,13 +156,24 @@ def actions(
     return out
 
 
+def tool_detail(runtime: Runtime, name: str) -> ToolDetail:
+    tool = runtime.registry.get(name)
+    assert tool is not None
+    return ToolDetail(
+        kind=tool.kind,
+        enabled=runtime.registry.is_enabled(tool.name),
+        confirm_roles=(
+            list(runtime.guard.confirm_roles_for(tool.name)) if tool.kind == "action" else None
+        ),
+        **tool.schema(),
+    )
+
+
 @router.get("/tools", response_model=list[ToolDetail], summary="Registered tools and schemas")
 def tools(
     _: Principal = Depends(reader), runtime: Runtime = Depends(get_runtime)
 ) -> list[ToolDetail]:
-    return [
-        ToolDetail(kind=t.kind, **{k: v for k, v in t.schema().items()}) for t in runtime.registry
-    ]
+    return [tool_detail(runtime, t.name) for t in runtime.registry]
 
 
 @router.get("/channels", response_model=list[ChannelView], summary="Channel status")

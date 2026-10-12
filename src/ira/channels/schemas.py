@@ -211,6 +211,10 @@ class ToolDetail(BaseModel):
     kind: str
     description: str
     parameters: dict[str, Any]
+    enabled: bool = True
+    confirm_roles: list[str] | None = Field(
+        default=None, description="Action tools: the roles that may confirm them."
+    )
 
 
 class ChannelView(BaseModel):
@@ -317,6 +321,21 @@ class TokenCreated(BaseModel):
     label: str
     scopes: list[str]
     token: str = Field(description="Shown once. Only its hash is stored.")
+
+
+class ToolSwitch(BaseModel):
+    enabled: bool
+
+
+class ToolTestRequest(BaseModel):
+    params: dict[str, Any] = Field(default_factory=dict)
+
+
+class ToolTestResult(BaseModel):
+    ok: bool
+    seconds: float
+    result: Any = None
+    error: str | None = None
 
 
 class ChangeRow(BaseModel):

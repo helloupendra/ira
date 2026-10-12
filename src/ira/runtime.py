@@ -7,6 +7,7 @@ import secrets
 from dataclasses import dataclass, field
 from typing import Any
 
+from ira import overrides
 from ira.accounts import Accounts
 from ira.assistant import Assistant
 from ira.config import ConfigError, ProviderConfig, Settings, secret
@@ -183,7 +184,7 @@ def build_runtime(
         max_tool_rounds=settings.assistant.max_tool_rounds,
         history_messages=settings.assistant.history_messages,
     )
-    return Runtime(
+    runtime = Runtime(
         settings=settings,
         store=store,
         registry=registry,
@@ -196,6 +197,8 @@ def build_runtime(
         tts=_build_tts(settings, https),
         http_clients=list(https.values()),
     )
+    overrides.apply(runtime)
+    return runtime
 
 
 def _voice_http(kind: str, provider: str | None, https: dict[str, HttpClient]) -> HttpClient:

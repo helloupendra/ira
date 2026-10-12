@@ -168,7 +168,9 @@ def info(
         stt=getattr(runtime.stt, "name", None),
         tts=getattr(runtime.tts, "name", None),
         tools=[
-            ToolView(name=t.name, kind=t.kind, description=t.description) for t in runtime.registry
+            ToolView(name=t.name, kind=t.kind, description=t.description)
+            for t in runtime.registry
+            if runtime.registry.is_enabled(t.name)
         ],
         user=UserView(**principal.user.public()),
         permissions=sorted(principal.permissions),
