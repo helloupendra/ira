@@ -1,0 +1,276 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>IRA: a self-hosted voice assistant with PIN-confirmed actions</title>
+  <meta name="description" content="Hey Ira. An open-source, self-hosted voice assistant over your own data and tools. It proposes changes, and your code runs them only after the owner confirms with a PIN.">
+  <meta name="color-scheme" content="light dark">
+  <meta name="theme-color" content="#f6f4ef" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#121615" media="(prefers-color-scheme: dark)">
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="IRA: Hey Ira">
+  <meta property="og:description" content="An open-source, self-hosted voice assistant over your own data and tools, with PIN-confirmed actions.">
+  <link rel="icon" href="icon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="style.css">
+  <script src="site.js" defer></script>
+</head>
+<body>
+  <a class="skip" href="#main">Skip to content</a>
+
+  <header class="top wrap">
+    <a class="brand" href="./" aria-label="IRA home">
+      <svg class="mark" viewBox="0 0 32 32" aria-hidden="true">
+        <rect width="32" height="32" rx="8" fill="#1f6f5c"/>
+        <rect x="7" y="13" width="3" height="6" rx="1.5" fill="#fff"/>
+        <rect x="12" y="9" width="3" height="14" rx="1.5" fill="#fff"/>
+        <rect x="17" y="6" width="3" height="20" rx="1.5" fill="#fff"/>
+        <rect x="22" y="11" width="3" height="10" rx="1.5" fill="#fff"/>
+      </svg>
+      <span>IRA</span>
+    </a>
+    <nav aria-label="Main">
+      <a href="docs/">Docs</a>
+      <a href="https://github.com/helloupendra/ira">GitHub</a>
+    </nav>
+  </header>
+
+  <main id="main">
+    <section class="hero wrap" aria-labelledby="hero-title">
+      <div class="hero-text">
+        <p class="pill"><span>v0.1</span> alpha · open source · MIT</p>
+        <h1 id="hero-title">Hey Ira.</h1>
+        <p class="lead">A self-hosted voice assistant over your own data and tools.
+          It looks things up on its own, and changes nothing until the owner types a PIN.</p>
+        <p class="sub">Built in Python with FastAPI. You write the tools; Ira answers by text
+          or voice on the web, on Telegram and over an HTTP API.</p>
+        <div class="actions">
+          <a class="btn" href="#install">Run the example</a>
+          <a class="btn ghost" href="docs/">Read the docs</a>
+        </div>
+      </div>
+
+      <figure class="demo" aria-labelledby="demo-caption">
+        <div class="window">
+          <div class="window-bar">
+            <svg class="mark small" viewBox="0 0 32 32" aria-hidden="true">
+              <rect width="32" height="32" rx="8" fill="#1f6f5c"/>
+              <rect x="7" y="13" width="3" height="6" rx="1.5" fill="#fff"/>
+              <rect x="12" y="9" width="3" height="14" rx="1.5" fill="#fff"/>
+              <rect x="17" y="6" width="3" height="20" rx="1.5" fill="#fff"/>
+              <rect x="22" y="11" width="3" height="10" rx="1.5" fill="#fff"/>
+            </svg>
+            <span class="window-title">Ira</span>
+            <span class="tag">Example</span>
+          </div>
+          <ol class="messages">
+            <li class="msg user"><span class="sr">You: </span>find slots tomorrow</li>
+            <li class="msg ira"><span class="sr">Ira: </span>date: 2026-10-13
+weekday: Tuesday
+free: 09:00, 09:30, 10:30, 11:00, 11:30, 12:30, 14:00, 14:30, 15:30, 16:00, 16:30</li>
+            <li class="msg user"><span class="sr">You: </span>cancel appointment 3</li>
+            <li class="msg ira"><span class="sr">Ira: </span>I've prepared this: Cancel appointment #3: Riley Demo on Tuesday 13 October at 15:00. Confirm it with your PIN to go ahead.</li>
+            <li class="card">
+              <p class="card-title">Needs your PIN</p>
+              <p class="card-summary">Cancel appointment #3: Riley Demo on Tuesday 13 October at 15:00</p>
+              <div class="card-row" aria-hidden="true">
+                <span class="pin">PIN</span>
+                <span class="fake-btn">Confirm</span>
+                <span class="fake-btn ghost">Cancel</span>
+              </div>
+              <p class="card-status">Expires in 114s</p>
+            </li>
+          </ol>
+        </div>
+        <figcaption id="demo-caption">
+          <strong>Example.</strong> The fictional Sunrise Dental Clinic from
+          <code>examples/clinic</code>, answered by the no-key demo router, which matches keywords.
+          With a real model in the chain you can ask in your own words.
+        </figcaption>
+      </figure>
+    </section>
+
+    <section class="band wrap" aria-labelledby="why-title">
+      <div class="intro">
+        <h2 id="why-title">Why it exists</h2>
+        <p>A small business does not need a chatbot that can do anything. It needs one that
+          knows <em>its</em> calendar, stock or orders, answers when the owner's hands are busy,
+          and cannot change anything without the owner saying so.</p>
+      </div>
+      <dl class="pairs">
+        <div class="pair">
+          <dt>Hosted models go down, time out or say they are busy.</dt>
+          <dd>
+            <h3>Fallback model chains</h3>
+            <p>A tier is an ordered list of models: any OpenAI-compatible server (local ones
+              too), the Anthropic API or Amazon Bedrock. On an error, a timeout or a capacity
+              refusal the next model answers, and the one that failed cools down.</p>
+          </dd>
+        </div>
+        <div class="pair">
+          <dt>A general chatbot knows nothing about your business.</dt>
+          <dd>
+            <h3>Tools over your own data</h3>
+            <p>You write ordinary typed Python functions. The signature becomes both the JSON
+              schema the model sees and the validation applied before your code runs.</p>
+          </dd>
+        </div>
+        <div class="pair">
+          <dt>A model can be wrong, confused or talked into things.</dt>
+          <dd>
+            <h3>Actions only after a PIN</h3>
+            <p>A tool that changes something only creates a proposal with a plain summary.
+              It runs once, after the owner enters the PIN, and the PIN never reaches a model.</p>
+          </dd>
+        </div>
+        <div class="pair">
+          <dt>People speak the way they speak.</dt>
+          <dd>
+            <h3>Hinglish and Indian English, in and out</h3>
+            <p>The speech-to-text prompt asks for the words exactly as spoken, in the language
+              spoken, and says plainly not to translate, because speech models sometimes turn
+              a Hinglish sentence into English. A vocabulary list helps with names. For spoken
+              replies, Amazon Polly's <code>voice</code> and <code>language_code</code>
+              settings pick an Indian-English voice.</p>
+          </dd>
+        </div>
+        <div class="pair">
+          <dt>You cannot trust what you cannot see.</dt>
+          <dd>
+            <h3>Every call logged, with latency and cost</h3>
+            <p>Each model request writes a row: the model that answered, the ones tried,
+              attempts, seconds, tokens and the cost from your own price table. Never a key or
+              a prompt. A read-only admin API reports the day's p50 and p95 latency.</p>
+          </dd>
+        </div>
+      </dl>
+    </section>
+
+    <section class="band wrap" aria-labelledby="pin-title">
+      <div class="intro">
+        <h2 id="pin-title">How a PIN-confirmed action works</h2>
+        <p>Ira may look things up on its own. To change anything it can only propose, and the
+          owner's PIN is what makes the change happen.</p>
+      </div>
+
+      <figure class="flow">
+        <ol class="steps">
+          <li class="step">
+            <span class="step-k">1 · Ask</span>
+            <span class="step-v">“cancel appointment 3”</span>
+            <span class="step-n">Text or voice, on any channel.</span>
+          </li>
+          <li class="step proposed">
+            <span class="step-k">2 · Propose</span>
+            <code class="step-v">cancel_appointment<wbr>(id=3)</code>
+            <span class="step-n">Stored as pending for 120 seconds. Nothing has run, and the
+              model is told so.</span>
+          </li>
+          <li class="step gate">
+            <span class="step-k">
+              <svg class="lock" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 10V7a5 5 0 0 1 10 0v3h1a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1v-9a1 1 0 0 1 1-1h1Zm2 0h6V7a3 3 0 0 0-6 0v3Z"/></svg>
+              3 · PIN
+            </span>
+            <span class="step-v" aria-hidden="true">• • • •</span>
+            <span class="step-n">From the owner straight to the action guard. Never in the
+              chat history, never sent to a model.</span>
+          </li>
+          <li class="step done">
+            <span class="step-k">4 · Run once</span>
+            <span class="step-v">Done: Cancel appointment #3 …</span>
+            <span class="step-n">Your function runs exactly once, and the outcome goes to
+              the audit log.</span>
+          </li>
+        </ol>
+        <figcaption class="sr">Diagram: a request becomes a pending proposal; only the
+          owner's PIN lets your code run it, once.</figcaption>
+      </figure>
+
+      <ul class="facts">
+        <li><strong>At most once.</strong> A database compare-and-set moves the action from
+          pending to executing, so two confirmations cannot run it twice.</li>
+        <li><strong>Wrong PINs lock.</strong> Three in a row lock every action for 15 minutes.</li>
+        <li><strong>Proposals expire.</strong> No PIN within 120 seconds, and nothing runs.</li>
+        <li><strong>A PIN on its own is never forwarded.</strong> On Telegram the message
+          holding it is deleted before anything else happens.</li>
+      </ul>
+      <p class="more"><a href="docs/security/">How the safety model works</a></p>
+    </section>
+
+    <section class="band wrap" aria-labelledby="channels-title">
+      <div class="intro">
+        <h2 id="channels-title">Where you talk to it</h2>
+        <p>One assistant, one conversation store, the same tools and the same PIN on every
+          channel.</p>
+      </div>
+      <ul class="channels">
+        <li>
+          <h3>Web chat</h3>
+          <p>Streamed answers, a microphone in the browser, spoken replies and the PIN card.
+            Installable on a phone's home screen as a PWA.</p>
+          <code>/</code>
+        </li>
+        <li>
+          <h3>Telegram</h3>
+          <p>A paired private chat. Text and voice notes in; text, and voice when
+            text-to-speech is set up, out. No inbound port: it uses long polling.</p>
+          <code>ira telegram pair</code>
+        </li>
+        <li>
+          <h3>HTTP API</h3>
+          <p>JSON and server-sent events for your own apps, with OpenAPI docs. Tokens carry
+            scopes: a phone token with scope <code>ask</code> can only ask.</p>
+          <code>POST /v1/ask</code>
+        </li>
+      </ul>
+    </section>
+
+    <section class="band wrap" id="install" aria-labelledby="install-title">
+      <div class="intro">
+        <h2 id="install-title">Run the example</h2>
+        <p>Python 3.11 or newer. No API key needed: the example clinic runs on a keyword-routing
+          demo provider, not a language model, so phrase things plainly.</p>
+      </div>
+      <div class="code" data-copy>
+        <div class="code-bar"><span>Shell</span></div>
+<pre><code>git clone https://github.com/helloupendra/ira.git
+cd ira
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -e .
+
+cd examples/clinic
+ira demo seed     <span class="c"># fictional appointments</span>
+ira setup         <span class="c"># owner email and password</span>
+ira pin set       <span class="c"># the PIN that releases actions</span>
+ira serve         <span class="c"># http://127.0.0.1:8765</span></code></pre>
+      </div>
+      <p class="after">Open <code>http://127.0.0.1:8765</code>, sign in, and try
+        <code>find slots tomorrow</code>, then <code>cancel appointment 3</code>.
+        To put a real model first in the chain, see
+        <a href="docs/getting-started/#use-a-real-model">Getting started</a>.</p>
+    </section>
+
+    <section class="band wrap closing" aria-labelledby="status-title">
+      <div class="status">
+        <h2 id="status-title">Status: alpha</h2>
+        <p>IRA is at v0.1. It runs end to end, and the configuration and API may still change.
+          A read-only admin API is there today; the admin console that uses it is coming in
+          v0.2.</p>
+        <div class="actions">
+          <a class="btn" href="docs/">Read the docs</a>
+          <a class="btn ghost" href="https://github.com/helloupendra/ira">View on GitHub</a>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="foot wrap">
+    <p>IRA is open source under the
+      <a href="https://github.com/helloupendra/ira/blob/main/LICENSE">MIT licence</a>.
+      Found a security problem? See
+      <a href="https://github.com/helloupendra/ira/blob/main/SECURITY.md">SECURITY.md</a>.</p>
+    <p>The Sunrise Dental Clinic and everyone in it are fictional.</p>
+  </footer>
+</body>
+</html>
