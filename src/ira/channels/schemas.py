@@ -467,6 +467,33 @@ class PinSetRequest(BaseModel):
     pin: str = Field(min_length=4, max_length=12, pattern=r"^\d{4,12}$")
 
 
+# Signed-in sessions. Never the session token or its hash.
+
+
+class SessionView(BaseModel):
+    """A signed-in session that has not expired or been ended."""
+
+    id: str = Field(description="The session's id (ses_...). Not a credential.")
+    created_at: float = Field(description="When it signed in.")
+    last_used_at: float | None = Field(description="Its latest request.")
+    expires_at: float
+    current: bool = Field(description="True for the session making this request.")
+    user_agent: str | None = Field(
+        default=None,
+        description="The browser's User-Agent at sign-in, cut to 200 characters; "
+        "null when none was sent or the session is older than this field.",
+    )
+
+
+class AdminSessionRow(SessionView):
+    user_id: int
+    email: str
+
+
+class SessionsEnded(BaseModel):
+    ended: int = Field(description="How many sessions were signed out.")
+
+
 # Console writes.
 
 

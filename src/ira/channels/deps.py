@@ -75,7 +75,9 @@ def start_browser_session(
     """Sign a user in with the session cookie and return what /v1/auth/me would."""
     user = runtime.accounts.get_user(user_id)
     assert user is not None
-    token, expires = runtime.accounts.start_session(user)
+    token, expires = runtime.accounts.start_session(
+        user, user_agent=request.headers.get("user-agent")
+    )
     set_session_cookie(response, request, token, expires)
     principal = runtime.accounts.session_principal(token)
     assert principal is not None
@@ -141,18 +143,23 @@ def require(permission: str) -> Callable[..., Awaitable[Principal]]:
     return check
 
 
-def require_session(permission: str) -> Callable[..., Awaitable[Principal]]:
-    """A signed-in person with ``permission``. API tokens are refused, whatever their scopes."""
+def require_session(permission: str | None = None) -> Callable[..., Awaitable[Principal]]:
+    """A signed-in person, with ``permission`` if one is named.
+
+    API tokens are refused, whatever their scopes.
+    """
 
     async def check(principal: Principal = Depends(get_principal)) -> Principal:
         if principal.via != "session":
             raise HTTPException(
                 status.HTTP_403_FORBIDDEN,
-                detail="this needs a signed-in session; API tokens cannot change settings",
+                detail="this needs a signed-in session; API tokens cannot change settings "
+                "or see sessions",
             )
-        if not principal.can(permission):
+        if permission is not None and not principal.can(permission):
             raise HTTPException(status.HTTP_403_FORBIDDEN, detail=f"your role lacks '{permission}'")
         return principal
 
-    check.__name__ = f"require_session_{permission.replace('.', '_')}"
+    suffix = f"_{permission.replace('.', '_')}" if permission else ""
+    check.__name__ = f"require_session{suffix}"
     return check

@@ -4,7 +4,7 @@ Every route here needs a signed-in session (never an API token), checks the
 role, and writes one row to the change log: who, what, when, and the value
 before and after where there is one.
 
-* Users and invitations need ``users`` (owner only).
+* Users, invitations and other people's sessions need ``users`` (owner only).
 * Tokens, tools, model chains and settings need ``admin.write`` (owner, admin).
 """
 
@@ -16,11 +16,12 @@ import json
 import time
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Response
 from pydantic import ValidationError
 
 from ira import changes, overrides
 from ira.accounts import AccountError, LastOwnerError, Principal, parse_scopes
+from ira.channels.account import end_session
 from ira.channels.admin import invite_view, settings_view, tool_detail
 from ira.channels.deps import get_runtime, require_session
 from ira.channels.schemas import (
@@ -52,7 +53,10 @@ router = APIRouter(
     tags=["admin: changes"],
     responses={
         **ERRORS,
-        404: {"model": ErrorDetail, "description": "No such user, invite, token, tool or tier"},
+        404: {
+            "model": ErrorDetail,
+            "description": "No such user, invite, session, token, tool or tier",
+        },
         409: {
             "model": ErrorDetail,
             "description": "The last owner cannot go, or an action tool cannot be tested",
@@ -153,6 +157,25 @@ def reset_pin(
     user = _user_or_404(runtime, user_id)
     runtime.guard.clear_pin(user_id, actor=who.actor, channel=who.channel)
     _log(runtime, who, "user.pin_reset", user.email, before=user.has_pin, after=False)
+    return OkResponse()
+
+
+# Sessions (owner only).
+
+
+@router.delete(
+    "/sessions/{session_id}", response_model=OkResponse, summary="Sign out any user's session"
+)
+def revoke_session(
+    session_id: str,
+    response: Response,
+    who: Principal = Depends(owner),
+    runtime: Runtime = Depends(get_runtime),
+) -> OkResponse:
+    session = runtime.accounts.get_session(session_id)
+    if session is None:
+        raise HTTPException(404, detail="no active session with that id")
+    end_session(runtime, who, response, session)
     return OkResponse()
 
 

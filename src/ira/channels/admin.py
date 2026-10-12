@@ -15,11 +15,13 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 
 from ira import changes, overrides
 from ira.accounts import COOKIE_DAYS, PERMISSIONS, ROLE_DESCRIPTIONS, ROLES, TOKEN_SCOPES, Principal
+from ira.channels.account import current_flag
 from ira.channels.deps import COOKIE_SAMESITE, get_runtime, require
 from ira.channels.schemas import (
     ERRORS,
     ActionRow,
     ActionRule,
+    AdminSessionRow,
     AdminUserRow,
     AuditRow,
     CallRow,
@@ -294,6 +296,17 @@ def invites(
     _: Principal = Depends(require("users")), runtime: Runtime = Depends(get_runtime)
 ) -> list[InviteView]:
     return [invite_view(runtime, i) for i in runtime.accounts.invites()]
+
+
+@router.get(
+    "/sessions",
+    response_model=list[AdminSessionRow],
+    summary="Every user's signed-in sessions (owner only; no session tokens)",
+)
+def sessions(
+    principal: Principal = Depends(require("users")), runtime: Runtime = Depends(get_runtime)
+) -> list[AdminSessionRow]:
+    return [AdminSessionRow(**current_flag(row, principal)) for row in runtime.accounts.sessions()]
 
 
 @router.get("/tokens", response_model=list[TokenRow], summary="API tokens (no token values)")

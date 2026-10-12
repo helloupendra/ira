@@ -25,11 +25,12 @@ field errors on `422`).
 | `POST /v1/invites/lookup`, `POST /v1/invites/accept` | nothing (the invitation token) |
 | `GET /v1/auth/me`, `GET /v1/info`, `POST /v1/auth/logout`, `GET /v1/me/pin` | any credential |
 | `PUT /v1/me/pin` | a session with `actions` |
+| `GET /v1/me/sessions`, `DELETE /v1/me/sessions/{id}`, `POST /v1/me/sessions/revoke-others` | a session (any role) |
 | `POST /v1/ask`, `POST /v1/ask/stream`, `GET /v1/conversations`, `GET /v1/conversations/{id}` | `ask` |
 | `POST /v1/voice/transcribe`, `POST /v1/voice/speak` | `voice` |
 | `POST /v1/actions/{id}/confirm`, `POST /v1/actions/{id}/cancel` | `actions` (and your own PIN to confirm) |
-| `GET /v1/admin/*` | `admin.read` (`GET /v1/admin/users/invites`: `users`) |
-| `POST`, `PUT`, `PATCH`, `DELETE` under `/v1/admin` | a session with `admin.write`, or `users` for users and invitations |
+| `GET /v1/admin/*` | `admin.read` (`GET /v1/admin/users/invites` and `GET /v1/admin/sessions`: `users`) |
+| `POST`, `PUT`, `PATCH`, `DELETE` under `/v1/admin` | a session with `admin.write`, or `users` for users, invitations and sessions |
 
 ## Auth
 
@@ -198,6 +199,7 @@ All need `admin.read` (owner, admin, viewer), from a session or a token.
 | `GET /v1/admin/roles` | `RoleView[]`: what each role may do |
 | `GET /v1/admin/tokens` | `TokenRow[]`: API tokens (no token values); `scopes` is comma-separated |
 | `GET /v1/admin/users/invites` | `InviteView[]`: open invitations. Needs `users` (owner) |
+| `GET /v1/admin/sessions` | `AdminSessionRow[]`: every user's active sessions, as in `GET /v1/me/sessions` plus `user_id` and `email`. Needs `users` (owner) |
 
 ## Console API
 
@@ -208,11 +210,13 @@ handler names (`create_invite`, `test_tool`, ...).
 
 ### Rules for every write
 
-- **A session, never a token.** Every write under `/v1/admin`, and
-  `PUT /v1/me/pin`, needs a signed-in session: the cookie, or a session token
-  (`ira_s_...`) as a bearer. An API token gets `403` whatever its scopes.
-- **A role.** Users and invitations need `users` (owner). Everything else
-  needs `admin.write` (owner, admin). Staff and viewers get `403`.
+- **A session, never a token.** Every write under `/v1/admin`,
+  `PUT /v1/me/pin` and everything under `/v1/me/sessions` (reads too) need a
+  signed-in session: the cookie, or a session token (`ira_s_...`) as a
+  bearer. An API token gets `403` whatever its scopes.
+- **A role.** Users, invitations and other people's sessions need `users`
+  (owner). Your own sessions need no particular role. Everything else needs
+  `admin.write` (owner, admin). Staff and viewers get `403`.
 - **CSRF.** With the cookie, send `X-Ira-Request: 1`. See below.
 - **The change log.** Every successful change writes one row: who
   (`actor`, e.g. `owner@example.com via web`), what, the target, and the
@@ -310,6 +314,37 @@ A wrong password gives `403`; five in 15 minutes give `429`. Setting a PIN
 here does not lift a wrong-PIN lock; `ira pin set` on the server does. The
 outcome is written to the action audit log as `pin_set`.
 
+### Your sessions
+
+Each sign-in is a session. The list shows the active ones (not ended, not
+expired), most recently used first, as `SessionView`:
+
+```json
+{"id": "ses_9b1c...", "created_at": 1791800000.0, "last_used_at": 1791803600.0,
+ "expires_at": 1793009600.0, "current": true,
+ "user_agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 14_6) Firefox/131.0"}
+```
+
+`id` names the session; it is not a credential, and the session token and
+its hash never appear. `current` marks the session making the request.
+`user_agent` is the browser's `User-Agent` at sign-in, cut to 200
+characters, and `null` when none was sent or the session started before IRA
+stored it.
+
+| Route | Needs | Returns |
+| --- | --- | --- |
+| `GET /v1/me/sessions` | a session | `SessionView[]`: yours |
+| `DELETE /v1/me/sessions/{id}` | a session | `OkResponse`; `404` if it is not one of your active sessions. Ending the current one also clears the cookie |
+| `POST /v1/me/sessions/revoke-others` | a session | `SessionsEnded`: `ended`, how many of your other sessions were signed out; this one stays |
+| `GET /v1/admin/sessions` | `users` | `AdminSessionRow[]`: everyone's, with `user_id` and `email` |
+| `DELETE /v1/admin/sessions/{id}` | a session with `users` | `OkResponse`; `404` if not active |
+
+An API token cannot list or end sessions, even its own user's. The writes
+follow the rules above (CSRF header with the cookie) and write
+`session.revoked` (target: the session id, `before`: `{"user": email}`) or
+`session.revoked_others` (target: your email, `after`: `{"ended": n}`) to the
+change log. Removing a user also ends their sessions.
+
 ### Every console write
 
 | Route | Needs | Body | Returns | Change log `what` |
@@ -321,6 +356,9 @@ outcome is written to the action audit log as `pin_set`.
 | `POST /v1/admin/users/{user_id}/reset-pin` | `users` | | `OkResponse` | `user.pin_reset` |
 | `POST /v1/admin/tokens` | `admin.write` | `TokenCreateRequest`: `label`, `scopes` | `TokenCreated` (the `token` value, once) | `token.created` |
 | `DELETE /v1/admin/tokens/{token_id}` | `admin.write` | | `OkResponse`; `404` if not active | `token.revoked` |
+| `DELETE /v1/admin/sessions/{session_id}` | `users` | | `OkResponse`; `404` if not active | `session.revoked` |
+| `DELETE /v1/me/sessions/{session_id}` | a session | | `OkResponse`; `404` if not yours and active | `session.revoked` |
+| `POST /v1/me/sessions/revoke-others` | a session | | `SessionsEnded` | `session.revoked_others` (only when one ended) |
 | `PATCH /v1/admin/tools/{name}` | `admin.write` | `ToolSwitch`: `enabled` | `ToolDetail` | `tool.enabled` (before, after) |
 | `POST /v1/admin/tools/{name}/test` | `admin.write` | `ToolTestRequest`: `params` | `ToolTestResult`: `ok`, `seconds`, `result` or `error`; `409` for an action tool | `tool.tested` (the params) |
 | `POST /v1/admin/models/test` | `admin.write` | `ModelTestRequest`: `ref` (`provider:model` from a tier) | `ModelTestResult`: `ok`, `seconds`, `text` or `error_kind` and `error` | `model.tested` |

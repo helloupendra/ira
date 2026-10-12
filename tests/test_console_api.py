@@ -672,3 +672,101 @@ def test_callers_read_only_their_own_conversations(registry):
         # A viewer cannot ask, so has no conversations of their own to read.
         viewer = people.session(people.viewer)
         assert client.get("/v1/conversations", headers=viewer).status_code == 403
+
+
+# Sessions.
+
+LAPTOP = "Mozilla/5.0 (Macintosh; Intel Mac OS X 14_6) Firefox/131.0"
+
+
+def current_session_id(client, headers) -> str:
+    rows = client.get("/v1/me/sessions", headers=headers).json()
+    return next(r["id"] for r in rows if r["current"])
+
+
+def test_people_see_and_end_their_own_sessions(client, runtime, people):
+    login = {"email": "owner@example.com", "password": PASSWORD}
+    assert client.post("/v1/auth/login", json=login, headers={"User-Agent": LAPTOP}).is_success
+    csrf = {"X-Ira-Request": "1"}  # the laptop signs in with the cookie
+    phone = people.session(people.owner)
+    staff = people.session(people.staff)
+
+    listed = client.get("/v1/me/sessions")
+    rows = listed.json()
+    assert len(rows) == 2
+    laptop = next(r for r in rows if r["current"])
+    assert laptop["user_agent"] == LAPTOP and laptop["expires_at"] > laptop["created_at"]
+    assert set(laptop) == {
+        "id",
+        "created_at",
+        "last_used_at",
+        "expires_at",
+        "current",
+        "user_agent",
+    }
+    assert "ira_s_" not in listed.text and "token" not in listed.text
+    phone_id = current_session_id(client, phone)
+    assert phone_id != laptop["id"]
+
+    # Someone else's session is not found; a cookie write needs the CSRF header.
+    staff_id = current_session_id(client, staff)
+    assert client.delete(f"/v1/me/sessions/{staff_id}", headers=csrf).status_code == 404
+    assert client.delete(f"/v1/me/sessions/{phone_id}").status_code == 403
+    assert client.delete(f"/v1/me/sessions/{phone_id}", headers=csrf).status_code == 200
+    assert client.get("/v1/auth/me", headers=phone).status_code == 401
+    assert client.get("/v1/auth/me", headers=staff).status_code == 200
+    latest = changes(client, people)[0]
+    assert latest["what"] == "session.revoked" and latest["target"] == phone_id
+    assert latest["before"] == {"user": "owner@example.com"}
+
+    # Sign out everywhere else, keeping this session.
+    others = [people.session(people.owner) for _ in range(2)]
+    count = len(client.get("/v1/me/sessions").json()) - 1  # changes() signed in too
+    ended = client.post("/v1/me/sessions/revoke-others", headers=csrf).json()
+    assert ended == {"ended": count} and count >= 2
+    assert all(client.get("/v1/auth/me", headers=h).status_code == 401 for h in others)
+    assert [r["current"] for r in client.get("/v1/me/sessions").json()] == [True]
+    latest = changes(client, people)[0]
+    assert latest["what"] == "session.revoked_others" and latest["after"] == {"ended": count}
+    assert client.get("/v1/auth/me", headers=staff).status_code == 200
+
+    # Ending this session signs the laptop out.
+    gone = client.delete(f"/v1/me/sessions/{laptop['id']}", headers=csrf)
+    assert gone.status_code == 200 and "ira_session=" in gone.headers["set-cookie"]
+    assert client.get("/v1/auth/me").status_code == 401
+
+
+def test_a_phone_token_reads_its_conversations_but_not_sessions(client, people):
+    phone = people.token(people.owner, ["ask"])
+    assert client.post("/v1/ask", json={"text": "hi"}, headers=phone).status_code == 200
+    assert len(client.get("/v1/conversations", headers=phone).json()) == 1
+    assert client.get("/v1/me/sessions", headers=phone).status_code == 403
+    assert client.post("/v1/me/sessions/revoke-others", headers=phone).status_code == 403
+    assert client.delete("/v1/me/sessions/ses_x", headers=phone).status_code == 403
+
+
+def test_only_the_owner_sees_and_ends_everyone_s_sessions(client, people):
+    staff = people.session(people.staff)
+    staff_id = current_session_id(client, staff)
+    for user in (people.admin, people.staff, people.viewer):
+        headers = people.session(user)
+        assert client.get("/v1/admin/sessions", headers=headers).status_code == 403, user.role
+        gone = client.delete(f"/v1/admin/sessions/{staff_id}", headers=headers)
+        assert gone.status_code == 403, user.role
+    owner_token = people.token(people.owner, ["ask", "voice", "actions", "admin.read"])
+    assert client.get("/v1/admin/sessions", headers=owner_token).status_code == 403
+
+    owner = people.session(people.owner)
+    listed = client.get("/v1/admin/sessions", headers=owner)
+    rows = {r["id"]: r for r in listed.json()}
+    assert rows[staff_id]["email"] == "desk@example.com" and not rows[staff_id]["current"]
+    assert rows[staff_id]["user_id"] == people.staff.id
+    assert sum(r["current"] for r in rows.values()) == 1
+    assert "ira_s_" not in listed.text
+
+    assert client.delete(f"/v1/admin/sessions/{staff_id}", headers=owner).status_code == 200
+    assert client.get("/v1/auth/me", headers=staff).status_code == 401
+    assert client.delete(f"/v1/admin/sessions/{staff_id}", headers=owner).status_code == 404
+    latest = changes(client, people)[0]
+    assert latest["what"] == "session.revoked" and latest["actor"] == "owner@example.com via web"
+    assert latest["before"] == {"user": "desk@example.com"}

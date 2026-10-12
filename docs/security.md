@@ -39,7 +39,9 @@ on its own it can never change anything.
   blocks further tries for 15 minutes.
 - Sessions: random 256-bit tokens, stored as SHA-256 hashes, 14-day expiry,
   revocable at logout. In browsers they live in an HTTP-only,
-  SameSite=Strict cookie, marked Secure over HTTPS.
+  SameSite=Strict cookie, marked Secure over HTTPS. Each user can list and
+  end their own sessions, or all but the current one; the owner can end
+  anyone's. Lists show a separate session id, never the token or its hash.
 - CSRF: cookie-authenticated requests that change state must carry
   `X-Ira-Request: 1`, a header a cross-site page cannot add without a CORS
   preflight that IRA never allows. They are also refused when `Origin` names
@@ -47,8 +49,8 @@ on its own it can never change anything.
 - API tokens: random, stored hashed, owned by a user, scoped, revocable. A
   token can never hold user-management or settings rights, and every write
   under `/v1/admin` refuses tokens outright: it needs a signed-in session.
-- Console changes (users, invitations, tokens, tools, model chains,
-  settings) are written to a change log with who, what, when, and the value
+- Console changes (users, invitations, sessions, tokens, tools, model
+  chains, settings) are written to a change log with who, what, when, and the value
   before and after. Secrets never appear in it.
 - Invitations: one-time links whose token is stored as a SHA-256 hash and
   expires after 72 hours. The token travels in the URL fragment, which

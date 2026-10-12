@@ -282,8 +282,13 @@ def test_older_databases_gain_the_new_columns(tmp_path):
         "CREATE TABLE users (id INTEGER PRIMARY KEY AUTOINCREMENT, email TEXT NOT NULL UNIQUE, "
         "password_hash TEXT NOT NULL, role TEXT NOT NULL, created_at REAL NOT NULL, "
         "last_login_at REAL, disabled_at REAL);"
+        "CREATE TABLE sessions (id TEXT PRIMARY KEY, token_hash TEXT NOT NULL UNIQUE, "
+        "user_id INTEGER NOT NULL, created_at REAL NOT NULL, expires_at REAL NOT NULL, "
+        "last_seen_at REAL, revoked_at REAL);"
     )
     conn.close()
     store = Store(path)
     columns = {row["name"] for row in store.query("PRAGMA table_info(users)")}
     assert {"pin_hash", "pin_set_at"} <= columns
+    sessions = {row["name"] for row in store.query("PRAGMA table_info(sessions)")}
+    assert "user_agent" in sessions

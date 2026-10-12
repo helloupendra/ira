@@ -50,6 +50,7 @@ TOKEN_SCOPES = ("ask", "voice", "actions", "admin.read")
 
 SESSION_SECONDS = 14 * 24 * 3600
 COOKIE_DAYS = SESSION_SECONDS / 86400
+USER_AGENT_CHARS = 200
 INVITE_SECONDS = 72 * 3600
 MIN_PASSWORD = 10
 EMAIL = re.compile(r"[^@\s]+@[^@\s]+\.[^@\s]+")
@@ -477,14 +478,28 @@ class Accounts:
 
     # Sessions.
 
-    def start_session(self, user: User, seconds: float = SESSION_SECONDS) -> tuple[str, float]:
+    def start_session(
+        self, user: User, seconds: float = SESSION_SECONDS, *, user_agent: str | None = None
+    ) -> tuple[str, float]:
+        """Return (token, expiry). Only the token's hash is kept, under a separate id.
+
+        ``user_agent`` is the browser's, kept to help people tell their sessions apart.
+        """
         token = "ira_s_" + secrets.token_urlsafe(32)
         now = self.clock()
         expires = now + seconds
         self.store.execute(
-            "INSERT INTO sessions (id, token_hash, user_id, created_at, expires_at, last_seen_at) "
-            "VALUES (?, ?, ?, ?, ?, ?)",
-            (new_id("ses_"), sha256_hex(token), user.id, now, expires, now),
+            "INSERT INTO sessions (id, token_hash, user_id, created_at, expires_at, last_seen_at, "
+            "user_agent) VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (
+                new_id("ses_"),
+                sha256_hex(token),
+                user.id,
+                now,
+                expires,
+                now,
+                (user_agent or "").strip()[:USER_AGENT_CHARS] or None,
+            ),
         )
         return token, expires
 
@@ -509,6 +524,48 @@ class Accounts:
             (self.clock(), sha256_hex(token)),
         )
         return cursor.rowcount == 1
+
+    _ACTIVE_SESSIONS = (
+        "SELECT s.id, s.user_id, u.email, s.created_at, s.last_seen_at AS last_used_at, "
+        "s.expires_at, s.user_agent FROM sessions s JOIN users u ON u.id = s.user_id "
+        "WHERE s.revoked_at IS NULL AND s.expires_at > ? AND u.disabled_at IS NULL"
+    )
+
+    def sessions(self, user_id: int | None = None) -> list[dict[str, Any]]:
+        """Active sessions, most recently used first: one user's, or everyone's.
+
+        Rows carry the session id, never the token or its hash.
+        """
+        sql, params = self._ACTIVE_SESSIONS, [self.clock()]
+        if user_id is not None:
+            sql += " AND s.user_id = ?"
+            params.append(user_id)
+        rows = self.store.query(
+            sql + " ORDER BY COALESCE(s.last_seen_at, s.created_at) DESC", params
+        )
+        return [dict(r) for r in rows]
+
+    def get_session(self, session_id: str) -> dict[str, Any] | None:
+        """An active session by id."""
+        row = self.store.one(self._ACTIVE_SESSIONS + " AND s.id = ?", (self.clock(), session_id))
+        return dict(row) if row else None
+
+    def end_session_id(self, session_id: str) -> bool:
+        cursor = self.store.execute(
+            "UPDATE sessions SET revoked_at = ? WHERE id = ? AND revoked_at IS NULL",
+            (self.clock(), session_id),
+        )
+        return cursor.rowcount == 1
+
+    def end_other_sessions(self, user_id: int, keep: str | None) -> int:
+        """End every active session of a user except ``keep``. Returns how many ended."""
+        now = self.clock()
+        cursor = self.store.execute(
+            "UPDATE sessions SET revoked_at = ? WHERE user_id = ? AND id != ? "
+            "AND revoked_at IS NULL AND expires_at > ?",
+            (now, user_id, keep or "", now),
+        )
+        return cursor.rowcount
 
     # API tokens.
 

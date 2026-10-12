@@ -121,7 +121,8 @@ CREATE TABLE IF NOT EXISTS sessions (
     created_at   REAL NOT NULL,
     expires_at   REAL NOT NULL,
     last_seen_at REAL,
-    revoked_at   REAL
+    revoked_at   REAL,
+    user_agent   TEXT
 );
 
 -- API tokens belong to a user; their scopes can only narrow the user's role.
@@ -199,6 +200,7 @@ class Store:
     _ADDED_COLUMNS = (
         ("users", "pin_hash", "TEXT"),
         ("users", "pin_set_at", "REAL"),
+        ("sessions", "user_agent", "TEXT"),
     )
 
     def _add_missing_columns(self) -> None:

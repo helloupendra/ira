@@ -144,7 +144,9 @@ def auth_login(
         limiter.fail(*keys)
         raise HTTPException(401, detail="wrong email or password")
     limiter.clear(keys[0])
-    token, expires = runtime.accounts.start_session(user)
+    token, expires = runtime.accounts.start_session(
+        user, user_agent=request.headers.get("user-agent")
+    )
     principal = runtime.accounts.session_principal(token)
     assert principal is not None
     if body.use_cookie:
