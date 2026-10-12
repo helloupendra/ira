@@ -1,0 +1,45 @@
+/* Audit & cost: the change log as disclosures, the action log as cards on a
+   phone and a table from 56rem, and the cost tables. Everything else is the
+   shared vocabulary in console.css. */
+
+/* A change: what happened and to what on the first line, who did it under
+   it, the time on the right. Two lines, so the row aligns to its top. */
+.change > summary { align-items: flex-start; }
+.change > summary .icon,
+.change > summary .disclosure-meta { margin-top: 1px; }
+.change-main { display: grid; flex: 1; gap: 2px; min-width: 0; }
+.change-line { display: flex; flex-wrap: wrap; gap: 0 var(--s-2); align-items: baseline; overflow-wrap: anywhere; }
+.change-what { font-weight: 500; }
+.change-who { font-size: var(--text-s); color: var(--muted); overflow-wrap: anywhere; }
+
+/* Before and after, each under a quiet label like the key-value list's */
+.change-part { display: grid; gap: var(--s-1); }
+.change-part-title { font-size: var(--text-m); font-weight: 400; color: var(--muted); }
+
+/* The button that fetches the next page, with its error above it */
+.more { display: grid; gap: var(--s-2); justify-items: start; padding-top: var(--s-4); }
+
+/* The action log: cards on a phone, a table from 56rem up */
+.audit-table { display: none; }
+.audit-when { white-space: nowrap; }
+.audit-detail { color: var(--muted); }
+.audit-card-detail { margin-top: var(--s-1); font-size: var(--text-m); color: var(--muted); overflow-wrap: anywhere; }
+.audit-card-meta { margin-top: var(--s-1); }
+@media (min-width: 56rem) {
+  .audit-cards { display: none; }
+  .audit-table { display: block; }
+}
+
+/* Cost: the totals sit under their own title, so the strip's own top rule
+   and margin go; the note about the price table hugs the numbers. */
+.cost-stats { margin-top: 0; padding-top: 0; padding-bottom: var(--s-3); border-top: 0; }
+.cost-note { margin-bottom: var(--s-2); }
+
+/* The day stays on one line; on a phone the table scrolls instead. */
+.cost-day { white-space: nowrap; }
+
+/* A model call: the model, and under it what was tried when it took more
+   than one attempt */
+.call-when { white-space: nowrap; }
+.call-model { display: grid; gap: 2px; }
+.call-tried { font-size: var(--text-s); }
