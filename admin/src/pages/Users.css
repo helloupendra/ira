@@ -1,0 +1,19 @@
+/* Users & roles: the controls inside the tables, and the phone cards. */
+
+.people-table td,
+.invite-table td { vertical-align: middle; }
+.people-table .role-select {
+  width: auto;
+  min-width: 7.5rem;
+  min-height: 2.25rem;
+  padding-top: 0;
+  padding-bottom: 0;
+}
+.cell-nowrap { white-space: nowrap; }
+.cell-actions { display: flex; align-items: center; gap: var(--s-2); white-space: nowrap; }
+.who { display: inline-flex; flex-wrap: wrap; align-items: center; gap: var(--s-2); overflow-wrap: anywhere; }
+
+.person { display: grid; gap: var(--s-2); }
+.person .card-actions { margin-top: 0; }
+
+.roles-kv dd { display: grid; gap: var(--s-1); }
