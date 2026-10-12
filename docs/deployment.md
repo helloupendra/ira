@@ -5,8 +5,9 @@ in the office is enough.
 
 ## Checklist
 
-1. A dedicated user and a virtualenv: `pip install "ira-assistant[aws,ogg]"`
-   (only the extras you use).
+1. A dedicated user and a virtualenv. IRA is not on PyPI yet, so install it
+   from GitHub with only the extras you use:
+   `pip install "ira-assistant[aws,ogg] @ git+https://github.com/helloupendra/ira.git"`.
 2. A config folder with `ira.yaml`, your tool modules, and a `.env` readable
    only by that user (`chmod 600 .env`).
 3. `ira setup` and `ira pin set` as that user.
