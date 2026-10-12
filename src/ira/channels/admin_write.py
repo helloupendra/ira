@@ -22,7 +22,7 @@ from pydantic import ValidationError
 from ira import changes, overrides
 from ira.accounts import AccountError, LastOwnerError, Principal, parse_scopes
 from ira.channels.account import end_session
-from ira.channels.admin import invite_view, settings_view, tool_detail
+from ira.channels.admin import bot_link, invite_view, settings_view, tool_detail
 from ira.channels.deps import get_runtime, require_session
 from ira.channels.schemas import (
     ERRORS,
@@ -36,6 +36,8 @@ from ira.channels.schemas import (
     RoleChange,
     SettingsUpdate,
     SettingsView,
+    TelegramPairing,
+    TelegramPairingRequest,
     TierOrderRequest,
     TierView,
     TokenCreated,
@@ -55,7 +57,7 @@ router = APIRouter(
         **ERRORS,
         404: {
             "model": ErrorDetail,
-            "description": "No such user, invite, session, token, tool or tier",
+            "description": "No such user, invite, session, token, tool, tier or paired chat",
         },
         409: {
             "model": ErrorDetail,
@@ -348,6 +350,67 @@ def order_tier(
         overridden=overrides.tier_override(runtime, tier) is not None,
         used_by_assistant=tier == runtime.assistant.tier,
     )
+
+
+# Telegram.
+
+
+@router.post(
+    "/telegram/pairing",
+    response_model=TelegramPairing,
+    summary="Start pairing a Telegram chat: a one-time code, as `ira telegram pair` prints",
+)
+async def start_telegram_pairing(
+    body: TelegramPairingRequest | None = None,
+    who: Principal = Depends(writer),
+    runtime: Runtime = Depends(get_runtime),
+) -> TelegramPairing:
+    from ira.channels.telegram import PAIRING_SECONDS, bot_identity, create_pairing_code
+
+    user_id = body.user_id if body and body.user_id is not None else who.user.id
+    if user_id != who.user.id and not who.can("users"):
+        raise HTTPException(403, detail="only an owner can pair a chat for someone else")
+    user = _user_or_404(runtime, user_id)
+    now = time.time()
+    code = create_pairing_code(runtime.store, user.id, now=now)
+    expires_at = now + PAIRING_SECONDS
+    # Never the code: it is a one-time secret.
+    _log(runtime, who, "telegram.pairing_started", user.email, after={"expires_at": expires_at})
+    bot = await bot_identity(runtime)
+    return TelegramPairing(
+        code=code,
+        command=f"/pair {code}",
+        expires_at=expires_at,
+        user_id=user.id,
+        email=user.email,
+        bot_link=bot_link(bot.get("username")),
+    )
+
+
+@router.delete(
+    "/telegram/chats/{chat_id}",
+    response_model=OkResponse,
+    summary="Unpair a Telegram chat; it gets nothing from the bot until paired again",
+)
+def unpair_telegram_chat(
+    chat_id: int, who: Principal = Depends(writer), runtime: Runtime = Depends(get_runtime)
+) -> OkResponse:
+    row = runtime.store.one(
+        "SELECT t.name, u.email FROM telegram_chats t JOIN users u ON u.id = t.user_id "
+        "WHERE t.chat_id = ?",
+        (chat_id,),
+    )
+    if row is None:
+        raise HTTPException(404, detail="no paired chat with that id")
+    runtime.store.execute("DELETE FROM telegram_chats WHERE chat_id = ?", (chat_id,))
+    _log(
+        runtime,
+        who,
+        "telegram.unpaired",
+        str(chat_id),
+        before={"user": row["email"], "name": row["name"]},
+    )
+    return OkResponse()
 
 
 # Settings.

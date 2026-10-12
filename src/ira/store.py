@@ -167,7 +167,8 @@ CREATE INDEX IF NOT EXISTS messages_conversation ON messages (conversation_id, i
 CREATE TABLE IF NOT EXISTS telegram_chats (
     chat_id   INTEGER PRIMARY KEY,
     user_id   INTEGER NOT NULL REFERENCES users (id),
-    paired_at REAL NOT NULL
+    paired_at REAL NOT NULL,
+    name      TEXT  -- the chat's name as Telegram gives it, for the console
 );
 
 CREATE TABLE IF NOT EXISTS pairing_codes (
@@ -208,6 +209,7 @@ class Store:
         ("messages", "action_id", "TEXT"),
         ("change_log", "channel", "TEXT"),
         ("messages", "model", "TEXT"),
+        ("telegram_chats", "name", "TEXT"),
     )
 
     def _add_missing_columns(self) -> None:

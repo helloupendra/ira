@@ -61,6 +61,8 @@ class Runtime:
     # What `ira serve` bound, which --host and --port can change from ira.yaml.
     bound_host: str | None = None
     bound_port: int | None = None
+    # The Telegram Bot API client, shared by the bot and the console; tests put a fake here.
+    telegram_api: Any = None
 
     @property
     def host(self) -> str:
@@ -93,6 +95,9 @@ class Runtime:
     async def aclose(self) -> None:
         for client in self.http_clients:
             await client.aclose()
+        close = getattr(self.telegram_api, "aclose", None)
+        if close is not None:
+            await close()
 
 
 def local_url(host: str, port: int) -> str:

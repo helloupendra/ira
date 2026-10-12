@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
 import secrets
 import time
 from typing import Any
@@ -31,6 +32,8 @@ from ira.voice.shorten import speakable
 log = logging.getLogger("ira.telegram")
 
 PAIRING_SECONDS = 600
+BOT_INFO_SECONDS = 3600  # how long a getMe answer is kept
+BOT_RETRY_SECONDS = 60  # how soon a failed getMe is tried again
 CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"  # no 0/O or 1/I to misread
 MAX_MESSAGE = 4000
 
@@ -94,6 +97,9 @@ class TelegramApi:
             params["offset"] = offset
         return await self.call("getUpdates", timeout=timeout + 10, **params) or []
 
+    async def get_me(self) -> dict[str, Any]:
+        return await self.call("getMe", timeout=10) or {}
+
     async def send_message(self, chat_id: int, text: str) -> None:
         await self.call("sendMessage", chat_id=chat_id, text=text)
 
@@ -126,9 +132,12 @@ class TelegramApi:
 # --- pairing -----------------------------------------------------------------------
 
 
-def create_pairing_code(store: Store, user_id: int, seconds: float = PAIRING_SECONDS) -> str:
+def create_pairing_code(
+    store: Store, user_id: int, seconds: float = PAIRING_SECONDS, *, now: float | None = None
+) -> str:
+    """A one-time code that pairs a chat with this user; only its hash is stored."""
     code = "".join(secrets.choice(CODE_ALPHABET) for _ in range(8))
-    now = time.time()
+    now = time.time() if now is None else now
     store.execute(
         "INSERT INTO pairing_codes (code_hash, user_id, created_at, expires_at) "
         "VALUES (?, ?, ?, ?)",
@@ -137,7 +146,18 @@ def create_pairing_code(store: Store, user_id: int, seconds: float = PAIRING_SEC
     return code
 
 
-def redeem_pairing_code(store: Store, code: str, chat_id: int) -> int | None:
+def chat_name(chat: dict[str, Any]) -> str | None:
+    """A private chat's name as Telegram gives it: "Riley Demo (@riley)", or None."""
+    full = " ".join(str(chat[k]) for k in ("first_name", "last_name") if chat.get(k)).strip()
+    username = chat.get("username")
+    if full and username:
+        return f"{full} (@{username})"[:100]
+    return (full or (f"@{username}" if username else ""))[:100] or None
+
+
+def redeem_pairing_code(
+    store: Store, code: str, chat_id: int, name: str | None = None
+) -> int | None:
     """Pair ``chat_id`` with the code's user. Returns the user id, or None."""
     code = code.strip().upper().replace("-", "").replace(" ", "")
     if not code:
@@ -153,12 +173,54 @@ def redeem_pairing_code(store: Store, code: str, chat_id: int) -> int | None:
     row = store.one("SELECT user_id FROM pairing_codes WHERE code_hash = ?", (sha256_hex(code),))
     user_id = int(row["user_id"])
     store.execute(
-        "INSERT INTO telegram_chats (chat_id, user_id, paired_at) VALUES (?, ?, ?) "
+        "INSERT INTO telegram_chats (chat_id, user_id, paired_at, name) VALUES (?, ?, ?, ?) "
         "ON CONFLICT(chat_id) DO UPDATE SET "
-        "user_id = excluded.user_id, paired_at = excluded.paired_at",
-        (chat_id, user_id, now),
+        "user_id = excluded.user_id, paired_at = excluded.paired_at, name = excluded.name",
+        (chat_id, user_id, now, name),
     )
     return user_id
+
+
+def paired_chats(store: Store) -> list[dict[str, Any]]:
+    """Every paired chat with the account it acts as, newest pairing first."""
+    rows = store.query(
+        "SELECT t.chat_id, t.name, t.paired_at, t.user_id, u.email, u.role "
+        "FROM telegram_chats t JOIN users u ON u.id = t.user_id "
+        "WHERE u.disabled_at IS NULL ORDER BY t.paired_at DESC, t.chat_id"
+    )
+    return [dict(r) for r in rows]
+
+
+def telegram_api(runtime: Runtime) -> Any:
+    """The shared Bot API client, made on first use; None while no token is set."""
+    if runtime.telegram_api is None:
+        token = os.environ.get(runtime.settings.channels.telegram.token_env)
+        if not token:
+            return None
+        runtime.telegram_api = TelegramApi(token)
+    return runtime.telegram_api
+
+
+async def bot_identity(runtime: Runtime) -> dict[str, Any]:
+    """The bot's username from getMe, kept for an hour (a failure is retried after a minute).
+
+    Nothing is asked while the token variable is unset.
+    """
+    cache = runtime.channel_state.setdefault("telegram_bot", {})
+    if not os.environ.get(runtime.settings.channels.telegram.token_env):
+        return {"username": None, "error": None}
+    now = time.time()
+    if cache.get("until", 0.0) > now:
+        return cache
+    api = telegram_api(runtime)
+    try:
+        me = await api.get_me()
+    except TelegramError as exc:  # already scrubbed of the token
+        cache.update(error=str(exc), until=now + BOT_RETRY_SECONDS)
+        cache.setdefault("username", None)
+    else:
+        cache.update(username=me.get("username"), error=None, until=now + BOT_INFO_SECONDS)
+    return cache
 
 
 # --- the bot -------------------------------------------------------------------------
@@ -221,7 +283,7 @@ class TelegramBot:
 
         if text.startswith("/pair"):
             await self._delete(chat_id, message_id)
-            user_id = redeem_pairing_code(self.runtime.store, text[5:], chat_id)
+            user_id = redeem_pairing_code(self.runtime.store, text[5:], chat_id, chat_name(chat))
             await self._send(
                 chat_id,
                 "Paired. Say hello." if user_id else "That code is not valid or has expired.",
@@ -234,6 +296,12 @@ class TelegramBot:
                 chat_id, "This assistant is private. Ask the owner for a pairing code."
             )
             return
+        name = chat_name(chat)
+        if name:  # keep the console's name current; chats paired before it had none
+            self.runtime.store.execute(
+                "UPDATE telegram_chats SET name = ? WHERE chat_id = ? AND name IS NOT ?",
+                (name, chat_id, name),
+            )
         conversation_id = f"telegram:{chat_id}"
 
         if text and looks_like_pin(text):
@@ -393,7 +461,6 @@ class TelegramBot:
 
 def start_telegram(runtime: Runtime) -> asyncio.Task:
     cfg = runtime.settings.channels.telegram
-    token = secret(cfg.token_env, purpose="the Telegram channel")
-    assert token is not None
-    bot = TelegramBot(runtime, TelegramApi(token))
+    secret(cfg.token_env, purpose="the Telegram channel")  # fails, naming the variable, if unset
+    bot = TelegramBot(runtime, telegram_api(runtime))
     return asyncio.create_task(bot.run(), name="ira-telegram")

@@ -220,6 +220,7 @@ All need `admin.read` (owner, admin, viewer), from a session or a token.
 | `GET /v1/admin/users` | `AdminUserRow[]`: accounts with `has_pin` (no password or PIN hashes) |
 | `GET /v1/admin/roles` | `RoleView[]`: what each role may do |
 | `GET /v1/admin/tokens` | `TokenRow[]`: API tokens (no token values); `scopes` is comma-separated |
+| `GET /v1/admin/telegram` | `TelegramView`: `enabled`, `token_env`, `token_present`, the bot's `bot_username` and `bot_link` (`https://t.me/<username>`), `bot_error`, `running`, `last_poll_at`, `last_error`, `pairing_seconds`, and `chats` (`TelegramChat[]`: `chat_id`, `name`, `paired_at`, `user_id`, `email`, `role`). The username comes from Telegram's `getMe`, asked at most once an hour (a failure is retried after a minute) and never while the token variable is unset |
 | `GET /v1/admin/users/invites` | `InviteView[]`: open invitations. Needs `users` (owner) |
 | `GET /v1/admin/sessions?limit=&before=&before_id=` | `AdminSessionRow[]`: every user's active sessions, as in `GET /v1/me/sessions` plus `user_id`, `email` and `role`. Needs `users` (owner) |
 
@@ -451,6 +452,8 @@ change log. Removing a user also ends their sessions.
 | `POST /v1/admin/models/test` | `admin.write` | `ModelTestRequest`: `ref` (`provider:model` from a tier) | `ModelTestResult`: `ok`, `seconds`, `text` or `error_kind` and `error` | `model.tested` |
 | `PUT /v1/admin/models/tiers/{tier}` | `admin.write` | `TierOrderRequest`: `order` (the same models, reordered; `null` resets) | `TierView` | `model.chain` (before, after) |
 | `PATCH /v1/admin/settings` | `admin.write` | `SettingsUpdate`: `name`, `voice` (send only what changes; `null` resets to `ira.yaml`) | `SettingsView` | `settings.name`, `settings.voice` |
+| `POST /v1/admin/telegram/pairing` | `admin.write` | `TelegramPairingRequest` (optional): `user_id`, default you; someone else's needs `users` | `TelegramPairing`: `code`, `command` (`/pair CODE`), `expires_at`, `user_id`, `email`, `bot_link`; `404` for an unknown user | `telegram.pairing_started` (target: the email, `after`: `{"expires_at": ...}`; never the code) |
+| `DELETE /v1/admin/telegram/chats/{chat_id}` | `admin.write` | | `OkResponse`; `404` if that chat is not paired | `telegram.unpaired` (target: the chat id, `before`: `{"user": email, "name": ...}`) |
 
 Setup and accepting an invitation also write `setup.owner` and
 `user.joined`.
@@ -487,3 +490,18 @@ Notes:
   not refuse other ids: Polly has more voices than the list shows.
 - **Keys** stay in the environment or `.env`. The console can only see
   whether each variable is set.
+- **Telegram.** A pairing code from the console is the same one-time code
+  `ira telegram pair` prints: eight characters, 10 minutes, stored as a
+  hash. The chat that sends `/pair CODE` acts as that user. Pairing a chat
+  for someone else needs `users` (owner): it would otherwise let an admin
+  act as the owner on Telegram. A chat's `name` is what Telegram gives
+  (first and last name, and `@username`), kept at pairing and refreshed on
+  each message; chats paired before IRA kept names show `null` until they
+  next write. Unpairing takes effect at once: the bot answers that chat as
+  it answers strangers.
+- **Testing a tool** answers `200` whether or not the tool worked: read
+  `ok`. Parameters that do not fit the tool's schema give `ok: false` with
+  `error` starting `invalid parameters:`, as do a tool error, a crash (`the
+  tool raised ...`) or no result within 30 seconds. Only a missing tool
+  (`404`), an action tool (`409`) or a body that is not JSON (`422`) are
+  HTTP errors.

@@ -83,6 +83,8 @@ WRITES = [
     ("post", "/v1/admin/models/test", {"ref": "fake:m"}),
     ("put", "/v1/admin/models/tiers/default", {"order": None}),
     ("patch", "/v1/admin/settings", {"name": "Sunny"}),
+    ("post", "/v1/admin/telegram/pairing", {}),
+    ("delete", "/v1/admin/telegram/chats/5550100", None),
 ]
 
 

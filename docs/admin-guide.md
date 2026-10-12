@@ -269,6 +269,12 @@ session, never a token.
    Send the printed `/pair CODE` to the bot within 10 minutes. The code works
    once and the bot deletes the message. The chat then acts as that user.
 
+   The console does the same over the API: `POST /v1/admin/telegram/pairing`
+   (a session with `admin.write`; another user's chat needs `users`)
+   returns the code, `GET /v1/admin/telegram` lists the bot's `t.me` link
+   and the paired chats, and `DELETE /v1/admin/telegram/chats/{chat_id}`
+   unpairs one. Both writes go to the change log; the code never does.
+
 Commands: `/help`, `/new` (fresh context), `/cancel` (drop the pending
 action), `/name <new name>` (owner or admin). To confirm an action, type the
 PIN as a message on its own: the bot deletes it immediately and never sends it

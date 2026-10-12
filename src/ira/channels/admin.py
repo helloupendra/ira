@@ -47,6 +47,8 @@ from ira.channels.schemas import (
     ServerAddress,
     SettingsView,
     SettingValue,
+    TelegramChat,
+    TelegramView,
     TierView,
     TokenRow,
     ToolDetail,
@@ -411,6 +413,34 @@ def channels(
             },
         ),
     ]
+
+
+def bot_link(username: str | None) -> str | None:
+    return f"https://t.me/{username}" if username else None
+
+
+@router.get("/telegram", response_model=TelegramView, summary="The Telegram bot and paired chats")
+async def telegram(
+    _: Principal = Depends(reader), runtime: Runtime = Depends(get_runtime)
+) -> TelegramView:
+    from ira.channels.telegram import PAIRING_SECONDS, bot_identity, paired_chats
+
+    cfg = runtime.settings.channels.telegram
+    bot = await bot_identity(runtime)
+    state = runtime.channel_state.get("telegram", {})
+    return TelegramView(
+        enabled=cfg.enabled,
+        token_env=cfg.token_env,
+        token_present=bool(os.environ.get(cfg.token_env)),
+        bot_username=bot.get("username"),
+        bot_link=bot_link(bot.get("username")),
+        bot_error=bot.get("error"),
+        running=bool(state.get("running")),
+        last_poll_at=state.get("last_poll_at"),
+        last_error=state.get("last_error"),
+        pairing_seconds=PAIRING_SECONDS,
+        chats=[TelegramChat(**row) for row in paired_chats(runtime.store)],
+    )
 
 
 @router.get(

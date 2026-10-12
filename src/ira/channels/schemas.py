@@ -519,6 +519,61 @@ class ChannelView(BaseModel):
     )
 
 
+class TelegramChat(BaseModel):
+    """A private chat paired with an account: it acts as that user."""
+
+    chat_id: int = Field(description="Telegram's chat id; DELETE .../telegram/chats/{chat_id}.")
+    name: str | None = Field(
+        description='The chat\'s name as Telegram gives it, e.g. "Riley Demo (@riley)"; null '
+        "for a chat paired before IRA kept names, until it next sends a message."
+    )
+    paired_at: float
+    user_id: int
+    email: str = Field(description="The account the chat acts as.")
+    role: str = Field(description="That account's role now.")
+
+
+class TelegramView(BaseModel):
+    """The Telegram channel: its bot, its state and the chats paired with it."""
+
+    enabled: bool = Field(description="channels.telegram.enabled in ira.yaml.")
+    token_env: str = Field(description="The variable that holds the bot token.")
+    token_present: bool = Field(description="Whether that variable is set. Never its value.")
+    bot_username: str | None = Field(
+        description="The bot's username from Telegram's getMe, asked at most once an hour; "
+        "null while no token is set or Telegram has not answered."
+    )
+    bot_link: str | None = Field(description="https://t.me/<bot_username>, to open the bot.")
+    bot_error: str | None = Field(
+        default=None,
+        description="Why getMe failed, if it did (tried again after a minute). Never the token.",
+    )
+    running: bool = Field(description="Whether the bot is polling Telegram right now.")
+    last_poll_at: float | None = None
+    last_error: str | None = Field(default=None, description="The last polling error, if any.")
+    pairing_seconds: int = Field(description="How long a pairing code works.")
+    chats: list[TelegramChat]
+
+
+class TelegramPairingRequest(BaseModel):
+    user_id: int | None = Field(
+        default=None,
+        description="Whose account the chat will act as; default you. Someone else's needs "
+        "the users permission (owner).",
+    )
+
+
+class TelegramPairing(BaseModel):
+    """A one-time pairing code. Shown once; only its hash is stored."""
+
+    code: str = Field(description="Eight characters; works once, until expires_at.")
+    command: str = Field(description="What to send the bot from the chat: /pair CODE.")
+    expires_at: float
+    user_id: int
+    email: str = Field(description="The account the chat will act as.")
+    bot_link: str | None = Field(description="https://t.me/<bot>, when the bot's name is known.")
+
+
 class TokenRow(BaseModel):
     id: str
     label: str

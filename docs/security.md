@@ -67,6 +67,10 @@ on its own it can never change anything.
   browsers do not send to servers. The last owner can never be removed or
   demoted.
 - Roles are checked on every route; conversation ids are namespaced by user.
+- Telegram pairing codes are one-time, expire after 10 minutes and are
+  stored as SHA-256 hashes; the change log records that a pairing started,
+  never the code. Pairing a chat as another user needs the owner's `users`
+  permission.
 - Setup: the first-owner endpoint needs a one-time code printed by
   `ira serve`, throttles wrong codes per address, creates the owner inside a
   write transaction so two racing requests cannot both succeed, and closes
