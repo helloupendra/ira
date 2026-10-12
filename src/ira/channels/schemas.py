@@ -314,7 +314,13 @@ class CallRow(BaseModel):
     tier: str
     purpose: str
     model: str | None
-    tried: str
+    tried: str = Field(
+        description="The models tried, in order, as provider:model references joined by "
+        'commas with no spaces ("openai:gpt-4o-mini,demo:router"). tried_list has them split.'
+    )
+    tried_list: list[str] = Field(
+        default_factory=list, description="The models tried, in order: tried, split at commas."
+    )
     attempts: int
     ok: bool
     error_kind: str | None
@@ -449,7 +455,9 @@ class AuditRow(BaseModel):
 
 class ToolDetail(BaseModel):
     name: str
-    kind: str
+    kind: Literal["read", "action"] = Field(
+        description="read runs when the model calls it; action only proposes, and runs after a PIN."
+    )
     description: str
     parameters: dict[str, Any]
     enabled: bool = True

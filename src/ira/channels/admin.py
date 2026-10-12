@@ -141,7 +141,14 @@ def calls(
         "SELECT * FROM calls WHERE id < ? ORDER BY id DESC LIMIT ?",
         (before_id if before_id is not None else 2**62, limit + 1),
     )
-    return [CallRow(**{**dict(r), "ok": bool(r["ok"])}) for r in page(rows, limit, response)]
+    return [
+        CallRow(**{**dict(r), "ok": bool(r["ok"]), "tried_list": _split(r["tried"])})
+        for r in page(rows, limit, response)
+    ]
+
+
+def _split(tried: str) -> list[str]:
+    return [ref for ref in tried.split(",") if ref]
 
 
 @router.get(

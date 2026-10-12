@@ -117,3 +117,17 @@ def test_one_conversation_header_and_its_declared_404(setup):
     ):
         not_found = paths[path]["get"]["responses"]["404"]
         assert "ErrorDetail" in str(not_found), path
+
+
+def test_calls_list_the_models_tried_and_tools_say_their_kind(setup):
+    client, headers, runtime = setup
+    runtime.store.execute(
+        "INSERT INTO calls (at, tier, purpose, model, tried, attempts, ok, seconds) "
+        "VALUES (1, 'default', 'chat', 'b:m', 'a:m,b:m', 2, 1, 0.1)"
+    )
+    newest = client.get("/v1/admin/calls?limit=1", headers=headers).json()[0]
+    assert newest["tried"] == "a:m,b:m" and newest["tried_list"] == ["a:m", "b:m"]
+
+    schema = client.get("/v1/openapi.json").json()["components"]["schemas"]
+    assert schema["ToolDetail"]["properties"]["kind"]["enum"] == ["read", "action"]
+    assert "tried_list" in schema["CallRow"]["properties"]
