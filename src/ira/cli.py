@@ -86,10 +86,14 @@ def cmd_serve(args: argparse.Namespace) -> int:
     runtime = build_runtime(settings)
     host = args.host or settings.channels.http.host
     port = args.port or settings.channels.http.port
-    print(f"{runtime.assistant.name} is listening on http://{host}:{port}  (API docs: /v1/docs)")
+    # Flushed: under a service manager stdout is a pipe, and the setup code must show.
+    print(
+        f"{runtime.assistant.name} is listening on http://{host}:{port}  (API docs: /v1/docs)",
+        flush=True,
+    )
     code = runtime.ensure_setup_code()
     if code:
-        print(setup_banner(code, host, port))
+        print(setup_banner(code, host, port), flush=True)
         runtime.setup_code_shown = True
     uvicorn.run(create_app(runtime), host=host, port=port, log_level="info")
     return 0
