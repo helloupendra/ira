@@ -2,7 +2,7 @@
 // dark, for docs/images. Needs a running server with the clinic demo and the
 // fictional accounts, and the installed Google Chrome.
 //
-//   IRA_OWNER_PASSWORD=... IRA_ADMIN_PASSWORD=... IRA_VIEWER_PASSWORD=... \
+//   IRA_OWNER_PASSWORD=... IRA_ADMIN_PASSWORD=... IRA_VIEWER_PASSWORD=... IRA_STAFF_PASSWORD=... \
 //     node scripts/screenshots.mjs --base http://127.0.0.1:8790 --out ../docs/images [--scene pin]
 //
 // Scenes that need a server with no owner yet (the setup form and the wizard)
@@ -33,6 +33,7 @@ const ACCOUNTS = {
   owner: ["owner@example.com", process.env.IRA_OWNER_PASSWORD],
   admin: ["admin@example.com", process.env.IRA_ADMIN_PASSWORD],
   viewer: ["viewer@example.com", process.env.IRA_VIEWER_PASSWORD],
+  staff: ["staff@example.com", process.env.IRA_STAFF_PASSWORD],
 };
 
 const sse = (events) => events.map((e) => `data: ${JSON.stringify(e)}\n\n`).join("");
@@ -63,6 +64,12 @@ async function proposal(page, text = "cancel appointment 17") {
 }
 
 const outcome = (status, body) => ({ status, contentType: "application/json", body: JSON.stringify(body) });
+
+async function settled(page) {
+  await page.waitForSelector("main .page, main .gate-card", { timeout: 20000 });
+  await page.waitForFunction(() => !document.querySelector("main .skeleton"), null, { timeout: 20000 });
+  await page.waitForTimeout(150);
+}
 
 // Each scene: the surface, who is signed in, and what to do before the shot.
 const SCENES = [
@@ -263,19 +270,81 @@ const SCENES = [
       await p.waitForFunction(() => document.querySelector("#pin-status").textContent.length > 0);
     },
   },
-  // The console.
-  { name: "console-login", surface: "console", url: "/admin/login", run: (p) => p.waitForSelector("form") },
-  { name: "console-overview", surface: "console", as: "owner", url: "/admin/", run: (p) => p.waitForSelector("main table") },
-  { name: "console-conversations", surface: "console", as: "owner", url: "/admin/conversations", run: (p) => p.waitForSelector("main table, main ol, main ul") },
-  { name: "console-actions", surface: "console", as: "owner", url: "/admin/actions", run: (p) => p.waitForSelector("main table, main ol, main ul") },
-  { name: "console-tools", surface: "console", as: "owner", url: "/admin/tools", run: (p) => p.waitForSelector("main h2, main table") },
-  { name: "console-models", surface: "console", as: "owner", url: "/admin/models", run: (p) => p.waitForSelector("main h2, main table") },
-  { name: "console-channels", surface: "console", as: "owner", url: "/admin/channels", run: (p) => p.waitForSelector("main h2") },
-  { name: "console-users", surface: "console", as: "owner", url: "/admin/users", run: (p) => p.waitForSelector("main table") },
-  { name: "console-users-forbidden", surface: "console", as: "admin", url: "/admin/users", run: (p) => p.waitForSelector("main [role=status], main .forbidden, main h2") },
-  { name: "console-tokens", surface: "console", as: "owner", url: "/admin/tokens", run: (p) => p.waitForSelector("main table, main h2") },
-  { name: "console-audit", surface: "console", as: "owner", url: "/admin/audit", run: (p) => p.waitForSelector("main table") },
+  // The console. "settled" waits for the page and for every skeleton to go.
+  { name: "console-login", surface: "console", url: "/admin/login", run: (p) => p.waitForSelector("main form") },
+  { name: "console-overview", surface: "console", as: "owner", url: "/admin/", run: settled },
+  { name: "console-conversations", surface: "console", as: "owner", url: "/admin/conversations", run: settled },
+  {
+    name: "console-conversation",
+    surface: "console",
+    as: "owner",
+    url: "/admin/conversations",
+    run: async (p, context) => {
+      const rows = await (await context.request.get(`${BASE}/v1/admin/conversations?limit=5`)).json();
+      const row = rows.find((r) => r.turns >= 2) || rows[0];
+      await p.goto(`/admin/conversations/${encodeURIComponent(row.id)}`);
+      await settled(p);
+    },
+  },
+  { name: "console-actions", surface: "console", as: "owner", url: "/admin/actions", run: async (p) => { await settled(p); await p.click("main details summary"); await p.waitForTimeout(200); } },
+  { name: "console-tools", surface: "console", as: "owner", url: "/admin/tools", run: async (p) => { await settled(p); await p.click("main details summary"); await p.waitForTimeout(200); } },
+  { name: "console-tools-viewer", surface: "console", as: "viewer", url: "/admin/tools", run: async (p) => { await settled(p); await p.click("main details summary"); await p.waitForTimeout(200); } },
+  { name: "console-models", surface: "console", as: "owner", url: "/admin/models", run: settled },
+  { name: "console-channels", surface: "console", as: "owner", url: "/admin/channels", run: settled },
+  { name: "console-users", surface: "console", as: "owner", url: "/admin/users", run: settled },
+  { name: "console-users-forbidden", surface: "console", as: "admin", url: "/admin/users", run: (p) => p.waitForSelector("main .forbidden") },
+  { name: "console-tokens", surface: "console", as: "owner", url: "/admin/tokens", run: settled },
+  { name: "console-audit", surface: "console", as: "owner", url: "/admin/audit", run: settled },
+  { name: "console-audit-cost", surface: "console", as: "owner", url: "/admin/audit?view=cost", run: settled },
+  { name: "console-staff", surface: "console", as: "staff", url: "/admin/", run: (p) => p.waitForSelector("main .gate-card") },
+  { name: "console-not-found", surface: "console", as: "owner", url: "/admin/nothing-here", run: settled },
+  {
+    name: "console-error",
+    surface: "console",
+    as: "owner",
+    url: "/admin/",
+    run: async (p) => {
+      await stub(p, "/v1/admin/overview", outcome(500, { detail: "the database file is locked" }));
+      await p.goto("/admin/");
+      await p.waitForSelector("main .error-state");
+    },
+  },
+  {
+    name: "console-loading",
+    surface: "console",
+    as: "owner",
+    url: "/admin/",
+    run: async (p) => {
+      await p.route("**/v1/admin/overview", () => {}); // never answers: the loading state stays
+      await p.goto("/admin/");
+      await p.waitForSelector("main .skeleton");
+    },
+  },
+  {
+    name: "console-invite",
+    surface: "console",
+    as: "owner",
+    url: "/admin/",
+    run: async (p, context) => {
+      const created = await (
+        await context.request.post(`${BASE}/v1/admin/users/invites`, {
+          data: { email: "desk@example.com", role: "staff" },
+          headers: { "X-Ira-Request": "1" },
+        })
+      ).json();
+      await context.clearCookies(); // the invitee is not signed in
+      await p.goto(created.path);
+      await p.waitForSelector("main form");
+      await context.request.delete(`${BASE}/v1/admin/users/invites/${created.invite.id}`, { headers: { "X-Ira-Request": "1" } }).catch(() => {});
+    },
+  },
+  // The wizard: step 1 on a server with no owner, later steps as the owner.
   { name: "console-setup", surface: "console", base: "setup", url: "/admin/setup#code=7F3A-91C2-0B4E", run: (p) => p.waitForSelector("main form") },
+  { name: "console-setup-2", surface: "console", as: "owner", url: "/admin/setup", step: 2, run: settled },
+  { name: "console-setup-3", surface: "console", as: "owner", url: "/admin/setup", step: 3, run: settled },
+  { name: "console-setup-4", surface: "console", as: "owner", url: "/admin/setup", step: 4, run: settled },
+  { name: "console-setup-5", surface: "console", as: "owner", url: "/admin/setup", step: 5, run: settled },
+  { name: "console-setup-6", surface: "console", as: "owner", url: "/admin/setup", step: 6, run: settled },
 ];
 
 async function shoot(browser, scene, sizeName, theme) {
@@ -296,14 +365,16 @@ async function shoot(browser, scene, sizeName, theme) {
   page.on("console", (m) => {
     if (m.type() === "error") errors.push(m.text());
   });
-  await page.addInitScript(() => {
+  await page.addInitScript((step) => {
     try {
       localStorage.removeItem("ira.today");
       localStorage.removeItem("ira.theme");
+      if (step) localStorage.setItem("ira.setup.step", String(step));
+      else localStorage.removeItem("ira.setup.step");
     } catch {
       /* ignore */
     }
-  });
+  }, scene.step || 0);
   if (scene.as) await login(context, scene.as);
   await page.goto(scene.url || "/");
   await scene.run(page, context);
