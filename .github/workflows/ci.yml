@@ -49,13 +49,23 @@ jobs:
       - uses: actions/checkout@v6
         with:
           fetch-depth: 0
-      # Scans the pushed or PR commits (and everything on dispatch/schedule).
-      # GITHUB_TOKEN is the automatic per-run token; no stored secret is needed
-      # for a repository owned by a personal account.
+      # On pull requests this scans the PR's commits and comments on the PR;
+      # on schedule and manual runs it scans everything. GITHUB_TOKEN is the
+      # automatic per-run token: a personal-account repository needs no stored
+      # secret. Pushes are covered by the full scan below, because the
+      # action's commit-range scan has no parent to start from on a first push.
       - uses: gitleaks/gitleaks-action@v3
+        if: github.event_name != 'push'
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      # The action scans only the new commits on a push. The binary it put on
-      # PATH also scans every commit on every branch, every time.
-      - name: Full-history scan
-        run: gitleaks git --redact --verbose --exit-code 1 .
+      - name: Full-history scan (every commit, every branch)
+        env:
+          VERSION: "8.24.3"
+        run: |
+          base="https://github.com/gitleaks/gitleaks/releases/download/v${VERSION}"
+          archive="gitleaks_${VERSION}_linux_x64.tar.gz"
+          curl -sSfLO "${base}/${archive}"
+          curl -sSfLO "${base}/gitleaks_${VERSION}_checksums.txt"
+          grep " ${archive}\$" "gitleaks_${VERSION}_checksums.txt" | sha256sum -c -
+          tar -xzf "${archive}" gitleaks
+          ./gitleaks git --redact --verbose --exit-code 1 .
