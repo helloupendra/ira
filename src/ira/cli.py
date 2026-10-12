@@ -1,5 +1,6 @@
 """The ``ira`` command line.
 
+ira init FOLDER [--provider P]    create a business folder: ira.yaml, tools.py, README
 ira setup                         create the owner account
 ira serve                         run the API, web chat, console and enabled channels
 ira pin set [--user E]            set a user's action PIN (default: the first owner)
@@ -227,6 +228,40 @@ def cmd_user_list(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_init(args: argparse.Namespace) -> int:
+    from pathlib import Path
+
+    from ira.scaffold import InitError, InitOptions, init_folder
+
+    options = InitOptions(
+        name=args.name,
+        business=args.business,
+        port=args.port,
+        provider=args.provider,
+        region=args.region,
+        voice=args.voice,
+        public_url=args.public_url,
+    )
+    folder = Path(args.folder).expanduser()
+    try:
+        written = init_folder(folder, options)
+    except (InitError, OSError) as exc:
+        print(f"Error: {exc}", file=sys.stderr)
+        return 1
+    where = folder.resolve()
+    print(f"Created {where}:")
+    for path in written:
+        print(f"    {path.name}")
+    print(
+        "\nNext:\n"
+        f"    cd {where}\n"
+        "    ira doctor --no-models   check the config, tools and port (no calls)\n"
+        "    ira serve                prints a one-time link to create the owner account\n"
+        "    ira doctor               once the owner has a PIN: everything, models included"
+    )
+    return 0
+
+
 def cmd_version(args: argparse.Namespace) -> int:
     print(f"ira {__version__}")
     return 0
@@ -245,6 +280,23 @@ def build_parser() -> argparse.ArgumentParser:
         p.add_argument("--config", "-c", default=argparse.SUPPRESS, help=argparse.SUPPRESS)
         p.set_defaults(handler=handler)
         return p
+
+    p = add("init", cmd_init, "create a business folder: ira.yaml, tools.py and a README")
+    p.add_argument("folder", help="a new or empty folder")
+    p.add_argument("--name", default="Ira", help="the assistant's name (default: Ira)")
+    p.add_argument(
+        "--business", default="your business", help='one line, e.g. "Sunrise Dental, a clinic"'
+    )
+    p.add_argument("--port", type=int, default=8765, help="port on 127.0.0.1 (default: 8765)")
+    p.add_argument(
+        "--provider",
+        choices=["demo", "bedrock"],
+        default="demo",
+        help="demo: no key, no network (default); bedrock: Amazon Bedrock and Polly",
+    )
+    p.add_argument("--region", help="Bedrock Mantle region (default: us-east-1)")
+    p.add_argument("--voice", help="Polly voice (default: Kajal, Indian English)")
+    p.add_argument("--public-url", help="the address people open, e.g. https://ira.example.com")
 
     p = add("setup", cmd_setup, "create the owner account")
     p.add_argument("--email")

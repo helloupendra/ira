@@ -1,0 +1,7 @@
+# Never commit this business's data or secrets.
+data/
+.env
+.env.*
+*.db
+*.db-*
+__pycache__/

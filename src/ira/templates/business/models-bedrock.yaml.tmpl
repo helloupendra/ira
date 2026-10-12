@@ -1,0 +1,39 @@
+models:
+  providers:
+    # Amazon Bedrock's OpenAI-compatible Mantle endpoint, signed with SigV4 from
+    # the default AWS credential chain: on EC2, the instance role. No key.
+    bedrock:
+      type: bedrock_mantle
+      region: ${region}
+
+  # Each tier is a fallback chain: when a model fails or is busy, the next one
+  # answers. These are the Bedrock ids that answered on 11 Oct 2026; Bedrock
+  # adds and retires models, and `ira doctor` asks each one a tiny question.
+  tiers:
+    default:                      # answers chat and chooses the tools
+${default_chain}
+    fast:                         # short extraction jobs
+${fast_chain}
+
+  cooldown_seconds: 60
+  timeout_seconds: 60
+  max_tokens: 1024
+
+  # US dollars per million tokens, for the cost column of the call log. Copy
+  # them from the Amazon Bedrock pricing page; without them cost shows as unknown.
+  # prices:
+  #   bedrock:openai.gpt-oss-120b: { input: 0.00, output: 0.00 }
+
+voice:
+  stt:
+    type: chat_audio              # Voxtral on Bedrock, through the same endpoint
+    provider: bedrock
+    model: ${stt_model}
+    vocabulary: [${vocabulary}]  # unusual words the transcriber should expect
+  tts:
+    type: polly                   # needs polly:SynthesizeSpeech on the role
+    voice: ${voice}
+    engine: ${engine}
+${language_line}
+    region: ${polly_region}
+  max_spoken_chars: 400           # longer answers are cut at a sentence

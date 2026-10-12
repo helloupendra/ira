@@ -16,7 +16,7 @@ from ira.models.gateway import Gateway
 from ira.runtime import Runtime
 from ira.store import Store
 from ira.tools.actions import ActionGuard
-from ira.tools.registry import ToolError, ToolRegistry
+from ira.tools.registry import ToolError, ToolRegistry, default_registry
 
 FAST_PIN_ITERATIONS = 1_000  # the real default is slow on purpose; tests need speed
 
@@ -37,6 +37,27 @@ class Clock:
 @pytest.fixture
 def anyio_backend() -> str:
     return "asyncio"
+
+
+@pytest.fixture
+def isolated_tools():
+    """Undo what loading a tool module does to the shared registry and sys.modules.
+
+    Tool modules register into ``default_registry`` as they are imported, so two
+    tests loading files with the same tool names would otherwise collide.
+    """
+    import sys
+
+    tools, disabled = dict(default_registry._tools), set(default_registry._disabled)
+    modules = set(sys.modules)
+    yield default_registry
+    default_registry._tools.clear()
+    default_registry._tools.update(tools)
+    default_registry._disabled.clear()
+    default_registry._disabled.update(disabled)
+    for name in set(sys.modules) - modules:
+        if name.startswith("ira_tools_"):
+            del sys.modules[name]
 
 
 @pytest.fixture

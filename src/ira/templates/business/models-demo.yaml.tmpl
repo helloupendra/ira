@@ -1,0 +1,16 @@
+models:
+  providers:
+    # The demo router: a keyword matcher over your tools, not a language model.
+    # No key and no network. For real models, run `ira init --provider bedrock`
+    # in a new folder, or add a provider from ira.example.yaml and put it first.
+    demo:
+      type: fake
+  tiers:
+    default: [demo:router]
+
+voice:
+  stt:
+    type: fake                    # always "hears" this sentence; no key needed
+    fake_text: find notes about the delivery
+  tts:
+    type: none                    # the web app speaks with the browser's voice

@@ -1,0 +1,30 @@
+# ${name} for ${business}
+
+One IRA instance, made by `ira init` on ${date}. It answers with
+${provider_note}.
+
+| File | What it is |
+| --- | --- |
+| `ira.yaml` | The settings: models, voice, port. No secrets. |
+| `tools.py` | Two placeholder tools. Replace them with your own. |
+| `data/` | Made on first start: `ira.db` (accounts, conversations, the audit log) and your tools' files. Back it up. |
+| `.env` | Not made for you. Only for keys other than the server's AWS role; `chmod 600`. |
+
+## Check and start
+
+```bash
+ira doctor --no-models   # config, data folder, port, tools, accounts: no calls
+ira doctor               # the same, plus one tiny call to each model and voice
+ira serve                # while no owner exists, prints a one-time setup link
+```
+
+Open the setup link to create the owner account and set the action PIN, then
+run `ira doctor` again: it passes once the owner has a PIN.
+
+## Make it yours
+
+- Describe the business in `assistant.business` and `assistant.instructions`.
+- Replace `find_notes` and `add_note` in `tools.py` with tools over your own
+  data. Reads are `@tool`; changes are `@action`, and run only after a PIN.
+- Run `ira doctor` after every change. It loads each tool module and says
+  which tools it found, or why it failed.
