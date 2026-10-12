@@ -379,6 +379,9 @@ def create_app(runtime: Runtime, *, start_channels: bool = True) -> FastAPI:
             await runtime.aclose()
 
     app = FastAPI(
+        # Operation ids are the handlers' names (create_invite, test_tool...), which
+        # read well in clients generated from /v1/openapi.json.
+        generate_unique_id_function=lambda route: route.name,
         title="IRA",
         summary="Hey Ira: a self-hosted voice assistant over your own data and tools.",
         version=__version__,

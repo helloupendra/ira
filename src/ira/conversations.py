@@ -106,7 +106,9 @@ class Conversations:
 
     def recent(self, limit: int = 50, before: float | None = None) -> list[dict[str, Any]]:
         rows = self.store.query(
-            "SELECT c.*, u.email FROM conversations c LEFT JOIN users u ON u.id = c.user_id "
+            "SELECT c.*, u.email, (SELECT substr(m.content, 1, 120) FROM messages m "
+            "WHERE m.conversation_id = c.id AND m.role = 'user' ORDER BY m.id LIMIT 1) AS preview "
+            "FROM conversations c LEFT JOIN users u ON u.id = c.user_id "
             "WHERE c.last_at < ? ORDER BY c.last_at DESC LIMIT ?",
             (before if before is not None else float("inf"), limit),
         )

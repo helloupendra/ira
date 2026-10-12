@@ -14,9 +14,10 @@ from typing import Any
 from fastapi import APIRouter, Depends, HTTPException, Query
 
 from ira import changes, overrides
-from ira.accounts import COOKIE_DAYS, TOKEN_SCOPES, Principal
+from ira.accounts import COOKIE_DAYS, PERMISSIONS, ROLE_DESCRIPTIONS, ROLES, TOKEN_SCOPES, Principal
 from ira.channels.deps import COOKIE_SAMESITE, get_runtime, require
 from ira.channels.schemas import (
+    ERRORS,
     ActionRow,
     ActionRule,
     AdminUserRow,
@@ -33,6 +34,7 @@ from ira.channels.schemas import (
     ModelUsage,
     Overview,
     ProviderView,
+    RoleView,
     SecurityView,
     SettingsView,
     SettingValue,
@@ -42,7 +44,7 @@ from ira.channels.schemas import (
 )
 from ira.runtime import Runtime
 
-router = APIRouter(prefix="/v1/admin", tags=["admin"])
+router = APIRouter(prefix="/v1/admin", tags=["admin"], responses=ERRORS)
 reader = require("admin.read")
 
 
@@ -259,6 +261,14 @@ def users(
     _: Principal = Depends(reader), runtime: Runtime = Depends(get_runtime)
 ) -> list[AdminUserRow]:
     return [AdminUserRow(**u.public(), has_pin=u.has_pin) for u in runtime.accounts.users()]
+
+
+@router.get("/roles", response_model=list[RoleView], summary="What each role may do")
+def roles(_: Principal = Depends(reader)) -> list[RoleView]:
+    return [
+        RoleView(role=r, permissions=sorted(PERMISSIONS[r]), description=ROLE_DESCRIPTIONS[r])
+        for r in ROLES
+    ]
 
 
 def invite_view(runtime: Runtime, invite: Any) -> InviteView:

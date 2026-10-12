@@ -132,6 +132,24 @@ def test_a_cookie_session_needs_the_csrf_header_for_console_writes(client, peopl
     assert ok.status_code == 200
 
 
+def test_the_role_table_matches_what_the_server_enforces(client, people):
+    roles = client.get("/v1/admin/roles", headers=people.session(people.viewer)).json()
+    table = {r["role"]: set(r["permissions"]) for r in roles}
+    assert "users" in table["owner"] and "users" not in table["admin"]
+    assert table["viewer"] == {"admin.read"}
+    assert all(r["description"] for r in roles)
+
+
+def test_every_route_documents_its_shapes(client):
+    spec = client.get("/v1/openapi.json").json()
+    for path, operations in spec["paths"].items():
+        for method, operation in operations.items():
+            assert operation.get("summary"), (method, path)
+            assert operation["operationId"].replace("_", "").isalnum(), (method, path)
+    write = spec["paths"]["/v1/admin/users/invites"]["post"]["responses"]
+    assert "403" in write and "ErrorDetail" in str(write["403"])
+
+
 # Users and invitations.
 
 

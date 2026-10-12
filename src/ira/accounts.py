@@ -38,6 +38,13 @@ PERMISSIONS: dict[str, frozenset[str]] = {
     "viewer": frozenset({"admin.read"}),
 }
 
+ROLE_DESCRIPTIONS: dict[str, str] = {
+    "owner": "Everything, including managing users.",
+    "admin": "Everything except managing users.",
+    "staff": "Talks to the assistant and confirms actions with their own PIN.",
+    "viewer": "Reads the admin views; cannot ask or change anything.",
+}
+
 # What an API token may carry. Writing config and managing users need a session.
 TOKEN_SCOPES = ("ask", "voice", "actions", "admin.read")
 

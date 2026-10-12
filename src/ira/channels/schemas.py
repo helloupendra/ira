@@ -118,6 +118,25 @@ class OkResponse(BaseModel):
     ok: bool = True
 
 
+class ErrorDetail(BaseModel):
+    """Every error: 400 bad input, 401 no or bad credential, 403 not allowed,
+    404 not found, 409 conflict, 410 gone, 422 invalid body, 429 too many tries."""
+
+    detail: str | list[dict[str, Any]] = Field(
+        description="A sentence for people; a list of field errors on 422."
+    )
+
+
+ERRORS: dict[int | str, dict[str, Any]] = {
+    code: {"model": ErrorDetail, "description": text}
+    for code, text in {
+        400: "Bad input",
+        401: "No credential, or an invalid one",
+        403: "Not allowed: role, token, or a missing CSRF header",
+    }.items()
+}
+
+
 # Admin views.
 
 
@@ -168,16 +187,25 @@ class ConversationRow(BaseModel):
     started_at: float
     last_at: float
     turns: int
+    preview: str | None = Field(
+        default=None, description="The first thing the user said, cut to 120 characters."
+    )
+
+
+class ToolCallView(BaseModel):
+    id: str
+    name: str
+    arguments: str = Field(description="JSON text exactly as the model produced it.")
 
 
 class MessageRow(BaseModel):
     id: int
     at: float
-    role: str
-    content: str | None
-    tool_calls: list[dict[str, Any]]
-    tool_call_id: str | None
-    name: str | None
+    role: str = Field(description="user, assistant or tool")
+    content: str | None = Field(description="For role tool: the tool's result as JSON text.")
+    tool_calls: list[ToolCallView] = Field(description="Tools an assistant message called.")
+    tool_call_id: str | None = Field(description="For role tool: the call this answers.")
+    name: str | None = Field(description="For role tool: the tool's name.")
 
 
 class ActionRow(BaseModel):
@@ -450,3 +478,9 @@ class SecurityView(BaseModel):
     users_without_pin: list[str]
     confirm_roles: list[str]
     action_rules: list[ActionRule]
+
+
+class RoleView(BaseModel):
+    role: str
+    permissions: list[str]
+    description: str

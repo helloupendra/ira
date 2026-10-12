@@ -8,6 +8,7 @@ signs the new user in with the session cookie.
 from __future__ import annotations
 
 import secrets
+from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 
@@ -21,6 +22,7 @@ from ira.channels.deps import (
     start_browser_session,
 )
 from ira.channels.schemas import (
+    ErrorDetail,
     InviteAcceptRequest,
     InviteTokenRequest,
     OkResponse,
@@ -34,6 +36,12 @@ from ira.channels.schemas import (
 from ira.runtime import Runtime
 
 router = APIRouter(prefix="/v1", tags=["setup and account"])
+
+
+def _errors(**codes: str) -> dict[int | str, dict[str, Any]]:
+    return {
+        int(code[1:]): {"model": ErrorDetail, "description": text} for code, text in codes.items()
+    }
 
 
 def claim_setup(
@@ -81,6 +89,12 @@ def setup_status(runtime: Runtime = Depends(get_runtime)) -> SetupStatus:
     "/setup/owner",
     response_model=SessionResponse,
     summary="Create the first owner with the setup code (works once)",
+    responses=_errors(
+        e400="Bad email or a password under 10 characters",
+        e403="Wrong setup code",
+        e409="Setup is already done",
+        e429="Too many wrong codes from this address; wait 15 minutes",
+    ),
 )
 def setup_owner(
     body: SetupOwnerRequest,
@@ -98,6 +112,7 @@ def setup_owner(
     "/invites/lookup",
     response_model=PublicInvite,
     summary="Public: who an invitation is for, if it is still open",
+    responses=_errors(e410="Unknown, used, withdrawn or expired"),
 )
 def invite_lookup(
     body: InviteTokenRequest, runtime: Runtime = Depends(get_runtime)
@@ -112,6 +127,10 @@ def invite_lookup(
     "/invites/accept",
     response_model=SessionResponse,
     summary="Public: set a password for an invitation and sign in",
+    responses=_errors(
+        e400="A password under 10 characters, or the email already has an account",
+        e410="Unknown, used, withdrawn or expired",
+    ),
 )
 def invite_accept(
     body: InviteAcceptRequest,
@@ -142,7 +161,12 @@ def _pin_status(runtime: Runtime, principal: Principal) -> PinStatus:
     )
 
 
-@router.get("/me/pin", response_model=PinStatus, summary="Whether you have an action PIN")
+@router.get(
+    "/me/pin",
+    response_model=PinStatus,
+    summary="Whether you have an action PIN",
+    responses=_errors(e401="Not signed in"),
+)
 def my_pin(
     principal: Principal = Depends(get_principal), runtime: Runtime = Depends(get_runtime)
 ) -> PinStatus:
@@ -153,6 +177,11 @@ def my_pin(
     "/me/pin",
     response_model=OkResponse,
     summary="Set or change your action PIN (needs your password again)",
+    responses=_errors(
+        e401="Not signed in",
+        e403="Wrong password, an API token, a role without actions, or no CSRF header",
+        e429="Too many wrong passwords; wait 15 minutes",
+    ),
 )
 def set_my_pin(
     body: PinSetRequest,

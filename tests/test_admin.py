@@ -60,9 +60,12 @@ def test_calls_conversations_and_transcript(setup):
 
     conversations = client.get("/v1/admin/conversations", headers=headers).json()
     assert conversations[0]["turns"] == 2 and conversations[0]["email"] == "owner@example.com"
+    assert conversations[0]["preview"] == "where is A1"
     transcript = client.get(f"/v1/admin/conversations/{conversations[0]['id']}", headers=headers)
     roles = [m["role"] for m in transcript.json()]
     assert roles.count("tool") == 2
+    calls = [c for m in transcript.json() for c in m["tool_calls"]]
+    assert calls[0] == {"id": "c1", "name": "order_status", "arguments": '{"order_id": "A1"}'}
     assert client.get("/v1/admin/conversations/nope", headers=headers).status_code == 404
 
 

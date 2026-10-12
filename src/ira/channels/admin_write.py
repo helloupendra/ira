@@ -24,7 +24,9 @@ from ira.accounts import AccountError, LastOwnerError, Principal, parse_scopes
 from ira.channels.admin import invite_view, settings_view, tool_detail
 from ira.channels.deps import get_runtime, require_session
 from ira.channels.schemas import (
+    ERRORS,
     AdminUserRow,
+    ErrorDetail,
     InviteCreated,
     InviteCreateRequest,
     ModelTestRequest,
@@ -45,7 +47,18 @@ from ira.channels.schemas import (
 from ira.runtime import Runtime
 from ira.tools.registry import ToolError, validation_message
 
-router = APIRouter(prefix="/v1/admin", tags=["admin: changes"])
+router = APIRouter(
+    prefix="/v1/admin",
+    tags=["admin: changes"],
+    responses={
+        **ERRORS,
+        404: {"model": ErrorDetail, "description": "No such user, invite, token, tool or tier"},
+        409: {
+            "model": ErrorDetail,
+            "description": "The last owner cannot go, or an action tool cannot be tested",
+        },
+    },
+)
 owner = require_session("users")
 writer = require_session("admin.write")
 
@@ -217,7 +230,6 @@ def _jsonable(value: Any) -> Any:
     "/tools/{name}/test",
     response_model=ToolTestResult,
     summary="Run a read tool with test parameters (never an action)",
-    responses={409: {"description": "The tool is an action; actions only run after a PIN."}},
 )
 async def test_tool(
     name: str,
