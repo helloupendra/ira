@@ -30,6 +30,8 @@ from ira.store import Store
 
 log = logging.getLogger("ira.gateway")
 
+PROBE_PROMPT = "This is a connection test. Reply with the single word: ready"
+
 
 @dataclass(frozen=True)
 class Price:
@@ -75,7 +77,8 @@ class Gateway:
                 if provider not in providers:
                     raise ValueError(f"tier '{tier}' uses unknown provider '{provider}'")
         self.providers = providers
-        self.tiers = tiers
+        # A copy: the console may reorder a chain without touching the parsed config.
+        self.tiers = {tier: list(refs) for tier, refs in tiers.items()}
         self.prices = prices or {}
         self.store = store
         self.cooldown_seconds = cooldown_seconds
@@ -94,6 +97,49 @@ class Gateway:
         cooling = [r for r in refs if self._cool_until.get(r, 0.0) > now]
         # A chain never runs dry: cooling models are still tried, just last.
         return ready + cooling
+
+    def cooling(self) -> dict[str, float]:
+        """Models on a cool-down right now, with the seconds left."""
+        now = self.clock()
+        return {
+            ref: round(until - now, 1) for ref, until in self._cool_until.items() if until > now
+        }
+
+    async def probe(self, ref: str) -> tuple[ChatResponse | None, ProviderError | None, float]:
+        """Ask one model a fixed short question, outside any chain.
+
+        Used by the console's "test this model". The call is logged (it costs
+        money) with purpose "test". A success lifts the model's cool-down; a
+        failure does not add one, so a test never changes live routing for the worse.
+        """
+        provider_name, model = split_ref(ref)
+        if provider_name not in self.providers:
+            raise KeyError(provider_name)
+        started = time.monotonic()
+        response: ChatResponse | None = None
+        error: ProviderError | None = None
+        try:
+            response = await asyncio.wait_for(
+                self.providers[provider_name].chat(
+                    model,
+                    [Message(role="user", content=PROBE_PROMPT)],
+                    None,
+                    max_tokens=min(self.max_tokens, 64),
+                    timeout=self.timeout_seconds,
+                ),
+                timeout=self.timeout_seconds,
+            )
+        except TimeoutError:
+            error = ProviderError(f"{ref}: no answer in {self.timeout_seconds}s", kind="timeout")
+        except ProviderError as exc:
+            error = exc
+        seconds = round(time.monotonic() - started, 3)
+        if response is not None:
+            response.model = ref
+            response.cost_usd = self.cost(ref, response.usage)
+            self._cool_until.pop(ref, None)
+        self._record("(test)", "test", [ref], response, error, started)
+        return response, error, seconds
 
     def cost(self, ref: str, usage: Usage) -> float | None:
         price = self.prices.get(ref)

@@ -338,6 +338,57 @@ class ToolTestResult(BaseModel):
     error: str | None = None
 
 
+class TierView(BaseModel):
+    name: str
+    configured: list[str] = Field(description="The chain as ira.yaml lists it.")
+    chain: list[str] = Field(description="The chain in use, after any saved reordering.")
+    overridden: bool
+    used_by_assistant: bool
+
+
+class ProviderView(BaseModel):
+    name: str
+    type: str
+    in_use: bool = Field(description="Named by a tier or by voice, so it is built at start-up.")
+    auth: str
+    key_env: str | None = None
+    key_present: bool | None = Field(
+        default=None, description="Whether the key's variable is set. Never the value."
+    )
+    last_ok_at: float | None = None
+    last_error_at: float | None = None
+    last_error_kind: str | None = None
+
+
+class ModelsView(BaseModel):
+    tiers: list[TierView]
+    providers: list[ProviderView]
+    cooling: dict[str, float] = Field(description="Models on a cool-down: seconds left.")
+
+
+class ModelTestRequest(BaseModel):
+    ref: str = Field(max_length=200, description="provider:model")
+
+
+class ModelTestResult(BaseModel):
+    ref: str
+    ok: bool
+    seconds: float
+    text: str | None = None
+    error_kind: str | None = None
+    error: str | None = None
+
+
+class TierOrderRequest(BaseModel):
+    order: list[str] | None = Field(description="The same models in a new order; null resets.")
+
+
+class KeyView(BaseModel):
+    env: str
+    used_by: list[str]
+    present: bool
+
+
 class ChangeRow(BaseModel):
     id: int
     at: float

@@ -5,7 +5,7 @@ role, and writes one row to the change log: who, what, when, and the value
 before and after where there is one.
 
 * Users and invitations need ``users`` (owner only).
-* Tokens and tools need ``admin.write`` (owner, admin).
+* Tokens, tools and model chains need ``admin.write`` (owner, admin).
 """
 
 from __future__ import annotations
@@ -27,8 +27,12 @@ from ira.channels.schemas import (
     AdminUserRow,
     InviteCreated,
     InviteCreateRequest,
+    ModelTestRequest,
+    ModelTestResult,
     OkResponse,
     RoleChange,
+    TierOrderRequest,
+    TierView,
     TokenCreated,
     TokenCreateRequest,
     ToolDetail,
@@ -246,3 +250,60 @@ async def test_tool(
         seconds = round(time.monotonic() - started, 3)
         return ToolTestResult(ok=True, seconds=seconds, result=_jsonable(value))
     return ToolTestResult(ok=False, seconds=round(time.monotonic() - started, 3), error=error)
+
+
+# Models.
+
+
+def _configured_refs(runtime: Runtime) -> set[str]:
+    return {ref for refs in runtime.gateway.tiers.values() for ref in refs}
+
+
+@router.post(
+    "/models/test",
+    response_model=ModelTestResult,
+    summary="Ask one model a fixed short question; reports ok and latency",
+)
+async def test_model(
+    body: ModelTestRequest,
+    who: Principal = Depends(writer),
+    runtime: Runtime = Depends(get_runtime),
+) -> ModelTestResult:
+    if body.ref not in _configured_refs(runtime):
+        raise HTTPException(404, detail="that model is not in any tier in ira.yaml")
+    response, error, seconds = await runtime.gateway.probe(body.ref)
+    _log(runtime, who, "model.tested", body.ref, after={"ok": error is None})
+    if error is not None:
+        return ModelTestResult(
+            ref=body.ref, ok=False, seconds=seconds, error_kind=error.kind, error=str(error)[:300]
+        )
+    text = (response.text if response else "").strip()
+    return ModelTestResult(ref=body.ref, ok=True, seconds=seconds, text=text[:200])
+
+
+@router.put(
+    "/models/tiers/{tier}",
+    response_model=TierView,
+    summary="Reorder a tier's fallback chain (null order goes back to ira.yaml)",
+)
+def order_tier(
+    tier: str,
+    body: TierOrderRequest,
+    who: Principal = Depends(writer),
+    runtime: Runtime = Depends(get_runtime),
+) -> TierView:
+    before = list(runtime.gateway.tiers.get(tier, []))
+    try:
+        chain = overrides.set_tier_order(runtime, tier, body.order)
+    except overrides.OverrideError as exc:
+        status = 404 if tier not in runtime.settings.models.tiers else 400
+        raise HTTPException(status, detail=str(exc)) from None
+    if chain != before:
+        _log(runtime, who, "model.chain", tier, before=before, after=chain)
+    return TierView(
+        name=tier,
+        configured=overrides.configured_chain(runtime, tier),
+        chain=chain,
+        overridden=overrides.tier_override(runtime, tier) is not None,
+        used_by_assistant=tier == runtime.assistant.tier,
+    )

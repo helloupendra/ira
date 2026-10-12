@@ -4,12 +4,13 @@ from __future__ import annotations
 
 import datetime as dt
 import json
+import os
 import statistics
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 
-from ira import changes
+from ira import changes, overrides
 from ira.accounts import Principal
 from ira.channels.deps import get_runtime, require
 from ira.channels.schemas import (
@@ -21,9 +22,13 @@ from ira.channels.schemas import (
     ChannelView,
     ConversationRow,
     InviteView,
+    KeyView,
     MessageRow,
+    ModelsView,
     ModelUsage,
     Overview,
+    ProviderView,
+    TierView,
     TokenRow,
     ToolDetail,
 )
@@ -254,3 +259,77 @@ def change_log(
     runtime: Runtime = Depends(get_runtime),
 ) -> list[ChangeRow]:
     return [ChangeRow(**row) for row in changes.recent(runtime.store, limit, before_id)]
+
+
+# Models and keys.
+
+
+def _auth_mode(cfg: Any) -> str:
+    if cfg.type == "fake":
+        return "none"
+    if cfg.auth != "auto":
+        return cfg.auth
+    if cfg.type == "anthropic":
+        return "x-api-key"
+    if cfg.type == "bedrock_mantle":
+        return "bearer" if cfg.api_key_env else "sigv4"
+    return "bearer" if cfg.api_key_env else "none"
+
+
+@router.get("/models", response_model=ModelsView, summary="Fallback chains and provider status")
+def models(_: Principal = Depends(reader), runtime: Runtime = Depends(get_runtime)) -> ModelsView:
+    settings = runtime.settings
+    tiers = [
+        TierView(
+            name=name,
+            configured=list(refs),
+            chain=list(runtime.gateway.tiers.get(name, refs)),
+            overridden=overrides.tier_override(runtime, name) is not None,
+            used_by_assistant=name == runtime.assistant.tier,
+        )
+        for name, refs in settings.models.tiers.items()
+    ]
+    providers = []
+    for name, cfg in settings.models.providers.items():
+        prefix = (len(name) + 1, f"{name}:")
+        last_ok = runtime.store.one(
+            "SELECT MAX(at) AS at FROM calls WHERE ok = 1 AND substr(model, 1, ?) = ?", prefix
+        )
+        last_error = runtime.store.one(
+            "SELECT at, error_kind FROM calls WHERE ok = 0 AND substr(model, 1, ?) = ? "
+            "ORDER BY id DESC LIMIT 1",
+            prefix,
+        )
+        providers.append(
+            ProviderView(
+                name=name,
+                type=cfg.type,
+                in_use=name in runtime.gateway.providers,
+                auth=_auth_mode(cfg),
+                key_env=cfg.api_key_env,
+                key_present=bool(os.environ.get(cfg.api_key_env)) if cfg.api_key_env else None,
+                last_ok_at=last_ok["at"] if last_ok else None,
+                last_error_at=last_error["at"] if last_error else None,
+                last_error_kind=last_error["error_kind"] if last_error else None,
+            )
+        )
+    return ModelsView(tiers=tiers, providers=providers, cooling=runtime.gateway.cooling())
+
+
+@router.get(
+    "/keys",
+    response_model=list[KeyView],
+    summary="Which secret variables are set (never their values)",
+)
+def keys(_: Principal = Depends(reader), runtime: Runtime = Depends(get_runtime)) -> list[KeyView]:
+    used: dict[str, list[str]] = {}
+    for name, cfg in runtime.settings.models.providers.items():
+        if cfg.api_key_env:
+            used.setdefault(cfg.api_key_env, []).append(f"provider {name}")
+    telegram = runtime.settings.channels.telegram
+    if telegram.enabled:
+        used.setdefault(telegram.token_env, []).append("telegram")
+    return [
+        KeyView(env=env, used_by=who, present=bool(os.environ.get(env)))
+        for env, who in sorted(used.items())
+    ]

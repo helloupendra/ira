@@ -6,8 +6,12 @@ import pytest
 from fastapi.testclient import TestClient
 
 from ira.channels.http import create_app
+from ira.config import Settings
+from ira.models.base import ProviderError
 from ira.models.fake import ScriptedProvider
 from ira.overrides import apply as apply_overrides
+from ira.runtime import build_runtime
+from ira.store import Store
 from ira.tools.registry import ToolRegistry
 from ira.voice.providers import FakeTTS
 
@@ -15,6 +19,9 @@ from .conftest import FAST_PIN_ITERATIONS, make_runtime
 
 PASSWORD = "correct-horse-battery"  # pragma: allowlist secret
 WRONG_PASSWORD = "not-my-password"  # pragma: allowlist secret
+# Names of environment variables, not keys.
+CLOUD_KEY_ENV = "IRA_TEST_CLOUD_KEY"  # pragma: allowlist secret
+SPARE_KEY_ENV = "IRA_TEST_SPARE_KEY"  # pragma: allowlist secret
 
 
 class People:
@@ -71,6 +78,8 @@ WRITES = [
     ("delete", "/v1/admin/tokens/tok_x", None),
     ("patch", "/v1/admin/tools/order_status", {"enabled": False}),
     ("post", "/v1/admin/tools/order_status/test", {"params": {"order_id": "A1"}}),
+    ("post", "/v1/admin/models/test", {"ref": "fake:m"}),
+    ("put", "/v1/admin/models/tiers/default", {"order": None}),
 ]
 
 
@@ -350,3 +359,101 @@ def test_tools_show_who_may_confirm_actions(client, people):
     }
     assert tools["refund"]["confirm_roles"] == ["owner", "admin", "staff"]
     assert tools["order_status"]["confirm_roles"] is None
+
+
+# Models.
+
+
+@pytest.fixture
+def two_model_runtime():
+    settings = Settings.model_validate(
+        {
+            "data_dir": "unused",
+            "models": {
+                "providers": {"a": {"type": "fake"}, "b": {"type": "fake"}},
+                "tiers": {"default": ["a:router", "b:router"], "fast": ["b:router"]},
+            },
+        }
+    )
+    return build_runtime(settings, registry=ToolRegistry(), store=Store(":memory:"))
+
+
+def test_a_tier_can_be_reordered_and_reset(two_model_runtime):
+    runtime = two_model_runtime
+    people = People(runtime)
+    admin = people.session(people.admin)
+    with TestClient(create_app(runtime, start_channels=False)) as client:
+        view = client.get("/v1/admin/models", headers=admin).json()
+        default = next(t for t in view["tiers"] if t["name"] == "default")
+        assert default["chain"] == ["a:router", "b:router"] and not default["overridden"]
+
+        body = {"order": ["b:router", "a:router"]}
+        moved = client.put("/v1/admin/models/tiers/default", json=body, headers=admin).json()
+        assert moved["chain"] == ["b:router", "a:router"] and moved["overridden"]
+        assert runtime.gateway.chain("default") == ["b:router", "a:router"]
+        assert runtime.settings.models.tiers["default"] == ["a:router", "b:router"]
+
+        for wrong in (["a:router"], ["a:router", "a:router"], ["a:router", "c:router"]):
+            response = client.put(
+                "/v1/admin/models/tiers/default", json={"order": wrong}, headers=admin
+            )
+            assert response.status_code == 400, wrong
+        unknown = client.put("/v1/admin/models/tiers/nope", json={"order": None}, headers=admin)
+        assert unknown.status_code == 404
+
+        # A restart keeps the order; a reset goes back to ira.yaml.
+        again = build_runtime(runtime.settings, registry=ToolRegistry(), store=runtime.store)
+        assert again.gateway.chain("default") == ["b:router", "a:router"]
+        reset = client.put("/v1/admin/models/tiers/default", json={"order": None}, headers=admin)
+        assert reset.json()["chain"] == ["a:router", "b:router"]
+        latest = changes(client, people)[1]
+        assert latest["what"] == "model.chain"
+        assert latest["before"] == ["a:router", "b:router"]
+
+
+def test_testing_a_model_reports_ok_and_latency(client, runtime, people):
+    admin = people.session(people.admin)
+    result = client.post("/v1/admin/models/test", json={"ref": "fake:m"}, headers=admin).json()
+    assert result["ok"] is True and result["text"] == "ready" and result["seconds"] >= 0
+    call = runtime.store.one("SELECT * FROM calls ORDER BY id DESC LIMIT 1")
+    assert call["purpose"] == "test"
+    unknown = client.post("/v1/admin/models/test", json={"ref": "fake:other"}, headers=admin)
+    assert unknown.status_code == 404
+
+
+def test_a_failing_model_test_says_why(client, runtime, people):
+    runtime.gateway.providers["fake"] = ScriptedProvider([ProviderError("busy", kind="capacity")])
+    admin = people.session(people.admin)
+    result = client.post("/v1/admin/models/test", json={"ref": "fake:m"}, headers=admin).json()
+    assert result["ok"] is False and result["error_kind"] == "capacity"
+
+
+def test_keys_show_presence_never_values(two_model_runtime, monkeypatch):
+    settings = Settings.model_validate(
+        {
+            "data_dir": "unused",
+            "models": {
+                "providers": {
+                    "demo": {"type": "fake"},
+                    "cloud": {"type": "openai", "api_key_env": CLOUD_KEY_ENV},
+                    "spare": {"type": "anthropic", "api_key_env": SPARE_KEY_ENV},
+                },
+                "tiers": {"default": ["demo:router"]},
+            },
+        }
+    )
+    monkeypatch.setenv(CLOUD_KEY_ENV, "value-that-must-not-leak")
+    monkeypatch.delenv(SPARE_KEY_ENV, raising=False)
+    runtime = build_runtime(settings, registry=ToolRegistry(), store=Store(":memory:"))
+    people = People(runtime)
+    with TestClient(create_app(runtime, start_channels=False)) as client:
+        viewer = people.session(people.viewer)
+        keys = client.get("/v1/admin/keys", headers=viewer)
+        models = client.get("/v1/admin/models", headers=viewer)
+    assert {k["env"]: k["present"] for k in keys.json()} == {
+        CLOUD_KEY_ENV: True,
+        SPARE_KEY_ENV: False,
+    }
+    assert "value-that-must-not-leak" not in keys.text + models.text
+    providers = {p["name"]: p for p in models.json()["providers"]}
+    assert providers["spare"]["in_use"] is False and providers["demo"]["auth"] == "none"
