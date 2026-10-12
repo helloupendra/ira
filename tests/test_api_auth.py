@@ -47,6 +47,8 @@ def token_for(runtime, user, scopes: list[str]) -> str:
 
 def test_public_routes_need_no_credential(client):
     assert client.get("/healthz").status_code == 200
+    assert client.get("/").status_code == 200
+    assert client.get("/sw.js").status_code == 200
     assert client.get("/v1/auth/status").json()["setup_required"] is True
     assert client.get("/v1/openapi.json").status_code == 200
 

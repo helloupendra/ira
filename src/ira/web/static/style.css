@@ -1,0 +1,179 @@
+:root {
+  --bg: #f6f4ef;
+  --panel: #ffffff;
+  --text: #1d2321;
+  --muted: #5d6763;
+  --line: #dcd8cf;
+  --accent: #1f6f5c;
+  --accent-text: #ffffff;
+  --user: #e3efe9;
+  --warn: #9a3412;
+  --ok: #166534;
+  color-scheme: light dark;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #121615;
+    --panel: #1a201e;
+    --text: #e7ece9;
+    --muted: #9aa7a2;
+    --line: #2c3532;
+    --accent: #4fb397;
+    --accent-text: #0c1311;
+    --user: #20342d;
+    --warn: #f59e72;
+    --ok: #6fd39a;
+  }
+}
+
+* { box-sizing: border-box; }
+
+html, body { height: 100%; }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font: 16px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+}
+
+#app { height: 100%; display: flex; justify-content: center; }
+
+[hidden] { display: none !important; }
+
+.card {
+  align-self: center;
+  width: min(26rem, calc(100% - 2rem));
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 1.5rem;
+}
+
+.center { text-align: center; }
+.muted { color: var(--muted); }
+.error { color: var(--warn); min-height: 1.5em; margin: 0; }
+h1 { font-size: 1.4rem; margin: 0 0 0.5rem; }
+
+.stack { display: grid; gap: 0.8rem; }
+label { display: grid; gap: 0.3rem; font-size: 0.9rem; color: var(--muted); }
+
+input {
+  font: inherit;
+  color: var(--text);
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 0.6rem 0.75rem;
+  min-width: 0;
+}
+
+input:focus-visible, button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+button {
+  font: inherit;
+  font-weight: 600;
+  border: 0;
+  border-radius: 10px;
+  padding: 0.6rem 1rem;
+  background: var(--accent);
+  color: var(--accent-text);
+  cursor: pointer;
+}
+
+button.ghost { background: transparent; color: var(--muted); border: 1px solid var(--line); }
+button:disabled { opacity: 0.5; cursor: default; }
+
+/* Chat layout */
+.chat {
+  width: min(48rem, 100%);
+  height: 100%;
+  display: grid;
+  grid-template-rows: auto 1fr auto auto;
+}
+
+.bar {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.75rem 1rem;
+  border-bottom: 1px solid var(--line);
+  padding-top: max(0.75rem, env(safe-area-inset-top));
+}
+
+.title { display: flex; align-items: center; gap: 0.5rem; font-weight: 700; margin-right: auto; }
+.mark { width: 1.6rem; height: 1.6rem; }
+.toggle { display: flex; align-items: center; gap: 0.35rem; font-size: 0.85rem; }
+.bar button { padding: 0.35rem 0.7rem; font-size: 0.85rem; }
+
+.messages {
+  list-style: none;
+  margin: 0;
+  padding: 1rem;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.msg {
+  max-width: 85%;
+  padding: 0.6rem 0.85rem;
+  border-radius: 14px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.msg.user { align-self: flex-end; background: var(--user); }
+.msg.assistant { align-self: flex-start; background: var(--panel); border: 1px solid var(--line); }
+.msg.pending:empty::after { content: "..."; color: var(--muted); }
+.msg.failed { color: var(--warn); }
+
+.action-card {
+  align-self: stretch;
+  background: var(--panel);
+  border: 1px solid var(--accent);
+  border-radius: 14px;
+  padding: 0.85rem 1rem;
+}
+
+.action-card.done { border-color: var(--ok); }
+.action-card.failed { border-color: var(--warn); }
+.action-title { margin: 0; font-size: 0.8rem; font-weight: 700; color: var(--accent); text-transform: uppercase; letter-spacing: 0.04em; }
+.action-summary { margin: 0.25rem 0 0.6rem; font-weight: 600; }
+.action-form { display: flex; gap: 0.5rem; flex-wrap: wrap; }
+.action-form .pin { width: 8rem; letter-spacing: 0.2em; }
+.action-status { margin: 0.5rem 0 0; font-size: 0.9rem; }
+
+.composer {
+  display: flex;
+  gap: 0.5rem;
+  padding: 0.75rem 1rem;
+  border-top: 1px solid var(--line);
+}
+
+.composer input { flex: 1; }
+
+.mic {
+  width: 2.75rem;
+  padding: 0;
+  display: grid;
+  place-items: center;
+  background: var(--bg);
+  border: 1px solid var(--line);
+  color: var(--text);
+}
+
+.mic svg { width: 1.3rem; height: 1.3rem; fill: currentColor; }
+.mic[aria-pressed="true"] { background: var(--warn); color: #fff; border-color: var(--warn); }
+
+.status { margin: 0; padding: 0 1rem max(0.75rem, env(safe-area-inset-bottom)); font-size: 0.85rem; min-height: 1.6em; }
+
+.toggle .short { display: none; }
+
+@media (max-width: 30rem) {
+  .toggle .long { display: none; }
+  .toggle .short { display: inline; }
+  .bar { gap: 0.4rem; }
+}

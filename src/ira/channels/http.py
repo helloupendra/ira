@@ -1,4 +1,4 @@
-"""The HTTP API: auth, ask (JSON and SSE), voice, actions and the admin views.
+"""The HTTP API, the web chat at ``/`` and (from v0.2) the admin console at ``/admin``.
 
 OpenAPI is served at ``/v1/openapi.json`` with interactive docs at ``/v1/docs``.
 """
@@ -14,7 +14,8 @@ import time
 from collections.abc import AsyncIterator
 
 from fastapi import APIRouter, Depends, FastAPI, HTTPException, Request, Response
-from fastapi.responses import StreamingResponse
+from fastapi.responses import HTMLResponse, StreamingResponse
+from fastapi.staticfiles import StaticFiles
 
 from ira import __version__
 from ira.accounts import AccountError, Principal
@@ -40,6 +41,7 @@ from ira.models.base import ProviderError
 from ira.runtime import Runtime
 from ira.voice.audio import AudioError, check_wav, to_mono16k
 from ira.voice.shorten import speakable
+from ira.web import ADMIN_DIR, STATIC_DIR
 
 log = logging.getLogger("ira.http")
 
@@ -363,6 +365,12 @@ def cancel_action(
 
 # --- app ---------------------------------------------------------------------------
 
+ADMIN_PLACEHOLDER = """<!doctype html><html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1"><title>IRA admin</title>
+</head><body><h1>Admin console</h1>
+<p>The admin console ships in v0.2. Its API is already here:
+<a href="/v1/docs">/v1/docs</a> (see the <code>admin</code> section).</p></body></html>"""
+
 
 def create_app(runtime: Runtime, *, start_channels: bool = True) -> FastAPI:
     @contextlib.asynccontextmanager
@@ -420,4 +428,13 @@ def create_app(runtime: Runtime, *, start_channels: bool = True) -> FastAPI:
     app.include_router(api)
     app.include_router(admin.router)
 
+    if (ADMIN_DIR / "index.html").is_file():
+        app.mount("/admin", StaticFiles(directory=ADMIN_DIR, html=True), name="admin")
+    else:
+
+        @app.get("/admin", include_in_schema=False, response_class=HTMLResponse)
+        def admin_placeholder() -> str:
+            return ADMIN_PLACEHOLDER
+
+    app.mount("/", StaticFiles(directory=STATIC_DIR, html=True), name="web")
     return app
