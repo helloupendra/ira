@@ -62,6 +62,41 @@ const SHAPES: Record<string, ReactNode> = {
   signOut: <path d="M14 7V5a1 1 0 0 0-1-1H5a1 1 0 0 0-1 1v14a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1v-2M9 12h11M17 9l3 3-3 3" />,
   refresh: <path d="M20 12a8 8 0 1 1-2.3-5.7M20 4v5h-5" />,
   close: <path d="M6 6l12 12M18 6L6 18" />,
+  copy: (
+    <>
+      <rect x="9" y="9" width="11" height="11" rx="1.5" />
+      <path d="M5 15V5a1 1 0 0 1 1-1h10" />
+    </>
+  ),
+  check: <path d="M5 12.5l4.5 4.5L19 7" />,
+  trash: <path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13M10 11v6M14 11v6" />,
+  plus: <path d="M12 5v14M5 12h14" />,
+  play: <path d="M7 5l12 7-12 7z" />,
+  arrowUp: <path d="M12 19V5M6 11l6-6 6 6" />,
+  arrowDown: <path d="M12 5v14M6 13l6 6 6-6" />,
+  lock: (
+    <>
+      <rect x="5" y="11" width="14" height="10" rx="1.5" />
+      <path d="M8 11V7a4 4 0 0 1 8 0v4" />
+    </>
+  ),
+  alert: <path d="M12 3l9.5 17h-19zM12 10v4M12 17.5v.5" />,
+  chevronRight: <path d="M9 6l6 6-6 6" />,
+  chevronDown: <path d="M6 9l6 6 6-6" />,
+  reset: <path d="M4 12a8 8 0 1 0 2.3-5.7M4 4v5h5" />,
+  key: (
+    <>
+      <circle cx="8" cy="15" r="4" />
+      <path d="M10.8 12.2L20 3M17 6l2.5 2.5" />
+    </>
+  ),
+  phone: (
+    <>
+      <rect x="7" y="3" width="10" height="18" rx="2" />
+      <path d="M11 17.5h2" />
+    </>
+  ),
+  external: <path d="M14 5h5v5M19 5l-8 8M18 14v5H5V6h5" />,
 };
 
 export type IconName =
@@ -77,7 +112,22 @@ export type IconName =
   | 'more'
   | 'signOut'
   | 'refresh'
-  | 'close';
+  | 'close'
+  | 'copy'
+  | 'check'
+  | 'trash'
+  | 'plus'
+  | 'play'
+  | 'arrowUp'
+  | 'arrowDown'
+  | 'lock'
+  | 'alert'
+  | 'chevronRight'
+  | 'chevronDown'
+  | 'reset'
+  | 'key'
+  | 'phone'
+  | 'external';
 
 export function Icon({ name, size = 20 }: { name: IconName; size?: number }) {
   return (

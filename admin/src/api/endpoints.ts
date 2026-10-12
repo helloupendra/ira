@@ -3,20 +3,46 @@ import type { components, operations } from './schema';
 
 type Schemas = components['schemas'];
 
+// Row and view types, named as the OpenAPI document names them.
 export type Session = Schemas['SessionResponse'];
 export type Status = Schemas['StatusResponse'];
 export type User = Schemas['UserView'];
+export type UserView = Schemas['UserView'];
+export type AdminUserRow = Schemas['AdminUserRow'];
+export type RoleView = Schemas['RoleView'];
 export type Overview = Schemas['Overview'];
 export type ModelUsage = Schemas['ModelUsage'];
 export type CallRow = Schemas['CallRow'];
 export type ConversationRow = Schemas['ConversationRow'];
 export type MessageRow = Schemas['MessageRow'];
+export type ToolCallView = Schemas['ToolCallView'];
 export type ActionRow = Schemas['ActionRow'];
 export type ToolDetail = Schemas['ToolDetail'];
+export type ToolTestResult = Schemas['ToolTestResult'];
 export type ChannelView = Schemas['ChannelView'];
 export type AuditRow = Schemas['AuditRow'];
-export type UserView = Schemas['UserView'];
+export type ChangeRow = Schemas['ChangeRow'];
+export type CostDay = Schemas['CostDay'];
+export type SecurityView = Schemas['SecurityView'];
+export type ActionRule = Schemas['ActionRule'];
 export type TokenRow = Schemas['TokenRow'];
+export type TokenCreated = Schemas['TokenCreated'];
+export type InviteView = Schemas['InviteView'];
+export type InviteCreated = Schemas['InviteCreated'];
+export type PublicInvite = Schemas['PublicInvite'];
+export type ModelsView = Schemas['ModelsView'];
+export type TierView = Schemas['TierView'];
+export type ProviderView = Schemas['ProviderView'];
+export type ModelTestResult = Schemas['ModelTestResult'];
+export type KeyView = Schemas['KeyView'];
+export type SettingsView = Schemas['SettingsView'];
+export type SettingValue = Schemas['SettingValue'];
+export type SettingsUpdate = Schemas['SettingsUpdate'];
+export type SessionView = Schemas['SessionView'];
+export type AdminSessionRow = Schemas['AdminSessionRow'];
+export type SessionsEnded = Schemas['SessionsEnded'];
+export type PinStatus = Schemas['PinStatus'];
+export type SetupStatus = Schemas['SetupStatus'];
 export type OkResponse = Schemas['OkResponse'];
 
 type QueryOf<Op extends keyof operations> = NonNullable<operations[Op]['parameters']['query']>;
@@ -25,6 +51,10 @@ export type CallsQuery = QueryOf<'calls'>;
 export type ConversationsQuery = QueryOf<'conversations'>;
 export type ActionsQuery = QueryOf<'actions'>;
 export type AuditQuery = QueryOf<'audit'>;
+export type ChangesQuery = QueryOf<'change_log'>;
+export type CostsQuery = QueryOf<'costs'>;
+
+const enc = encodeURIComponent;
 
 export const auth = {
   me: (signal?: AbortSignal) => request<Session>('/v1/auth/me', { signal }),
@@ -34,20 +64,83 @@ export const auth = {
   status: (signal?: AbortSignal) => request<Status>('/v1/auth/status', { signal }),
 };
 
+// First-run setup and invitations: public, each guarded by its own one-time secret.
+export const setup = {
+  status: (signal?: AbortSignal) => request<SetupStatus>('/v1/setup/status', { signal }),
+  owner: (code: string, email: string, password: string) =>
+    request<Session>('/v1/setup/owner', { method: 'POST', json: { code, email, password } }),
+};
+
+export const invites = {
+  lookup: (token: string, signal?: AbortSignal) =>
+    request<PublicInvite>('/v1/invites/lookup', { method: 'POST', json: { token }, signal }),
+  accept: (token: string, password: string) =>
+    request<Session>('/v1/invites/accept', { method: 'POST', json: { token, password } }),
+};
+
+// The signed-in person's own PIN and sessions.
+export const me = {
+  pin: (signal?: AbortSignal) => request<PinStatus>('/v1/me/pin', { signal }),
+  setPin: (password: string, pin: string) =>
+    request<OkResponse>('/v1/me/pin', { method: 'PUT', json: { password, pin } }),
+  sessions: (signal?: AbortSignal) => request<SessionView[]>('/v1/me/sessions', { signal }),
+  endSession: (id: string) => request<OkResponse>(`/v1/me/sessions/${enc(id)}`, { method: 'DELETE' }),
+  endOtherSessions: () =>
+    request<SessionsEnded>('/v1/me/sessions/revoke-others', { method: 'POST' }),
+};
+
 export const admin = {
+  // Reads (admin.read).
   overview: (signal?: AbortSignal) => request<Overview>('/v1/admin/overview', { signal }),
   calls: (query: CallsQuery = {}, signal?: AbortSignal) =>
     request<CallRow[]>('/v1/admin/calls', { query, signal }),
   conversations: (query: ConversationsQuery = {}, signal?: AbortSignal) =>
     request<ConversationRow[]>('/v1/admin/conversations', { query, signal }),
   conversation: (id: string, signal?: AbortSignal) =>
-    request<MessageRow[]>(`/v1/admin/conversations/${encodeURIComponent(id)}`, { signal }),
+    request<MessageRow[]>(`/v1/admin/conversations/${enc(id)}`, { signal }),
   actions: (query: ActionsQuery = {}, signal?: AbortSignal) =>
     request<ActionRow[]>('/v1/admin/actions', { query, signal }),
   tools: (signal?: AbortSignal) => request<ToolDetail[]>('/v1/admin/tools', { signal }),
   channels: (signal?: AbortSignal) => request<ChannelView[]>('/v1/admin/channels', { signal }),
   audit: (query: AuditQuery = {}, signal?: AbortSignal) =>
     request<AuditRow[]>('/v1/admin/audit', { query, signal }),
-  users: (signal?: AbortSignal) => request<UserView[]>('/v1/admin/users', { signal }),
+  changes: (query: ChangesQuery = {}, signal?: AbortSignal) =>
+    request<ChangeRow[]>('/v1/admin/changes', { query, signal }),
+  costs: (query: CostsQuery = {}, signal?: AbortSignal) =>
+    request<CostDay[]>('/v1/admin/costs', { query, signal }),
+  security: (signal?: AbortSignal) => request<SecurityView>('/v1/admin/security', { signal }),
+  users: (signal?: AbortSignal) => request<AdminUserRow[]>('/v1/admin/users', { signal }),
+  roles: (signal?: AbortSignal) => request<RoleView[]>('/v1/admin/roles', { signal }),
+  invites: (signal?: AbortSignal) => request<InviteView[]>('/v1/admin/users/invites', { signal }),
+  sessions: (signal?: AbortSignal) => request<AdminSessionRow[]>('/v1/admin/sessions', { signal }),
   tokens: (signal?: AbortSignal) => request<TokenRow[]>('/v1/admin/tokens', { signal }),
+  models: (signal?: AbortSignal) => request<ModelsView>('/v1/admin/models', { signal }),
+  keys: (signal?: AbortSignal) => request<KeyView[]>('/v1/admin/keys', { signal }),
+  settings: (signal?: AbortSignal) => request<SettingsView>('/v1/admin/settings', { signal }),
+
+  // Writes: a session with admin.write, or users for accounts and invitations.
+  createInvite: (email: string, role: string) =>
+    request<InviteCreated>('/v1/admin/users/invites', { method: 'POST', json: { email, role } }),
+  revokeInvite: (id: string) =>
+    request<OkResponse>(`/v1/admin/users/invites/${enc(id)}`, { method: 'DELETE' }),
+  changeRole: (userId: number, role: string) =>
+    request<AdminUserRow>(`/v1/admin/users/${userId}`, { method: 'PATCH', json: { role } }),
+  removeUser: (userId: number) => request<OkResponse>(`/v1/admin/users/${userId}`, { method: 'DELETE' }),
+  resetPin: (userId: number) =>
+    request<OkResponse>(`/v1/admin/users/${userId}/reset-pin`, { method: 'POST' }),
+  revokeSession: (id: string) =>
+    request<OkResponse>(`/v1/admin/sessions/${enc(id)}`, { method: 'DELETE' }),
+  createToken: (label: string, scopes: string[]) =>
+    request<TokenCreated>('/v1/admin/tokens', { method: 'POST', json: { label, scopes } }),
+  revokeToken: (id: string) => request<OkResponse>(`/v1/admin/tokens/${enc(id)}`, { method: 'DELETE' }),
+  switchTool: (name: string, enabled: boolean) =>
+    request<ToolDetail>(`/v1/admin/tools/${enc(name)}`, { method: 'PATCH', json: { enabled } }),
+  testTool: (name: string, params: Record<string, unknown>) =>
+    request<ToolTestResult>(`/v1/admin/tools/${enc(name)}/test`, { method: 'POST', json: { params } }),
+  testModel: (ref: string) =>
+    request<ModelTestResult>('/v1/admin/models/test', { method: 'POST', json: { ref } }),
+  orderTier: (tier: string, order: string[] | null) =>
+    request<TierView>(`/v1/admin/models/tiers/${enc(tier)}`, { method: 'PUT', json: { order } }),
+  updateSettings: (update: SettingsUpdate) =>
+    request<SettingsView>('/v1/admin/settings', { method: 'PATCH', json: update }),
 };
