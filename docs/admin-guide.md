@@ -314,6 +314,16 @@ p50/p95 latency and a per-model breakdown; `calls`, `conversations`,
 `actions`, `audit`, `tools`, `channels`, `users` and `tokens` list the
 details. See [API](api.md).
 
+- "Today" starts at the server's local midnight: the overview gives it as
+  `since` and `since_iso`, with the server's `timezone`.
+- `actions/counts?since=` counts actions by status over any span. A
+  proposal past its expiry reads `expired` everywhere, never `pending`.
+- The lists are paged: each answers with `X-Has-More: true|false`, and the
+  next page is asked for with the last row's cursor (`before_id`, or
+  `before` and `before_id`). See [Paging](api.md#paging).
+- In the audit and change logs, `actor` is the person's email and
+  `channel` where they were (`web`, `api`, `telegram`, `cli`).
+
 ### Backups
 
 All state is in `data_dir` (default `./data`): `ira.db` plus whatever your
