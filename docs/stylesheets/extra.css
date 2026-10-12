@@ -1,0 +1,21 @@
+/* The web chat's colours (src/ira/web/static/style.css), so the docs, the
+   landing page and the app look like one project. */
+
+:root > * {
+  --md-primary-fg-color: #1f6f5c;
+  --md-primary-fg-color--light: #2b8a73;
+  --md-primary-fg-color--dark: #175646;
+  --md-primary-bg-color: #ffffff;
+  --md-accent-fg-color: #1f6f5c;
+  --md-typeset-a-color: #1f6f5c;
+}
+
+[data-md-color-scheme="slate"] {
+  --md-hue: 160;
+  --md-primary-fg-color: #1a201e;
+  --md-primary-fg-color--light: #2c3532;
+  --md-primary-fg-color--dark: #121615;
+  --md-primary-bg-color: #e7ece9;
+  --md-accent-fg-color: #4fb397;
+  --md-typeset-a-color: #4fb397;
+}

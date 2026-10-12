@@ -25,6 +25,7 @@ __pycache__/
 htmlcov/
 build/
 dist/
+_site/
 
 # Tooling and editors
 node_modules/

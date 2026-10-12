@@ -9,23 +9,109 @@ register *read tools* (functions that look things up) and *action tools*
 and on Telegram, by text or voice. It only **proposes** an action; your code
 runs it after the owner confirms with a PIN.
 
-- **Any model.** OpenAI-compatible endpoints, the Anthropic Messages API and
-  Amazon Bedrock, with fallback chains, cool-downs and a cost log.
+!!! note "Status: alpha"
+    IRA is at v0.1. It runs end to end, and the configuration and API may
+    still change. The admin console arrives in v0.2; the read-only admin API
+    it will use is already here.
+
+## What you get
+
+- **Any model.** OpenAI-compatible endpoints (local servers too), the
+  Anthropic Messages API and Amazon Bedrock, in fallback chains with
+  cool-downs.
+- **Your own tools.** Typed Python functions; the signature is both the
+  schema the model sees and the validation your code gets.
+- **Actions behind a PIN.** A proposal with a human summary and an expiry,
+  run exactly once after the PIN. The PIN never passes through a model.
 - **Voice both ways.** A mic in the browser and Telegram voice notes in;
-  spoken replies out.
-- **Safe by construction.** PIN-confirmed actions that run once, accounts with
-  roles, scoped API tokens, and a PIN that never passes through a model.
+  spoken replies out. The transcriber is told to keep the language it hears
+  and not to translate, which matters for Hinglish.
+- **A log of every call.** Model, fallbacks tried, seconds, tokens and cost,
+  never a key or a prompt.
 - **Runs with no key.** A keyword-routing demo provider makes the example
   clinic work out of the box.
 
+## Try it
+
+```bash
+git clone https://github.com/helloupendra/ira.git && cd ira
+python3 -m venv .venv && source .venv/bin/activate
+pip install -e .
+
+cd examples/clinic
+ira demo seed      # fictional appointments
+ira setup          # owner email and password
+ira pin set        # the PIN that releases actions
+ira serve          # http://127.0.0.1:8765
+```
+
+Sign in, ask `find slots tomorrow`, then `cancel appointment 3` and confirm
+it with the PIN. [Getting started](getting-started.md) has the details and
+shows how to add a real model.
+
+## How it fits together
+
+```mermaid
+flowchart LR
+    W[Web chat / PWA] --> C
+    A[HTTP API] --> C
+    T[Telegram] --> C
+    C[Assistant loop] --> G[LLM gateway<br/>fallback chains, cost log]
+    C -->|read tool| R[Your read tools]
+    C -->|action tool| Q[Pending action]
+    Q -->|owner's PIN| X[Your action runs once]
+```
+
 ## Where to go next
 
-| If you want to | Read |
-| --- | --- |
-| Run the demo in five minutes | [Getting started](getting-started.md) |
-| Understand tools, actions, tiers and channels | [Concepts](concepts.md) |
-| See how the pieces fit | [Architecture](architecture.md) |
-| Run it for a business | [Admin guide](admin-guide.md), [Deployment](deployment.md) |
-| Call it from your own app | [API](api.md) |
-| Know what it protects and how | [Security](security.md) |
-| Read a complete example | [Sunrise Dental Clinic](examples/clinic.md) |
+<div class="grid cards" markdown>
+
+-   **[Getting started](getting-started.md)**
+
+    ---
+
+    Install, run the example clinic with no API key, then add a real model.
+
+-   **[Concepts](concepts.md)**
+
+    ---
+
+    Tools, actions, the PIN, model tiers, conversations, roles and voice.
+
+-   **[Architecture](architecture.md)**
+
+    ---
+
+    The modules, one turn and one action step by step, and the data model.
+
+-   **[Admin guide](admin-guide.md)**
+
+    ---
+
+    Users, roles and tokens; Telegram, voice and backups.
+
+-   **[Deployment](deployment.md)**
+
+    ---
+
+    HTTPS in front, a systemd service and cloud credentials.
+
+-   **[API](api.md)**
+
+    ---
+
+    Ask, stream, voice and confirm from your own app; the admin read API.
+
+-   **[Security](security.md)**
+
+    ---
+
+    What IRA protects, how, and what it does not do yet.
+
+-   **[Sunrise Dental Clinic](examples/clinic.md)**
+
+    ---
+
+    A complete, fictional example: read tools, actions, summaries and tests.
+
+</div>

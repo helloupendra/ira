@@ -1,25 +1,97 @@
 site_name: IRA
 site_description: "Hey Ira: a self-hosted voice assistant over your own data and tools."
+# The docs are published under /docs/ of the project site; the landing page is
+# site/ at the root. See .github/workflows/pages.yml.
+site_url: https://helloupendra.github.io/ira/docs/
+repo_url: https://github.com/helloupendra/ira
+repo_name: helloupendra/ira
+edit_uri: edit/main/docs/
+copyright: IRA is open source under the MIT licence.
+
 docs_dir: docs
+# Not "site": that folder holds the landing page. build/ is gitignored.
+site_dir: build/docs
+exclude_docs: |
+  requirements.txt
 
 theme:
   name: material
+  logo: assets/icon.svg
+  favicon: assets/icon.svg
+  font: false # system fonts; nothing is fetched from a font service
+  palette:
+    - media: "(prefers-color-scheme)"
+      toggle:
+        icon: material/brightness-auto
+        name: Switch to light mode
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: custom
+      accent: custom
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: custom
+      accent: custom
+      toggle:
+        icon: material/brightness-4
+        name: Follow the system setting
+  features:
+    - navigation.tabs
+    - navigation.sections
+    - navigation.top
+    - navigation.footer
+    - toc.follow
+    - search.suggest
+    - search.highlight
+    - content.code.copy
+    - content.action.edit
+
+extra_css:
+  - stylesheets/extra.css
+
+extra:
+  # The logo leads back to the landing page, one level above the docs.
+  homepage: ../
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/helloupendra/ira
+      name: IRA on GitHub
+
+plugins:
+  - search
+
+validation:
+  links:
+    anchors: warn
 
 nav:
   - Home: index.md
-  - Getting started: getting-started.md
-  - Concepts: concepts.md
-  - Architecture: architecture.md
-  - Admin guide: admin-guide.md
-  - API: api.md
-  - Security: security.md
-  - Deployment: deployment.md
+  - Guide:
+      - Getting started: getting-started.md
+      - Concepts: concepts.md
+      - Admin guide: admin-guide.md
+      - Deployment: deployment.md
+  - Reference:
+      - API: api.md
+      - Architecture: architecture.md
+      - Security: security.md
   - Examples:
       - Sunrise Dental Clinic: examples/clinic.md
 
 markdown_extensions:
   - admonition
+  - attr_list
+  - md_in_html
   - tables
+  - toc:
+      permalink: true
+  - pymdownx.details
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.inlinehilite
   - pymdownx.superfences:
       custom_fences:
         - name: mermaid
