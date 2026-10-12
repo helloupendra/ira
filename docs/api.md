@@ -180,7 +180,7 @@ All need `admin.read` (owner, admin, viewer), from a session or a token.
 
 | Route | Returns |
 | --- | --- |
-| `GET /v1/admin/overview` | `Overview`: today's calls, failures, cost, tokens, latency p50/p95, per model, actions by status, active conversations, users |
+| `GET /v1/admin/overview` | `Overview`: today's `questions` (user turns stored since the start of today, every channel), model `calls` (one question can make several), failures, cost, tokens, latency p50/p95, per model, actions by status, active conversations, users |
 | `GET /v1/admin/calls?limit=&before_id=` | `CallRow[]`: model calls, newest first, paged by id |
 | `GET /v1/admin/conversations?limit=&before=` | `ConversationRow[]`: by last activity, with a `preview` of the first question |
 | `GET /v1/admin/conversations/{id}` | `MessageRow[]`: messages, with typed `tool_calls` and tool results |

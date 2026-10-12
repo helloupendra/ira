@@ -81,8 +81,12 @@ def overview(_: Principal = Depends(reader), runtime: Runtime = Depends(get_runt
     conversations = store.one(
         "SELECT COUNT(*) AS n FROM conversations WHERE last_at >= ?", (since,)
     )
+    questions = store.one(
+        "SELECT COUNT(*) AS n FROM messages WHERE role = 'user' AND at >= ?", (since,)
+    )
     return Overview(
         since=since,
+        questions=questions["n"] if questions else 0,
         calls=len(calls),
         failures=sum(1 for c in calls if not c["ok"]),
         cost_usd=round(sum(c["cost_usd"] or 0.0 for c in calls), 6),

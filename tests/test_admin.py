@@ -41,14 +41,20 @@ def setup(registry):
 
 
 def test_overview_counts_today(setup):
-    client, headers, _ = setup
+    client, headers, runtime = setup
     data = client.get("/v1/admin/overview", headers=headers).json()
+    # Two questions, each answered with a tool round: four model calls.
+    assert data["questions"] == 2
     assert data["calls"] == 4
     assert data["failures"] == 0
     assert data["actions"] == {"pending": 1}
     assert data["conversations"] == 1
     assert data["by_model"][0]["model"] == "fake:m"
     assert data["latency_p50"] is not None
+
+    # Questions are counted from today's stored user messages, on any channel.
+    runtime.store.execute("UPDATE messages SET at = at - 86400 WHERE content = 'where is A1'")
+    assert client.get("/v1/admin/overview", headers=headers).json()["questions"] == 1
 
 
 def test_calls_conversations_and_transcript(setup):

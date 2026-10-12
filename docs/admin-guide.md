@@ -143,9 +143,10 @@ The admin API gives the numbers a console needs; with a token of scope
 curl -s -H "Authorization: Bearer $TOKEN" http://127.0.0.1:8765/v1/admin/overview
 ```
 
-`overview` returns today's calls, failures, cost, tokens, p50/p95 latency and
-a per-model breakdown; `calls`, `conversations`, `actions`, `audit`, `tools`,
-`channels`, `users` and `tokens` list the details. See [API](api.md).
+`overview` returns today's questions, model calls, failures, cost, tokens,
+p50/p95 latency and a per-model breakdown; `calls`, `conversations`,
+`actions`, `audit`, `tools`, `channels`, `users` and `tokens` list the
+details. See [API](api.md).
 
 ## Backups
 

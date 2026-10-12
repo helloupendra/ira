@@ -273,8 +273,18 @@ class ModelUsage(BaseModel):
 
 class Overview(BaseModel):
     since: float = Field(description="Start of today, server local time (epoch seconds).")
-    calls: int
-    failures: int
+    questions: int = Field(
+        description="Questions people asked today, on every channel: the user turns stored "
+        "since the start of today. A bare PIN typed into chat is never stored or counted."
+    )
+    calls: int = Field(
+        description="Model calls today. One question can make several (one per tool round), "
+        "and model tests count too."
+    )
+    failures: int = Field(
+        description="Model calls today that failed: no model in the chain answered, "
+        "or a stream broke off."
+    )
     cost_usd: float
     input_tokens: int
     output_tokens: int
