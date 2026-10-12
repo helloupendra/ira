@@ -1,0 +1,52 @@
+/* Tokens & security: the few things console.css has no class for. */
+
+/* A second list inside a section, under its own smaller heading */
+.tokens-subhead {
+  margin: var(--s-5) 0 var(--s-3);
+  font-size: var(--text-m);
+  font-weight: 600;
+}
+
+/* Rows that hold a button line up on the button, not the top of the cell */
+.tokens-table td { vertical-align: middle; }
+
+/* A device's user agent is long, so it may break anywhere */
+.tokens-device { overflow-wrap: anywhere; }
+
+/* The PIN state, with its icon */
+.tokens-status {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--s-2);
+  margin-bottom: var(--s-4);
+  font-size: var(--text-m);
+}
+.tokens-status .icon { margin-top: 2px; color: var(--muted); }
+
+/* The PIN form: both fields on one line where there is room */
+.tokens-pin-form { max-width: 44rem; }
+.tokens-pin-form .field { flex: 1 1 11rem; }
+
+/* The scopes: a group of checks whose legend reads as a field label */
+.tokens-scopes {
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+.tokens-scopes legend {
+  margin-bottom: var(--s-1);
+  padding: 0;
+  font-size: var(--text-s);
+  color: var(--muted);
+}
+.tokens-scopes .field-hint,
+.tokens-scopes .field-error { margin-top: var(--s-2); }
+
+/* The rules have long labels; on a phone each value goes under its label
+   instead of being squeezed beside it */
+@media (max-width: 40rem) {
+  .tokens-rules { grid-template-columns: minmax(0, 1fr); gap: var(--s-1) 0; }
+  .tokens-rules dd { margin-bottom: var(--s-2); }
+  .tokens-rules dd:last-child { margin-bottom: 0; }
+}
