@@ -187,12 +187,16 @@ class ActionRow(BaseModel):
     summary: str
     conversation_id: str | None
     channel: str | None
-    actor: str | None
+    actor: str | None = Field(description="Who proposed it.")
     created_at: float
     expires_at: float
     status: str
     result: Any = None
     finished_at: float | None
+    decided_by: str | None = Field(
+        default=None, description="Who confirmed or cancelled it, from the audit log."
+    )
+    decided_at: float | None = None
 
 
 class AuditRow(BaseModel):
@@ -418,3 +422,31 @@ class ChangeRow(BaseModel):
     target: str | None
     before: Any = None
     after: Any = None
+
+
+class CostDay(BaseModel):
+    day: str
+    calls: int
+    failures: int
+    cost_usd: float
+    input_tokens: int
+    output_tokens: int
+
+
+class ActionRule(BaseModel):
+    tool: str
+    confirm_roles: list[str]
+
+
+class SecurityView(BaseModel):
+    locked_seconds: int | None
+    wrong_pins: int
+    max_wrong_pins: int
+    lock_minutes: float
+    expiry_seconds: float
+    session_days: float
+    cookie_samesite: str
+    token_scopes: list[str]
+    users_without_pin: list[str]
+    confirm_roles: list[str]
+    action_rules: list[ActionRule]

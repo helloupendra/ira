@@ -1,4 +1,7 @@
-"""Read-only admin endpoints under ``/v1/admin`` (owner, admin and viewer roles)."""
+"""Read-only admin endpoints under ``/v1/admin`` (owner, admin and viewer roles).
+
+The console's writes live in ``admin_write.py``.
+"""
 
 from __future__ import annotations
 
@@ -11,16 +14,18 @@ from typing import Any
 from fastapi import APIRouter, Depends, HTTPException, Query
 
 from ira import changes, overrides
-from ira.accounts import Principal
-from ira.channels.deps import get_runtime, require
+from ira.accounts import COOKIE_DAYS, TOKEN_SCOPES, Principal
+from ira.channels.deps import COOKIE_SAMESITE, get_runtime, require
 from ira.channels.schemas import (
     ActionRow,
+    ActionRule,
     AdminUserRow,
     AuditRow,
     CallRow,
     ChangeRow,
     ChannelView,
     ConversationRow,
+    CostDay,
     InviteView,
     KeyView,
     MessageRow,
@@ -28,6 +33,7 @@ from ira.channels.schemas import (
     ModelUsage,
     Overview,
     ProviderView,
+    SecurityView,
     SettingsView,
     SettingValue,
     TierView,
@@ -154,13 +160,34 @@ def actions(
         rows = runtime.store.query(
             "SELECT * FROM pending_actions ORDER BY created_at DESC LIMIT ?", (limit,)
         )
+    decisions = _decisions(runtime, [row["id"] for row in rows])
     out = []
     for row in rows:
         item = dict(row)
         item["params"] = json.loads(row["params"])
         item["result"] = json.loads(row["result"]) if row["result"] else None
+        decided = decisions.get(row["id"])
+        if decided:
+            item["decided_by"], item["decided_at"] = decided
         out.append(ActionRow(**item))
     return out
+
+
+# Outcomes that are someone's decision; "expired" is the clock's, not a person's.
+DECISIONS = ("executed", "failed", "cancelled")
+
+
+def _decisions(runtime: Runtime, ids: list[str]) -> dict[str, tuple[str | None, float]]:
+    """Who confirmed or cancelled each action, read back from the audit log."""
+    if not ids:
+        return {}
+    marks = ",".join("?" for _ in ids)
+    rows = runtime.store.query(
+        f"SELECT action_id, actor, channel, at FROM audit_log WHERE action_id IN ({marks}) "
+        f"AND outcome IN ({','.join('?' for _ in DECISIONS)}) ORDER BY id",
+        (*ids, *DECISIONS),
+    )
+    return {row["action_id"]: (row["actor"], row["at"]) for row in rows}
 
 
 def tool_detail(runtime: Runtime, name: str) -> ToolDetail:
@@ -205,7 +232,16 @@ def channels(
                 "tts": getattr(runtime.tts, "name", None),
             },
         ),
-        ChannelView(name="telegram", enabled=settings.channels.telegram.enabled, detail=telegram),
+        ChannelView(
+            name="telegram",
+            enabled=settings.channels.telegram.enabled,
+            detail={
+                **telegram,
+                "token_env": settings.channels.telegram.token_env,
+                "token_present": bool(os.environ.get(settings.channels.telegram.token_env)),
+                "voice_replies": settings.channels.telegram.voice_replies,
+            },
+        ),
     ]
 
 
@@ -251,16 +287,6 @@ def tokens(
     _: Principal = Depends(reader), runtime: Runtime = Depends(get_runtime)
 ) -> list[TokenRow]:
     return [TokenRow(**t) for t in runtime.accounts.tokens()]
-
-
-@router.get("/changes", response_model=list[ChangeRow], summary="Console changes, newest first")
-def change_log(
-    limit: int = Query(100, ge=1, le=1000),
-    before_id: int | None = Query(None, description="Page: only changes older than this id."),
-    _: Principal = Depends(reader),
-    runtime: Runtime = Depends(get_runtime),
-) -> list[ChangeRow]:
-    return [ChangeRow(**row) for row in changes.recent(runtime.store, limit, before_id)]
 
 
 # Models, keys and settings.
@@ -363,3 +389,63 @@ def settings(
     _: Principal = Depends(reader), runtime: Runtime = Depends(get_runtime)
 ) -> SettingsView:
     return settings_view(runtime)
+
+
+# History.
+
+
+@router.get("/changes", response_model=list[ChangeRow], summary="Console changes, newest first")
+def change_log(
+    limit: int = Query(100, ge=1, le=1000),
+    before_id: int | None = Query(None, description="Page: only changes older than this id."),
+    _: Principal = Depends(reader),
+    runtime: Runtime = Depends(get_runtime),
+) -> list[ChangeRow]:
+    return [ChangeRow(**row) for row in changes.recent(runtime.store, limit, before_id)]
+
+
+@router.get("/costs", response_model=list[CostDay], summary="Calls and cost per day")
+def costs(
+    days: int = Query(30, ge=1, le=366),
+    _: Principal = Depends(reader),
+    runtime: Runtime = Depends(get_runtime),
+) -> list[CostDay]:
+    first = dt.date.today() - dt.timedelta(days=days - 1)
+    since = dt.datetime.combine(first, dt.time()).timestamp()
+    rows = runtime.store.query(
+        "SELECT date(at, 'unixepoch', 'localtime') AS day, COUNT(*) AS calls, "
+        "SUM(1 - ok) AS failures, COALESCE(SUM(cost_usd), 0) AS cost_usd, "
+        "SUM(input_tokens) AS input_tokens, SUM(output_tokens) AS output_tokens "
+        "FROM calls WHERE at >= ? GROUP BY day ORDER BY day DESC",
+        (since,),
+    )
+    return [CostDay(**{**dict(r), "cost_usd": round(r["cost_usd"], 6)}) for r in rows]
+
+
+@router.get("/security", response_model=SecurityView, summary="PIN lock, sessions and rules")
+def security(
+    _: Principal = Depends(reader), runtime: Runtime = Depends(get_runtime)
+) -> SecurityView:
+    guard = runtime.guard
+    locked = guard.locked_until()
+    action_tools = [t.name for t in runtime.registry if t.kind == "action"]
+    return SecurityView(
+        locked_seconds=None if locked is None else max(0, round(locked - guard.clock())),
+        wrong_pins=guard.wrong_pins(),
+        max_wrong_pins=guard.max_wrong_pins,
+        lock_minutes=round(guard.lock_seconds / 60, 1),
+        expiry_seconds=guard.expiry_seconds,
+        session_days=COOKIE_DAYS,
+        cookie_samesite=COOKIE_SAMESITE,
+        token_scopes=list(TOKEN_SCOPES),
+        users_without_pin=[
+            u.email
+            for u in runtime.accounts.users()
+            if "actions" in u.permissions and not u.has_pin
+        ],
+        confirm_roles=list(guard.confirm_roles),
+        action_rules=[
+            ActionRule(tool=name, confirm_roles=list(guard.confirm_roles_for(name)))
+            for name in action_tools
+        ],
+    )

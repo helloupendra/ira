@@ -7,7 +7,7 @@ from fastapi.testclient import TestClient
 
 from ira.channels.http import create_app
 from ira.config import Settings
-from ira.models.base import ProviderError
+from ira.models.base import ChatResponse, ProviderError, ToolCall
 from ira.models.fake import ScriptedProvider
 from ira.overrides import apply as apply_overrides
 from ira.runtime import build_runtime
@@ -495,3 +495,42 @@ def test_the_voice_cannot_be_set_without_text_to_speech(registry):
         assert view["voice"]["editable"] is False
         response = client.patch("/v1/admin/settings", json={"voice": "nova"}, headers=admin)
         assert response.status_code == 400
+
+
+# Actions, security and costs.
+
+
+def test_actions_show_who_confirmed_and_the_confirm_roles(registry):
+    provider = ScriptedProvider(
+        [
+            ChatResponse(
+                text="", tool_calls=[ToolCall("c", "refund", '{"order_id": "A1", "amount": 5}')]
+            ),
+            "ok",
+        ]
+    )
+    runtime = make_runtime(provider=provider, registry=registry)
+    runtime.guard.tool_confirm_roles = {"refund": ("owner",)}
+    people = People(runtime)
+    runtime.guard.set_pin("2468", user_id=people.owner.id)
+    runtime.guard.set_pin("1357", user_id=people.staff.id)
+    with TestClient(create_app(runtime, start_channels=False)) as client:
+        staff, owner = people.session(people.staff), people.session(people.owner)
+        reply = client.post("/v1/ask", json={"text": "refund A1"}, headers=staff).json()
+        action_id = reply["action"]["id"]
+        refused = client.post(
+            f"/v1/actions/{action_id}/confirm", json={"pin": "1357"}, headers=staff
+        )
+        assert refused.status_code == 403 and refused.json()["status"] == "not_allowed"
+        done = client.post(f"/v1/actions/{action_id}/confirm", json={"pin": "2468"}, headers=owner)
+        assert done.json()["status"] == "executed"
+
+        rows = client.get("/v1/admin/actions", headers=owner).json()
+        assert rows[0]["actor"] == "desk@example.com via web"
+        assert rows[0]["decided_by"] == "owner@example.com via web"
+        security = client.get("/v1/admin/security", headers=owner).json()
+        assert security["action_rules"] == [{"tool": "refund", "confirm_roles": ["owner"]}]
+        assert security["cookie_samesite"] == "strict"
+        assert "manager@example.com" in security["users_without_pin"]
+        costs = client.get("/v1/admin/costs?days=7", headers=owner).json()
+        assert costs[0]["calls"] == 2
