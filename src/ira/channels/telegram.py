@@ -1,0 +1,394 @@
+"""Telegram bot over long polling: text and voice notes in, text and voice out.
+
+* A chat must be paired first: ``ira telegram pair`` prints a one-time code,
+  and the owner sends ``/pair CODE`` to the bot. Unpaired chats get nothing.
+* A bare 4-12 digit message is a PIN. It is deleted from the chat with
+  ``deleteMessage`` before anything else happens, used to confirm the chat's
+  pending action, and never sent to a model.
+* Group chats are ignored: an assistant over private data is a one-to-one thing.
+"""
+
+from __future__ import annotations
+
+import asyncio
+import logging
+import secrets
+import time
+from typing import Any
+
+import httpx
+
+from ira.accounts import Principal
+from ira.config import secret
+from ira.models.base import ProviderError
+from ira.models.http import scrub
+from ira.runtime import Runtime
+from ira.security import looks_like_pin, sha256_hex
+from ira.store import Store
+from ira.voice.audio import AudioError, ogg_to_wav
+from ira.voice.shorten import speakable
+
+log = logging.getLogger("ira.telegram")
+
+PAIRING_SECONDS = 600
+CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"  # no 0/O or 1/I to misread
+MAX_MESSAGE = 4000
+
+HELP = """\
+I'm {name}. Ask me anything about {business}, by text or voice note.
+
+When I propose an action, type your PIN to confirm it (I delete the PIN message at once), \
+or send /cancel.
+
+/new - start a fresh conversation
+/cancel - drop the pending action
+/name <new name> - rename me (owner or admin)"""
+
+
+class TelegramError(Exception):
+    pass
+
+
+class TelegramApi:
+    """A thin Bot API client. The bot token is part of every URL, so errors are scrubbed."""
+
+    def __init__(
+        self,
+        token: str,
+        *,
+        client: httpx.AsyncClient | None = None,
+        base_url: str = "https://api.telegram.org",
+    ) -> None:
+        self._token = token
+        self._client = client or httpx.AsyncClient()
+        self._base = base_url.rstrip("/")
+
+    def _scrub(self, text: str) -> str:
+        return scrub(text, [self._token])
+
+    async def call(
+        self,
+        method: str,
+        *,
+        timeout: float = 30.0,
+        files: dict[str, tuple[str, bytes, str]] | None = None,
+        **params: Any,
+    ) -> Any:
+        url = f"{self._base}/bot{self._token}/{method}"
+        try:
+            if files:
+                data = {k: str(v) for k, v in params.items()}
+                response = await self._client.post(url, data=data, files=files, timeout=timeout)
+            else:
+                response = await self._client.post(url, json=params, timeout=timeout)
+            body = response.json()
+        except (httpx.HTTPError, ValueError) as exc:
+            raise TelegramError(self._scrub(f"{method}: {type(exc).__name__}")) from None
+        if not body.get("ok"):
+            raise TelegramError(self._scrub(f"{method}: {body.get('description', 'failed')}"))
+        return body.get("result")
+
+    async def get_updates(self, offset: int | None, timeout: int = 30) -> list[dict[str, Any]]:
+        params: dict[str, Any] = {"timeout": timeout, "allowed_updates": ["message"]}
+        if offset is not None:
+            params["offset"] = offset
+        return await self.call("getUpdates", timeout=timeout + 10, **params) or []
+
+    async def send_message(self, chat_id: int, text: str) -> None:
+        await self.call("sendMessage", chat_id=chat_id, text=text)
+
+    async def delete_message(self, chat_id: int, message_id: int) -> None:
+        await self.call("deleteMessage", chat_id=chat_id, message_id=message_id)
+
+    async def send_voice(self, chat_id: int, mp3: bytes) -> None:
+        await self.call(
+            "sendVoice", chat_id=chat_id, files={"voice": ("reply.mp3", mp3, "audio/mpeg")}
+        )
+
+    async def download_file(self, file_id: str) -> bytes:
+        info = await self.call("getFile", file_id=file_id)
+        path = (info or {}).get("file_path")
+        if not path:
+            raise TelegramError("getFile returned no path")
+        try:
+            response = await self._client.get(
+                f"{self._base}/file/bot{self._token}/{path}", timeout=60
+            )
+            response.raise_for_status()
+        except httpx.HTTPError as exc:
+            raise TelegramError(self._scrub(f"download: {type(exc).__name__}")) from None
+        return response.content
+
+    async def aclose(self) -> None:
+        await self._client.aclose()
+
+
+# --- pairing -----------------------------------------------------------------------
+
+
+def create_pairing_code(store: Store, user_id: int, seconds: float = PAIRING_SECONDS) -> str:
+    code = "".join(secrets.choice(CODE_ALPHABET) for _ in range(8))
+    now = time.time()
+    store.execute(
+        "INSERT INTO pairing_codes (code_hash, user_id, created_at, expires_at) "
+        "VALUES (?, ?, ?, ?)",
+        (sha256_hex(code), user_id, now, now + seconds),
+    )
+    return code
+
+
+def redeem_pairing_code(store: Store, code: str, chat_id: int) -> int | None:
+    """Pair ``chat_id`` with the code's user. Returns the user id, or None."""
+    code = code.strip().upper().replace("-", "").replace(" ", "")
+    if not code:
+        return None
+    now = time.time()
+    claimed = store.execute(
+        "UPDATE pairing_codes SET used_at = ?, chat_id = ? "
+        "WHERE code_hash = ? AND used_at IS NULL AND expires_at > ?",
+        (now, chat_id, sha256_hex(code), now),
+    )
+    if claimed.rowcount != 1:
+        return None
+    row = store.one("SELECT user_id FROM pairing_codes WHERE code_hash = ?", (sha256_hex(code),))
+    user_id = int(row["user_id"])
+    store.execute(
+        "INSERT INTO telegram_chats (chat_id, user_id, paired_at) VALUES (?, ?, ?) "
+        "ON CONFLICT(chat_id) DO UPDATE SET "
+        "user_id = excluded.user_id, paired_at = excluded.paired_at",
+        (chat_id, user_id, now),
+    )
+    return user_id
+
+
+# --- the bot -------------------------------------------------------------------------
+
+
+class TelegramBot:
+    def __init__(self, runtime: Runtime, api: Any, *, poll_timeout: int = 30) -> None:
+        self.runtime = runtime
+        self.api = api
+        self.poll_timeout = poll_timeout
+        self.voice_replies = runtime.settings.channels.telegram.voice_replies
+        self.state = runtime.channel_state.setdefault(
+            "telegram", {"running": False, "last_poll_at": None, "last_error": None, "updates": 0}
+        )
+
+    async def run(self) -> None:
+        offset: int | None = None
+        self.state["running"] = True
+        log.info("telegram bot polling")
+        try:
+            while True:
+                try:
+                    updates = await self.api.get_updates(offset, self.poll_timeout)
+                    self.state["last_poll_at"] = time.time()
+                    self.state["last_error"] = None
+                except TelegramError as exc:
+                    self.state["last_error"] = str(exc)
+                    log.warning("telegram poll failed: %s", exc)
+                    await asyncio.sleep(5)
+                    continue
+                for update in updates:
+                    offset = int(update["update_id"]) + 1
+                    self.state["updates"] += 1
+                    try:
+                        await self.handle_update(update)
+                    except Exception:
+                        log.exception("telegram update %s failed", update.get("update_id"))
+        finally:
+            self.state["running"] = False
+
+    def _principal(self, chat_id: int) -> Principal | None:
+        row = self.runtime.store.one(
+            "SELECT user_id FROM telegram_chats WHERE chat_id = ?", (chat_id,)
+        )
+        if row is None:
+            return None
+        user = self.runtime.accounts.get_user(int(row["user_id"]))
+        if user is None:
+            return None
+        return Principal(user, "telegram", user.permissions, str(chat_id))
+
+    async def handle_update(self, update: dict[str, Any]) -> None:
+        message = update.get("message") or {}
+        chat = message.get("chat") or {}
+        if not message or chat.get("type") != "private":
+            return
+        chat_id = int(chat["id"])
+        message_id = int(message.get("message_id", 0))
+        text = (message.get("text") or "").strip()
+
+        if text.startswith("/pair"):
+            await self._delete(chat_id, message_id)
+            user_id = redeem_pairing_code(self.runtime.store, text[5:], chat_id)
+            await self._send(
+                chat_id,
+                "Paired. Say hello." if user_id else "That code is not valid or has expired.",
+            )
+            return
+
+        principal = self._principal(chat_id)
+        if principal is None:
+            await self._send(
+                chat_id, "This assistant is private. Ask the owner for a pairing code."
+            )
+            return
+        conversation_id = f"telegram:{chat_id}"
+
+        if text and looks_like_pin(text):
+            # Delete first: the PIN must not sit in the chat history, whatever happens next.
+            await self._delete(chat_id, message_id)
+            await self._confirm(principal, chat_id, conversation_id, text)
+            return
+
+        if text.startswith("/"):
+            await self._command(principal, chat_id, conversation_id, text)
+            return
+
+        heard = False
+        voice = message.get("voice") or message.get("audio")
+        if voice and not text:
+            if not principal.can("voice"):
+                await self._send(chat_id, "Your account cannot use voice.")
+                return
+            transcript = await self._transcribe(chat_id, voice)
+            if transcript is None:
+                return
+            if looks_like_pin(transcript):
+                await self._delete(chat_id, message_id)
+                await self._send(
+                    chat_id, "I deleted that voice note. Please type the PIN instead of saying it."
+                )
+                return
+            text, heard = transcript, True
+
+        if not text:
+            return
+        if not principal.can("ask"):
+            await self._send(chat_id, "Your account cannot ask questions here.")
+            return
+
+        reply = await self.runtime.assistant.ask(
+            text,
+            conversation_id=conversation_id,
+            channel="telegram",
+            actor=principal.actor,
+            user_id=principal.user.id,
+        )
+        body = f'Heard: "{text}"\n\n{reply.text}' if heard else reply.text
+        await self._send(chat_id, body or "(no answer)")
+        if reply.action is not None:
+            seconds = max(0, round(reply.action.expires_at - time.time()))
+            await self._send(
+                chat_id,
+                f"Proposed: {reply.action.summary}\n"
+                f"Type your PIN to confirm, or /cancel. It expires in {seconds} seconds.",
+            )
+        if self.runtime.tts is not None and (
+            self.voice_replies == "always" or (self.voice_replies == "voice" and heard)
+        ):
+            await self._speak(chat_id, reply.text)
+
+    async def _confirm(
+        self, principal: Principal, chat_id: int, conversation_id: str, pin: str
+    ) -> None:
+        if not principal.can("actions"):
+            await self._send(chat_id, "Your account cannot confirm actions.")
+            return
+        pending = self.runtime.guard.latest_pending(conversation_id)
+        if pending is None:
+            await self._send(chat_id, "No action is waiting for a PIN. It may have expired.")
+            return
+        outcome = await self.runtime.guard.confirm(
+            pending.id, pin, actor=principal.actor, channel="telegram"
+        )
+        await self._send(chat_id, outcome.message)
+
+    async def _command(
+        self, principal: Principal, chat_id: int, conversation_id: str, text: str
+    ) -> None:
+        command, _, argument = text.partition(" ")
+        command = command.split("@", 1)[0].lower()
+        assistant = self.runtime.assistant
+        if command in ("/start", "/help"):
+            await self._send(chat_id, HELP.format(name=assistant.name, business=assistant.business))
+        elif command == "/new":
+            assistant.reset(conversation_id)
+            await self._send(chat_id, "Fresh start. What can I do for you?")
+        elif command == "/cancel":
+            pending = self.runtime.guard.latest_pending(conversation_id)
+            if pending is None:
+                await self._send(chat_id, "Nothing is waiting to be cancelled.")
+            else:
+                outcome = self.runtime.guard.cancel(
+                    pending.id, actor=principal.actor, channel="telegram"
+                )
+                await self._send(chat_id, outcome.message)
+        elif command == "/name":
+            if not argument.strip():
+                await self._send(chat_id, f"My name is {assistant.name}.")
+            elif not principal.can("admin.write"):
+                await self._send(chat_id, "Only an owner or admin can rename me.")
+            else:
+                name = assistant.rename(argument)
+                await self._send(chat_id, f"Done. Call me {name}.")
+        else:
+            await self._send(chat_id, "I don't know that command. Send /help.")
+
+    async def _transcribe(self, chat_id: int, voice: dict[str, Any]) -> str | None:
+        stt = self.runtime.stt
+        if stt is None:
+            await self._send(chat_id, "Voice notes are not set up here. Please type instead.")
+            return None
+        if int(voice.get("duration") or 0) > self.runtime.settings.voice.max_audio_seconds:
+            await self._send(chat_id, "That voice note is too long for me.")
+            return None
+        try:
+            ogg = await self.api.download_file(voice["file_id"])
+            wav = await asyncio.to_thread(ogg_to_wav, ogg)
+            transcript = (await stt.transcribe(wav)).strip()
+        except AudioError as exc:
+            await self._send(chat_id, f"I couldn't read that voice note: {exc}")
+            return None
+        except (TelegramError, ProviderError) as exc:
+            log.warning("voice note failed: %s", exc)
+            await self._send(chat_id, "I couldn't transcribe that voice note. Please try again.")
+            return None
+        if not transcript:
+            await self._send(chat_id, "I didn't catch any words in that voice note.")
+            return None
+        return transcript
+
+    async def _speak(self, chat_id: int, text: str) -> None:
+        spoken = speakable(text, self.runtime.settings.voice.max_spoken_chars)
+        if not spoken or self.runtime.tts is None:
+            return
+        try:
+            audio = await self.runtime.tts.speak(spoken)
+            await self.api.send_voice(chat_id, audio)
+        except (ProviderError, TelegramError) as exc:
+            log.warning("voice reply failed: %s", exc)
+
+    async def _send(self, chat_id: int, text: str) -> None:
+        for start in range(0, max(len(text), 1), MAX_MESSAGE):
+            try:
+                await self.api.send_message(chat_id, text[start : start + MAX_MESSAGE])
+            except TelegramError as exc:
+                log.warning("send failed: %s", exc)
+                return
+
+    async def _delete(self, chat_id: int, message_id: int) -> None:
+        try:
+            await self.api.delete_message(chat_id, message_id)
+        except TelegramError as exc:
+            # Telegram refuses deletes after 48 hours or without rights; say so in the log.
+            log.warning("could not delete message %s: %s", message_id, exc)
+
+
+def start_telegram(runtime: Runtime) -> asyncio.Task:
+    cfg = runtime.settings.channels.telegram
+    token = secret(cfg.token_env, purpose="the Telegram channel")
+    assert token is not None
+    bot = TelegramBot(runtime, TelegramApi(token))
+    return asyncio.create_task(bot.run(), name="ira-telegram")
