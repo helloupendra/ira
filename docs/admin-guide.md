@@ -32,9 +32,15 @@ printf '%s\n' "$OWNER_PASSWORD" | ira setup --email owner@example.com
 | staff | reception, shop floor: ask, voice, confirm actions with the PIN |
 | viewer | someone who only needs the dashboards |
 
-v0.1 creates the owner through setup. Adding other users from the console
-arrives in v0.2 (the `users` table and roles are already in place, and
-`GET /v1/admin/users` lists them).
+Add the others from the command line (the password is read without echo):
+
+```bash
+ira user add --email desk@example.com --role staff
+ira user add --email accountant@example.com --role viewer
+ira user list
+```
+
+Managing users from the admin console arrives in v0.2.
 
 The **action PIN** is one per installation in v0.1: whoever confirms an action
 must know it. Staff can propose and the owner can confirm on the same screen.

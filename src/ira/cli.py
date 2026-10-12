@@ -3,6 +3,8 @@
 ira setup                         create the owner account
 ira serve                         run the API, web chat and enabled channels
 ira pin set                       set the action PIN
+ira user add --email E --role R   add an admin, staff or viewer account
+ira user list
 ira token create --label phone    create an API token (shown once)
 ira token list | revoke ID|LABEL
 ira telegram pair                 print a one-time pairing code
@@ -18,7 +20,7 @@ import sys
 from collections.abc import Callable
 
 from ira import __version__
-from ira.accounts import TOKEN_SCOPES, AccountError, Accounts, User, parse_scopes
+from ira.accounts import ROLES, TOKEN_SCOPES, AccountError, Accounts, User, parse_scopes
 from ira.config import ConfigError, Settings, load_settings
 from ira.security import valid_pin
 from ira.store import Store
@@ -169,6 +171,29 @@ def cmd_demo_seed(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_user_add(args: argparse.Namespace) -> int:
+    settings = _settings(args)
+    accounts = Accounts(_store(settings))
+    if accounts.count() == 0:
+        print("No owner account yet. Run `ira setup` first.", file=sys.stderr)
+        return 1
+    password = _secret_input("Password (10+ characters): ", confirm=True)
+    try:
+        user = accounts.create_user(args.email, password, args.role)
+    except AccountError as exc:
+        print(f"Error: {exc}", file=sys.stderr)
+        return 1
+    print(f"Added {user.email} as {user.role}.")
+    return 0
+
+
+def cmd_user_list(args: argparse.Namespace) -> int:
+    settings = _settings(args)
+    for user in Accounts(_store(settings)).users():
+        print(f"{user.id:>4}  {user.email:<32} {user.role}")
+    return 0
+
+
 def cmd_version(args: argparse.Namespace) -> int:
     print(f"ira {__version__}")
     return 0
@@ -225,6 +250,14 @@ def build_parser() -> argparse.ArgumentParser:
         dest="demo_command", required=True
     )
     add("seed", cmd_demo_seed, "create demo data for the configured tool modules", demo)
+
+    user = sub.add_parser("user", help="manage accounts").add_subparsers(
+        dest="user_command", required=True
+    )
+    p = add("add", cmd_user_add, "add an account (password from the terminal)", user)
+    p.add_argument("--email", required=True)
+    p.add_argument("--role", required=True, choices=[r for r in ROLES if r != "owner"])
+    add("list", cmd_user_list, "list accounts", user)
 
     add("version", cmd_version, "print the version")
     return parser
