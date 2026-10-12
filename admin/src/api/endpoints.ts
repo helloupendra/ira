@@ -1,4 +1,4 @@
-import { request } from './client';
+import { request, requestPage, type Page } from './client';
 import type { components, operations } from './schema';
 
 type Schemas = components['schemas'];
@@ -44,6 +44,15 @@ export type SessionsEnded = Schemas['SessionsEnded'];
 export type PinStatus = Schemas['PinStatus'];
 export type SetupStatus = Schemas['SetupStatus'];
 export type OkResponse = Schemas['OkResponse'];
+export type ActionCounts = Schemas['ActionCounts'];
+export type TelegramView = Schemas['TelegramView'];
+export type TelegramChat = Schemas['TelegramChat'];
+export type TelegramPairing = Schemas['TelegramPairing'];
+export type VoiceOption = Schemas['VoiceOption'];
+export type CoolingReason = Schemas['CoolingReason'];
+export type ServerAddress = Schemas['ServerAddress'];
+export type MyConversationRow = Schemas['MyConversationRow'];
+export type { Page };
 
 type QueryOf<Op extends keyof operations> = NonNullable<operations[Op]['parameters']['query']>;
 
@@ -53,6 +62,9 @@ export type ActionsQuery = QueryOf<'actions'>;
 export type AuditQuery = QueryOf<'audit'>;
 export type ChangesQuery = QueryOf<'change_log'>;
 export type CostsQuery = QueryOf<'costs'>;
+export type SessionsQuery = QueryOf<'my_sessions'>;
+export type AdminSessionsQuery = QueryOf<'sessions'>;
+export type CountsQuery = QueryOf<'action_counts'>;
 
 const enc = encodeURIComponent;
 
@@ -84,6 +96,8 @@ export const me = {
   setPin: (password: string, pin: string) =>
     request<OkResponse>('/v1/me/pin', { method: 'PUT', json: { password, pin } }),
   sessions: (signal?: AbortSignal) => request<SessionView[]>('/v1/me/sessions', { signal }),
+  sessionsPage: (query: SessionsQuery = {}, signal?: AbortSignal) =>
+    requestPage<SessionView[]>('/v1/me/sessions', { query, signal }),
   endSession: (id: string) => request<OkResponse>(`/v1/me/sessions/${enc(id)}`, { method: 'DELETE' }),
   endOtherSessions: () =>
     request<SessionsEnded>('/v1/me/sessions/revoke-others', { method: 'POST' }),
@@ -118,7 +132,33 @@ export const admin = {
   keys: (signal?: AbortSignal) => request<KeyView[]>('/v1/admin/keys', { signal }),
   settings: (signal?: AbortSignal) => request<SettingsView>('/v1/admin/settings', { signal }),
 
+  // Paged lists: the same rows, plus whether more follow (X-Has-More).
+  callsPage: (query: CallsQuery = {}, signal?: AbortSignal) =>
+    requestPage<CallRow[]>('/v1/admin/calls', { query, signal }),
+  conversationsPage: (query: ConversationsQuery = {}, signal?: AbortSignal) =>
+    requestPage<ConversationRow[]>('/v1/admin/conversations', { query, signal }),
+  conversationInfo: (id: string, signal?: AbortSignal) =>
+    request<ConversationRow>(`/v1/admin/conversations/${enc(id)}/info`, { signal }),
+  actionsPage: (query: ActionsQuery = {}, signal?: AbortSignal) =>
+    requestPage<ActionRow[]>('/v1/admin/actions', { query, signal }),
+  actionCounts: (query: CountsQuery = {}, signal?: AbortSignal) =>
+    request<ActionCounts>('/v1/admin/actions/counts', { query, signal }),
+  auditPage: (query: AuditQuery = {}, signal?: AbortSignal) =>
+    requestPage<AuditRow[]>('/v1/admin/audit', { query, signal }),
+  changesPage: (query: ChangesQuery = {}, signal?: AbortSignal) =>
+    requestPage<ChangeRow[]>('/v1/admin/changes', { query, signal }),
+  sessionsPage: (query: AdminSessionsQuery = {}, signal?: AbortSignal) =>
+    requestPage<AdminSessionRow[]>('/v1/admin/sessions', { query, signal }),
+  telegram: (signal?: AbortSignal) => request<TelegramView>('/v1/admin/telegram', { signal }),
+
   // Writes: a session with admin.write, or users for accounts and invitations.
+  startPairing: (userId?: number) =>
+    request<TelegramPairing>('/v1/admin/telegram/pairing', {
+      method: 'POST',
+      json: userId === undefined ? {} : { user_id: userId },
+    }),
+  unpairChat: (chatId: number) =>
+    request<OkResponse>(`/v1/admin/telegram/chats/${chatId}`, { method: 'DELETE' }),
   createInvite: (email: string, role: string) =>
     request<InviteCreated>('/v1/admin/users/invites', { method: 'POST', json: { email, role } }),
   revokeInvite: (id: string) =>

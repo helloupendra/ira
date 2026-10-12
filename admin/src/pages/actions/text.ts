@@ -1,4 +1,4 @@
-import type { ActionRow, ToolDetail } from '../../api/endpoints';
+import type { ActionCounts, ActionRow, ToolDetail } from '../../api/endpoints';
 import { clock, humanize, when } from '../../lib/format';
 
 // The chips in the order they are shown. The value is the status query
@@ -28,6 +28,31 @@ export function labelFor(status: string): string {
   return words.charAt(0).toUpperCase() + words.slice(1);
 }
 
+// The number on a chip: every action for "All", otherwise those in that
+// status. Null until the counts arrive, and for a status the server does
+// not count.
+export function countFor(counts: ActionCounts | undefined, status: string): number | null {
+  if (!counts) return null;
+  switch (status) {
+    case '':
+      return counts.total;
+    case 'pending':
+      return counts.pending;
+    case 'executing':
+      return counts.executing;
+    case 'executed':
+      return counts.executed;
+    case 'failed':
+      return counts.failed;
+    case 'expired':
+      return counts.expired;
+    case 'cancelled':
+      return counts.cancelled;
+    default:
+      return null;
+  }
+}
+
 export function emptyText(status: string): string {
   switch (status) {
     case '':
@@ -47,15 +72,15 @@ export function emptyText(status: string): string {
   }
 }
 
-// The server already writes the actor as "owner@example.com via web", so the
-// channel is added only when the actor does not name it.
+// "owner@example.com via web": the person, then the channel they used. The
+// server keeps the two apart, so neither is looked for in the other.
 export function proposedBy(actor: string | null | undefined, channel: string | null | undefined): string {
   const who = actor?.trim() ?? '';
   const via = channel?.trim() ?? '';
-  if (!who && !via) return 'not recorded';
-  if (!who) return `someone via ${via}`;
-  if (!via || who.toLowerCase().includes(`via ${via.toLowerCase()}`)) return who;
-  return `${who} via ${via}`;
+  if (who && via) return `${who} via ${via}`;
+  if (who) return who;
+  if (via) return `someone via ${via}`;
+  return 'not recorded';
 }
 
 // "owner, admin or staff"
@@ -76,28 +101,22 @@ export function whoMayConfirm(tool: ToolDetail | undefined): string {
 export interface OutcomeLine {
   label: string;
   text: string;
-  // A word after the text, shown quietly: "expired" on a pending action
-  // whose time has run out.
-  note?: string;
 }
 
-// The line that says where the action stands: when a pending one runs out,
-// or who decided one that is done.
-export function outcomeLine(row: ActionRow, now: number): OutcomeLine | null {
-  if (row.status === 'pending') {
-    const passed = row.expires_at <= now;
-    return passed
-      ? { label: 'Expired at', text: clock(row.expires_at), note: 'expired' }
-      : { label: 'Expires at', text: clock(row.expires_at) };
-  }
-  if (row.status === 'expired') {
-    return { label: 'Expired at', text: when(row.expires_at, now) };
-  }
+// The line that says where the action stands: when a pending one runs out
+// (the server marks it expired once that time has passed, so the list never
+// has to say so itself), when an expired one ran out, or who decided one
+// that is done, and where.
+export function outcomeLine(row: ActionRow, now: number = Date.now() / 1000): OutcomeLine | null {
+  if (row.status === 'pending') return { label: 'Expires at', text: clock(row.expires_at) };
+  if (row.status === 'expired') return { label: 'Expired at', text: when(row.expires_at, now) };
   const by = row.decided_by?.trim() ?? '';
-  const at = row.decided_at ?? null;
-  if (by && at !== null) return { label: 'Decided by', text: `${by} at ${when(at, now)}` };
-  if (by) return { label: 'Decided by', text: by };
-  if (at !== null) return { label: 'Decided at', text: when(at, now) };
+  const via = row.decided_channel?.trim() ?? '';
+  const at = row.decided_at === null || row.decided_at === undefined ? '' : when(row.decided_at, now);
+  const rest = [via && `via ${via}`, at && `at ${at}`].filter(Boolean).join(' ');
+  if (by) return { label: 'Decided by', text: rest ? `${by} ${rest}` : by };
+  if (via) return { label: 'Decided', text: rest };
+  if (at) return { label: 'Decided at', text: at };
   if (row.finished_at !== null) return { label: 'Finished at', text: when(row.finished_at, now) };
   return null;
 }

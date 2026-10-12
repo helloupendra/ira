@@ -1,5 +1,5 @@
-import type { ChannelView } from '../../api/endpoints';
-import { count } from '../../lib/format';
+import type { ChannelView, ServerAddress, TelegramPairing, TelegramView } from '../../api/endpoints';
+import { clock, count } from '../../lib/format';
 
 const ORDER = ['web', 'http', 'telegram'];
 
@@ -11,8 +11,6 @@ export const CHANNEL_BLURBS: Record<string, string> = {
   http: 'For programs, with a token from Tokens & security.',
   telegram: 'A bot in Telegram; each paired chat acts as the person who paired it.',
 };
-
-export const DEFAULT_TOKEN_ENV = 'TELEGRAM_BOT_TOKEN';
 
 function text(value: unknown): string | null {
   if (value === null || value === undefined || value === '') return null;
@@ -27,33 +25,85 @@ export function sortChannels(channels: readonly ChannelView[]): ChannelView[] {
   return [...channels].sort((a, b) => rank(a.name) - rank(b.name) || a.name.localeCompare(b.name));
 }
 
-// A short line under the channel from the fields the server reports, or
-// nothing when it reports none worth a line.
+// The http channel's address, when the server reported one.
+export function httpAddress(channels: readonly ChannelView[]): ServerAddress | null {
+  return channels.find((c) => c.name === 'http')?.address ?? null;
+}
+
+// What people open and, when that is another address (a public URL, or a
+// wildcard host), where the server itself listens.
+export function addressLine(address: ServerAddress): string {
+  const bound = `${address.host}:${address.port}`;
+  const open = `Open ${address.url}.`;
+  return address.url === `http://${bound}` ? open : `${open} Listens on ${bound}.`;
+}
+
+const LOCAL_HOSTS = ['127.0.0.1', 'localhost', '::1', '[::1]', '0.0.0.0'];
+
+// True when the address only works on the server's own machine and there is
+// no public_url for a phone to open instead.
+export function localOnly(address: ServerAddress): boolean {
+  if (address.public_url) return false;
+  try {
+    return LOCAL_HOSTS.includes(new URL(address.url).hostname);
+  } catch {
+    return false;
+  }
+}
+
+// A short line under the web or http channel from what the server reports,
+// or nothing. Telegram's line comes from its own view: telegramLine.
 export function channelLine(channel: ChannelView): string | null {
-  const d = channel.detail ?? {};
   if (channel.name === 'web') {
+    const d = channel.detail ?? {};
     return `Speech to text: ${text(d.stt) ?? 'none'}. Voice: ${text(d.tts) ?? 'the browser'}.`;
   }
-  if (channel.name === 'http') {
-    const where = [text(d.host), text(d.port)].filter(Boolean).join(':');
-    return where ? `Listening on ${where}.` : null;
-  }
-  if (channel.name === 'telegram') {
-    const parts: string[] = [];
-    const paired = d.paired_chats;
-    if (typeof paired === 'number') parts.push(`${count(paired)} paired ${paired === 1 ? 'chat' : 'chats'}`);
-    const env = text(d.token_env);
-    if (env) {
-      const state = d.token_present === true ? 'set' : d.token_present === false ? 'missing' : null;
-      parts.push(state ? `${env} ${state}` : env);
-    }
-    return parts.length > 0 ? `${parts.join('. ')}.` : null;
-  }
+  if (channel.name === 'http') return channel.address ? addressLine(channel.address) : null;
   return null;
 }
 
-// The variable the Telegram token lives in, as the server names it.
-export function telegramTokenEnv(channels: readonly ChannelView[]): string {
-  const telegram = channels.find((c) => c.name === 'telegram');
-  return text(telegram?.detail?.token_env) ?? DEFAULT_TOKEN_ENV;
+export function botHandle(username: string): string {
+  return username.startsWith('@') ? username : `@${username}`;
+}
+
+export function pairedCount(n: number): string {
+  return `${count(n)} paired ${n === 1 ? 'chat' : 'chats'}`;
+}
+
+// The bot by name once Telegram has answered, else why there is no name yet.
+function botState(view: TelegramView): string {
+  if (view.bot_username) {
+    const bot = `Bot ${botHandle(view.bot_username)}`;
+    if (!view.enabled || !view.token_present) return bot;
+    return `${bot}, ${view.running ? 'running' : 'not running'}`;
+  }
+  if (!view.token_present) return 'No bot until the token is set';
+  const why = view.bot_error?.trim();
+  return why ? `Bot not known (${why.replace(/[.!?]+$/, '')})` : 'Bot not known yet';
+}
+
+// The bot, its chats and its token in one line under the Telegram row.
+export function telegramLine(view: TelegramView): string {
+  const token = `${view.token_env} ${view.token_present ? 'set' : 'missing'}`;
+  return `${botState(view)}. ${pairedCount(view.chats.length)}. ${token}.`;
+}
+
+// What stops the bot from answering; null once the channel is on and has
+// its token.
+export function setupReason(view: Pick<TelegramView, 'enabled' | 'token_present' | 'token_env'>): string | null {
+  if (!view.enabled) return 'Telegram is off in ira.yaml';
+  if (!view.token_present) return `the bot token (${view.token_env}) is not set`;
+  return null;
+}
+
+// How long a code works, in the unit people would say.
+export function codeLife(seconds: number): string {
+  if (seconds < 60) return `${seconds} ${seconds === 1 ? 'second' : 'seconds'}`;
+  const minutes = Math.floor(seconds / 60);
+  return `${minutes} ${minutes === 1 ? 'minute' : 'minutes'}`;
+}
+
+// The line under a fresh code: until when it works, and who the chat becomes.
+export function pairingNote(pairing: Pick<TelegramPairing, 'expires_at' | 'email'>): string {
+  return `Works until ${clock(pairing.expires_at)}; the chat then acts as ${pairing.email}.`;
 }

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { ApiError } from '../../api/client';
-import type { KeyView, ModelsView, PinStatus, ProviderView, SettingsView, SettingValue, TierView } from '../../api/endpoints';
+import type { KeyView, ModelsView, ProviderView, SettingsView, SettingValue, TierView } from '../../api/endpoints';
 import {
   chatTier,
   clampStep,
@@ -11,7 +11,10 @@ import {
   otherKeys,
   ownerMessage,
   parseStep,
+  pinHint,
+  pinLine,
   pinMessage,
+  pinPattern,
   providerDetail,
   providersInUse,
   readStep,
@@ -19,9 +22,16 @@ import {
   settingsUpdate,
   STEP_KEY,
   testLine,
+  voiceLabel,
   voiceNote,
   writeStep,
 } from './steps';
+
+// Node applies a change to TZ at once; the formatters are built per call.
+process.env.TZ = 'UTC';
+
+// Monday 12 October 2026, 14:32 UTC.
+const NOW = Date.UTC(2026, 9, 12, 14, 32) / 1000;
 
 class FakeStore {
   items = new Map<string, string>();
@@ -146,18 +156,44 @@ describe('messages', () => {
 });
 
 describe('lockedText', () => {
-  const status = (locked: number | null): PinStatus => ({ has_pin: true, can_confirm: true, locked_seconds: locked });
-
   it('is nothing unless actions are locked', () => {
-    expect(lockedText(status(null))).toBeNull();
-    expect(lockedText(status(0))).toBeNull();
-    expect(lockedText({ has_pin: false, can_confirm: true })).toBeNull();
+    expect(lockedText({ locked_until: null })).toBeNull();
+    expect(lockedText({})).toBeNull();
   });
 
-  it('counts whole minutes, never less than one', () => {
-    expect(lockedText(status(900))).toBe('Actions are locked for another 15 minutes after wrong PINs.');
-    expect(lockedText(status(61))).toBe('Actions are locked for another 2 minutes after wrong PINs.');
-    expect(lockedText(status(5))).toBe('Actions are locked for another 1 minute after wrong PINs.');
+  it('says until when, from the moment the server gives', () => {
+    expect(lockedText({ locked_until: NOW + 15 * 60 })).toBe('Actions are locked until 14:47 after too many wrong PINs.');
+  });
+});
+
+describe('pinLine', () => {
+  it('says since when the PIN is set', () => {
+    expect(pinLine({ has_pin: true, pin_set_at: NOW - 3600 }, NOW)).toBe('Your PIN is set (since 13:32).');
+    expect(pinLine({ has_pin: true, pin_set_at: Date.UTC(2026, 9, 3, 15, 10) / 1000 }, NOW)).toBe(
+      'Your PIN is set (since 3 Oct, 15:10).',
+    );
+  });
+
+  it('leaves the date out when the server never recorded it', () => {
+    expect(pinLine({ has_pin: true, pin_set_at: null }, NOW)).toBe('Your PIN is set.');
+    expect(pinLine({ has_pin: true }, NOW)).toBe('Your PIN is set.');
+  });
+
+  it('says so without a PIN', () => {
+    expect(pinLine({ has_pin: false }, NOW)).toBe('You have no PIN yet.');
+  });
+});
+
+describe('the PIN length', () => {
+  it('reads as a range, or as one number', () => {
+    expect(pinHint(4, 12)).toBe('4 to 12 digits');
+    expect(pinHint(6, 6)).toBe('6 digits');
+  });
+
+  it('is the pattern the input checks', () => {
+    expect(pinPattern(4, 12)).toBe('[0-9]{4,12}');
+    expect(new RegExp(`^${pinPattern(4, 12)}$`).test('1234')).toBe(true);
+    expect(new RegExp(`^${pinPattern(4, 12)}$`).test('123')).toBe(false);
   });
 });
 
@@ -212,6 +248,14 @@ describe('voiceNote', () => {
     expect(voiceNote(settings(setting('Ira'), setting(null, { editable: false }), 'polly'))).toBe(
       'Text-to-speech uses polly; its voice is fixed in ira.yaml.',
     );
+  });
+});
+
+describe('voiceLabel', () => {
+  it('lists the languages and the gender, skipping blanks', () => {
+    expect(voiceLabel({ id: 'Kajal', languages: ['en-IN', 'hi-IN'], gender: 'female' })).toBe('en-IN, hi-IN, female');
+    expect(voiceLabel({ id: 'Matthew', languages: ['en-US'], gender: null })).toBe('en-US');
+    expect(voiceLabel({ id: 'alloy', languages: [], gender: '' })).toBe('');
   });
 });
 

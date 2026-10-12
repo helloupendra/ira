@@ -232,7 +232,11 @@ export default function Overview() {
   return (
     <Page
       title="Today"
-      subtitle={since !== undefined ? `${dayDate(since)}, since 00:00` : undefined}
+      subtitle={
+        since !== undefined
+          ? `${dayDate(since)}, since 00:00${overview.data?.timezone ? ` (${overview.data.timezone})` : ''}`
+          : undefined
+      }
       actions={
         <button type="button" className="btn btn-ghost btn-small" onClick={reload}>
           <Icon name="refresh" />

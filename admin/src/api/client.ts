@@ -85,7 +85,26 @@ async function readBody(response: Response): Promise<unknown> {
   }
 }
 
+// A page of rows plus whether the server has more after it (the X-Has-More
+// header every paged list sends).
+export interface Page<T> {
+  rows: T;
+  hasMore: boolean;
+}
+
+export async function requestPage<T>(path: string, options: RequestOptions = {}): Promise<Page<T>> {
+  const { body, headers } = await requestWithHeaders<T>(path, options);
+  return { rows: body, hasMore: headers.get('x-has-more') === 'true' };
+}
+
 export async function request<T>(path: string, options: RequestOptions = {}): Promise<T> {
+  return (await requestWithHeaders<T>(path, options)).body;
+}
+
+export async function requestWithHeaders<T>(
+  path: string,
+  options: RequestOptions = {},
+): Promise<{ body: T; headers: Headers }> {
   const { method = 'GET', json, query, signal } = options;
   const headers: Record<string, string> = { 'X-Ira-Request': '1', Accept: 'application/json' };
   const init: RequestInit = { method, headers, credentials: 'same-origin', signal };
@@ -109,5 +128,5 @@ export async function request<T>(path: string, options: RequestOptions = {}): Pr
     }
     throw new ApiError(response.status, detailFrom(body, response.status), body);
   }
-  return body as T;
+  return { body: body as T, headers: response.headers };
 }

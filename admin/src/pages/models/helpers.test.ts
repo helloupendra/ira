@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { ApiError } from '../../api/client';
-import { coolingLeft, detailOf, move, sameOrder, testLine } from './helpers';
+import { coolingLeft, coolingNote, detailOf, move, sameOrder, testLine, voiceLabel } from './helpers';
 
 describe('move', () => {
   const chain = ['a:1', 'b:2', 'c:3'];
@@ -49,6 +49,51 @@ describe('coolingLeft', () => {
 
   it('treats a clock that ran backwards as no time passed', () => {
     expect(coolingLeft(cooling, 'openai:gpt', -5)).toBe(42);
+  });
+});
+
+describe('coolingNote', () => {
+  it('reads the kind, then the sentence', () => {
+    expect(coolingNote({ error_kind: 'timeout', status: null, message: 'No answer in time.' })).toBe(
+      'timeout: No answer in time.',
+    );
+  });
+
+  it('shows the HTTP status once, where the server already named it', () => {
+    expect(
+      coolingNote({
+        error_kind: 'capacity',
+        status: 429,
+        message: 'The provider is busy or rate-limited (HTTP 429).',
+      }),
+    ).toBe('capacity: The provider is busy or rate-limited (HTTP 429).');
+  });
+
+  it('adds the HTTP status before the full stop when the sentence lacks it', () => {
+    expect(
+      coolingNote({ error_kind: 'server', status: 503, message: 'The provider answered with an error.' }),
+    ).toBe('server: The provider answered with an error (HTTP 503).');
+    expect(coolingNote({ error_kind: 'auth', status: 401, message: 'Key refused' })).toBe(
+      'auth: Key refused (HTTP 401)',
+    );
+  });
+
+  it('copes with a missing kind or sentence', () => {
+    expect(coolingNote({ error_kind: '', status: 429, message: '' })).toBe('(HTTP 429)');
+    expect(coolingNote({ error_kind: 'error', status: null, message: ' ' })).toBe('error');
+    expect(coolingNote({ error_kind: '', status: 0, message: 'The call failed.' })).toBe('The call failed.');
+  });
+});
+
+describe('voiceLabel', () => {
+  it('lists the languages, then the gender', () => {
+    expect(voiceLabel({ id: 'Kajal', languages: ['en-IN', 'hi-IN'], gender: 'female' })).toBe('en-IN, hi-IN, female');
+    expect(voiceLabel({ id: 'Arthur', languages: ['en-GB'], gender: 'male' })).toBe('en-GB, male');
+  });
+
+  it('is empty for a voice the provider says nothing about', () => {
+    expect(voiceLabel({ id: 'alloy', languages: [], gender: null })).toBe('');
+    expect(voiceLabel({ id: 'demo', languages: [' '], gender: '' })).toBe('');
   });
 });
 

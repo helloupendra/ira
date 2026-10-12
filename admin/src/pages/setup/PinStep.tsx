@@ -5,7 +5,7 @@ import { useToast } from '../../ui/toast';
 import { useApi } from '../../ui/useApi';
 import { Body } from './Body';
 import { StepNav } from './StepNav';
-import { lockedText, pinMessage } from './steps';
+import { lockedText, pinHint, pinLine, pinMessage, pinPattern } from './steps';
 
 function PinBody({ data, onSet }: { data: PinStatus; onSet: () => void }) {
   const toast = useToast();
@@ -15,13 +15,14 @@ function PinBody({ data, onSet }: { data: PinStatus; onSet: () => void }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const locked = lockedText(data);
+  const hint = pinHint(data.pin_min_length, data.pin_max_length);
 
   if (data.has_pin) {
     return (
       <div className="stack">
         <p className="setup-ok ok-text">
           <Icon name="check" />
-          Your PIN is set.
+          {pinLine(data)}
         </p>
         {locked && <p className="warn-text">{locked}</p>}
         <p className="inline-note">Change it any time under Tokens &amp; security, or in the Ira app's menu.</p>
@@ -71,16 +72,16 @@ function PinBody({ data, onSet }: { data: PinStatus; onSet: () => void }) {
           name="pin"
           type="password"
           inputMode="numeric"
-          pattern="[0-9]{4,12}"
-          minLength={4}
-          maxLength={12}
+          pattern={pinPattern(data.pin_min_length, data.pin_max_length)}
+          minLength={data.pin_min_length}
+          maxLength={data.pin_max_length}
           autoComplete="off"
-          title="4 to 12 digits"
+          title={hint}
           required
           value={pin}
           onChange={(e) => setPin(e.target.value)}
         />
-        <p className="field-hint">4 to 12 digits.</p>
+        <p className="field-hint">{hint}.</p>
       </div>
       {locked && <p className="warn-text">{locked}</p>}
       {error && (

@@ -74,24 +74,20 @@ export function okLabel(row: Pick<CallRow, 'ok' | 'error_kind'>): string {
 
 // The models a call went through, when it took more than one attempt:
 // "tried: openai:gpt-4o-mini, demo:router (2 attempts)". Null otherwise.
-export function triedLine(row: Pick<CallRow, 'tried' | 'attempts' | 'model'>): string | null {
+export function triedLine(row: Pick<CallRow, 'tried_list' | 'attempts' | 'model'>): string | null {
   if (row.attempts <= 1) return null;
-  const models = row.tried
-    .split(/[,\s]+/)
-    .map((s) => s.trim())
-    .filter(Boolean);
+  const models = (row.tried_list ?? []).filter((ref) => ref.trim() !== '');
   const list = models.length ? models.join(', ') : (row.model ?? 'none');
   return `tried: ${list} (${row.attempts} attempts)`;
 }
 
-// Who did it and where, in one line. The server usually writes the actor as
-// "owner@example.com via web", so the channel is added only when the actor
-// does not already name it.
+// Who did it and where, in one line: "owner@example.com via web". The actor
+// is only the person; the channel is its own field.
 export function viaLine(actor: string | null | undefined, channel: string | null | undefined): string {
   const who = actor?.trim() ?? '';
   const via = channel?.trim() ?? '';
   if (!who && !via) return 'not recorded';
   if (!who) return `someone via ${via}`;
-  if (!via || who.toLowerCase().includes(`via ${via.toLowerCase()}`)) return who;
+  if (!via) return who;
   return `${who} via ${via}`;
 }

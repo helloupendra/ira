@@ -58,7 +58,7 @@ function Body({
         </p>
         <CopyField
           label="Invitation link"
-          value={inviteLink(window.location.origin, created.path)}
+          value={created.url || inviteLink(window.location.origin, created.path)}
           warning={LINK_WARNING}
         />
         <div className="dialog-actions">

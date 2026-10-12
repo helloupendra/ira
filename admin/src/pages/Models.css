@@ -6,10 +6,11 @@
 .tier-name { font-size: var(--text-m); font-weight: 600; }
 .tier-foot { display: grid; gap: var(--s-2); justify-items: start; margin-top: var(--s-3); }
 
-/* A chain row: the ref and its cooling badge, the buttons, and under them
-   the verdict of the last test on a line of its own */
+/* A chain row: the ref and its cooling badge, the buttons, and under them,
+   each on a line of its own, why it is cooling and the verdict of the last test */
 .tier .ordered > li { flex-wrap: wrap; }
 .chain-line { display: flex; flex: 1; flex-wrap: wrap; align-items: center; gap: var(--s-1) var(--s-2); min-width: 0; }
+.chain-reason { flex: 1 1 100%; margin: 0; font-size: var(--text-s); overflow-wrap: anywhere; }
 .chain-result { flex: 1 1 100%; margin: 0 0 var(--s-1); font-size: var(--text-s); overflow-wrap: anywhere; }
 .chain-result:empty { display: none; }
 

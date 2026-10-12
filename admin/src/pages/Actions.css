@@ -23,3 +23,6 @@
 /* Parameters and the result, each under a quiet label like the key-value list's */
 .action-part { display: grid; gap: var(--s-1); }
 .action-part-title { font-size: var(--text-m); font-weight: 400; color: var(--muted); }
+
+/* The button that fetches the next page, with its error above it */
+.action-more { display: grid; gap: var(--s-2); justify-items: start; padding-top: var(--s-4); }

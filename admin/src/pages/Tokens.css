@@ -50,3 +50,20 @@
   .tokens-rules dd { margin-bottom: var(--s-2); }
   .tokens-rules dd:last-child { margin-bottom: 0; }
 }
+
+/* Whose session it is: the email with the role beside it */
+.tokens-who {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s-2);
+  min-width: 0;
+}
+
+/* The Load more button under a list, with its error above it */
+.tokens-more {
+  display: grid;
+  gap: var(--s-2);
+  justify-items: start;
+  padding-top: var(--s-3);
+}

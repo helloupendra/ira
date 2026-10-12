@@ -9,39 +9,45 @@ import {
   type TokenCreated,
   type TokenRow,
 } from '../api/endpoints';
-import { ago, clock, humanize, when } from '../lib/format';
-import { whyNot } from '../lib/roles';
+import { ago, humanize, when } from '../lib/format';
+import { roleLabel, whyNot } from '../lib/roles';
 import { CopyField } from '../ui/CopyField';
 import { ConfirmDialog, Dialog } from '../ui/Dialog';
 import { Icon } from '../ui/icons';
 import { Page } from '../ui/Page';
 import { useSession } from '../ui/Session';
-import { Empty } from '../ui/states';
+import { Empty, sentenceFor } from '../ui/states';
 import { useToast } from '../ui/toast';
 import { useApi, type ApiState } from '../ui/useApi';
 import { Body } from './tokens/Body';
+import { cursorAfter, type Cursor } from './tokens/paging';
 import {
+  NO_PIN_NEEDED,
   currentFirst,
-  deviceName,
+  deviceLabel,
   endedText,
   failure,
+  lockedLine,
   pinFailure,
+  pinHint,
+  pinLine,
+  pinPattern,
   plain,
   plural,
   scopeHint,
   scopeList,
 } from './tokens/text';
 import { DESKTOP, useMediaQuery } from './tokens/useMediaQuery';
+import { usePagedList, type PagedList } from './tokens/usePagedList';
 import './Tokens.css';
+
+// Sessions come fifty at a time; Load more asks for the next fifty.
+const SESSION_PAGE = 50;
 
 // Once the session making the request is gone, nothing here is valid any
 // more: a full load of the sign-in page starts clean.
 function leave() {
   window.location.assign('/admin/login');
-}
-
-function lockedLine(lockedSeconds: number, now: number): string {
-  return `Actions are locked until ${clock(now + lockedSeconds)} after too many wrong PINs.`;
 }
 
 /* API tokens ------------------------------------------------------------- */
@@ -369,13 +375,39 @@ function ThisDevice({ row }: { row: SessionView }) {
   return <span className="badge badge-accent">This device</span>;
 }
 
+// Whose session it is, with the role that person holds now.
+function Who({ row, title }: { row: AdminSessionRow; title?: boolean }) {
+  return (
+    <span className="tokens-who">
+      <span className={title ? 'card-title' : undefined}>{row.email}</span>
+      <span className="badge badge-muted">{roleLabel(row.role)}</span>
+    </span>
+  );
+}
+
+function LoadMore<T>({ list }: { list: PagedList<T> }) {
+  if (!list.hasMore) return null;
+  return (
+    <div className="tokens-more">
+      {list.moreError && (
+        <p className="error-line" role="alert">
+          {sentenceFor(list.moreError)}
+        </p>
+      )}
+      <button type="button" className="btn btn-small" onClick={list.loadMore} disabled={list.loadingMore}>
+        {list.loadingMore ? 'Loading…' : 'Load more'}
+      </button>
+    </div>
+  );
+}
+
 function SessionTable<T extends SessionView>({
   rows,
-  email,
+  who,
   action,
 }: {
   rows: T[];
-  email?: (row: T) => string;
+  who?: (row: T, asTitle: boolean) => ReactNode;
   action: (row: T) => ReactNode;
 }) {
   return (
@@ -383,7 +415,7 @@ function SessionTable<T extends SessionView>({
       <table className="table tokens-table">
         <thead>
           <tr>
-            {email && <th scope="col">Who</th>}
+            {who && <th scope="col">Who</th>}
             <th scope="col">Device</th>
             <th scope="col">Signed in</th>
             <th scope="col">Last used</th>
@@ -396,9 +428,9 @@ function SessionTable<T extends SessionView>({
         <tbody>
           {rows.map((row) => (
             <tr key={row.id}>
-              {email && <td>{email(row)}</td>}
+              {who && <td>{who(row, false)}</td>}
               <td className="tokens-device" title={row.user_agent ?? undefined}>
-                <span className="muted">{deviceName(row.user_agent)}</span> <ThisDevice row={row} />
+                {deviceLabel(row)} <ThisDevice row={row} />
               </td>
               <td>{when(row.created_at)}</td>
               <td>{row.last_used_at ? ago(row.last_used_at) : 'never'}</td>
@@ -414,11 +446,11 @@ function SessionTable<T extends SessionView>({
 
 function SessionCards<T extends SessionView>({
   rows,
-  email,
+  who,
   action,
 }: {
   rows: T[];
-  email?: (row: T) => string;
+  who?: (row: T, asTitle: boolean) => ReactNode;
   action: (row: T) => ReactNode;
 }) {
   return (
@@ -426,14 +458,16 @@ function SessionCards<T extends SessionView>({
       {rows.map((row) => (
         <li key={row.id}>
           <div className="card-head">
-            <span className="card-title">{email ? email(row) : `Signed in ${when(row.created_at)}`}</span>
+            {who ? who(row, true) : <span className="card-title">{deviceLabel(row)}</span>}
             <ThisDevice row={row} />
           </div>
-          <p className="row-detail tokens-device" title={row.user_agent ?? undefined}>
-            {deviceName(row.user_agent)}
-          </p>
+          {who && (
+            <p className="row-detail tokens-device" title={row.user_agent ?? undefined}>
+              {deviceLabel(row)}
+            </p>
+          )}
           <div className="card-meta">
-            {email && <span>Signed in {when(row.created_at)}</span>}
+            <span>Signed in {when(row.created_at)}</span>
             <span>{row.last_used_at ? `Last used ${ago(row.last_used_at)}` : 'Never used'}</span>
             <span>Expires {when(row.expires_at)}</span>
           </div>
@@ -452,8 +486,8 @@ function DevicesSection({
   wide,
   onChanged,
 }: {
-  mine: ApiState<SessionView[]>;
-  everyone: ApiState<AdminSessionRow[]>;
+  mine: PagedList<SessionView>;
+  everyone: PagedList<AdminSessionRow>;
   isOwner: boolean;
   myEmail: string;
   wide: boolean;
@@ -533,20 +567,23 @@ function DevicesSection({
   const endMine = (row: SessionView) =>
     endButton(row, () => void end(row, () => account.endSession(row.id), 'Signed out that device.'));
   const endTheirs = (row: AdminSessionRow) => endButton(row, () => endAnyone(row));
+  const whoIs = (row: AdminSessionRow, asTitle: boolean) => <Who row={row} title={asTitle} />;
 
   return (
     <>
-      <Body state={mine}>
+      <Body state={mine.state}>
         {(data) => {
           const rows = currentFirst(data);
           const others = rows.filter((row) => !row.current);
+          // Another page may hold more devices than the ones loaded so far.
+          const alone = others.length === 0 && !mine.hasMore;
           return (
             <>
               <div className="toolbar">
                 <button
                   type="button"
                   className="btn btn-small"
-                  disabled={others.length === 0 || othersBusy}
+                  disabled={alone || othersBusy}
                   onClick={() => void endOthers()}
                 >
                   <Icon name="signOut" />
@@ -554,7 +591,8 @@ function DevicesSection({
                 </button>
               </div>
               {wide ? <SessionTable rows={rows} action={endMine} /> : <SessionCards rows={rows} action={endMine} />}
-              {others.length === 0 && <Empty text="No other devices are signed in." />}
+              {alone && <Empty text="No other devices are signed in." />}
+              <LoadMore list={mine} />
             </>
           );
         }}
@@ -563,14 +601,19 @@ function DevicesSection({
       {isOwner && (
         <>
           <h3 className="tokens-subhead">Everyone's sessions</h3>
-          <Body state={everyone} needs="users">
+          <Body state={everyone.state} needs="users">
             {(data) => {
               const rows = currentFirst(data);
               if (rows.length === 0) return <Empty text="No one is signed in." />;
-              return wide ? (
-                <SessionTable rows={rows} email={(row) => row.email} action={endTheirs} />
-              ) : (
-                <SessionCards rows={rows} email={(row) => row.email} action={endTheirs} />
+              return (
+                <>
+                  {wide ? (
+                    <SessionTable rows={rows} who={whoIs} action={endTheirs} />
+                  ) : (
+                    <SessionCards rows={rows} who={whoIs} action={endTheirs} />
+                  )}
+                  <LoadMore list={everyone} />
+                </>
               );
             }}
           </Body>
@@ -582,7 +625,7 @@ function DevicesSection({
         title="Sign out this device?"
         text={
           confirming
-            ? `${confirming.email} will be signed out on ${deviceName(confirming.user_agent)} and will need to sign in again.`
+            ? `${confirming.email} will be signed out on ${deviceLabel(confirming)} and will need to sign in again.`
             : ''
         }
         confirmLabel="End session"
@@ -600,13 +643,6 @@ function DevicesSection({
 }
 
 /* Your action PIN -------------------------------------------------------- */
-
-const NO_PIN_NEEDED = "Your role can't confirm actions, so no PIN is needed.";
-
-function pinLine(status: PinStatus): string {
-  if (!status.can_confirm) return NO_PIN_NEEDED;
-  return status.has_pin ? 'Your PIN is set.' : 'You have no PIN yet.';
-}
 
 function PinSection({ state, onSaved }: { state: ApiState<PinStatus>; onSaved: () => void }) {
   const toast = useToast();
@@ -637,17 +673,17 @@ function PinSection({ state, onSaved }: { state: ApiState<PinStatus>; onSaved: (
     <Body state={state}>
       {(status) => {
         const allowed = status.can_confirm;
-        const now = Date.now() / 1000;
+        const hint = pinHint(status.pin_min_length, status.pin_max_length);
         return (
           <>
             <p className="tokens-status" role="status">
-              <Icon name={status.locked_seconds ? 'lock' : 'key'} />
+              <Icon name={status.locked_until ? 'lock' : 'key'} />
               <span>
                 {pinLine(status)}
-                {status.locked_seconds ? (
+                {status.locked_until ? (
                   <>
                     {' '}
-                    <span className="warn-text">{lockedLine(status.locked_seconds, now)}</span>
+                    <span className="warn-text">{lockedLine(status.locked_until)}</span>
                   </>
                 ) : null}
               </span>
@@ -673,12 +709,12 @@ function PinSection({ state, onSaved }: { state: ApiState<PinStatus>; onSaved: (
                     id="pin-new"
                     type="password"
                     inputMode="numeric"
-                    pattern="[0-9]{4,12}"
-                    minLength={4}
-                    maxLength={12}
+                    pattern={pinPattern(status.pin_min_length, status.pin_max_length)}
+                    minLength={status.pin_min_length}
+                    maxLength={status.pin_max_length}
                     autoComplete="off"
                     required
-                    title="4 to 12 digits"
+                    title={hint}
                     disabled={!allowed || busy}
                     value={pin}
                     onChange={(e) => setPin(e.target.value)}
@@ -694,8 +730,8 @@ function PinSection({ state, onSaved }: { state: ApiState<PinStatus>; onSaved: (
                 </button>
               </div>
               <p className="field-hint">
-                4 to 12 digits. Ira asks for it before carrying out an action; your password is checked again
-                here to be sure it is you.
+                {hint}. Ira asks for it before carrying out an action; your password is checked again here to
+                be sure it is you.
               </p>
               {error && (
                 <p className="form-error" role="alert">
@@ -719,49 +755,46 @@ function roles(list: string[]): string {
 function RulesSection({ state }: { state: ApiState<SecurityView> }) {
   return (
     <Body state={state} needs="admin.read">
-      {(rules) => {
-        const now = Date.now() / 1000;
-        return (
-          <div className="stack">
-            {rules.locked_seconds ? (
-              <p className="warn-text" role="status">
-                {lockedLine(rules.locked_seconds, now)}
-              </p>
-            ) : null}
-            <dl className="kv tokens-rules">
-              <dt>Wrong PINs before a lock</dt>
-              <dd className={rules.wrong_pins > 0 ? 'warn-text' : undefined}>
-                {rules.wrong_pins} of {rules.max_wrong_pins} so far
-              </dd>
-              <dt>Lock lasts</dt>
-              <dd>{plain(rules.lock_minutes)} min</dd>
-              <dt>A proposal expires after</dt>
-              <dd>{plain(rules.expiry_seconds)} s</dd>
-              <dt>Sessions last</dt>
-              <dd>{plural(rules.session_days, 'day')}</dd>
-              <dt>Cookie</dt>
-              <dd className="mono">SameSite={rules.cookie_samesite}</dd>
-              <dt>Token scopes</dt>
-              <dd className="mono">{rules.token_scopes.join(', ')}</dd>
-              <dt>Who may confirm actions by default</dt>
-              <dd>{roles(rules.confirm_roles)}</dd>
-              {rules.action_rules.map((rule) => (
-                <Fragment key={rule.tool}>
-                  <dt>Who may confirm {humanize(rule.tool)}</dt>
-                  <dd>{roles(rule.confirm_roles)}</dd>
-                </Fragment>
-              ))}
-              <dt>People without a PIN</dt>
-              <dd>
-                {rules.users_without_pin.length > 0
-                  ? rules.users_without_pin.join(', ')
-                  : 'everyone who can confirm has one'}
-              </dd>
-            </dl>
-            <p className="inline-note">Set in ira.yaml; the console shows it but cannot change it.</p>
-          </div>
-        );
-      }}
+      {(rules) => (
+        <div className="stack">
+          {rules.locked_until ? (
+            <p className="warn-text" role="status">
+              {lockedLine(rules.locked_until)}
+            </p>
+          ) : null}
+          <dl className="kv tokens-rules">
+            <dt>Wrong PINs before a lock</dt>
+            <dd className={rules.wrong_pins > 0 ? 'warn-text' : undefined}>
+              {rules.wrong_pins} of {rules.max_wrong_pins} so far
+            </dd>
+            <dt>Lock lasts</dt>
+            <dd>{plain(rules.lock_minutes)} min</dd>
+            <dt>A proposal expires after</dt>
+            <dd>{plain(rules.expiry_seconds)} s</dd>
+            <dt>Sessions last</dt>
+            <dd>{plural(rules.session_days, 'day')}</dd>
+            <dt>Cookie</dt>
+            <dd className="mono">SameSite={rules.cookie_samesite}</dd>
+            <dt>Token scopes</dt>
+            <dd className="mono">{rules.token_scopes.join(', ')}</dd>
+            <dt>Who may confirm actions by default</dt>
+            <dd>{roles(rules.confirm_roles)}</dd>
+            {rules.action_rules.map((rule) => (
+              <Fragment key={rule.tool}>
+                <dt>Who may confirm {humanize(rule.tool)}</dt>
+                <dd>{roles(rule.confirm_roles)}</dd>
+              </Fragment>
+            ))}
+            <dt>People without a PIN</dt>
+            <dd>
+              {rules.users_without_pin.length > 0
+                ? rules.users_without_pin.join(', ')
+                : 'everyone who can confirm has one'}
+            </dd>
+          </dl>
+          <p className="inline-note">Set in ira.yaml; the console shows it but cannot change it.</p>
+        </div>
+      )}
     </Body>
   );
 }
@@ -779,9 +812,17 @@ export default function Tokens() {
 
   const tokens = useApi((signal) => admin.tokens(signal), []);
   const security = useApi((signal) => admin.security(signal), []);
-  const mine = useApi((signal) => account.sessions(signal), []);
-  const everyone = useApi<AdminSessionRow[]>(
-    (signal) => (isOwner ? admin.sessions(signal) : Promise.resolve([])),
+  const mine = usePagedList<SessionView, Cursor>(
+    (cursor, signal) => account.sessionsPage({ limit: SESSION_PAGE, ...cursor }, signal),
+    cursorAfter,
+    [],
+  );
+  const everyone = usePagedList<AdminSessionRow, Cursor>(
+    (cursor, signal) =>
+      isOwner
+        ? admin.sessionsPage({ limit: SESSION_PAGE, ...cursor }, signal)
+        : Promise.resolve({ rows: [], hasMore: false }),
+    cursorAfter,
     [isOwner],
   );
   const pin = useApi((signal) => account.pin(signal), []);
@@ -792,14 +833,14 @@ export default function Tokens() {
   function reload() {
     tokens.reload();
     security.reload();
-    mine.reload();
-    everyone.reload();
+    mine.state.reload();
+    everyone.state.reload();
     pin.reload();
   }
 
   function sessionsChanged() {
-    mine.reload();
-    everyone.reload();
+    mine.state.reload();
+    everyone.state.reload();
   }
 
   // A new PIN can take someone off the list of people without one.

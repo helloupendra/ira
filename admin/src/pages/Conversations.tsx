@@ -12,11 +12,12 @@ import './Conversations.css';
 const PAGE = 50;
 
 // The pages loaded after the first, kept with the first page they follow: a
-// refresh replaces that page, and these are dropped with it.
+// refresh replaces that page, and these are dropped with it. The server says
+// whether more follow the last one.
 interface Tail {
   after: ConversationRow[];
   rows: ConversationRow[];
-  lastSize: number;
+  hasMore: boolean;
 }
 
 function Preview({ row }: { row: ConversationRow }) {
@@ -96,7 +97,7 @@ function Table({ rows }: { rows: ConversationRow[] }) {
 }
 
 export default function Conversations() {
-  const first = useApi((signal) => admin.conversations({ limit: PAGE }, signal), []);
+  const first = useApi((signal) => admin.conversationsPage({ limit: PAGE }, signal), []);
   const [tail, setTail] = useState<Tail | null>(null);
   const [loadingMore, setLoadingMore] = useState(false);
   const [moreError, setMoreError] = useState<Error | null>(null);
@@ -104,11 +105,10 @@ export default function Conversations() {
 
   useEffect(() => () => inFlight.current?.abort(), []);
 
-  const base = first.data;
+  const base = first.data?.rows;
   const extra = tail && base && tail.after === base ? tail : null;
   const rows = base ? (extra ? [...base, ...extra.rows] : base) : [];
-  const lastSize = extra ? extra.lastSize : (base?.length ?? 0);
-  const hasMore = lastSize >= PAGE;
+  const hasMore = extra ? extra.hasMore : (first.data?.hasMore ?? false);
 
   async function loadMore() {
     const last = rows[rows.length - 1];
@@ -118,12 +118,15 @@ export default function Conversations() {
     setLoadingMore(true);
     setMoreError(null);
     try {
-      const page = await admin.conversations({ limit: PAGE, before: last.last_at }, controller.signal);
+      const page = await admin.conversationsPage(
+        { limit: PAGE, before: last.last_at, before_id: last.id },
+        controller.signal,
+      );
       if (controller.signal.aborted) return;
       setTail((prev) => {
         const kept = prev && prev.after === base ? prev.rows : [];
         const seen = new Set([...base, ...kept].map((row) => row.id));
-        return { after: base, rows: [...kept, ...page.filter((row) => !seen.has(row.id))], lastSize: page.length };
+        return { after: base, rows: [...kept, ...page.rows.filter((row) => !seen.has(row.id))], hasMore: page.hasMore };
       });
     } catch (err) {
       if (controller.signal.aborted) return;

@@ -367,11 +367,22 @@ async function loadPinStatus() {
     text.textContent = "Your role can't confirm actions, so no PIN is needed.";
     return;
   }
-  if (pin.locked_seconds) {
-    const until = new Date(Date.now() + pin.locked_seconds * 1000);
+  const input = $("#pin-form input[name=pin]");
+  if (pin.pin_min_length && pin.pin_max_length) {
+    input.minLength = pin.pin_min_length;
+    input.maxLength = pin.pin_max_length;
+    input.pattern = `[0-9]{${pin.pin_min_length},${pin.pin_max_length}}`;
+    $("#pin-rule").textContent = `${pin.pin_min_length} to ${pin.pin_max_length} digits`;
+  }
+  if (pin.locked_until || pin.locked_seconds) {
+    const until = pin.locked_until
+      ? new Date(pin.locked_until * 1000)
+      : new Date(Date.now() + pin.locked_seconds * 1000);
     text.textContent = `Actions are locked after wrong PINs until ${clockTime(until)}.`;
   } else if (pin.has_pin) {
-    text.textContent = "Your action PIN is set.";
+    text.textContent = pin.pin_set_at
+      ? `Your action PIN is set (since ${new Date(pin.pin_set_at * 1000).toLocaleDateString(undefined, { day: "numeric", month: "short" })}).`
+      : "Your action PIN is set.";
   } else {
     text.textContent = "You have no action PIN yet. You need one to confirm actions.";
   }
@@ -463,6 +474,7 @@ function turnsFromTranscript(messages) {
       how = { tools: [], model: null };
     } else if (m.role === "assistant") {
       for (const call of m.tool_calls || []) how.tools.push({ id: call.id, name: call.name, arguments: call.arguments });
+      if (m.model) how.model = m.model;
       if (m.content) {
         turns.push({ role: "ira", text: m.content, how });
         how = { tools: [], model: null };
@@ -470,6 +482,11 @@ function turnsFromTranscript(messages) {
     } else if (m.role === "tool") {
       const call = how.tools.find((t) => t.id === m.tool_call_id);
       if (call) call.result = m.content;
+    }
+    // A proposal rides on the tool result that made it (or, if the server
+    // ever moves it, on the answer); either way it becomes a note.
+    if (m.action) {
+      turns.push({ role: "note", text: `${KICKER[m.action.status] || m.action.status}: ${m.action.summary}` });
     }
   }
   return turns;
@@ -853,12 +870,14 @@ function actionCard(action) {
         pin.focus();
         break;
       case "locked": {
-        const until = new Date(Date.now() + (outcome.locked_seconds || 0) * 1000);
+        const until = outcome.locked_until
+          ? new Date(outcome.locked_until * 1000)
+          : new Date(Date.now() + (outcome.locked_seconds || 0) * 1000);
         settle("locked", `${outcome.message} Try again after ${clockTime(until)}.`);
         break;
       }
       case "no_pin": {
-        settle("no_pin", "You have no action PIN yet.");
+        settle("no_pin", outcome.message || "You have no action PIN yet.");
         const set = document.createElement("button");
         set.type = "button";
         set.className = "text-btn";

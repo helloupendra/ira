@@ -53,6 +53,9 @@
 /* Step 4 */
 .setup-ok { display: flex; align-items: center; gap: var(--s-2); font-size: var(--text-m); font-weight: 500; }
 
-/* Step 5: the two short how-tos */
+/* Step 5: the two short how-tos, with the pairing control and its code
+   under the Telegram one */
 .setup-howto { display: grid; gap: var(--s-2); }
 .setup-howto ol { display: grid; gap: var(--s-1); margin: 0; padding-left: 1.25rem; font-size: var(--text-m); }
+.setup-howto .actions-row { margin-top: var(--s-1); }
+.setup-howto .warn-text { font-size: var(--text-m); }

@@ -25,7 +25,7 @@ import { usePaged, type Paged } from './audit/usePaged';
 import './Audit.css';
 
 const CHANGES_PAGE = 100;
-const AUDIT_LIMIT = 200;
+const AUDIT_PAGE = 100;
 const COST_DAYS = 30;
 const CALLS_PAGE = 50;
 
@@ -98,7 +98,7 @@ function Change({ row }: { row: ChangeRow }) {
             <span className="change-what">{changeWords(row.what)}</span>
             {row.target && <span className="mono">{row.target}</span>}
           </span>
-          <span className="change-who">{row.actor}</span>
+          <span className="change-who">{viaLine(row.actor, row.channel)}</span>
         </span>
         <span className="disclosure-meta">{when(row.at)}</span>
       </summary>
@@ -132,8 +132,7 @@ function Change({ row }: { row: ChangeRow }) {
 
 function Changes({ tick }: { tick: number }) {
   const paged = usePaged<ChangeRow>(
-    (beforeId, signal) => admin.changes({ limit: CHANGES_PAGE, before_id: beforeId }, signal),
-    CHANGES_PAGE,
+    (beforeId, signal) => admin.changesPage({ limit: CHANGES_PAGE, before_id: beforeId }, signal),
     [tick],
   );
   return (
@@ -212,17 +211,20 @@ function AuditTable({ rows }: { rows: AuditRow[] }) {
 }
 
 function ActionEvents({ tick }: { tick: number }) {
-  const audit = useApi((signal) => admin.audit({ limit: AUDIT_LIMIT }, signal), [tick]);
+  const paged = usePaged<AuditRow>(
+    (beforeId, signal) => admin.auditPage({ limit: AUDIT_PAGE, before_id: beforeId }, signal),
+    [tick],
+  );
   return (
-    <Body state={audit}>
-      {(rows) =>
-        rows.length === 0 ? (
+    <Body state={paged.first}>
+      {() =>
+        paged.rows.length === 0 ? (
           <Empty text="No action events yet." />
         ) : (
-          <div aria-busy={audit.loading || undefined}>
-            <AuditCards rows={rows} />
-            <AuditTable rows={rows} />
-            {rows.length >= AUDIT_LIMIT && <p className="inline-note">The latest {AUDIT_LIMIT} are shown.</p>}
+          <div aria-busy={paged.first.loading || undefined}>
+            <AuditCards rows={paged.rows} />
+            <AuditTable rows={paged.rows} />
+            <LoadMore paged={paged} />
           </div>
         )
       }
@@ -359,8 +361,7 @@ function CallsTable({ rows }: { rows: CallRow[] }) {
 function Cost({ tick }: { tick: number }) {
   const costs = useApi((signal) => admin.costs({ days: COST_DAYS }, signal), [tick]);
   const calls = usePaged<CallRow>(
-    (beforeId, signal) => admin.calls({ limit: CALLS_PAGE, before_id: beforeId }, signal),
-    CALLS_PAGE,
+    (beforeId, signal) => admin.callsPage({ limit: CALLS_PAGE, before_id: beforeId }, signal),
     [tick],
   );
   return (

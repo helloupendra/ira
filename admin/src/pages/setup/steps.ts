@@ -8,8 +8,9 @@ import type {
   SettingsUpdate,
   SettingsView,
   TierView,
+  VoiceOption,
 } from '../../api/endpoints';
-import { seconds } from '../../lib/format';
+import { clock, seconds, when } from '../../lib/format';
 
 // The wizard's steps in order. Step 1 only shows while the owner is missing;
 // the rest are remembered in localStorage so the owner can close the page
@@ -116,12 +117,28 @@ export function detailOf(err: unknown): string {
   return FALLBACK;
 }
 
-// Actions stay locked for a while after wrong PINs; say so when they are.
-export function lockedText(status: PinStatus): string | null {
-  const left = status.locked_seconds ?? 0;
-  if (left <= 0) return null;
-  const minutes = Math.max(1, Math.ceil(left / 60));
-  return `Actions are locked for another ${minutes} ${minutes === 1 ? 'minute' : 'minutes'} after wrong PINs.`;
+// Actions stay locked for a while after wrong PINs; say until when, from
+// the moment the server gives.
+export function lockedText(status: Pick<PinStatus, 'locked_until'>): string | null {
+  if (!status.locked_until) return null;
+  return `Actions are locked until ${clock(status.locked_until)} after too many wrong PINs.`;
+}
+
+// Where the PIN stands. The server records when a PIN was set, except for
+// one set before it started doing so.
+export function pinLine(status: Pick<PinStatus, 'has_pin' | 'pin_set_at'>, now?: number): string {
+  if (!status.has_pin) return 'You have no PIN yet.';
+  if (status.pin_set_at) return `Your PIN is set (since ${when(status.pin_set_at, now)}).`;
+  return 'Your PIN is set.';
+}
+
+// The PIN length the server allows, for the hint and the input's pattern.
+export function pinHint(min: number, max: number): string {
+  return min === max ? `${min} digits` : `${min} to ${max} digits`;
+}
+
+export function pinPattern(min: number, max: number): string {
+  return `[0-9]{${min},${max}}`;
 }
 
 // What to send for the name and voice: only what changed. A cleared field
@@ -150,6 +167,14 @@ export function voiceNote(view: SettingsView): string {
     return 'Text-to-speech is off, so there is no voice to choose. To add one, set voice.tts in ira.yaml and restart ira serve.';
   }
   return `Text-to-speech uses ${view.tts}; its voice is fixed in ira.yaml.`;
+}
+
+// "en-IN, hi-IN, female": what a voice speaks, next to its id in the list.
+export function voiceLabel(voice: VoiceOption): string {
+  return [...voice.languages, voice.gender ?? '']
+    .map((part) => part.trim())
+    .filter(Boolean)
+    .join(', ');
 }
 
 // The tier that answers chat, or the first one when none says so.

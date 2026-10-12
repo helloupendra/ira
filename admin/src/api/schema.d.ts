@@ -447,6 +447,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/admin/conversations/{conversation_id}/info": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** One conversation's header: channel, who, when, turns */
+        get: operations["conversation_info"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/admin/conversations/{conversation_id}": {
         parameters: {
             query?: never;
@@ -471,8 +488,25 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Proposed actions and outcomes */
+        /** Proposed actions and outcomes, newest first */
         get: operations["actions"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/actions/counts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Proposed actions by status, over all time or since a moment */
+        get: operations["action_counts"];
         put?: never;
         post?: never;
         delete?: never;
@@ -507,6 +541,23 @@ export interface paths {
         };
         /** Channel status */
         get: operations["channels"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/telegram": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The Telegram bot and paired chats */
+        get: operations["telegram"];
         put?: never;
         post?: never;
         delete?: never;
@@ -876,10 +927,99 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/admin/telegram/pairing": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Start pairing a Telegram chat: a one-time code, as `ira telegram pair` prints */
+        post: operations["start_telegram_pairing"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/telegram/chats/{chat_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Unpair a Telegram chat; it gets nothing from the bot until paired again */
+        delete: operations["unpair_telegram_chat"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /**
+         * ActionCounts
+         * @description Proposed actions by status, over all time or since a moment.
+         *
+         *     A proposal past its expiry counts as expired, never pending, here as in
+         *     every list.
+         */
+        ActionCounts: {
+            /**
+             * Since
+             * @description Only actions proposed at or after this (epoch seconds); null for all time.
+             */
+            since: number | null;
+            /**
+             * Total
+             * @description Every action counted, whatever its status.
+             */
+            total: number;
+            /**
+             * Pending
+             * @description Waiting for a PIN, and not yet expired.
+             * @default 0
+             */
+            pending: number;
+            /**
+             * Executing
+             * @description Confirmed and running right now.
+             * @default 0
+             */
+            executing: number;
+            /**
+             * Executed
+             * @description Confirmed and ran.
+             * @default 0
+             */
+            executed: number;
+            /**
+             * Failed
+             * @description Confirmed, ran and failed.
+             * @default 0
+             */
+            failed: number;
+            /**
+             * Cancelled
+             * @description Dropped by someone before it ran.
+             * @default 0
+             */
+            cancelled: number;
+            /**
+             * Expired
+             * @description Nobody confirmed it in time.
+             * @default 0
+             */
+            expired: number;
+        };
         /**
          * ActionEvent
          * @description An action was proposed. It waits for a PIN; nothing has run.
@@ -905,6 +1045,11 @@ export interface components {
             attempts_left?: number | null;
             /** Locked Seconds */
             locked_seconds?: number | null;
+            /**
+             * Locked Until
+             * @description When the wrong-PIN lock ends (epoch seconds); null when actions are not locked. locked_seconds is the same moment as seconds from now.
+             */
+            locked_until?: number | null;
         };
         /** ActionRow */
         ActionRow: {
@@ -920,11 +1065,14 @@ export interface components {
             summary: string;
             /** Conversation Id */
             conversation_id: string | null;
-            /** Channel */
+            /**
+             * Channel
+             * @description Where it was proposed: web, api or telegram.
+             */
             channel: string | null;
             /**
              * Actor
-             * @description Who proposed it.
+             * @description Who proposed it. Who: the person's email (older rows may hold another name, such as owner or telegram:<name>). Never the channel; that is in channel.
              */
             actor: string | null;
             /** Created At */
@@ -939,9 +1087,14 @@ export interface components {
             finished_at: number | null;
             /**
              * Decided By
-             * @description Who confirmed or cancelled it, from the audit log.
+             * @description Who confirmed or cancelled it, from the audit log: an email, as actor.
              */
             decided_by?: string | null;
+            /**
+             * Decided Channel
+             * @description Where it was confirmed or cancelled: web, api or telegram.
+             */
+            decided_channel?: string | null;
             /** Decided At */
             decided_at?: number | null;
         };
@@ -1010,10 +1163,20 @@ export interface components {
              * @description The browser's User-Agent at sign-in, cut to 200 characters; null when none was sent or the session is older than this field.
              */
             user_agent?: string | null;
+            /**
+             * Device
+             * @description A short label read from user_agent on the server, such as "Chrome on macOS", "Safari on iPhone" or "curl"; null when there is no user_agent to read.
+             */
+            device?: string | null;
             /** User Id */
             user_id: number;
             /** Email */
             email: string;
+            /**
+             * Role
+             * @description That user's role now: owner, admin, staff or viewer.
+             */
+            role: string;
         };
         /** AdminUserRow */
         AdminUserRow: {
@@ -1108,9 +1271,15 @@ export interface components {
             tool: string | null;
             /** Outcome */
             outcome: string;
-            /** Actor */
+            /**
+             * Actor
+             * @description Who: the person's email (older rows may hold another name, such as owner or telegram:<name>). Never the channel; that is in channel.
+             */
             actor: string | null;
-            /** Channel */
+            /**
+             * Channel
+             * @description web, api, telegram or cli.
+             */
             channel: string | null;
             /** Detail */
             detail: string | null;
@@ -1127,8 +1296,16 @@ export interface components {
             purpose: string;
             /** Model */
             model: string | null;
-            /** Tried */
+            /**
+             * Tried
+             * @description The models tried, in order, as provider:model references joined by commas with no spaces ("openai:gpt-4o-mini,demo:router"). tried_list has them split.
+             */
             tried: string;
+            /**
+             * Tried List
+             * @description The models tried, in order: tried, split at commas.
+             */
+            tried_list?: string[];
             /** Attempts */
             attempts: number;
             /** Ok */
@@ -1150,8 +1327,16 @@ export interface components {
             id: number;
             /** At */
             at: number;
-            /** Actor */
+            /**
+             * Actor
+             * @description Who: the person's email (older rows may hold another name, such as owner or telegram:<name>). Never the channel; that is in channel.
+             */
             actor: string;
+            /**
+             * Channel
+             * @description Where the change was made: web (a signed-in session). Older rows that named no channel give it from their actor.
+             */
+            channel?: string | null;
             /** What */
             what: string;
             /** Target */
@@ -1167,10 +1352,15 @@ export interface components {
             name: string;
             /** Enabled */
             enabled: boolean;
-            /** Detail */
+            /**
+             * Detail
+             * @description Untyped details kept for older clients. For http, host and port are what `ira serve` bound; address has them typed.
+             */
             detail?: {
                 [key: string]: unknown;
             };
+            /** @description For the http channel only: where it listens and is opened. */
+            address?: components["schemas"]["ServerAddress"] | null;
         };
         /** ConfirmRequest */
         ConfirmRequest: {
@@ -1179,25 +1369,64 @@ export interface components {
         };
         /** ConversationRow */
         ConversationRow: {
-            /** Id */
+            /**
+             * Id
+             * @description The stored id, e.g. http:3:kitchen or telegram:5550100.
+             */
             id: string;
-            /** Channel */
+            /**
+             * Channel
+             * @description Where it started: web, api or telegram.
+             */
             channel: string;
-            /** User Id */
+            /**
+             * User Id
+             * @description Whose it is; null for rows from before accounts.
+             */
             user_id: number | null;
-            /** Email */
+            /**
+             * Email
+             * @description That user's email.
+             */
             email: string | null;
             /** Started At */
             started_at: number;
-            /** Last At */
+            /**
+             * Last At
+             * @description Its latest message.
+             */
             last_at: number;
-            /** Turns */
+            /**
+             * Turns
+             * @description Questions asked in it.
+             */
             turns: number;
             /**
              * Preview
              * @description The first thing the user said, cut to 120 characters.
              */
             preview?: string | null;
+        };
+        /**
+         * CoolingReason
+         * @description Why a model is on a cool-down. Never the provider's own text, a key or a prompt.
+         */
+        CoolingReason: {
+            /**
+             * Error Kind
+             * @description The last error's class: capacity, timeout, auth, bad_request, server, network or error.
+             */
+            error_kind: string;
+            /**
+             * Status
+             * @description The HTTP status, when the provider answered one.
+             */
+            status: number | null;
+            /**
+             * Message
+             * @description A short sentence of the server's own, such as: The provider is busy or rate-limited (HTTP 429).
+             */
+            message: string;
         };
         /** CostDay */
         CostDay: {
@@ -1325,6 +1554,11 @@ export interface components {
              * @description Open this path on the server to accept the invitation.
              */
             path: string;
+            /**
+             * Url
+             * @description The whole link to send: public_url followed by path, when public_url is set; null otherwise (join the server's origin and path yourself).
+             */
+            url?: string | null;
         };
         /** InviteTokenRequest */
         InviteTokenRequest: {
@@ -1373,6 +1607,37 @@ export interface components {
              */
             use_cookie: boolean;
         };
+        /**
+         * MessageAction
+         * @description The action a tool call proposed, as it stands now (not as it was then).
+         */
+        MessageAction: {
+            /**
+             * Id
+             * @description The action's id, for /v1/actions/{id}/confirm or cancel.
+             */
+            id: string;
+            /**
+             * Tool
+             * @description The action tool it would run.
+             */
+            tool: string;
+            /**
+             * Summary
+             * @description What it would do, in words written by the tool's code.
+             */
+            summary: string;
+            /**
+             * Status
+             * @description pending, executing, executed, failed, cancelled or expired. A proposal past expires_at reads expired, never pending.
+             */
+            status: string;
+            /**
+             * Expires At
+             * @description When it stops waiting for a PIN (epoch seconds).
+             */
+            expires_at: number;
+        };
         /** MessageRow */
         MessageRow: {
             /** Id */
@@ -1386,7 +1651,7 @@ export interface components {
             role: string;
             /**
              * Content
-             * @description For role tool: the tool's result as JSON text.
+             * @description For role tool: the tool's result as JSON text, exactly as the model saw it. A proposal's result always reads pending_confirmation; action has its status now.
              */
             content: string | null;
             /**
@@ -1404,6 +1669,13 @@ export interface components {
              * @description For role tool: the tool's name.
              */
             name: string | null;
+            /**
+             * Model
+             * @description For role assistant: the provider:model that wrote it (each tool round can fall back to another). null when no model wrote it (an error or the step limit), for other roles, and for messages stored before this field.
+             */
+            model?: string | null;
+            /** @description For a tool result that proposed an action: that action now, with its current status. null for every other message, and for a proposal stored before this field whose action could not be matched. */
+            action?: components["schemas"]["MessageAction"] | null;
         };
         /** ModelTestRequest */
         ModelTestRequest: {
@@ -1454,6 +1726,18 @@ export interface components {
             cooling: {
                 [key: string]: number;
             };
+            /**
+             * Cooling Reasons
+             * @description For each model in cooling (the same keys): why it is cooling down.
+             */
+            cooling_reasons?: {
+                [key: string]: components["schemas"]["CoolingReason"];
+            };
+            /**
+             * Voices
+             * @description Valid voice ids for the text-to-speech provider in use: for polly, its neural voices for en-IN, hi-IN, en-US and en-GB; for openai, the voices every model accepts; empty when text-to-speech is off. A static list; ira.yaml may name others.
+             */
+            voices?: components["schemas"]["VoiceOption"][];
         };
         /**
          * MyConversationRow
@@ -1493,13 +1777,26 @@ export interface components {
              */
             ok: boolean;
         };
-        /** Overview */
+        /**
+         * Overview
+         * @description Today at a glance. "Today" starts at the server's local midnight: see since.
+         */
         Overview: {
             /**
              * Since
-             * @description Start of today, server local time (epoch seconds).
+             * @description The server's local midnight today (epoch seconds). Every count here is since this moment, in the server's time zone (timezone), not the viewer's.
              */
             since: number;
+            /**
+             * Since Iso
+             * @description since as ISO 8601 with the server's UTC offset, e.g. 2026-10-12T00:00:00+05:30.
+             */
+            since_iso: string;
+            /**
+             * Timezone
+             * @description The server's time zone: an IANA name such as Asia/Kolkata when the system names one, else its UTC offset such as +05:30.
+             */
+            timezone: string;
             /**
              * Questions
              * @description Questions people asked today, on every channel: the user turns stored since the start of today. A bare PIN typed into chat is never stored or counted.
@@ -1527,7 +1824,10 @@ export interface components {
             latency_p95: number | null;
             /** By Model */
             by_model: components["schemas"]["ModelUsage"][];
-            /** Actions */
+            /**
+             * Actions
+             * @description Actions proposed today, by status. A proposal past its expiry counts as expired, never pending.
+             */
             actions: {
                 [key: string]: number;
             };
@@ -1560,6 +1860,28 @@ export interface components {
              * @description Actions are locked after wrong PINs, for this long.
              */
             locked_seconds?: number | null;
+            /**
+             * Locked Until
+             * @description When the wrong-PIN lock ends (epoch seconds); null when actions are not locked. locked_seconds is the same moment as seconds from now.
+             */
+            locked_until?: number | null;
+            /**
+             * Pin Set At
+             * @description When you last set your PIN (epoch seconds). null without a PIN, and for a PIN set before IRA recorded this.
+             */
+            pin_set_at?: number | null;
+            /**
+             * Pin Min Length
+             * @description The fewest digits a PIN may have.
+             * @default 4
+             */
+            pin_min_length: number;
+            /**
+             * Pin Max Length
+             * @description The most digits a PIN may have.
+             * @default 12
+             */
+            pin_max_length: number;
         };
         /** ProviderView */
         ProviderView: {
@@ -1615,6 +1937,11 @@ export interface components {
         SecurityView: {
             /** Locked Seconds */
             locked_seconds: number | null;
+            /**
+             * Locked Until
+             * @description When the wrong-PIN lock ends (epoch seconds); null when actions are not locked. locked_seconds is the same moment as seconds from now.
+             */
+            locked_until?: number | null;
             /** Wrong Pins */
             wrong_pins: number;
             /** Max Wrong Pins */
@@ -1635,6 +1962,42 @@ export interface components {
             confirm_roles: string[];
             /** Action Rules */
             action_rules: components["schemas"]["ActionRule"][];
+        };
+        /**
+         * ServerAddress
+         * @description Where the server listens, and where people open it.
+         */
+        ServerAddress: {
+            /**
+             * Host
+             * @description The address `ira serve` bound: its --host, else channels.http.host.
+             */
+            host: string;
+            /**
+             * Port
+             * @description The port `ira serve` bound: its --port, else channels.http.port.
+             */
+            port: number;
+            /**
+             * Configured Host
+             * @description channels.http.host in ira.yaml.
+             */
+            configured_host: string;
+            /**
+             * Configured Port
+             * @description channels.http.port in ira.yaml.
+             */
+            configured_port: number;
+            /**
+             * Public Url
+             * @description channels.http.public_url, or IRA_PUBLIC_URL: where people reach the server (for example on a phone, through a TLS proxy). null when not set.
+             */
+            public_url: string | null;
+            /**
+             * Url
+             * @description The base URL to open: public_url when set, else http://host:port (127.0.0.1 for a wildcard host such as 0.0.0.0).
+             */
+            url: string;
         };
         /** SessionResponse */
         SessionResponse: {
@@ -1681,6 +2044,11 @@ export interface components {
              * @description The browser's User-Agent at sign-in, cut to 200 characters; null when none was sent or the session is older than this field.
              */
             user_agent?: string | null;
+            /**
+             * Device
+             * @description A short label read from user_agent on the server, such as "Chrome on macOS", "Safari on iPhone" or "curl"; null when there is no user_agent to read.
+             */
+            device?: string | null;
         };
         /** SessionsEnded */
         SessionsEnded: {
@@ -1801,6 +2169,147 @@ export interface components {
          * @description One server-sent event from POST /v1/ask/stream, told apart by `type`.
          */
         StreamEvent: components["schemas"]["StartEvent"] | components["schemas"]["ToolEvent"] | components["schemas"]["ToolResultEvent"] | components["schemas"]["ActionEvent"] | components["schemas"]["DeltaEvent"] | components["schemas"]["ErrorEvent"] | components["schemas"]["DoneEvent"];
+        /**
+         * TelegramChat
+         * @description A private chat paired with an account: it acts as that user.
+         */
+        TelegramChat: {
+            /**
+             * Chat Id
+             * @description Telegram's chat id; DELETE .../telegram/chats/{chat_id}.
+             */
+            chat_id: number;
+            /**
+             * Name
+             * @description The chat's name as Telegram gives it, e.g. "Riley Demo (@riley)"; null for a chat paired before IRA kept names, until it next sends a message.
+             */
+            name: string | null;
+            /**
+             * Paired At
+             * @description When it was paired (epoch seconds).
+             */
+            paired_at: number;
+            /**
+             * User Id
+             * @description The account the chat acts as.
+             */
+            user_id: number;
+            /**
+             * Email
+             * @description That account's email.
+             */
+            email: string;
+            /**
+             * Role
+             * @description That account's role now.
+             */
+            role: string;
+        };
+        /**
+         * TelegramPairing
+         * @description A one-time pairing code. Shown once; only its hash is stored.
+         */
+        TelegramPairing: {
+            /**
+             * Code
+             * @description Eight characters; works once, until expires_at.
+             */
+            code: string;
+            /**
+             * Command
+             * @description What to send the bot from the chat: /pair CODE.
+             */
+            command: string;
+            /**
+             * Expires At
+             * @description When the code stops working (epoch seconds).
+             */
+            expires_at: number;
+            /**
+             * User Id
+             * @description The account the chat will act as.
+             */
+            user_id: number;
+            /**
+             * Email
+             * @description That account's email.
+             */
+            email: string;
+            /**
+             * Bot Link
+             * @description https://t.me/<bot>, when the bot's name is known.
+             */
+            bot_link: string | null;
+        };
+        /** TelegramPairingRequest */
+        TelegramPairingRequest: {
+            /**
+             * User Id
+             * @description Whose account the chat will act as; default you. Someone else's needs the users permission (owner).
+             */
+            user_id?: number | null;
+        };
+        /**
+         * TelegramView
+         * @description The Telegram channel: its bot, its state and the chats paired with it.
+         */
+        TelegramView: {
+            /**
+             * Enabled
+             * @description channels.telegram.enabled in ira.yaml.
+             */
+            enabled: boolean;
+            /**
+             * Token Env
+             * @description The variable that holds the bot token.
+             */
+            token_env: string;
+            /**
+             * Token Present
+             * @description Whether that variable is set. Never its value.
+             */
+            token_present: boolean;
+            /**
+             * Bot Username
+             * @description The bot's username from Telegram's getMe, asked at most once an hour; null while no token is set or Telegram has not answered.
+             */
+            bot_username: string | null;
+            /**
+             * Bot Link
+             * @description https://t.me/<bot_username>, to open the bot.
+             */
+            bot_link: string | null;
+            /**
+             * Bot Error
+             * @description Why getMe failed, if it did (tried again after a minute). Never the token.
+             */
+            bot_error?: string | null;
+            /**
+             * Running
+             * @description Whether the bot is polling Telegram right now.
+             */
+            running: boolean;
+            /**
+             * Last Poll At
+             * @description When the bot last heard from Telegram (epoch seconds).
+             */
+            last_poll_at?: number | null;
+            /**
+             * Last Error
+             * @description The last polling error, if any.
+             */
+            last_error?: string | null;
+            /**
+             * Pairing Seconds
+             * @description How long a pairing code works.
+             */
+            pairing_seconds: number;
+            /**
+             * Chats
+             * @description Every paired chat, newest pairing first; removed users' chats are gone.
+             */
+            chats: components["schemas"]["TelegramChat"][];
+        };
         /** TierOrderRequest */
         TierOrderRequest: {
             /**
@@ -1882,8 +2391,12 @@ export interface components {
         ToolDetail: {
             /** Name */
             name: string;
-            /** Kind */
-            kind: string;
+            /**
+             * Kind
+             * @description read runs when the model calls it; action only proposes, and runs after a PIN.
+             * @enum {string}
+             */
+            kind: "read" | "action";
             /** Description */
             description: string;
             /** Parameters */
@@ -1971,15 +2484,30 @@ export interface components {
                 [key: string]: unknown;
             };
         };
-        /** ToolTestResult */
+        /**
+         * ToolTestResult
+         * @description A test run of a read tool. The HTTP status is 200 whether or not the tool worked.
+         */
         ToolTestResult: {
-            /** Ok */
+            /**
+             * Ok
+             * @description false when the parameters did not fit the tool's schema, the tool raised an error, or it gave no result within 30 seconds. Still HTTP 200.
+             */
             ok: boolean;
-            /** Seconds */
+            /**
+             * Seconds
+             * @description How long the run took.
+             */
             seconds: number;
-            /** Result */
+            /**
+             * Result
+             * @description What the tool returned, when ok; cut at 20,000 characters.
+             */
             result?: unknown;
-            /** Error */
+            /**
+             * Error
+             * @description Why it failed, when not ok. Bad parameters read "invalid parameters: ...".
+             */
             error?: string | null;
         };
         /** ToolView */
@@ -2023,6 +2551,27 @@ export interface components {
             input?: unknown;
             /** Context */
             ctx?: Record<string, never>;
+        };
+        /**
+         * VoiceOption
+         * @description A voice id the configured text-to-speech provider accepts.
+         */
+        VoiceOption: {
+            /**
+             * Id
+             * @description The value for voice.tts.voice, or for PATCH /v1/admin/settings.
+             */
+            id: string;
+            /**
+             * Languages
+             * @description BCP-47 codes it speaks, e.g. en-IN; empty when it speaks the language of whatever text it is given.
+             */
+            languages: string[];
+            /**
+             * Gender
+             * @description female or male, where the provider says.
+             */
+            gender: string | null;
         };
     };
     responses: never;
@@ -2452,16 +3001,24 @@ export interface operations {
     };
     my_sessions: {
         parameters: {
-            query?: never;
+            query?: {
+                limit?: number;
+                /** @description Page: only sessions last used before this (the last row's last_used_at). */
+                before?: number | null;
+                /** @description With before: the last row's id, so sessions last used at the same moment are neither skipped nor repeated. Ignored without before. */
+                before_id?: string | null;
+            };
             header?: never;
             path?: never;
             cookie?: never;
         };
         requestBody?: never;
         responses: {
-            /** @description Successful Response */
+            /** @description One page, newest first */
             200: {
                 headers: {
+                    /** @description true when more rows follow this page (ask again with the cursor from the last row), false when this page is the last. */
+                    "X-Has-More"?: "true" | "false";
                     [name: string]: unknown;
                 };
                 content: {
@@ -2484,6 +3041,15 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ErrorDetail"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
@@ -2641,8 +3207,10 @@ export interface operations {
         parameters: {
             query?: {
                 limit?: number;
-                /** @description Page: only conversations active before this (a last_at). */
+                /** @description Page: only conversations active before this (the last row's last_at). */
                 before?: number | null;
+                /** @description With before: the last row's id, so conversations that share its last_at are neither skipped nor repeated. Ignored without before. */
+                before_id?: string | null;
             };
             header?: never;
             path?: never;
@@ -2650,9 +3218,11 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Successful Response */
+            /** @description One page, newest first */
             200: {
                 headers: {
+                    /** @description true when more rows follow this page (ask again with the cursor from the last row), false when this page is the last. */
+                    "X-Has-More"?: "true" | "false";
                     [name: string]: unknown;
                 };
                 content: {
@@ -2980,9 +3550,11 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Successful Response */
+            /** @description One page, newest first */
             200: {
                 headers: {
+                    /** @description true when more rows follow this page (ask again with the cursor from the last row), false when this page is the last. */
+                    "X-Has-More"?: "true" | "false";
                     [name: string]: unknown;
                 };
                 content: {
@@ -3031,8 +3603,10 @@ export interface operations {
         parameters: {
             query?: {
                 limit?: number;
-                /** @description Page: only conversations active before this. */
+                /** @description Page: only conversations active before this (the last row's last_at). */
                 before?: number | null;
+                /** @description With before: the last row's id, so rows that share its last_at are neither skipped nor repeated. Ignored without before. */
+                before_id?: string | null;
             };
             header?: never;
             path?: never;
@@ -3040,9 +3614,11 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Successful Response */
+            /** @description One page, newest first */
             200: {
                 headers: {
+                    /** @description true when more rows follow this page (ask again with the cursor from the last row), false when this page is the last. */
+                    "X-Has-More"?: "true" | "false";
                     [name: string]: unknown;
                 };
                 content: {
@@ -3069,6 +3645,73 @@ export interface operations {
             };
             /** @description Not allowed: role, token, or a missing CSRF header */
             403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorDetail"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    conversation_info: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                conversation_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConversationRow"];
+                };
+            };
+            /** @description Bad input */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorDetail"];
+                };
+            };
+            /** @description No credential, or an invalid one */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorDetail"];
+                };
+            };
+            /** @description Not allowed: role, token, or a missing CSRF header */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorDetail"];
+                };
+            };
+            /** @description No conversation with that id */
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -3134,6 +3777,15 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorDetail"];
                 };
             };
+            /** @description No conversation with that id */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorDetail"];
+                };
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -3151,6 +3803,71 @@ export interface operations {
                 /** @description pending, executed, failed, expired, ... */
                 status?: string | null;
                 limit?: number;
+                /** @description Page: only actions proposed before this (the last row's created_at). */
+                before?: number | null;
+                /** @description With before: the last row's id, so actions proposed at the same moment are neither skipped nor repeated. Ignored without before. */
+                before_id?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description One page, newest first */
+            200: {
+                headers: {
+                    /** @description true when more rows follow this page (ask again with the cursor from the last row), false when this page is the last. */
+                    "X-Has-More"?: "true" | "false";
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ActionRow"][];
+                };
+            };
+            /** @description Bad input */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorDetail"];
+                };
+            };
+            /** @description No credential, or an invalid one */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorDetail"];
+                };
+            };
+            /** @description Not allowed: role, token, or a missing CSRF header */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorDetail"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    action_counts: {
+        parameters: {
+            query?: {
+                /** @description Only actions proposed at or after this (epoch seconds). */
+                since?: number | null;
             };
             header?: never;
             path?: never;
@@ -3164,7 +3881,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ActionRow"][];
+                    "application/json": components["schemas"]["ActionCounts"];
                 };
             };
             /** @description Bad input */
@@ -3299,11 +4016,9 @@ export interface operations {
             };
         };
     };
-    audit: {
+    telegram: {
         parameters: {
-            query?: {
-                limit?: number;
-            };
+            query?: never;
             header?: never;
             path?: never;
             cookie?: never;
@@ -3313,6 +4028,59 @@ export interface operations {
             /** @description Successful Response */
             200: {
                 headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TelegramView"];
+                };
+            };
+            /** @description Bad input */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorDetail"];
+                };
+            };
+            /** @description No credential, or an invalid one */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorDetail"];
+                };
+            };
+            /** @description Not allowed: role, token, or a missing CSRF header */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorDetail"];
+                };
+            };
+        };
+    };
+    audit: {
+        parameters: {
+            query?: {
+                limit?: number;
+                /** @description Page: only rows older than this id. */
+                before_id?: number | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description One page, newest first */
+            200: {
+                headers: {
+                    /** @description true when more rows follow this page (ask again with the cursor from the last row), false when this page is the last. */
+                    "X-Has-More"?: "true" | "false";
                     [name: string]: unknown;
                 };
                 content: {
@@ -3547,7 +4315,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorDetail"];
                 };
             };
-            /** @description No such user, invite, session, token, tool or tier */
+            /** @description No such user, invite, session, token, tool, tier or paired chat */
             404: {
                 headers: {
                     [name: string]: unknown;
@@ -3578,16 +4346,24 @@ export interface operations {
     };
     sessions: {
         parameters: {
-            query?: never;
+            query?: {
+                limit?: number;
+                /** @description Page: only sessions last used before this (the last row's last_used_at). */
+                before?: number | null;
+                /** @description With before: the last row's id, so sessions last used at the same moment are neither skipped nor repeated. Ignored without before. */
+                before_id?: string | null;
+            };
             header?: never;
             path?: never;
             cookie?: never;
         };
         requestBody?: never;
         responses: {
-            /** @description Successful Response */
+            /** @description One page, newest first */
             200: {
                 headers: {
+                    /** @description true when more rows follow this page (ask again with the cursor from the last row), false when this page is the last. */
+                    "X-Has-More"?: "true" | "false";
                     [name: string]: unknown;
                 };
                 content: {
@@ -3619,6 +4395,15 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ErrorDetail"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
@@ -3719,7 +4504,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorDetail"];
                 };
             };
-            /** @description No such user, invite, session, token, tool or tier */
+            /** @description No such user, invite, session, token, tool, tier or paired chat */
             404: {
                 headers: {
                     [name: string]: unknown;
@@ -3938,7 +4723,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorDetail"];
                 };
             };
-            /** @description No such user, invite, session, token, tool or tier */
+            /** @description No such user, invite, session, token, tool, tier or paired chat */
             404: {
                 headers: {
                     [name: string]: unknown;
@@ -3980,9 +4765,11 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Successful Response */
+            /** @description One page, newest first */
             200: {
                 headers: {
+                    /** @description true when more rows follow this page (ask again with the cursor from the last row), false when this page is the last. */
+                    "X-Has-More"?: "true" | "false";
                     [name: string]: unknown;
                 };
                 content: {
@@ -4179,7 +4966,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorDetail"];
                 };
             };
-            /** @description No such user, invite, session, token, tool or tier */
+            /** @description No such user, invite, session, token, tool, tier or paired chat */
             404: {
                 headers: {
                     [name: string]: unknown;
@@ -4255,7 +5042,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorDetail"];
                 };
             };
-            /** @description No such user, invite, session, token, tool or tier */
+            /** @description No such user, invite, session, token, tool, tier or paired chat */
             404: {
                 headers: {
                     [name: string]: unknown;
@@ -4335,7 +5122,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorDetail"];
                 };
             };
-            /** @description No such user, invite, session, token, tool or tier */
+            /** @description No such user, invite, session, token, tool, tier or paired chat */
             404: {
                 headers: {
                     [name: string]: unknown;
@@ -4411,7 +5198,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorDetail"];
                 };
             };
-            /** @description No such user, invite, session, token, tool or tier */
+            /** @description No such user, invite, session, token, tool, tier or paired chat */
             404: {
                 headers: {
                     [name: string]: unknown;
@@ -4487,7 +5274,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorDetail"];
                 };
             };
-            /** @description No such user, invite, session, token, tool or tier */
+            /** @description No such user, invite, session, token, tool, tier or paired chat */
             404: {
                 headers: {
                     [name: string]: unknown;
@@ -4563,7 +5350,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorDetail"];
                 };
             };
-            /** @description No such user, invite, session, token, tool or tier */
+            /** @description No such user, invite, session, token, tool, tier or paired chat */
             404: {
                 headers: {
                     [name: string]: unknown;
@@ -4643,7 +5430,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorDetail"];
                 };
             };
-            /** @description No such user, invite, session, token, tool or tier */
+            /** @description No such user, invite, session, token, tool, tier or paired chat */
             404: {
                 headers: {
                     [name: string]: unknown;
@@ -4723,7 +5510,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorDetail"];
                 };
             };
-            /** @description No such user, invite, session, token, tool or tier */
+            /** @description No such user, invite, session, token, tool, tier or paired chat */
             404: {
                 headers: {
                     [name: string]: unknown;
@@ -4801,7 +5588,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorDetail"];
                 };
             };
-            /** @description No such user, invite, session, token, tool or tier */
+            /** @description No such user, invite, session, token, tool, tier or paired chat */
             404: {
                 headers: {
                     [name: string]: unknown;
@@ -4881,7 +5668,161 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorDetail"];
                 };
             };
-            /** @description No such user, invite, session, token, tool or tier */
+            /** @description No such user, invite, session, token, tool, tier or paired chat */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorDetail"];
+                };
+            };
+            /** @description The last owner cannot go, or an action tool cannot be tested */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorDetail"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    start_telegram_pairing: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["TelegramPairingRequest"] | null;
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TelegramPairing"];
+                };
+            };
+            /** @description Bad input */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorDetail"];
+                };
+            };
+            /** @description No credential, or an invalid one */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorDetail"];
+                };
+            };
+            /** @description Not allowed: role, token, or a missing CSRF header */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorDetail"];
+                };
+            };
+            /** @description No such user, invite, session, token, tool, tier or paired chat */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorDetail"];
+                };
+            };
+            /** @description The last owner cannot go, or an action tool cannot be tested */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorDetail"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    unpair_telegram_chat: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                chat_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OkResponse"];
+                };
+            };
+            /** @description Bad input */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorDetail"];
+                };
+            };
+            /** @description No credential, or an invalid one */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorDetail"];
+                };
+            };
+            /** @description Not allowed: role, token, or a missing CSRF header */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorDetail"];
+                };
+            };
+            /** @description No such user, invite, session, token, tool, tier or paired chat */
             404: {
                 headers: {
                     [name: string]: unknown;

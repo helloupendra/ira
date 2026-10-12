@@ -76,18 +76,19 @@ describe('a model call', () => {
     expect(okLabel({ ok: false, error_kind: null })).toBe('failed');
   });
   it('lists what was tried only when it took more than one attempt', () => {
-    expect(triedLine({ tried: 'demo:router', attempts: 1, model: 'demo:router' })).toBeNull();
-    expect(triedLine({ tried: 'openai:gpt-4o-mini,demo:router', attempts: 2, model: 'demo:router' })).toBe(
+    expect(triedLine({ tried_list: ['demo:router'], attempts: 1, model: 'demo:router' })).toBeNull();
+    expect(triedLine({ tried_list: ['openai:gpt-4o-mini', 'demo:router'], attempts: 2, model: 'demo:router' })).toBe(
       'tried: openai:gpt-4o-mini, demo:router (2 attempts)',
     );
-    expect(triedLine({ tried: 'a, b, c', attempts: 3, model: 'c' })).toBe('tried: a, b, c (3 attempts)');
-    expect(triedLine({ tried: '', attempts: 2, model: null })).toBe('tried: none (2 attempts)');
+    expect(triedLine({ tried_list: ['a', 'b', 'c'], attempts: 3, model: 'c' })).toBe('tried: a, b, c (3 attempts)');
+    expect(triedLine({ tried_list: [], attempts: 2, model: null })).toBe('tried: none (2 attempts)');
+    expect(triedLine({ attempts: 2, model: 'demo:router' })).toBe('tried: demo:router (2 attempts)');
   });
 });
 
 describe('viaLine', () => {
-  it('does not repeat a channel the actor already names', () => {
-    expect(viaLine('owner@example.com via web', 'web')).toBe('owner@example.com via web');
+  it('names the person and the channel', () => {
+    expect(viaLine('owner@example.com', 'web')).toBe('owner@example.com via web');
     expect(viaLine('owner@example.com', 'telegram')).toBe('owner@example.com via telegram');
     expect(viaLine('owner@example.com', null)).toBe('owner@example.com');
   });

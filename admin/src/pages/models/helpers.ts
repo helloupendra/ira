@@ -1,5 +1,5 @@
 import { ApiError } from '../../api/client';
-import type { ModelTestResult } from '../../api/endpoints';
+import type { CoolingReason, ModelTestResult, VoiceOption } from '../../api/endpoints';
 import { seconds } from '../../lib/format';
 
 // Moves the item at `index` one step up (-1) or down (+1). The ends stay
@@ -26,6 +26,30 @@ export function coolingLeft(cooling: Record<string, number>, ref: string, elapse
   if (total === undefined) return null;
   const left = Math.ceil(total - Math.max(0, elapsed));
   return left > 0 ? left : null;
+}
+
+// Why a model is cooling, on one line: the error's kind, then the server's
+// own sentence. The HTTP status goes in when there is one and the sentence
+// does not already name it (the server usually folds it in itself).
+export function coolingNote(reason: CoolingReason): string {
+  const kind = reason.error_kind.trim();
+  let message = reason.message.trim();
+  const status = reason.status ?? 0;
+  if (status > 0 && !message.includes(`HTTP ${status}`)) {
+    const stop = message.endsWith('.');
+    const head = stop ? message.slice(0, -1) : message;
+    message = `${head}${head ? ' ' : ''}(HTTP ${status})${stop ? '.' : ''}`;
+  }
+  return [kind, message].filter(Boolean).join(': ');
+}
+
+// What a voice's suggestion says next to its id: the languages it speaks and
+// its gender, as far as the provider says; empty when it says nothing.
+export function voiceLabel(voice: VoiceOption): string {
+  return [...voice.languages, voice.gender ?? '']
+    .map((part) => part.trim())
+    .filter(Boolean)
+    .join(', ');
 }
 
 export interface TestLine {

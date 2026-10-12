@@ -1,17 +1,18 @@
 import { useEffect, useRef, useState, type DependencyList } from 'react';
+import type { Page } from '../../api/client';
 import { useApi, type ApiState } from '../../ui/useApi';
 
 // The pages loaded after the first, kept with the first page they follow: a
 // refresh replaces that page, and these are dropped with it.
-interface Tail<T> {
-  after: T[];
+export interface Tail<T> {
+  after: Page<T[]>;
   rows: T[];
-  lastSize: number;
+  hasMore: boolean;
 }
 
 export interface Paged<T> {
   // The first page: its loading, error and reload stand for the whole list.
-  first: ApiState<T[]>;
+  first: ApiState<Page<T[]>>;
   rows: T[];
   hasMore: boolean;
   loadingMore: boolean;
@@ -19,12 +20,29 @@ export interface Paged<T> {
   loadMore: () => void;
 }
 
+// What the list shows: the first page and, while the tail still follows it,
+// the pages loaded after. Whether more follow is what the server said about
+// the last page fetched.
+export function visible<T>(first: Page<T[]> | undefined, tail: Tail<T> | null): { rows: T[]; hasMore: boolean } {
+  if (!first) return { rows: [], hasMore: false };
+  if (tail && tail.after === first) return { rows: [...first.rows, ...tail.rows], hasMore: tail.hasMore };
+  return { rows: first.rows, hasMore: first.hasMore };
+}
+
+// The tail with one more page on it. A row already shown is not shown twice,
+// and a page that brings nothing new ends the list: the cursor could not move
+// on from it.
+export function appended<T extends { id: number }>(first: Page<T[]>, prev: Tail<T> | null, page: Page<T[]>): Tail<T> {
+  const kept = prev && prev.after === first ? prev.rows : [];
+  const seen = new Set([...first.rows, ...kept].map((row) => row.id));
+  const fresh = page.rows.filter((row) => !seen.has(row.id));
+  return { after: first, rows: [...kept, ...fresh], hasMore: page.hasMore && fresh.length > 0 };
+}
+
 // A newest-first list the server pages by id ("only rows older than this
-// id"). The page size decides whether there may be more: a short page is the
-// end of the list.
+// id"), each page saying whether more follow it.
 export function usePaged<T extends { id: number }>(
-  fetchPage: (beforeId: number | null, signal: AbortSignal) => Promise<T[]>,
-  pageSize: number,
+  fetchPage: (beforeId: number | null, signal: AbortSignal) => Promise<Page<T[]>>,
   deps: DependencyList,
 ): Paged<T> {
   const first = useApi((signal) => fetchPage(null, signal), deps);
@@ -36,10 +54,7 @@ export function usePaged<T extends { id: number }>(
   useEffect(() => () => inFlight.current?.abort(), []);
 
   const base = first.data;
-  const extra = tail && base && tail.after === base ? tail : null;
-  const rows = base ? (extra ? [...base, ...extra.rows] : base) : [];
-  const lastSize = extra ? extra.lastSize : (base?.length ?? 0);
-  const hasMore = lastSize >= pageSize;
+  const { rows, hasMore } = visible(base, tail);
 
   async function loadMore() {
     const last = rows[rows.length - 1];
@@ -51,11 +66,7 @@ export function usePaged<T extends { id: number }>(
     try {
       const page = await fetchPage(last.id, controller.signal);
       if (controller.signal.aborted) return;
-      setTail((prev) => {
-        const kept = prev && prev.after === base ? prev.rows : [];
-        const seen = new Set([...base, ...kept].map((row) => row.id));
-        return { after: base, rows: [...kept, ...page.filter((row) => !seen.has(row.id))], lastSize: page.length };
-      });
+      setTail((prev) => appended(base, prev, page));
     } catch (err) {
       if (controller.signal.aborted) return;
       setMoreError(err instanceof Error ? err : new Error(String(err)));

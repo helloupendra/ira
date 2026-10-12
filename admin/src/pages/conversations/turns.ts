@@ -1,5 +1,8 @@
 import type { MessageRow } from '../../api/endpoints';
-import { count } from '../../lib/format';
+import { clock, count, when } from '../../lib/format';
+
+// The action a tool call proposed, as it stands now.
+export type MessageAction = NonNullable<MessageRow['action']>;
 
 // A conversation's id goes in the path, and ids carry colons ("web:1:bd69..."),
 // so the href encodes it. wouter hands the param back exactly as it appears in
@@ -16,13 +19,14 @@ export function idFromParam(param: string): string {
   }
 }
 
+// Where the Actions screen lists the proposals in one state.
+export function actionsHref(status: string): string {
+  return status ? `/actions?status=${encodeURIComponent(status)}` : '/actions';
+}
+
 // Turns are the questions asked, which is how the list counts them.
 export function turnsLabel(n: number): string {
   return `${count(n)} ${n === 1 ? 'turn' : 'turns'}`;
-}
-
-export function countTurns(messages: MessageRow[]): number {
-  return messages.filter((m) => m.role === 'user').length;
 }
 
 // Whose conversation it is: the account, or the channel when nobody signed in.
@@ -44,10 +48,29 @@ export function cut(text: string, max: number): string {
   return `${chars.slice(0, max - 1).join('').trimEnd()}…`;
 }
 
-// A conversation is named after the first thing the user said.
-export function titleOf(messages: MessageRow[], fallback: string): string {
-  const first = messages.find((m) => m.role === 'user' && m.content?.trim());
-  return first?.content ? cut(first.content, 80) : fallback;
+// A conversation is named after the first thing the user said, or its id when
+// nothing was said.
+export function titleOf(row: { id: string; preview?: string | null }): string {
+  const preview = row.preview?.trim() ?? '';
+  return preview ? cut(preview, 80) : row.id;
+}
+
+// The line under the title: "owner@example.com, 2 turns, started 15:55, last
+// 15:57". The channel is a badge in front of it, so a conversation nobody
+// signed in to does not name the channel twice.
+export function detailsOf(
+  row: { email: string | null; turns: number; started_at: number; last_at: number },
+  now?: number,
+): string {
+  const parts = row.email ? [row.email] : [];
+  parts.push(turnsLabel(row.turns), `started ${when(row.started_at, now)}`, `last ${when(row.last_at, now)}`);
+  return parts.join(', ');
+}
+
+// "expires 15:57" while a proposal still waits for its PIN. The server marks
+// overdue proposals expired before every read, so pending means not yet.
+export function expiresLabel(action: MessageAction): string | null {
+  return action.status === 'pending' ? `expires ${clock(action.expires_at)}` : null;
 }
 
 export interface SaidTurn {
@@ -56,6 +79,9 @@ export interface SaidTurn {
   role: string;
   at: number;
   text: string;
+  // The model that wrote an answer, when the server recorded one.
+  model: string | null;
+  action: MessageAction | null;
 }
 
 export interface CallTurn {
@@ -65,6 +91,8 @@ export interface CallTurn {
   name: string;
   args: string;
   result: MessageRow | null;
+  // The proposal the call made, from its result.
+  action: MessageAction | null;
 }
 
 export interface ResultTurn {
@@ -73,6 +101,7 @@ export interface ResultTurn {
   at: number;
   name: string | null;
   content: string | null;
+  action: MessageAction | null;
 }
 
 export type Turn = SaidTurn | CallTurn | ResultTurn;
@@ -94,22 +123,33 @@ export function buildTurns(messages: MessageRow[]): Turn[] {
   for (const m of messages) {
     if (m.role === 'tool') {
       if (m.tool_call_id && results.get(m.tool_call_id) === m) continue;
-      turns.push({ kind: 'result', key: `m${m.id}`, at: m.at, name: m.name, content: m.content });
+      turns.push({ kind: 'result', key: `m${m.id}`, at: m.at, name: m.name, content: m.content, action: m.action ?? null });
       continue;
     }
     const text = m.content ?? '';
-    // An answer that only called tools has no text of its own to show.
-    if (text || m.tool_calls.length === 0) {
-      turns.push({ kind: 'said', key: `m${m.id}`, role: m.role, at: m.at, text });
+    // An answer that only called tools has no text of its own to show, unless
+    // it carries a proposal.
+    if (text || m.tool_calls.length === 0 || m.action) {
+      turns.push({
+        kind: 'said',
+        key: `m${m.id}`,
+        role: m.role,
+        at: m.at,
+        text,
+        model: m.model ?? null,
+        action: m.action ?? null,
+      });
     }
     for (const call of m.tool_calls) {
+      const result = results.get(call.id) ?? null;
       turns.push({
         kind: 'call',
         key: `m${m.id}-${call.id}`,
         at: m.at,
         name: call.name,
         args: call.arguments,
-        result: results.get(call.id) ?? null,
+        result,
+        action: result?.action ?? null,
       });
     }
   }

@@ -1,4 +1,5 @@
 import { ApiError } from '../../api/client';
+import { clock, when } from '../../lib/format';
 
 // A user agent as a short device name. Sixty characters are enough to tell a
 // phone from a laptop; the whole string goes in a title for anyone curious.
@@ -7,6 +8,13 @@ export function deviceName(userAgent: string | null | undefined, max = 60): stri
   if (!text) return 'unknown';
   if (text.length <= max) return text;
   return `${text.slice(0, max).trimEnd()}…`;
+}
+
+// The device a session signed in from: the server's label ("Chrome on
+// macOS"), else the user agent cut short, else "unknown".
+export function deviceLabel(row: { device?: string | null; user_agent?: string | null }): string {
+  const device = (row.device ?? '').trim();
+  return device || deviceName(row.user_agent);
 }
 
 // Scopes as the API sends them: comma text on a row, a list on a new token.
@@ -59,6 +67,41 @@ export function pinFailure(err: unknown): string {
   }
   return failure(err);
 }
+
+/* The action PIN ---------------------------------------------------------- */
+
+export const NO_PIN_NEEDED = "Your role can't confirm actions, so no PIN is needed.";
+
+interface PinState {
+  can_confirm: boolean;
+  has_pin: boolean;
+  pin_set_at?: number | null;
+}
+
+// One line on where the PIN stands. The server records when a PIN was set,
+// except for one set before it started doing so.
+export function pinLine(status: PinState, now?: number): string {
+  if (!status.can_confirm) return NO_PIN_NEEDED;
+  if (!status.has_pin) return 'You have no PIN yet.';
+  if (status.pin_set_at) return `Your PIN is set (since ${when(status.pin_set_at, now)}).`;
+  return 'Your PIN is set.';
+}
+
+// The wrong-PIN lock, from the moment the server says it ends.
+export function lockedLine(lockedUntil: number): string {
+  return `Actions are locked until ${clock(lockedUntil)} after too many wrong PINs.`;
+}
+
+// The PIN length the server allows, for the hint and the input's pattern.
+export function pinHint(min: number, max: number): string {
+  return min === max ? `${min} digits` : `${min} to ${max} digits`;
+}
+
+export function pinPattern(min: number, max: number): string {
+  return `[0-9]{${min},${max}}`;
+}
+
+/* Tokens ------------------------------------------------------------------ */
 
 // What a scope lets a token do, for the person ticking it.
 export function scopeHint(scope: string): string | null {

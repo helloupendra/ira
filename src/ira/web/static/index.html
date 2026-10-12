@@ -127,7 +127,7 @@
       <button id="pin-open" type="button" class="btn btn-ghost" hidden>Set your PIN</button>
       <form id="pin-form" class="stack" hidden>
         <label>Your password <input name="password" type="password" autocomplete="current-password" required></label>
-        <label>New action PIN (4 to 12 digits) <input name="pin" type="password" inputmode="numeric" pattern="[0-9]{4,12}" minlength="4" maxlength="12" autocomplete="off" required></label>
+        <label>New action PIN (<span id="pin-rule">4 to 12 digits</span>) <input name="pin" type="password" inputmode="numeric" pattern="[0-9]{4,12}" minlength="4" maxlength="12" autocomplete="off" required></label>
         <div class="row">
           <button type="submit" class="btn btn-primary">Save PIN</button>
           <button type="button" id="pin-cancel" class="btn btn-ghost">Cancel</button>

@@ -1,6 +1,7 @@
 import { useEffect, useId, useMemo, useState, type ReactNode } from 'react';
 import {
   admin,
+  type CoolingReason,
   type KeyView,
   type ModelsView,
   type ModelTestResult,
@@ -9,6 +10,7 @@ import {
   type SettingsView,
   type SettingValue,
   type TierView,
+  type VoiceOption,
 } from '../api/endpoints';
 import { ago } from '../lib/format';
 import { whyNot } from '../lib/roles';
@@ -19,7 +21,7 @@ import { Empty } from '../ui/states';
 import { useToast } from '../ui/toast';
 import { useApi } from '../ui/useApi';
 import { Body } from './models/Body';
-import { coolingLeft, detailOf, move, sameOrder, testLine } from './models/helpers';
+import { coolingLeft, coolingNote, detailOf, move, sameOrder, testLine, voiceLabel } from './models/helpers';
 import './Models.css';
 
 // Fallback chains --------------------------------------------------------
@@ -44,12 +46,14 @@ function TestText({ state }: { state: TestState }) {
 function TierBlock({
   tier,
   cooling,
+  reasons,
   elapsed,
   canWrite,
   onChanged,
 }: {
   tier: TierView;
   cooling: Record<string, number>;
+  reasons: Record<string, CoolingReason>;
   elapsed: number;
   canWrite: boolean;
   onChanged: () => void;
@@ -130,6 +134,7 @@ function TierBlock({
         <ol className="ordered" aria-label={`${view.name} chain`}>
           {order.map((ref, i) => {
             const left = coolingLeft(cooling, ref, elapsed);
+            const reason = left === null ? undefined : reasons[ref];
             const state = tests[ref];
             return (
               <li key={ref}>
@@ -166,6 +171,7 @@ function TierBlock({
                 >
                   <Icon name="arrowDown" />
                 </button>
+                {reason && <p className="chain-reason muted">{coolingNote(reason)}</p>}
                 <p className="chain-result" role="status">
                   {state && <TestText state={state} />}
                 </p>
@@ -253,6 +259,7 @@ function Chains({
           key={tier.name}
           tier={tier}
           cooling={data.cooling}
+          reasons={data.cooling_reasons ?? {}}
           elapsed={elapsed}
           canWrite={canWrite}
           onChanged={onChanged}
@@ -382,6 +389,11 @@ function Keys({ keys }: { keys: KeyView[] }) {
 
 // Assistant name and voice -----------------------------------------------
 
+interface Option {
+  value: string;
+  label: string;
+}
+
 function SettingForm({
   id,
   label,
@@ -389,6 +401,8 @@ function SettingForm({
   canWrite,
   hint,
   offHint,
+  options,
+  optionsHint,
   onSave,
   onReset,
 }: {
@@ -398,6 +412,10 @@ function SettingForm({
   canWrite: boolean;
   hint?: string;
   offHint?: string;
+  // Suggestions for the value; anything typed is still accepted. When there
+  // are any, `optionsHint` says so in place of `hint`.
+  options?: Option[];
+  optionsHint?: string;
   onSave: (value: string) => Promise<void>;
   onReset: () => Promise<void>;
 }) {
@@ -411,6 +429,8 @@ function SettingForm({
   const editable = setting.editable;
   const locked = !canWrite || !editable;
   const changed = draft.trim() !== '' && draft.trim() !== current;
+  const list = editable && options && options.length > 0 ? options : null;
+  const listId = `${id}-options`;
 
   async function run(action: () => Promise<void>) {
     setBusy(true);
@@ -427,7 +447,8 @@ function SettingForm({
   const hints: string[] = [];
   if (!editable && offHint) hints.push(offHint);
   if (editable && setting.overridden) hints.push(`ira.yaml says ${setting.default || 'nothing'}.`);
-  if (editable && hint) hints.push(hint);
+  const what = list ? optionsHint : hint;
+  if (editable && what) hints.push(what);
 
   return (
     <form
@@ -447,16 +468,28 @@ function SettingForm({
               </span>
             )}
           </div>
+          {/* Some browsers hide a datalist's suggestions when autofill is
+              off, so autofill stays on only while there is a list. */}
           <input
             id={id}
             type="text"
             maxLength={64}
-            autoComplete="off"
+            autoComplete={list ? undefined : 'off'}
+            list={list ? listId : undefined}
             placeholder={setting.default ?? ''}
             value={draft}
             disabled={locked}
             onChange={(event) => setDraft(event.target.value)}
           />
+          {list && (
+            <datalist id={listId}>
+              {list.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </datalist>
+          )}
         </div>
         {editable && (
           <div className="actions-row">
@@ -489,13 +522,16 @@ function SettingForm({
 
 function Settings({
   data,
+  voices,
   canWrite,
   onSave,
 }: {
   data: SettingsView;
+  voices: VoiceOption[];
   canWrite: boolean;
   onSave: (update: SettingsUpdate, said: string) => Promise<void>;
 }) {
+  const options = voices.map((voice) => ({ value: voice.id, label: voiceLabel(voice) }));
   return (
     <>
       <div className="form">
@@ -514,6 +550,8 @@ function Settings({
           canWrite={canWrite}
           hint="The text-to-speech voice id: for Polly e.g. Joanna, for OpenAI e.g. alloy."
           offHint="Text-to-speech is off (tts: none), so there is no voice to choose."
+          options={options}
+          optionsHint="Voices for the text-to-speech in use; others are accepted."
           onSave={(voice) => onSave({ voice }, 'Voice saved and written to the change log.')}
           onReset={() => onSave({ voice: null }, 'Voice follows ira.yaml again.')}
         />
@@ -545,6 +583,7 @@ export default function Models() {
   const keys = useApi((signal) => admin.keys(signal), []);
   const settings = useApi((signal) => admin.settings(signal), []);
   const elapsed = useElapsed(models.data);
+  const voices = models.data?.voices ?? [];
 
   function reload() {
     models.reload();
@@ -605,7 +644,7 @@ export default function Models() {
         <div className="stack">
           {reason && <p className="inline-note">{reason}</p>}
           <Body state={settings} needs="admin.read">
-            {(data) => <Settings data={data} canWrite={canWrite} onSave={saveSetting} />}
+            {(data) => <Settings data={data} voices={voices} canWrite={canWrite} onSave={saveSetting} />}
           </Body>
         </div>
       </section>

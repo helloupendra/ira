@@ -3,7 +3,7 @@
     "info": {
         "title": "IRA",
         "summary": "Hey Ira: a self-hosted voice assistant over your own data and tools.",
-        "version": "0.1.0"
+        "version": "0.2.0"
     },
     "paths": {
         "/healthz": {
@@ -513,17 +513,84 @@
                 ],
                 "summary": "Your signed-in sessions, most recently used first",
                 "operationId": "my_sessions",
+                "security": [
+                    {
+                        "HTTPBearer": []
+                    }
+                ],
+                "parameters": [
+                    {
+                        "name": "limit",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "type": "integer",
+                            "maximum": 500,
+                            "minimum": 1,
+                            "default": 100,
+                            "title": "Limit"
+                        }
+                    },
+                    {
+                        "name": "before",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "anyOf": [
+                                {
+                                    "type": "number"
+                                },
+                                {
+                                    "type": "null"
+                                }
+                            ],
+                            "description": "Page: only sessions last used before this (the last row's last_used_at).",
+                            "title": "Before"
+                        },
+                        "description": "Page: only sessions last used before this (the last row's last_used_at)."
+                    },
+                    {
+                        "name": "before_id",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "anyOf": [
+                                {
+                                    "type": "string"
+                                },
+                                {
+                                    "type": "null"
+                                }
+                            ],
+                            "description": "With before: the last row's id, so sessions last used at the same moment are neither skipped nor repeated. Ignored without before.",
+                            "title": "Before Id"
+                        },
+                        "description": "With before: the last row's id, so sessions last used at the same moment are neither skipped nor repeated. Ignored without before."
+                    }
+                ],
                 "responses": {
                     "200": {
-                        "description": "Successful Response",
+                        "description": "One page, newest first",
                         "content": {
                             "application/json": {
                                 "schema": {
+                                    "type": "array",
                                     "items": {
                                         "$ref": "#/components/schemas/SessionView"
                                     },
-                                    "type": "array",
                                     "title": "Response My Sessions"
+                                }
+                            }
+                        },
+                        "headers": {
+                            "X-Has-More": {
+                                "description": "true when more rows follow this page (ask again with the cursor from the last row), false when this page is the last.",
+                                "schema": {
+                                    "type": "string",
+                                    "enum": [
+                                        "true",
+                                        "false"
+                                    ]
                                 }
                             }
                         }
@@ -547,13 +614,18 @@
                                 }
                             }
                         }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
                     }
-                },
-                "security": [
-                    {
-                        "HTTPBearer": []
-                    }
-                ]
+                }
             }
         },
         "/v1/me/sessions/{session_id}": {
@@ -789,15 +861,33 @@
                                     "type": "null"
                                 }
                             ],
-                            "description": "Page: only conversations active before this (a last_at).",
+                            "description": "Page: only conversations active before this (the last row's last_at).",
                             "title": "Before"
                         },
-                        "description": "Page: only conversations active before this (a last_at)."
+                        "description": "Page: only conversations active before this (the last row's last_at)."
+                    },
+                    {
+                        "name": "before_id",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "anyOf": [
+                                {
+                                    "type": "string"
+                                },
+                                {
+                                    "type": "null"
+                                }
+                            ],
+                            "description": "With before: the last row's id, so conversations that share its last_at are neither skipped nor repeated. Ignored without before.",
+                            "title": "Before Id"
+                        },
+                        "description": "With before: the last row's id, so conversations that share its last_at are neither skipped nor repeated. Ignored without before."
                     }
                 ],
                 "responses": {
                     "200": {
-                        "description": "Successful Response",
+                        "description": "One page, newest first",
                         "content": {
                             "application/json": {
                                 "schema": {
@@ -806,6 +896,18 @@
                                         "$ref": "#/components/schemas/MyConversationRow"
                                     },
                                     "title": "Response My Conversations"
+                                }
+                            }
+                        },
+                        "headers": {
+                            "X-Has-More": {
+                                "description": "true when more rows follow this page (ask again with the cursor from the last row), false when this page is the last.",
+                                "schema": {
+                                    "type": "string",
+                                    "enum": [
+                                        "true",
+                                        "false"
+                                    ]
                                 }
                             }
                         }
@@ -1276,7 +1378,7 @@
                 ],
                 "responses": {
                     "200": {
-                        "description": "Successful Response",
+                        "description": "One page, newest first",
                         "content": {
                             "application/json": {
                                 "schema": {
@@ -1285,6 +1387,18 @@
                                         "$ref": "#/components/schemas/CallRow"
                                     },
                                     "title": "Response Calls"
+                                }
+                            }
+                        },
+                        "headers": {
+                            "X-Has-More": {
+                                "description": "true when more rows follow this page (ask again with the cursor from the last row), false when this page is the last.",
+                                "schema": {
+                                    "type": "string",
+                                    "enum": [
+                                        "true",
+                                        "false"
+                                    ]
                                 }
                             }
                         }
@@ -1370,15 +1484,33 @@
                                     "type": "null"
                                 }
                             ],
-                            "description": "Page: only conversations active before this.",
+                            "description": "Page: only conversations active before this (the last row's last_at).",
                             "title": "Before"
                         },
-                        "description": "Page: only conversations active before this."
+                        "description": "Page: only conversations active before this (the last row's last_at)."
+                    },
+                    {
+                        "name": "before_id",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "anyOf": [
+                                {
+                                    "type": "string"
+                                },
+                                {
+                                    "type": "null"
+                                }
+                            ],
+                            "description": "With before: the last row's id, so rows that share its last_at are neither skipped nor repeated. Ignored without before.",
+                            "title": "Before Id"
+                        },
+                        "description": "With before: the last row's id, so rows that share its last_at are neither skipped nor repeated. Ignored without before."
                     }
                 ],
                 "responses": {
                     "200": {
-                        "description": "Successful Response",
+                        "description": "One page, newest first",
                         "content": {
                             "application/json": {
                                 "schema": {
@@ -1387,6 +1519,18 @@
                                         "$ref": "#/components/schemas/ConversationRow"
                                     },
                                     "title": "Response Conversations"
+                                }
+                            }
+                        },
+                        "headers": {
+                            "X-Has-More": {
+                                "description": "true when more rows follow this page (ask again with the cursor from the last row), false when this page is the last.",
+                                "schema": {
+                                    "type": "string",
+                                    "enum": [
+                                        "true",
+                                        "false"
+                                    ]
                                 }
                             }
                         }
@@ -1413,6 +1557,93 @@
                     },
                     "403": {
                         "description": "Not allowed: role, token, or a missing CSRF header",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ErrorDetail"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/v1/admin/conversations/{conversation_id}/info": {
+            "get": {
+                "tags": [
+                    "admin"
+                ],
+                "summary": "One conversation's header: channel, who, when, turns",
+                "operationId": "conversation_info",
+                "security": [
+                    {
+                        "HTTPBearer": []
+                    }
+                ],
+                "parameters": [
+                    {
+                        "name": "conversation_id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "title": "Conversation Id"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ConversationRow"
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Bad input",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ErrorDetail"
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "No credential, or an invalid one",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ErrorDetail"
+                                }
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "Not allowed: role, token, or a missing CSRF header",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ErrorDetail"
+                                }
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "No conversation with that id",
                         "content": {
                             "application/json": {
                                 "schema": {
@@ -1502,6 +1733,16 @@
                             }
                         }
                     },
+                    "404": {
+                        "description": "No conversation with that id",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ErrorDetail"
+                                }
+                            }
+                        }
+                    },
                     "422": {
                         "description": "Validation Error",
                         "content": {
@@ -1520,7 +1761,7 @@
                 "tags": [
                     "admin"
                 ],
-                "summary": "Proposed actions and outcomes",
+                "summary": "Proposed actions and outcomes, newest first",
                 "operationId": "actions",
                 "security": [
                     {
@@ -1557,11 +1798,47 @@
                             "default": 50,
                             "title": "Limit"
                         }
+                    },
+                    {
+                        "name": "before",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "anyOf": [
+                                {
+                                    "type": "number"
+                                },
+                                {
+                                    "type": "null"
+                                }
+                            ],
+                            "description": "Page: only actions proposed before this (the last row's created_at).",
+                            "title": "Before"
+                        },
+                        "description": "Page: only actions proposed before this (the last row's created_at)."
+                    },
+                    {
+                        "name": "before_id",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "anyOf": [
+                                {
+                                    "type": "string"
+                                },
+                                {
+                                    "type": "null"
+                                }
+                            ],
+                            "description": "With before: the last row's id, so actions proposed at the same moment are neither skipped nor repeated. Ignored without before.",
+                            "title": "Before Id"
+                        },
+                        "description": "With before: the last row's id, so actions proposed at the same moment are neither skipped nor repeated. Ignored without before."
                     }
                 ],
                 "responses": {
                     "200": {
-                        "description": "Successful Response",
+                        "description": "One page, newest first",
                         "content": {
                             "application/json": {
                                 "schema": {
@@ -1570,6 +1847,104 @@
                                         "$ref": "#/components/schemas/ActionRow"
                                     },
                                     "title": "Response Actions"
+                                }
+                            }
+                        },
+                        "headers": {
+                            "X-Has-More": {
+                                "description": "true when more rows follow this page (ask again with the cursor from the last row), false when this page is the last.",
+                                "schema": {
+                                    "type": "string",
+                                    "enum": [
+                                        "true",
+                                        "false"
+                                    ]
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Bad input",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ErrorDetail"
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "No credential, or an invalid one",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ErrorDetail"
+                                }
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "Not allowed: role, token, or a missing CSRF header",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ErrorDetail"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/v1/admin/actions/counts": {
+            "get": {
+                "tags": [
+                    "admin"
+                ],
+                "summary": "Proposed actions by status, over all time or since a moment",
+                "operationId": "action_counts",
+                "security": [
+                    {
+                        "HTTPBearer": []
+                    }
+                ],
+                "parameters": [
+                    {
+                        "name": "since",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "anyOf": [
+                                {
+                                    "type": "number"
+                                },
+                                {
+                                    "type": "null"
+                                }
+                            ],
+                            "description": "Only actions proposed at or after this (epoch seconds).",
+                            "title": "Since"
+                        },
+                        "description": "Only actions proposed at or after this (epoch seconds)."
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ActionCounts"
                                 }
                             }
                         }
@@ -1737,6 +2112,62 @@
                 ]
             }
         },
+        "/v1/admin/telegram": {
+            "get": {
+                "tags": [
+                    "admin"
+                ],
+                "summary": "The Telegram bot and paired chats",
+                "operationId": "telegram",
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/TelegramView"
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Bad input",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ErrorDetail"
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "No credential, or an invalid one",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ErrorDetail"
+                                }
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "Not allowed: role, token, or a missing CSRF header",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ErrorDetail"
+                                }
+                            }
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "HTTPBearer": []
+                    }
+                ]
+            }
+        },
         "/v1/admin/audit": {
             "get": {
                 "tags": [
@@ -1761,11 +2192,29 @@
                             "default": 100,
                             "title": "Limit"
                         }
+                    },
+                    {
+                        "name": "before_id",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "anyOf": [
+                                {
+                                    "type": "integer"
+                                },
+                                {
+                                    "type": "null"
+                                }
+                            ],
+                            "description": "Page: only rows older than this id.",
+                            "title": "Before Id"
+                        },
+                        "description": "Page: only rows older than this id."
                     }
                 ],
                 "responses": {
                     "200": {
-                        "description": "Successful Response",
+                        "description": "One page, newest first",
                         "content": {
                             "application/json": {
                                 "schema": {
@@ -1774,6 +2223,18 @@
                                         "$ref": "#/components/schemas/AuditRow"
                                     },
                                     "title": "Response Audit"
+                                }
+                            }
+                        },
+                        "headers": {
+                            "X-Has-More": {
+                                "description": "true when more rows follow this page (ask again with the cursor from the last row), false when this page is the last.",
+                                "schema": {
+                                    "type": "string",
+                                    "enum": [
+                                        "true",
+                                        "false"
+                                    ]
                                 }
                             }
                         }
@@ -2058,7 +2519,7 @@
                         }
                     },
                     "404": {
-                        "description": "No such user, invite, session, token, tool or tier",
+                        "description": "No such user, invite, session, token, tool, tier or paired chat",
                         "content": {
                             "application/json": {
                                 "schema": {
@@ -2102,17 +2563,84 @@
                 ],
                 "summary": "Every user's signed-in sessions (owner only; no session tokens)",
                 "operationId": "sessions",
+                "security": [
+                    {
+                        "HTTPBearer": []
+                    }
+                ],
+                "parameters": [
+                    {
+                        "name": "limit",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "type": "integer",
+                            "maximum": 500,
+                            "minimum": 1,
+                            "default": 100,
+                            "title": "Limit"
+                        }
+                    },
+                    {
+                        "name": "before",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "anyOf": [
+                                {
+                                    "type": "number"
+                                },
+                                {
+                                    "type": "null"
+                                }
+                            ],
+                            "description": "Page: only sessions last used before this (the last row's last_used_at).",
+                            "title": "Before"
+                        },
+                        "description": "Page: only sessions last used before this (the last row's last_used_at)."
+                    },
+                    {
+                        "name": "before_id",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "anyOf": [
+                                {
+                                    "type": "string"
+                                },
+                                {
+                                    "type": "null"
+                                }
+                            ],
+                            "description": "With before: the last row's id, so sessions last used at the same moment are neither skipped nor repeated. Ignored without before.",
+                            "title": "Before Id"
+                        },
+                        "description": "With before: the last row's id, so sessions last used at the same moment are neither skipped nor repeated. Ignored without before."
+                    }
+                ],
                 "responses": {
                     "200": {
-                        "description": "Successful Response",
+                        "description": "One page, newest first",
                         "content": {
                             "application/json": {
                                 "schema": {
+                                    "type": "array",
                                     "items": {
                                         "$ref": "#/components/schemas/AdminSessionRow"
                                     },
-                                    "type": "array",
                                     "title": "Response Sessions"
+                                }
+                            }
+                        },
+                        "headers": {
+                            "X-Has-More": {
+                                "description": "true when more rows follow this page (ask again with the cursor from the last row), false when this page is the last.",
+                                "schema": {
+                                    "type": "string",
+                                    "enum": [
+                                        "true",
+                                        "false"
+                                    ]
                                 }
                             }
                         }
@@ -2146,13 +2674,18 @@
                                 }
                             }
                         }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
                     }
-                },
-                "security": [
-                    {
-                        "HTTPBearer": []
-                    }
-                ]
+                }
             }
         },
         "/v1/admin/tokens": {
@@ -2272,7 +2805,7 @@
                         }
                     },
                     "404": {
-                        "description": "No such user, invite, session, token, tool or tier",
+                        "description": "No such user, invite, session, token, tool, tier or paired chat",
                         "content": {
                             "application/json": {
                                 "schema": {
@@ -2538,7 +3071,7 @@
                         }
                     },
                     "404": {
-                        "description": "No such user, invite, session, token, tool or tier",
+                        "description": "No such user, invite, session, token, tool, tier or paired chat",
                         "content": {
                             "application/json": {
                                 "schema": {
@@ -2621,7 +3154,7 @@
                 ],
                 "responses": {
                     "200": {
-                        "description": "Successful Response",
+                        "description": "One page, newest first",
                         "content": {
                             "application/json": {
                                 "schema": {
@@ -2630,6 +3163,18 @@
                                         "$ref": "#/components/schemas/ChangeRow"
                                     },
                                     "title": "Response Change Log"
+                                }
+                            }
+                        },
+                        "headers": {
+                            "X-Has-More": {
+                                "description": "true when more rows follow this page (ask again with the cursor from the last row), false when this page is the last.",
+                                "schema": {
+                                    "type": "string",
+                                    "enum": [
+                                        "true",
+                                        "false"
+                                    ]
                                 }
                             }
                         }
@@ -2882,7 +3427,7 @@
                         }
                     },
                     "404": {
-                        "description": "No such user, invite, session, token, tool or tier",
+                        "description": "No such user, invite, session, token, tool, tier or paired chat",
                         "content": {
                             "application/json": {
                                 "schema": {
@@ -2989,7 +3534,7 @@
                         }
                     },
                     "404": {
-                        "description": "No such user, invite, session, token, tool or tier",
+                        "description": "No such user, invite, session, token, tool, tier or paired chat",
                         "content": {
                             "application/json": {
                                 "schema": {
@@ -3084,7 +3629,7 @@
                         }
                     },
                     "404": {
-                        "description": "No such user, invite, session, token, tool or tier",
+                        "description": "No such user, invite, session, token, tool, tier or paired chat",
                         "content": {
                             "application/json": {
                                 "schema": {
@@ -3181,7 +3726,7 @@
                         }
                     },
                     "404": {
-                        "description": "No such user, invite, session, token, tool or tier",
+                        "description": "No such user, invite, session, token, tool, tier or paired chat",
                         "content": {
                             "application/json": {
                                 "schema": {
@@ -3278,7 +3823,7 @@
                         }
                     },
                     "404": {
-                        "description": "No such user, invite, session, token, tool or tier",
+                        "description": "No such user, invite, session, token, tool, tier or paired chat",
                         "content": {
                             "application/json": {
                                 "schema": {
@@ -3375,7 +3920,7 @@
                         }
                     },
                     "404": {
-                        "description": "No such user, invite, session, token, tool or tier",
+                        "description": "No such user, invite, session, token, tool, tier or paired chat",
                         "content": {
                             "application/json": {
                                 "schema": {
@@ -3482,7 +4027,7 @@
                         }
                     },
                     "404": {
-                        "description": "No such user, invite, session, token, tool or tier",
+                        "description": "No such user, invite, session, token, tool, tier or paired chat",
                         "content": {
                             "application/json": {
                                 "schema": {
@@ -3589,7 +4134,7 @@
                         }
                     },
                     "404": {
-                        "description": "No such user, invite, session, token, tool or tier",
+                        "description": "No such user, invite, session, token, tool, tier or paired chat",
                         "content": {
                             "application/json": {
                                 "schema": {
@@ -3680,7 +4225,7 @@
                         }
                     },
                     "404": {
-                        "description": "No such user, invite, session, token, tool or tier",
+                        "description": "No such user, invite, session, token, tool, tier or paired chat",
                         "content": {
                             "application/json": {
                                 "schema": {
@@ -3792,7 +4337,207 @@
                         }
                     },
                     "404": {
-                        "description": "No such user, invite, session, token, tool or tier",
+                        "description": "No such user, invite, session, token, tool, tier or paired chat",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ErrorDetail"
+                                }
+                            }
+                        }
+                    },
+                    "409": {
+                        "description": "The last owner cannot go, or an action tool cannot be tested",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ErrorDetail"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/v1/admin/telegram/pairing": {
+            "post": {
+                "tags": [
+                    "admin: changes"
+                ],
+                "summary": "Start pairing a Telegram chat: a one-time code, as `ira telegram pair` prints",
+                "operationId": "start_telegram_pairing",
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "anyOf": [
+                                    {
+                                        "$ref": "#/components/schemas/TelegramPairingRequest"
+                                    },
+                                    {
+                                        "type": "null"
+                                    }
+                                ],
+                                "title": "Body"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/TelegramPairing"
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Bad input",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ErrorDetail"
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "No credential, or an invalid one",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ErrorDetail"
+                                }
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "Not allowed: role, token, or a missing CSRF header",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ErrorDetail"
+                                }
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "No such user, invite, session, token, tool, tier or paired chat",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ErrorDetail"
+                                }
+                            }
+                        }
+                    },
+                    "409": {
+                        "description": "The last owner cannot go, or an action tool cannot be tested",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ErrorDetail"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "HTTPBearer": []
+                    }
+                ]
+            }
+        },
+        "/v1/admin/telegram/chats/{chat_id}": {
+            "delete": {
+                "tags": [
+                    "admin: changes"
+                ],
+                "summary": "Unpair a Telegram chat; it gets nothing from the bot until paired again",
+                "operationId": "unpair_telegram_chat",
+                "security": [
+                    {
+                        "HTTPBearer": []
+                    }
+                ],
+                "parameters": [
+                    {
+                        "name": "chat_id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "integer",
+                            "title": "Chat Id"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/OkResponse"
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Bad input",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ErrorDetail"
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "No credential, or an invalid one",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ErrorDetail"
+                                }
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "Not allowed: role, token, or a missing CSRF header",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ErrorDetail"
+                                }
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "No such user, invite, session, token, tool, tier or paired chat",
                         "content": {
                             "application/json": {
                                 "schema": {
@@ -3827,6 +4572,70 @@
     },
     "components": {
         "schemas": {
+            "ActionCounts": {
+                "properties": {
+                    "since": {
+                        "anyOf": [
+                            {
+                                "type": "number"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Since",
+                        "description": "Only actions proposed at or after this (epoch seconds); null for all time."
+                    },
+                    "total": {
+                        "type": "integer",
+                        "title": "Total",
+                        "description": "Every action counted, whatever its status."
+                    },
+                    "pending": {
+                        "type": "integer",
+                        "title": "Pending",
+                        "description": "Waiting for a PIN, and not yet expired.",
+                        "default": 0
+                    },
+                    "executing": {
+                        "type": "integer",
+                        "title": "Executing",
+                        "description": "Confirmed and running right now.",
+                        "default": 0
+                    },
+                    "executed": {
+                        "type": "integer",
+                        "title": "Executed",
+                        "description": "Confirmed and ran.",
+                        "default": 0
+                    },
+                    "failed": {
+                        "type": "integer",
+                        "title": "Failed",
+                        "description": "Confirmed, ran and failed.",
+                        "default": 0
+                    },
+                    "cancelled": {
+                        "type": "integer",
+                        "title": "Cancelled",
+                        "description": "Dropped by someone before it ran.",
+                        "default": 0
+                    },
+                    "expired": {
+                        "type": "integer",
+                        "title": "Expired",
+                        "description": "Nobody confirmed it in time.",
+                        "default": 0
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "since",
+                    "total"
+                ],
+                "title": "ActionCounts",
+                "description": "Proposed actions by status, over all time or since a moment.\n\nA proposal past its expiry counts as expired, never pending, here as in\nevery list."
+            },
             "ActionEvent": {
                 "properties": {
                     "type": {
@@ -3890,6 +4699,18 @@
                             }
                         ],
                         "title": "Locked Seconds"
+                    },
+                    "locked_until": {
+                        "anyOf": [
+                            {
+                                "type": "number"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Locked Until",
+                        "description": "When the wrong-PIN lock ends (epoch seconds); null when actions are not locked. locked_seconds is the same moment as seconds from now."
                     }
                 },
                 "type": "object",
@@ -3938,7 +4759,8 @@
                                 "type": "null"
                             }
                         ],
-                        "title": "Channel"
+                        "title": "Channel",
+                        "description": "Where it was proposed: web, api or telegram."
                     },
                     "actor": {
                         "anyOf": [
@@ -3950,7 +4772,7 @@
                             }
                         ],
                         "title": "Actor",
-                        "description": "Who proposed it."
+                        "description": "Who proposed it. Who: the person's email (older rows may hold another name, such as owner or telegram:<name>). Never the channel; that is in channel."
                     },
                     "created_at": {
                         "type": "number",
@@ -3988,7 +4810,19 @@
                             }
                         ],
                         "title": "Decided By",
-                        "description": "Who confirmed or cancelled it, from the audit log."
+                        "description": "Who confirmed or cancelled it, from the audit log: an email, as actor."
+                    },
+                    "decided_channel": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Decided Channel",
+                        "description": "Where it was confirmed or cancelled: web, api or telegram."
                     },
                     "decided_at": {
                         "anyOf": [
@@ -4134,6 +4968,18 @@
                         "title": "User Agent",
                         "description": "The browser's User-Agent at sign-in, cut to 200 characters; null when none was sent or the session is older than this field."
                     },
+                    "device": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Device",
+                        "description": "A short label read from user_agent on the server, such as \"Chrome on macOS\", \"Safari on iPhone\" or \"curl\"; null when there is no user_agent to read."
+                    },
                     "user_id": {
                         "type": "integer",
                         "title": "User Id"
@@ -4141,6 +4987,11 @@
                     "email": {
                         "type": "string",
                         "title": "Email"
+                    },
+                    "role": {
+                        "type": "string",
+                        "title": "Role",
+                        "description": "That user's role now: owner, admin, staff or viewer."
                     }
                 },
                 "type": "object",
@@ -4151,7 +5002,8 @@
                     "expires_at",
                     "current",
                     "user_id",
-                    "email"
+                    "email",
+                    "role"
                 ],
                 "title": "AdminSessionRow"
             },
@@ -4373,7 +5225,8 @@
                                 "type": "null"
                             }
                         ],
-                        "title": "Actor"
+                        "title": "Actor",
+                        "description": "Who: the person's email (older rows may hold another name, such as owner or telegram:<name>). Never the channel; that is in channel."
                     },
                     "channel": {
                         "anyOf": [
@@ -4384,7 +5237,8 @@
                                 "type": "null"
                             }
                         ],
-                        "title": "Channel"
+                        "title": "Channel",
+                        "description": "web, api, telegram or cli."
                     },
                     "detail": {
                         "anyOf": [
@@ -4442,7 +5296,16 @@
                     },
                     "tried": {
                         "type": "string",
-                        "title": "Tried"
+                        "title": "Tried",
+                        "description": "The models tried, in order, as provider:model references joined by commas with no spaces (\"openai:gpt-4o-mini,demo:router\"). tried_list has them split."
+                    },
+                    "tried_list": {
+                        "items": {
+                            "type": "string"
+                        },
+                        "type": "array",
+                        "title": "Tried List",
+                        "description": "The models tried, in order: tried, split at commas."
                     },
                     "attempts": {
                         "type": "integer",
@@ -4517,7 +5380,20 @@
                     },
                     "actor": {
                         "type": "string",
-                        "title": "Actor"
+                        "title": "Actor",
+                        "description": "Who: the person's email (older rows may hold another name, such as owner or telegram:<name>). Never the channel; that is in channel."
+                    },
+                    "channel": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Channel",
+                        "description": "Where the change was made: web (a signed-in session). Older rows that named no channel give it from their actor."
                     },
                     "what": {
                         "type": "string",
@@ -4564,7 +5440,19 @@
                     "detail": {
                         "additionalProperties": true,
                         "type": "object",
-                        "title": "Detail"
+                        "title": "Detail",
+                        "description": "Untyped details kept for older clients. For http, host and port are what `ira serve` bound; address has them typed."
+                    },
+                    "address": {
+                        "anyOf": [
+                            {
+                                "$ref": "#/components/schemas/ServerAddress"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "description": "For the http channel only: where it listens and is opened."
                     }
                 },
                 "type": "object",
@@ -4593,11 +5481,13 @@
                 "properties": {
                     "id": {
                         "type": "string",
-                        "title": "Id"
+                        "title": "Id",
+                        "description": "The stored id, e.g. http:3:kitchen or telegram:5550100."
                     },
                     "channel": {
                         "type": "string",
-                        "title": "Channel"
+                        "title": "Channel",
+                        "description": "Where it started: web, api or telegram."
                     },
                     "user_id": {
                         "anyOf": [
@@ -4608,7 +5498,8 @@
                                 "type": "null"
                             }
                         ],
-                        "title": "User Id"
+                        "title": "User Id",
+                        "description": "Whose it is; null for rows from before accounts."
                     },
                     "email": {
                         "anyOf": [
@@ -4619,7 +5510,8 @@
                                 "type": "null"
                             }
                         ],
-                        "title": "Email"
+                        "title": "Email",
+                        "description": "That user's email."
                     },
                     "started_at": {
                         "type": "number",
@@ -4627,11 +5519,13 @@
                     },
                     "last_at": {
                         "type": "number",
-                        "title": "Last At"
+                        "title": "Last At",
+                        "description": "Its latest message."
                     },
                     "turns": {
                         "type": "integer",
-                        "title": "Turns"
+                        "title": "Turns",
+                        "description": "Questions asked in it."
                     },
                     "preview": {
                         "anyOf": [
@@ -4657,6 +5551,40 @@
                     "turns"
                 ],
                 "title": "ConversationRow"
+            },
+            "CoolingReason": {
+                "properties": {
+                    "error_kind": {
+                        "type": "string",
+                        "title": "Error Kind",
+                        "description": "The last error's class: capacity, timeout, auth, bad_request, server, network or error."
+                    },
+                    "status": {
+                        "anyOf": [
+                            {
+                                "type": "integer"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Status",
+                        "description": "The HTTP status, when the provider answered one."
+                    },
+                    "message": {
+                        "type": "string",
+                        "title": "Message",
+                        "description": "A short sentence of the server's own, such as: The provider is busy or rate-limited (HTTP 429)."
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "error_kind",
+                    "status",
+                    "message"
+                ],
+                "title": "CoolingReason",
+                "description": "Why a model is on a cool-down. Never the provider's own text, a key or a prompt."
             },
             "CostDay": {
                 "properties": {
@@ -4929,6 +5857,18 @@
                         "type": "string",
                         "title": "Path",
                         "description": "Open this path on the server to accept the invitation."
+                    },
+                    "url": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Url",
+                        "description": "The whole link to send: public_url followed by path, when public_url is set; null otherwise (join the server's origin and path yourself)."
                     }
                 },
                 "type": "object",
@@ -5049,6 +5989,45 @@
                 ],
                 "title": "LoginRequest"
             },
+            "MessageAction": {
+                "properties": {
+                    "id": {
+                        "type": "string",
+                        "title": "Id",
+                        "description": "The action's id, for /v1/actions/{id}/confirm or cancel."
+                    },
+                    "tool": {
+                        "type": "string",
+                        "title": "Tool",
+                        "description": "The action tool it would run."
+                    },
+                    "summary": {
+                        "type": "string",
+                        "title": "Summary",
+                        "description": "What it would do, in words written by the tool's code."
+                    },
+                    "status": {
+                        "type": "string",
+                        "title": "Status",
+                        "description": "pending, executing, executed, failed, cancelled or expired. A proposal past expires_at reads expired, never pending."
+                    },
+                    "expires_at": {
+                        "type": "number",
+                        "title": "Expires At",
+                        "description": "When it stops waiting for a PIN (epoch seconds)."
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "id",
+                    "tool",
+                    "summary",
+                    "status",
+                    "expires_at"
+                ],
+                "title": "MessageAction",
+                "description": "The action a tool call proposed, as it stands now (not as it was then)."
+            },
             "MessageRow": {
                 "properties": {
                     "id": {
@@ -5074,7 +6053,7 @@
                             }
                         ],
                         "title": "Content",
-                        "description": "For role tool: the tool's result as JSON text."
+                        "description": "For role tool: the tool's result as JSON text, exactly as the model saw it. A proposal's result always reads pending_confirmation; action has its status now."
                     },
                     "tool_calls": {
                         "items": {
@@ -5107,6 +6086,29 @@
                         ],
                         "title": "Name",
                         "description": "For role tool: the tool's name."
+                    },
+                    "model": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Model",
+                        "description": "For role assistant: the provider:model that wrote it (each tool round can fall back to another). null when no model wrote it (an error or the step limit), for other roles, and for messages stored before this field."
+                    },
+                    "action": {
+                        "anyOf": [
+                            {
+                                "$ref": "#/components/schemas/MessageAction"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "description": "For a tool result that proposed an action: that action now, with its current status. null for every other message, and for a proposal stored before this field whose action could not be matched."
                     }
                 },
                 "type": "object",
@@ -5255,6 +6257,22 @@
                         "type": "object",
                         "title": "Cooling",
                         "description": "Models on a cool-down: seconds left."
+                    },
+                    "cooling_reasons": {
+                        "additionalProperties": {
+                            "$ref": "#/components/schemas/CoolingReason"
+                        },
+                        "type": "object",
+                        "title": "Cooling Reasons",
+                        "description": "For each model in cooling (the same keys): why it is cooling down."
+                    },
+                    "voices": {
+                        "items": {
+                            "$ref": "#/components/schemas/VoiceOption"
+                        },
+                        "type": "array",
+                        "title": "Voices",
+                        "description": "Valid voice ids for the text-to-speech provider in use: for polly, its neural voices for en-IN, hi-IN, en-US and en-GB; for openai, the voices every model accepts; empty when text-to-speech is off. A static list; ira.yaml may name others."
                     }
                 },
                 "type": "object",
@@ -5330,7 +6348,17 @@
                     "since": {
                         "type": "number",
                         "title": "Since",
-                        "description": "Start of today, server local time (epoch seconds)."
+                        "description": "The server's local midnight today (epoch seconds). Every count here is since this moment, in the server's time zone (timezone), not the viewer's."
+                    },
+                    "since_iso": {
+                        "type": "string",
+                        "title": "Since Iso",
+                        "description": "since as ISO 8601 with the server's UTC offset, e.g. 2026-10-12T00:00:00+05:30."
+                    },
+                    "timezone": {
+                        "type": "string",
+                        "title": "Timezone",
+                        "description": "The server's time zone: an IANA name such as Asia/Kolkata when the system names one, else its UTC offset such as +05:30."
                     },
                     "questions": {
                         "type": "integer",
@@ -5393,7 +6421,8 @@
                             "type": "integer"
                         },
                         "type": "object",
-                        "title": "Actions"
+                        "title": "Actions",
+                        "description": "Actions proposed today, by status. A proposal past its expiry counts as expired, never pending."
                     },
                     "conversations": {
                         "type": "integer",
@@ -5407,6 +6436,8 @@
                 "type": "object",
                 "required": [
                     "since",
+                    "since_iso",
+                    "timezone",
                     "questions",
                     "calls",
                     "failures",
@@ -5420,7 +6451,8 @@
                     "conversations",
                     "users"
                 ],
-                "title": "Overview"
+                "title": "Overview",
+                "description": "Today at a glance. \"Today\" starts at the server's local midnight: see since."
             },
             "PinSetRequest": {
                 "properties": {
@@ -5467,6 +6499,42 @@
                         ],
                         "title": "Locked Seconds",
                         "description": "Actions are locked after wrong PINs, for this long."
+                    },
+                    "locked_until": {
+                        "anyOf": [
+                            {
+                                "type": "number"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Locked Until",
+                        "description": "When the wrong-PIN lock ends (epoch seconds); null when actions are not locked. locked_seconds is the same moment as seconds from now."
+                    },
+                    "pin_set_at": {
+                        "anyOf": [
+                            {
+                                "type": "number"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Pin Set At",
+                        "description": "When you last set your PIN (epoch seconds). null without a PIN, and for a PIN set before IRA recorded this."
+                    },
+                    "pin_min_length": {
+                        "type": "integer",
+                        "title": "Pin Min Length",
+                        "description": "The fewest digits a PIN may have.",
+                        "default": 4
+                    },
+                    "pin_max_length": {
+                        "type": "integer",
+                        "title": "Pin Max Length",
+                        "description": "The most digits a PIN may have.",
+                        "default": 12
                     }
                 },
                 "type": "object",
@@ -5636,6 +6704,18 @@
                         ],
                         "title": "Locked Seconds"
                     },
+                    "locked_until": {
+                        "anyOf": [
+                            {
+                                "type": "number"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Locked Until",
+                        "description": "When the wrong-PIN lock ends (epoch seconds); null when actions are not locked. locked_seconds is the same moment as seconds from now."
+                    },
                     "wrong_pins": {
                         "type": "integer",
                         "title": "Wrong Pins"
@@ -5704,6 +6784,58 @@
                     "action_rules"
                 ],
                 "title": "SecurityView"
+            },
+            "ServerAddress": {
+                "properties": {
+                    "host": {
+                        "type": "string",
+                        "title": "Host",
+                        "description": "The address `ira serve` bound: its --host, else channels.http.host."
+                    },
+                    "port": {
+                        "type": "integer",
+                        "title": "Port",
+                        "description": "The port `ira serve` bound: its --port, else channels.http.port."
+                    },
+                    "configured_host": {
+                        "type": "string",
+                        "title": "Configured Host",
+                        "description": "channels.http.host in ira.yaml."
+                    },
+                    "configured_port": {
+                        "type": "integer",
+                        "title": "Configured Port",
+                        "description": "channels.http.port in ira.yaml."
+                    },
+                    "public_url": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Public Url",
+                        "description": "channels.http.public_url, or IRA_PUBLIC_URL: where people reach the server (for example on a phone, through a TLS proxy). null when not set."
+                    },
+                    "url": {
+                        "type": "string",
+                        "title": "Url",
+                        "description": "The base URL to open: public_url when set, else http://host:port (127.0.0.1 for a wildcard host such as 0.0.0.0)."
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "host",
+                    "port",
+                    "configured_host",
+                    "configured_port",
+                    "public_url",
+                    "url"
+                ],
+                "title": "ServerAddress",
+                "description": "Where the server listens, and where people open it."
             },
             "SessionResponse": {
                 "properties": {
@@ -5792,6 +6924,18 @@
                         ],
                         "title": "User Agent",
                         "description": "The browser's User-Agent at sign-in, cut to 200 characters; null when none was sent or the session is older than this field."
+                    },
+                    "device": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Device",
+                        "description": "A short label read from user_agent on the server, such as \"Chrome on macOS\", \"Safari on iPhone\" or \"curl\"; null when there is no user_agent to read."
                     }
                 },
                 "type": "object",
@@ -6122,6 +7266,238 @@
                     }
                 }
             },
+            "TelegramChat": {
+                "properties": {
+                    "chat_id": {
+                        "type": "integer",
+                        "title": "Chat Id",
+                        "description": "Telegram's chat id; DELETE .../telegram/chats/{chat_id}."
+                    },
+                    "name": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Name",
+                        "description": "The chat's name as Telegram gives it, e.g. \"Riley Demo (@riley)\"; null for a chat paired before IRA kept names, until it next sends a message."
+                    },
+                    "paired_at": {
+                        "type": "number",
+                        "title": "Paired At",
+                        "description": "When it was paired (epoch seconds)."
+                    },
+                    "user_id": {
+                        "type": "integer",
+                        "title": "User Id",
+                        "description": "The account the chat acts as."
+                    },
+                    "email": {
+                        "type": "string",
+                        "title": "Email",
+                        "description": "That account's email."
+                    },
+                    "role": {
+                        "type": "string",
+                        "title": "Role",
+                        "description": "That account's role now."
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "chat_id",
+                    "name",
+                    "paired_at",
+                    "user_id",
+                    "email",
+                    "role"
+                ],
+                "title": "TelegramChat",
+                "description": "A private chat paired with an account: it acts as that user."
+            },
+            "TelegramPairing": {
+                "properties": {
+                    "code": {
+                        "type": "string",
+                        "title": "Code",
+                        "description": "Eight characters; works once, until expires_at."
+                    },
+                    "command": {
+                        "type": "string",
+                        "title": "Command",
+                        "description": "What to send the bot from the chat: /pair CODE."
+                    },
+                    "expires_at": {
+                        "type": "number",
+                        "title": "Expires At",
+                        "description": "When the code stops working (epoch seconds)."
+                    },
+                    "user_id": {
+                        "type": "integer",
+                        "title": "User Id",
+                        "description": "The account the chat will act as."
+                    },
+                    "email": {
+                        "type": "string",
+                        "title": "Email",
+                        "description": "That account's email."
+                    },
+                    "bot_link": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Bot Link",
+                        "description": "https://t.me/<bot>, when the bot's name is known."
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "code",
+                    "command",
+                    "expires_at",
+                    "user_id",
+                    "email",
+                    "bot_link"
+                ],
+                "title": "TelegramPairing",
+                "description": "A one-time pairing code. Shown once; only its hash is stored."
+            },
+            "TelegramPairingRequest": {
+                "properties": {
+                    "user_id": {
+                        "anyOf": [
+                            {
+                                "type": "integer"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "User Id",
+                        "description": "Whose account the chat will act as; default you. Someone else's needs the users permission (owner)."
+                    }
+                },
+                "type": "object",
+                "title": "TelegramPairingRequest"
+            },
+            "TelegramView": {
+                "properties": {
+                    "enabled": {
+                        "type": "boolean",
+                        "title": "Enabled",
+                        "description": "channels.telegram.enabled in ira.yaml."
+                    },
+                    "token_env": {
+                        "type": "string",
+                        "title": "Token Env",
+                        "description": "The variable that holds the bot token."
+                    },
+                    "token_present": {
+                        "type": "boolean",
+                        "title": "Token Present",
+                        "description": "Whether that variable is set. Never its value."
+                    },
+                    "bot_username": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Bot Username",
+                        "description": "The bot's username from Telegram's getMe, asked at most once an hour; null while no token is set or Telegram has not answered."
+                    },
+                    "bot_link": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Bot Link",
+                        "description": "https://t.me/<bot_username>, to open the bot."
+                    },
+                    "bot_error": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Bot Error",
+                        "description": "Why getMe failed, if it did (tried again after a minute). Never the token."
+                    },
+                    "running": {
+                        "type": "boolean",
+                        "title": "Running",
+                        "description": "Whether the bot is polling Telegram right now."
+                    },
+                    "last_poll_at": {
+                        "anyOf": [
+                            {
+                                "type": "number"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Last Poll At",
+                        "description": "When the bot last heard from Telegram (epoch seconds)."
+                    },
+                    "last_error": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Last Error",
+                        "description": "The last polling error, if any."
+                    },
+                    "pairing_seconds": {
+                        "type": "integer",
+                        "title": "Pairing Seconds",
+                        "description": "How long a pairing code works."
+                    },
+                    "chats": {
+                        "items": {
+                            "$ref": "#/components/schemas/TelegramChat"
+                        },
+                        "type": "array",
+                        "title": "Chats",
+                        "description": "Every paired chat, newest pairing first; removed users' chats are gone."
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "enabled",
+                    "token_env",
+                    "token_present",
+                    "bot_username",
+                    "bot_link",
+                    "running",
+                    "pairing_seconds",
+                    "chats"
+                ],
+                "title": "TelegramView",
+                "description": "The Telegram channel: its bot, its state and the chats paired with it."
+            },
             "TierOrderRequest": {
                 "properties": {
                     "order": {
@@ -6332,7 +7708,12 @@
                     },
                     "kind": {
                         "type": "string",
-                        "title": "Kind"
+                        "enum": [
+                            "read",
+                            "action"
+                        ],
+                        "title": "Kind",
+                        "description": "read runs when the model calls it; action only proposes, and runs after a PIN."
                     },
                     "description": {
                         "type": "string",
@@ -6478,14 +7859,17 @@
                 "properties": {
                     "ok": {
                         "type": "boolean",
-                        "title": "Ok"
+                        "title": "Ok",
+                        "description": "false when the parameters did not fit the tool's schema, the tool raised an error, or it gave no result within 30 seconds. Still HTTP 200."
                     },
                     "seconds": {
                         "type": "number",
-                        "title": "Seconds"
+                        "title": "Seconds",
+                        "description": "How long the run took."
                     },
                     "result": {
-                        "title": "Result"
+                        "title": "Result",
+                        "description": "What the tool returned, when ok; cut at 20,000 characters."
                     },
                     "error": {
                         "anyOf": [
@@ -6496,7 +7880,8 @@
                                 "type": "null"
                             }
                         ],
-                        "title": "Error"
+                        "title": "Error",
+                        "description": "Why it failed, when not ok. Bad parameters read \"invalid parameters: ...\"."
                     }
                 },
                 "type": "object",
@@ -6504,7 +7889,8 @@
                     "ok",
                     "seconds"
                 ],
-                "title": "ToolTestResult"
+                "title": "ToolTestResult",
+                "description": "A test run of a read tool. The HTTP status is 200 whether or not the tool worked."
             },
             "ToolView": {
                 "properties": {
@@ -6625,6 +8011,43 @@
                     "type"
                 ],
                 "title": "ValidationError"
+            },
+            "VoiceOption": {
+                "properties": {
+                    "id": {
+                        "type": "string",
+                        "title": "Id",
+                        "description": "The value for voice.tts.voice, or for PATCH /v1/admin/settings."
+                    },
+                    "languages": {
+                        "items": {
+                            "type": "string"
+                        },
+                        "type": "array",
+                        "title": "Languages",
+                        "description": "BCP-47 codes it speaks, e.g. en-IN; empty when it speaks the language of whatever text it is given."
+                    },
+                    "gender": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Gender",
+                        "description": "female or male, where the provider says."
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "id",
+                    "languages",
+                    "gender"
+                ],
+                "title": "VoiceOption",
+                "description": "A voice id the configured text-to-speech provider accepts."
             }
         },
         "securitySchemes": {

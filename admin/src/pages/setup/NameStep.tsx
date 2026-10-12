@@ -4,7 +4,57 @@ import { useToast } from '../../ui/toast';
 import { useApi } from '../../ui/useApi';
 import { Body } from './Body';
 import { StepNav } from './StepNav';
-import { detailOf, settingsUpdate, voiceNote } from './steps';
+import { detailOf, settingsUpdate, voiceLabel, voiceNote } from './steps';
+
+// The voice id, with the voices the text-to-speech in use knows as a list
+// to pick from. Any other id is still accepted, as the server says.
+function VoiceField({
+  id,
+  value,
+  placeholder,
+  onChange,
+}: {
+  id: string;
+  value: string;
+  placeholder: string;
+  onChange: (value: string) => void;
+}) {
+  const models = useApi((signal) => admin.models(signal), []);
+  const voices = models.data?.voices ?? [];
+  const hasList = voices.length > 0;
+  const listId = `${id}-list`;
+  return (
+    <div className="field">
+      <label htmlFor={id}>Voice</label>
+      {/* Some browsers hide a datalist's suggestions when autofill is off,
+          so autofill stays on only while there is a list. */}
+      <input
+        id={id}
+        type="text"
+        maxLength={64}
+        autoComplete={hasList ? undefined : 'off'}
+        list={hasList ? listId : undefined}
+        placeholder={placeholder}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+      />
+      {hasList && (
+        <datalist id={listId}>
+          {voices.map((voice) => (
+            <option key={voice.id} value={voice.id}>
+              {voiceLabel(voice)}
+            </option>
+          ))}
+        </datalist>
+      )}
+      <p className="field-hint">
+        {hasList
+          ? 'Voices for the text-to-speech in use; another id is accepted too.'
+          : 'The text-to-speech voice id: for Polly e.g. Joanna, for OpenAI e.g. alloy.'}
+      </p>
+    </div>
+  );
+}
 
 function NameForm({ data, onNext }: { data: SettingsView; onNext: () => void }) {
   const toast = useToast();
@@ -52,19 +102,7 @@ function NameForm({ data, onNext }: { data: SettingsView; onNext: () => void }) 
         <p className="field-hint">How the assistant introduces itself in the app and on Telegram.</p>
       </div>
       {data.voice.editable ? (
-        <div className="field">
-          <label htmlFor={`${id}-voice`}>Voice</label>
-          <input
-            id={`${id}-voice`}
-            type="text"
-            maxLength={64}
-            autoComplete="off"
-            placeholder={data.voice.default ?? ''}
-            value={voice}
-            onChange={(e) => setVoice(e.target.value)}
-          />
-          <p className="field-hint">The text-to-speech voice id: for Polly e.g. Joanna, for OpenAI e.g. alloy.</p>
-        </div>
+        <VoiceField id={`${id}-voice`} value={voice} placeholder={data.voice.default ?? ''} onChange={setVoice} />
       ) : (
         <p className="inline-note">{voiceNote(data)}</p>
       )}
