@@ -337,7 +337,10 @@ $("#logout").addEventListener("click", async () => {
 
 // --- settings sheet ---------------------------------------------------------------
 
-$("#menu-open").addEventListener("click", () => $("#menu").showModal());
+$("#menu-open").addEventListener("click", () => {
+  $("#menu").showModal();
+  loadHistory();
+});
 $("#menu-close").addEventListener("click", () => $("#menu").close());
 $("#menu").addEventListener("click", (event) => {
   if (event.target === event.currentTarget) event.currentTarget.close();
@@ -441,20 +444,115 @@ function remember(turn) {
   });
 }
 
-function restoreToday() {
+function renderTurns(turns) {
+  $("#messages").replaceChildren();
+  for (const turn of turns) {
+    const li = addTurn(turn.role, turn.text);
+    if (turn.role === "ira" && turn.how) explain(li, turn.how);
+  }
+  $("#hero").hidden = turns.length === 0 ? false : true;
+}
+
+// The server's transcript of a conversation, as the turns this page shows.
+function turnsFromTranscript(messages) {
+  const turns = [];
+  let how = { tools: [], model: null };
+  for (const m of messages) {
+    if (m.role === "user") {
+      turns.push({ role: "user", text: m.content || "" });
+      how = { tools: [], model: null };
+    } else if (m.role === "assistant") {
+      for (const call of m.tool_calls || []) how.tools.push({ id: call.id, name: call.name, arguments: call.arguments });
+      if (m.content) {
+        turns.push({ role: "ira", text: m.content, how });
+        how = { tools: [], model: null };
+      }
+    } else if (m.role === "tool") {
+      const call = how.tools.find((t) => t.id === m.tool_call_id);
+      if (call) call.result = m.content;
+    }
+  }
+  return turns;
+}
+
+async function openConversation(id) {
+  const response = await api(`/v1/conversations/${encodeURIComponent(id)}`);
+  if (response.status === 401) return sessionExpired();
+  if (!response.ok) throw new Error(await detail(response));
+  const turns = turnsFromTranscript(await response.json());
+  state.conversationId = id;
+  state.turns = turns;
+  renderTurns(turns);
+  storage.set("ira.today", { user: state.info.user.id, day: today(), conversationId: id, turns });
+}
+
+async function restoreToday() {
   $("#messages").replaceChildren();
   state.turns = [];
   state.conversationId = null;
+  $("#hero").hidden = false;
   const saved = storage.get("ira.today");
-  if (saved && saved.user === state.info.user.id && saved.day === today() && Array.isArray(saved.turns)) {
-    state.conversationId = saved.conversationId;
-    state.turns = saved.turns;
-    for (const turn of saved.turns) {
-      const li = addTurn(turn.role, turn.text);
-      if (turn.role === "ira" && turn.how) explain(li, turn.how);
+  if (!saved || saved.user !== state.info.user.id || saved.day !== today()) return;
+  if (saved.conversationId) {
+    try {
+      await openConversation(saved.conversationId); // the server's copy is the truth
+      return;
+    } catch {
+      /* fall back to what this device remembered */
     }
   }
-  $("#hero").hidden = state.turns.length > 0;
+  if (Array.isArray(saved.turns) && saved.turns.length) {
+    state.conversationId = saved.conversationId;
+    state.turns = saved.turns;
+    renderTurns(saved.turns);
+  }
+}
+
+async function loadHistory() {
+  const list = $("#history-list");
+  list.replaceChildren();
+  let rows = [];
+  try {
+    const response = await api("/v1/conversations?limit=20");
+    if (response.ok) rows = await response.json();
+  } catch {
+    /* the list is a convenience; the menu still works without it */
+  }
+  const start = new Date();
+  start.setHours(0, 0, 0, 0);
+  rows = rows.filter((row) => row.last_at * 1000 >= start.getTime());
+  if (!rows.length) {
+    const empty = document.createElement("li");
+    empty.className = "history-empty";
+    empty.textContent = "No conversations yet today.";
+    list.append(empty);
+    return;
+  }
+  for (const row of rows) {
+    const item = document.createElement("li");
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "history-item";
+    if (row.id === state.conversationId) button.setAttribute("aria-current", "true");
+    const text = document.createElement("span");
+    text.className = "history-text";
+    text.textContent = row.preview || `Conversation at ${clockTime(new Date(row.started_at * 1000))}`;
+    const meta = document.createElement("span");
+    meta.className = "history-meta";
+    meta.textContent = `${row.turns} ${row.turns === 1 ? "turn" : "turns"} · ${clockTime(new Date(row.last_at * 1000))}`;
+    button.append(text, meta);
+    button.addEventListener("click", async () => {
+      $("#menu").close();
+      try {
+        await openConversation(row.id);
+      } catch (error) {
+        state.notice = error.message;
+        setMode("idle");
+      }
+    });
+    item.append(button);
+    list.append(item);
+  }
 }
 
 function newConversation() {
