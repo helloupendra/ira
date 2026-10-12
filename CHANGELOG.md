@@ -34,7 +34,10 @@ The admin console, a rebuilt Ira app, and the API behind both.
 - **The console API**: first-run setup with a one-time code, invitations by
   link, per-user PINs, role changes, API tokens, tool switches and tests,
   model chains and tests, settings, sessions, a change log, costs per day,
-  and typed stream events with tool arguments and results.
+  typed stream events with tool arguments and results, paging with
+  `X-Has-More`, action counts, the server's bound and public address,
+  Telegram pairing from the console, voices and cooling reasons, and the
+  model behind each stored answer.
 - **CI** gains a `frontend` job: Node 22, typecheck, tests, build, and a
   check that the committed build matches the source.
 

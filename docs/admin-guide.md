@@ -56,10 +56,12 @@ same data the app's "How Ira got this" shows the person who asked.
 ![Actions, filtered by status, with who proposed and who decided each one](images/console-actions-desktop-light.png)
 
 Everything Ira proposed, filtered by status: pending, executed, failed,
-expired or cancelled. Each action opens to show the tool, who proposed it
-and from where, who confirmed or cancelled it and when, the parameters, the
-result (or the error), and which roles may confirm it. Those roles come from
-`ira.yaml`; the console shows them and never changes them.
+expired or cancelled, with a count on each filter. Each action opens to show
+the tool, who proposed it and from where, who confirmed or cancelled it and
+when, the parameters, the result (or the error), and which roles may confirm
+it. Those roles come from `ira.yaml`; the console shows them and never
+changes them. A proposal nobody confirmed within its two minutes is shown as
+expired.
 
 ## Tools
 
@@ -89,10 +91,12 @@ here; both take effect at once and are written to the change log.
 
 ![Channels: the web app, the HTTP API, Telegram pairing and installing the app on a phone](images/console-channels-desktop-light.png)
 
-The web app, the HTTP API and Telegram, with how to connect each: creating
-a token for the API, pairing a Telegram chat, and installing the app on an
-Android phone or an iPhone. Channels themselves are configured in
-`ira.yaml`.
+The web app, the HTTP API (with the address people actually open, which
+`channels.http.public_url` or `IRA_PUBLIC_URL` sets behind a proxy) and
+Telegram: the bot, its paired chats, **Pair a chat**, which gives you the
+one-time `/pair` command to send to the bot, and Unpair. Also how to create
+a token for the API and how to install the app on an Android phone or an
+iPhone. Channels themselves are switched on in `ira.yaml`.
 
 ## Users and roles
 
@@ -111,8 +115,8 @@ The last owner cannot be removed or demoted.
 
 API tokens for programs: a label and scopes (`ask`, `voice`, `actions`,
 `admin.read`) that can only narrow your own role; the token is shown once.
-Signed-in devices, with the option to end any session or sign out everywhere
-else; the owner sees everyone's. Your own action PIN. And the rules the
+Signed-in devices ("Chrome on macOS"), with the option to end any session or
+sign out everywhere else; the owner sees everyone's, with their role. Your own action PIN. And the rules the
 server applies: how many wrong PINs lock actions and for how long, how long
 a proposal waits, how long sessions last, and which roles may confirm which
 actions.
