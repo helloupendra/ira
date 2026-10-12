@@ -1,0 +1,229 @@
+"""Request and response models for the HTTP API (they also shape the OpenAPI document)."""
+
+from __future__ import annotations
+
+from typing import Any
+
+from pydantic import BaseModel, Field
+
+CONVERSATION_ID = r"^[A-Za-z0-9_-]{1,64}$"
+
+
+class AskRequest(BaseModel):
+    text: str = Field(min_length=1, max_length=4000)
+    conversation_id: str | None = Field(
+        default=None,
+        pattern=CONVERSATION_ID,
+        description="Continue a conversation; omit to start a new one.",
+    )
+
+
+class ActionView(BaseModel):
+    id: str
+    tool: str
+    summary: str
+    status: str
+    expires_in: int = Field(description="Seconds left to confirm.")
+
+
+class AskResponse(BaseModel):
+    text: str
+    conversation_id: str
+    action: ActionView | None = Field(
+        default=None, description="An action proposed in this turn, waiting for the PIN."
+    )
+    tools_used: list[str] = Field(default_factory=list)
+    model: str | None = None
+
+
+class TranscribeResponse(BaseModel):
+    text: str
+    seconds: float
+
+
+class SpeakRequest(BaseModel):
+    text: str = Field(min_length=1, max_length=8000)
+    shorten: bool = Field(default=True, description="Strip markdown and cut long answers.")
+
+
+class ConfirmRequest(BaseModel):
+    pin: str = Field(min_length=4, max_length=12)
+
+
+class ActionOutcome(BaseModel):
+    status: str
+    message: str
+    action: ActionView | None = None
+    result: Any = None
+    attempts_left: int | None = None
+    locked_seconds: int | None = None
+
+
+class LoginRequest(BaseModel):
+    email: str = Field(max_length=254)
+    password: str = Field(max_length=1024)
+    use_cookie: bool = Field(
+        default=True,
+        description="true: an HTTP-only session cookie (browsers). "
+        "false: the session token in the response body (other clients).",
+    )
+
+
+class SetupRequest(BaseModel):
+    email: str = Field(max_length=254)
+    password: str = Field(max_length=1024)
+    setup_code: str = Field(description="Printed in the server log while no user exists.")
+
+
+class UserView(BaseModel):
+    id: int
+    email: str
+    role: str
+    created_at: float
+    last_login_at: float | None = None
+
+
+class SessionResponse(BaseModel):
+    user: UserView
+    permissions: list[str]
+    expires_at: float | None = None
+    session_token: str | None = Field(
+        default=None, description="Only when use_cookie is false. Send as a Bearer token."
+    )
+
+
+class StatusResponse(BaseModel):
+    name: str
+    version: str
+    setup_required: bool
+
+
+class ToolView(BaseModel):
+    name: str
+    kind: str
+    description: str
+
+
+class InfoResponse(BaseModel):
+    name: str
+    version: str
+    stt: str | None
+    tts: str | None
+    tools: list[ToolView]
+    user: UserView
+    permissions: list[str]
+
+
+class OkResponse(BaseModel):
+    ok: bool = True
+
+
+# Admin views.
+
+
+class ModelUsage(BaseModel):
+    model: str | None
+    calls: int
+    failures: int
+    cost_usd: float
+    avg_seconds: float
+
+
+class Overview(BaseModel):
+    since: float = Field(description="Start of today, server local time (epoch seconds).")
+    calls: int
+    failures: int
+    cost_usd: float
+    input_tokens: int
+    output_tokens: int
+    latency_p50: float | None
+    latency_p95: float | None
+    by_model: list[ModelUsage]
+    actions: dict[str, int]
+    conversations: int
+    users: int
+
+
+class CallRow(BaseModel):
+    id: int
+    at: float
+    tier: str
+    purpose: str
+    model: str | None
+    tried: str
+    attempts: int
+    ok: bool
+    error_kind: str | None
+    seconds: float
+    input_tokens: int
+    output_tokens: int
+    cost_usd: float | None
+
+
+class ConversationRow(BaseModel):
+    id: str
+    channel: str
+    user_id: int | None
+    email: str | None
+    started_at: float
+    last_at: float
+    turns: int
+
+
+class MessageRow(BaseModel):
+    id: int
+    at: float
+    role: str
+    content: str | None
+    tool_calls: list[dict[str, Any]]
+    tool_call_id: str | None
+    name: str | None
+
+
+class ActionRow(BaseModel):
+    id: str
+    tool: str
+    params: dict[str, Any]
+    summary: str
+    conversation_id: str | None
+    channel: str | None
+    actor: str | None
+    created_at: float
+    expires_at: float
+    status: str
+    result: Any = None
+    finished_at: float | None
+
+
+class AuditRow(BaseModel):
+    id: int
+    at: float
+    action_id: str | None
+    tool: str | None
+    outcome: str
+    actor: str | None
+    channel: str | None
+    detail: str | None
+
+
+class ToolDetail(BaseModel):
+    name: str
+    kind: str
+    description: str
+    parameters: dict[str, Any]
+
+
+class ChannelView(BaseModel):
+    name: str
+    enabled: bool
+    detail: dict[str, Any] = Field(default_factory=dict)
+
+
+class TokenRow(BaseModel):
+    id: str
+    label: str
+    email: str
+    scopes: str
+    created_at: float
+    last_used_at: float | None
+    revoked_at: float | None

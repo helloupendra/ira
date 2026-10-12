@@ -1,0 +1,97 @@
+# IRA configuration reference. Copy to ira.yaml (which is gitignored) and edit.
+# Secrets never go in this file: each one is named by an environment variable,
+# set in your shell or in a .env file next to this one (see .env.example).
+
+assistant:
+  name: Ira                       # can also be changed on Telegram with /name
+  business: Example Shop, a small hardware store
+  instructions: |
+    Extra guidance for the model, appended to the built-in system prompt.
+  tier: default                   # which model chain answers chat
+  max_tool_rounds: 6
+  history_messages: 30            # messages of context per conversation
+
+data_dir: ./data                  # SQLite files; relative to this file
+
+# Tool modules: a dotted module name or a path to a .py file.
+tools:
+  - ./my_tools.py
+
+models:
+  providers:
+    # Any OpenAI-compatible endpoint: OpenAI, a local llama.cpp/vLLM/Ollama
+    # server, or a hosted service. auth is "bearer" when api_key_env is set.
+    openai:
+      type: openai
+      base_url: https://api.openai.com/v1
+      api_key_env: OPENAI_API_KEY
+    local:
+      type: openai
+      base_url: http://127.0.0.1:11434/v1
+    # The Anthropic Messages API.
+    anthropic:
+      type: anthropic
+      api_key_env: ANTHROPIC_API_KEY
+    # Amazon Bedrock's OpenAI-compatible Mantle endpoint, signed with SigV4 from
+    # the default AWS credential chain (pip install "ira-assistant[aws]").
+    bedrock:
+      type: bedrock_mantle
+      region: us-east-1
+    # No network at all: keyword routing over your tools, for demos and tests.
+    demo:
+      type: fake
+
+  # A tier is a fallback chain of provider:model references. On an error,
+  # timeout or capacity refusal the next model answers, and the failing one
+  # cools down for cooldown_seconds.
+  tiers:
+    default:
+      - openai:gpt-4o-mini
+      - bedrock:openai.gpt-oss-120b
+      - demo:router
+    fast:
+      - local:llama3.1:8b
+
+  cooldown_seconds: 60
+  timeout_seconds: 60
+  max_tokens: 1024
+
+  # US dollars per million tokens, for the cost column of the call log.
+  # Illustrative numbers: check your provider's current price page.
+  prices:
+    openai:gpt-4o-mini: { input: 0.15, output: 0.60 }
+
+voice:
+  stt:
+    # chat_audio: an OpenAI-compatible chat model that accepts input_audio,
+    # e.g. Voxtral on Bedrock Mantle. whisper: the /audio/transcriptions API.
+    type: chat_audio
+    provider: bedrock
+    model: mistral.voxtral-small-24b-2507
+    vocabulary: [Ira]             # unusual words the transcriber should expect
+  tts:
+    # polly needs the aws extra and polly:SynthesizeSpeech permission.
+    type: polly
+    voice: Joanna
+    engine: neural
+    region: us-east-1
+    # type: openai
+    # provider: openai
+    # model: tts-1
+    # voice: alloy
+  max_spoken_chars: 400           # longer answers are cut at a sentence
+  max_audio_seconds: 60
+
+channels:
+  http:
+    host: 127.0.0.1               # put a TLS reverse proxy in front for remote use
+    port: 8765
+  telegram:
+    enabled: false
+    token_env: TELEGRAM_BOT_TOKEN
+    voice_replies: voice          # off | voice (answer voice with voice) | always
+
+actions:
+  expiry_seconds: 120
+  max_wrong_pins: 3
+  lock_minutes: 15

@@ -2,15 +2,18 @@
 
 from __future__ import annotations
 
-from types import SimpleNamespace
+from pathlib import Path
 from typing import Any
 
 import pytest
 
+from ira.accounts import Accounts
 from ira.assistant import Assistant
+from ira.config import Settings
 from ira.conversations import Conversations
 from ira.models.fake import ScriptedProvider
 from ira.models.gateway import Gateway
+from ira.runtime import Runtime
 from ira.store import Store
 from ira.tools.actions import ActionGuard
 from ira.tools.registry import ToolError, ToolRegistry
@@ -87,9 +90,14 @@ def make_runtime(
     registry: ToolRegistry | None = None,
     store: Store | None = None,
     clock: Any = None,
-) -> SimpleNamespace:
+    stt: Any = None,
+    tts: Any = None,
+    settings: Settings | None = None,
+    data_dir: Path | None = None,
+) -> Runtime:
     store = store or Store(":memory:")
     registry = registry if registry is not None else ToolRegistry()
+    settings = settings or Settings(data_dir=data_dir or Path("unused"))
     gateway = Gateway(
         {"fake": provider or ScriptedProvider()}, {"default": ["fake:m"]}, store=store
     )
@@ -99,11 +107,15 @@ def make_runtime(
     guard = ActionGuard(store, registry, **guard_kwargs)
     conversations = Conversations(store)
     assistant = Assistant(gateway, registry, guard, store, conversations)
-    return SimpleNamespace(
+    return Runtime(
+        settings=settings,
         store=store,
         registry=registry,
         gateway=gateway,
         guard=guard,
+        accounts=Accounts(store),
         conversations=conversations,
         assistant=assistant,
+        stt=stt,
+        tts=tts,
     )

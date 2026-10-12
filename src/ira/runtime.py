@@ -1,0 +1,221 @@
+"""Wire configuration into live objects: store, gateway, tools, voice, accounts."""
+
+from __future__ import annotations
+
+import logging
+import secrets
+from dataclasses import dataclass, field
+from typing import Any
+
+from ira.accounts import Accounts
+from ira.assistant import Assistant
+from ira.config import ConfigError, ProviderConfig, Settings, secret
+from ira.conversations import Conversations
+from ira.models.anthropic import AnthropicProvider
+from ira.models.base import ChatProvider
+from ira.models.fake import RouterProvider
+from ira.models.gateway import Gateway, Price
+from ira.models.http import Auth, BearerAuth, HeaderKeyAuth, HttpClient, NoAuth
+from ira.models.openai_compat import OpenAICompatProvider
+from ira.store import Store
+from ira.tools.actions import ActionGuard
+from ira.tools.loader import load_tool_modules
+from ira.tools.registry import ToolContext, ToolRegistry, default_registry
+from ira.voice.providers import (
+    ChatAudioSTT,
+    FakeSTT,
+    FakeTTS,
+    OpenAITTS,
+    PollyTTS,
+    SpeechToText,
+    TextToSpeech,
+    WhisperSTT,
+)
+
+log = logging.getLogger("ira")
+
+DEFAULT_BASE_URLS = {
+    "openai": "https://api.openai.com/v1",
+    "anthropic": "https://api.anthropic.com",
+}
+
+
+@dataclass
+class Runtime:
+    settings: Settings
+    store: Store
+    registry: ToolRegistry
+    gateway: Gateway
+    guard: ActionGuard
+    accounts: Accounts
+    conversations: Conversations
+    assistant: Assistant
+    stt: SpeechToText | None = None
+    tts: TextToSpeech | None = None
+    http_clients: list[HttpClient] = field(default_factory=list)
+    channel_state: dict[str, dict[str, Any]] = field(default_factory=dict)
+    setup_code: str | None = None
+
+    def ensure_setup_code(self) -> str | None:
+        """While no user exists, a one-time code guards the web setup form."""
+        if self.accounts.count() > 0:
+            self.setup_code = None
+        elif self.setup_code is None:
+            self.setup_code = "-".join(secrets.token_hex(2).upper() for _ in range(3))
+        return self.setup_code
+
+    async def aclose(self) -> None:
+        for client in self.http_clients:
+            await client.aclose()
+
+
+def _auth(name: str, cfg: ProviderConfig) -> Auth:
+    mode = cfg.auth
+    if mode == "auto":
+        if cfg.type == "anthropic":
+            mode = "x-api-key"
+        elif cfg.type == "bedrock_mantle":
+            mode = "bearer" if cfg.api_key_env else "sigv4"
+        else:
+            mode = "bearer" if cfg.api_key_env else "none"
+    if mode == "none":
+        return NoAuth()
+    if mode == "sigv4":
+        from ira.models.aws import SigV4Auth
+
+        return SigV4Auth(cfg.region or "us-east-1", cfg.sigv4_service)
+    key = secret(cfg.api_key_env, purpose=f"provider '{name}'")
+    if key is None:
+        raise ConfigError(f"provider '{name}' uses auth '{mode}' but sets no api_key_env")
+    return HeaderKeyAuth(key) if mode == "x-api-key" else BearerAuth(key)
+
+
+def build_http(name: str, cfg: ProviderConfig) -> HttpClient:
+    if cfg.type == "fake":
+        raise ConfigError(f"provider '{name}' is a fake and has no HTTP endpoint")
+    if cfg.base_url:
+        base_url = cfg.base_url
+    elif cfg.type == "bedrock_mantle":
+        from ira.models.aws import mantle_base_url
+
+        base_url = mantle_base_url(cfg.region or "us-east-1")
+    else:
+        base_url = DEFAULT_BASE_URLS[cfg.type]
+    return HttpClient(base_url, _auth(name, cfg), headers=dict(cfg.headers), label=name)
+
+
+def build_provider(name: str, cfg: ProviderConfig, http: HttpClient | None) -> ChatProvider:
+    if cfg.type == "fake":
+        return RouterProvider()
+    assert http is not None
+    if cfg.type == "anthropic":
+        return AnthropicProvider(http)
+    return OpenAICompatProvider(
+        http, max_tokens_field=cfg.max_tokens_field, stream_usage=cfg.stream_usage
+    )
+
+
+def build_runtime(
+    settings: Settings,
+    *,
+    registry: ToolRegistry | None = None,
+    store: Store | None = None,
+    load_tools: bool = True,
+) -> Runtime:
+    store = store or Store(settings.db_path)
+    registry = registry if registry is not None else default_registry
+    if load_tools and settings.tools:
+        ctx = ToolContext(data_dir=settings.data_dir, config_dir=settings.config_dir)
+        load_tool_modules(settings.tools, ctx)
+
+    used = {ref.partition(":")[0] for refs in settings.models.tiers.values() for ref in refs}
+    voice_providers = {settings.voice.stt.provider, settings.voice.tts.provider} - {None}
+    https: dict[str, HttpClient] = {}
+    providers: dict[str, ChatProvider] = {}
+    for name, cfg in settings.models.providers.items():
+        if name not in used and name not in voice_providers:
+            continue  # configured but unused: do not demand its key
+        http = build_http(name, cfg) if cfg.type != "fake" else None
+        if http is not None:
+            https[name] = http
+        providers[name] = build_provider(name, cfg, http)
+
+    gateway = Gateway(
+        providers,
+        settings.models.tiers,
+        prices={ref: Price(p.input, p.output) for ref, p in settings.models.prices.items()},
+        store=store,
+        cooldown_seconds=settings.models.cooldown_seconds,
+        timeout_seconds=settings.models.timeout_seconds,
+        max_tokens=settings.models.max_tokens,
+    )
+    guard = ActionGuard(
+        store,
+        registry,
+        expiry_seconds=settings.actions.expiry_seconds,
+        max_wrong_pins=settings.actions.max_wrong_pins,
+        lock_seconds=settings.actions.lock_minutes * 60,
+    )
+    conversations = Conversations(store)
+    assistant = Assistant(
+        gateway,
+        registry,
+        guard,
+        store,
+        conversations,
+        name=settings.assistant.name,
+        business=settings.assistant.business,
+        instructions=settings.assistant.instructions,
+        tier=settings.assistant.tier,
+        max_tool_rounds=settings.assistant.max_tool_rounds,
+        history_messages=settings.assistant.history_messages,
+    )
+    return Runtime(
+        settings=settings,
+        store=store,
+        registry=registry,
+        gateway=gateway,
+        guard=guard,
+        accounts=Accounts(store),
+        conversations=conversations,
+        assistant=assistant,
+        stt=_build_stt(settings, https),
+        tts=_build_tts(settings, https),
+        http_clients=list(https.values()),
+    )
+
+
+def _voice_http(kind: str, provider: str | None, https: dict[str, HttpClient]) -> HttpClient:
+    if not provider or provider not in https:
+        raise ConfigError(f"voice {kind} needs 'provider' naming an HTTP provider in models")
+    return https[provider]
+
+
+def _build_stt(settings: Settings, https: dict[str, HttpClient]) -> SpeechToText | None:
+    cfg = settings.voice.stt
+    if cfg.type == "none":
+        return None
+    if cfg.type == "fake":
+        return FakeSTT(cfg.fake_text)
+    http = _voice_http("stt", cfg.provider, https)
+    if cfg.type == "whisper":
+        return WhisperSTT(http, cfg.model or "whisper-1", prompt=cfg.prompt)
+    if not cfg.model:
+        raise ConfigError("voice.stt.model is required for type chat_audio")
+    return ChatAudioSTT(http, cfg.model, prompt=cfg.prompt, vocabulary=cfg.vocabulary)
+
+
+def _build_tts(settings: Settings, https: dict[str, HttpClient]) -> TextToSpeech | None:
+    cfg = settings.voice.tts
+    if cfg.type == "none":
+        return None
+    if cfg.type == "fake":
+        return FakeTTS()
+    if cfg.type == "polly":
+        return PollyTTS(
+            voice=cfg.voice or "Joanna",
+            engine=cfg.engine,
+            region=cfg.region,
+            language_code=cfg.language_code,
+        )
+    return OpenAITTS(_voice_http("tts", cfg.provider, https), cfg.model, cfg.voice or "alloy")

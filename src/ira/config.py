@@ -1,0 +1,193 @@
+"""Configuration: one ``ira.yaml`` for structure, environment variables for secrets.
+
+The YAML never holds a key. A provider names the variable that does
+(``api_key_env: OPENAI_API_KEY``), and a ``.env`` file next to the config, or
+in the working directory, is loaded into the environment without overriding
+variables that are already set.
+"""
+
+from __future__ import annotations
+
+import os
+from pathlib import Path
+from typing import Literal
+
+import yaml
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
+
+CONFIG_ENV = "IRA_CONFIG"
+
+
+class ConfigError(Exception):
+    pass
+
+
+class _Strict(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+
+class ProviderConfig(_Strict):
+    type: Literal["openai", "anthropic", "bedrock_mantle", "fake"]
+    base_url: str | None = None
+    api_key_env: str | None = None
+    auth: Literal["auto", "none", "bearer", "x-api-key", "sigv4"] = "auto"
+    region: str | None = None  # bedrock_mantle, or any provider with auth: sigv4
+    sigv4_service: str = "bedrock-mantle"
+    headers: dict[str, str] = Field(default_factory=dict)
+    max_tokens_field: str = "max_tokens"
+    stream_usage: bool = True
+
+
+class PriceConfig(_Strict):
+    input: float  # USD per million input tokens
+    output: float  # USD per million output tokens
+
+
+def _default_providers() -> dict[str, ProviderConfig]:
+    return {"demo": ProviderConfig(type="fake")}
+
+
+class ModelsConfig(_Strict):
+    providers: dict[str, ProviderConfig] = Field(default_factory=_default_providers)
+    tiers: dict[str, list[str]] = Field(default_factory=lambda: {"default": ["demo:router"]})
+    prices: dict[str, PriceConfig] = Field(default_factory=dict)
+    cooldown_seconds: float = 60
+    timeout_seconds: float = 60
+    max_tokens: int = 1024
+
+
+class STTConfig(_Strict):
+    type: Literal["none", "fake", "chat_audio", "whisper"] = "none"
+    provider: str | None = None  # a name under models.providers
+    model: str | None = None
+    prompt: str | None = None
+    vocabulary: list[str] = Field(default_factory=list)
+    fake_text: str = "what are your opening hours"
+
+
+class TTSConfig(_Strict):
+    type: Literal["none", "fake", "polly", "openai"] = "none"
+    provider: str | None = None  # for type: openai
+    model: str = "tts-1"
+    voice: str | None = None
+    engine: str = "neural"  # polly
+    region: str = "us-east-1"  # polly
+    language_code: str | None = None  # polly
+
+
+class VoiceConfig(_Strict):
+    stt: STTConfig = Field(default_factory=STTConfig)
+    tts: TTSConfig = Field(default_factory=TTSConfig)
+    max_spoken_chars: int = 400
+    max_audio_seconds: float = 60
+
+
+class HttpConfig(_Strict):
+    host: str = "127.0.0.1"
+    port: int = 8765
+
+
+class TelegramConfig(_Strict):
+    enabled: bool = False
+    token_env: str = "TELEGRAM_BOT_TOKEN"
+    # "voice": answer a voice note with voice too; "always"; or "off".
+    voice_replies: Literal["off", "voice", "always"] = "voice"
+
+
+class ChannelsConfig(_Strict):
+    http: HttpConfig = Field(default_factory=HttpConfig)
+    telegram: TelegramConfig = Field(default_factory=TelegramConfig)
+
+
+class ActionsConfig(_Strict):
+    expiry_seconds: float = 120
+    max_wrong_pins: int = 3
+    lock_minutes: float = 15
+
+
+class AssistantConfig(_Strict):
+    name: str = "Ira"
+    business: str = "your business"
+    instructions: str = ""
+    tier: str = "default"
+    max_tool_rounds: int = 6
+    history_messages: int = 30
+
+
+class Settings(_Strict):
+    assistant: AssistantConfig = Field(default_factory=AssistantConfig)
+    data_dir: Path = Path("data")
+    tools: list[str] = Field(default_factory=list)
+    models: ModelsConfig = Field(default_factory=ModelsConfig)
+    voice: VoiceConfig = Field(default_factory=VoiceConfig)
+    channels: ChannelsConfig = Field(default_factory=ChannelsConfig)
+    actions: ActionsConfig = Field(default_factory=ActionsConfig)
+    config_dir: Path = Field(default_factory=Path.cwd, exclude=True)
+
+    @field_validator("tools")
+    @classmethod
+    def _no_empty_tools(cls, value: list[str]) -> list[str]:
+        return [v for v in (s.strip() for s in value) if v]
+
+    @property
+    def db_path(self) -> Path:
+        return self.data_dir / "ira.db"
+
+
+def load_dotenv(path: Path) -> None:
+    """Minimal .env reader: KEY=VALUE lines; never overrides the real environment."""
+    if not path.is_file():
+        return
+    for raw in path.read_text(encoding="utf-8").splitlines():
+        line = raw.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, value = line.split("=", 1)
+        key = key.removeprefix("export ").strip()
+        value = value.strip()
+        if len(value) >= 2 and value[0] == value[-1] and value[0] in "\"'":
+            value = value[1:-1]
+        os.environ.setdefault(key, value)
+
+
+def find_config(explicit: str | Path | None = None) -> Path | None:
+    if explicit:
+        path = Path(explicit).expanduser()
+        if not path.is_file():
+            raise ConfigError(f"config file not found: {path}")
+        return path
+    if os.environ.get(CONFIG_ENV):
+        return find_config(os.environ[CONFIG_ENV])
+    local = Path("ira.yaml")
+    return local if local.is_file() else None
+
+
+def load_settings(path: str | Path | None = None) -> Settings:
+    """Read ``ira.yaml`` (or defaults), resolving relative paths against its folder."""
+    config_path = find_config(path)
+    config_dir = (config_path.parent if config_path else Path.cwd()).resolve()
+    load_dotenv(config_dir / ".env")
+    load_dotenv(Path.cwd() / ".env")
+    raw: dict = {}
+    if config_path:
+        loaded = yaml.safe_load(config_path.read_text(encoding="utf-8"))
+        if loaded is not None and not isinstance(loaded, dict):
+            raise ConfigError(f"{config_path} must contain a mapping at the top level")
+        raw = loaded or {}
+    try:
+        settings = Settings.model_validate({**raw, "config_dir": config_dir})
+    except ValidationError as exc:
+        raise ConfigError(f"invalid config {config_path or '(defaults)'}:\n{exc}") from None
+    if not settings.data_dir.is_absolute():
+        settings.data_dir = config_dir / settings.data_dir
+    return settings
+
+
+def secret(name: str | None, *, purpose: str) -> str | None:
+    """Read a secret from the environment, or fail naming the variable (never the value)."""
+    if not name:
+        return None
+    value = os.environ.get(name)
+    if not value:
+        raise ConfigError(f"{purpose} needs the environment variable {name}; see .env.example")
+    return value
