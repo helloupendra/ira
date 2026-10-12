@@ -378,14 +378,14 @@ class ToolCallView(BaseModel):
 class MessageAction(BaseModel):
     """The action a tool call proposed, as it stands now (not as it was then)."""
 
-    id: str
-    tool: str
-    summary: str
+    id: str = Field(description="The action's id, for /v1/actions/{id}/confirm or cancel.")
+    tool: str = Field(description="The action tool it would run.")
+    summary: str = Field(description="What it would do, in words written by the tool's code.")
     status: str = Field(
         description="pending, executing, executed, failed, cancelled or expired. A proposal "
         "past expires_at reads expired, never pending."
     )
-    expires_at: float
+    expires_at: float = Field(description="When it stops waiting for a PIN (epoch seconds).")
 
 
 class MessageRow(BaseModel):
@@ -527,9 +527,9 @@ class TelegramChat(BaseModel):
         description='The chat\'s name as Telegram gives it, e.g. "Riley Demo (@riley)"; null '
         "for a chat paired before IRA kept names, until it next sends a message."
     )
-    paired_at: float
-    user_id: int
-    email: str = Field(description="The account the chat acts as.")
+    paired_at: float = Field(description="When it was paired (epoch seconds).")
+    user_id: int = Field(description="The account the chat acts as.")
+    email: str = Field(description="That account's email.")
     role: str = Field(description="That account's role now.")
 
 
@@ -549,10 +549,14 @@ class TelegramView(BaseModel):
         description="Why getMe failed, if it did (tried again after a minute). Never the token.",
     )
     running: bool = Field(description="Whether the bot is polling Telegram right now.")
-    last_poll_at: float | None = None
+    last_poll_at: float | None = Field(
+        default=None, description="When the bot last heard from Telegram (epoch seconds)."
+    )
     last_error: str | None = Field(default=None, description="The last polling error, if any.")
     pairing_seconds: int = Field(description="How long a pairing code works.")
-    chats: list[TelegramChat]
+    chats: list[TelegramChat] = Field(
+        description="Every paired chat, newest pairing first; removed users' chats are gone."
+    )
 
 
 class TelegramPairingRequest(BaseModel):
@@ -568,9 +572,9 @@ class TelegramPairing(BaseModel):
 
     code: str = Field(description="Eight characters; works once, until expires_at.")
     command: str = Field(description="What to send the bot from the chat: /pair CODE.")
-    expires_at: float
-    user_id: int
-    email: str = Field(description="The account the chat will act as.")
+    expires_at: float = Field(description="When the code stops working (epoch seconds).")
+    user_id: int = Field(description="The account the chat will act as.")
+    email: str = Field(description="That account's email.")
     bot_link: str | None = Field(description="https://t.me/<bot>, when the bot's name is known.")
 
 
@@ -737,10 +741,20 @@ class ToolTestRequest(BaseModel):
 
 
 class ToolTestResult(BaseModel):
-    ok: bool
-    seconds: float
-    result: Any = None
-    error: str | None = None
+    """A test run of a read tool. The HTTP status is 200 whether or not the tool worked."""
+
+    ok: bool = Field(
+        description="false when the parameters did not fit the tool's schema, the tool "
+        "raised an error, or it gave no result within 30 seconds. Still HTTP 200."
+    )
+    seconds: float = Field(description="How long the run took.")
+    result: Any = Field(
+        default=None, description="What the tool returned, when ok; cut at 20,000 characters."
+    )
+    error: str | None = Field(
+        default=None,
+        description='Why it failed, when not ok. Bad parameters read "invalid parameters: ...".',
+    )
 
 
 class TierView(BaseModel):

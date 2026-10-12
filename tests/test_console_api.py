@@ -777,3 +777,40 @@ def test_only_the_owner_sees_and_ends_everyone_s_sessions(client, people):
     assert latest["what"] == "session.revoked" and latest["actor"] == "owner@example.com"
     assert latest["channel"] == "web"
     assert latest["before"] == {"user": "desk@example.com"}
+
+
+def test_fields_added_for_the_console_are_described(client):
+    """The console builds from /v1/openapi.json: every field it relies on says what it is."""
+    schemas = client.get("/v1/openapi.json").json()["components"]["schemas"]
+    added = {
+        "ActionCounts": None,
+        "MessageAction": None,
+        "ServerAddress": None,
+        "CoolingReason": None,
+        "VoiceOption": None,
+        "TelegramView": None,
+        "TelegramChat": None,
+        "TelegramPairing": None,
+        "TelegramPairingRequest": None,
+        "ToolTestResult": None,
+        "PinStatus": ["locked_until", "pin_set_at", "pin_min_length", "pin_max_length"],
+        "Overview": ["since", "since_iso", "timezone", "actions"],
+        "MessageRow": ["model", "action"],
+        "CallRow": ["tried", "tried_list"],
+        "ToolDetail": ["kind"],
+        "SessionView": ["device"],
+        "AdminSessionRow": ["role"],
+        "ActionRow": ["actor", "channel", "decided_by", "decided_channel"],
+        "AuditRow": ["actor", "channel"],
+        "ChangeRow": ["actor", "channel"],
+        "ChannelView": ["address"],
+        "InviteCreated": ["url"],
+        "ModelsView": ["cooling_reasons", "voices"],
+        "ActionOutcome": ["locked_until"],
+        "SecurityView": ["locked_until"],
+        "ConversationRow": ["channel", "user_id", "last_at", "turns"],
+    }
+    for name, fields in added.items():
+        properties = schemas[name]["properties"]
+        for field in fields or properties:
+            assert properties[field].get("description"), (name, field)
