@@ -1,16 +1,24 @@
 """Ira's own state in one SQLite file: settings, users, conversations, calls, actions.
 
 A single connection guarded by a lock is plenty for a one-owner assistant and
-keeps the code free of a database server. The schema is created on open.
+keeps the code free of a database server. The schema is created on open, and
+columns added since v0.1 are added to an older file in place.
 """
 
 from __future__ import annotations
 
+import contextlib
 import sqlite3
 import threading
-from collections.abc import Iterable
+import time
+from collections.abc import Iterable, Iterator
 from pathlib import Path
 from typing import Any
+
+# v0.1 kept one action PIN for the whole installation under this key. From v0.2
+# each user has their own; see Store.adopt_shared_pin.
+SHARED_PIN_SETTING = "actions.pin_hash"
+CONFIRMING_ROLES = ("owner", "admin", "staff")
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS settings (
@@ -77,7 +85,33 @@ CREATE TABLE IF NOT EXISTS users (
     role          TEXT NOT NULL CHECK (role IN ('owner', 'admin', 'staff', 'viewer')),
     created_at    REAL NOT NULL,
     last_login_at REAL,
-    disabled_at   REAL
+    disabled_at   REAL,
+    pin_hash      TEXT,
+    pin_set_at    REAL
+);
+
+-- One-time invitation links. Only the hash of the token is kept.
+CREATE TABLE IF NOT EXISTS invites (
+    id         TEXT PRIMARY KEY,
+    token_hash TEXT NOT NULL UNIQUE,
+    email      TEXT NOT NULL,
+    role       TEXT NOT NULL,
+    created_by TEXT NOT NULL,
+    created_at REAL NOT NULL,
+    expires_at REAL NOT NULL,
+    used_at    REAL,
+    revoked_at REAL
+);
+
+-- Changes made from the admin console: who, what, when, and before -> after.
+CREATE TABLE IF NOT EXISTS change_log (
+    id      INTEGER PRIMARY KEY AUTOINCREMENT,
+    at      REAL NOT NULL,
+    actor   TEXT NOT NULL,
+    what    TEXT NOT NULL,
+    target  TEXT,
+    before  TEXT,
+    after   TEXT
 );
 
 CREATE TABLE IF NOT EXISTS sessions (
@@ -158,6 +192,57 @@ class Store:
             self._conn.execute("PRAGMA busy_timeout=5000")
             self._conn.execute("PRAGMA foreign_keys=ON")
             self._conn.executescript(SCHEMA)
+            self._add_missing_columns()
+        self.adopt_shared_pin()
+
+    # Columns added after v0.1: (table, column, declaration).
+    _ADDED_COLUMNS = (
+        ("users", "pin_hash", "TEXT"),
+        ("users", "pin_set_at", "REAL"),
+    )
+
+    def _add_missing_columns(self) -> None:
+        for table, column, declaration in self._ADDED_COLUMNS:
+            present = {row["name"] for row in self._conn.execute(f"PRAGMA table_info({table})")}
+            if column not in present:
+                self._conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {declaration}")
+
+    def adopt_shared_pin(self) -> int:
+        """Give a v0.1 installation PIN to every user who could confirm with it.
+
+        Everyone keeps the PIN they used before until they set their own, and
+        the shared copy is then removed. Nothing happens until a user exists.
+        """
+        with self.transaction():
+            row = self.one("SELECT value FROM settings WHERE key = ?", (SHARED_PIN_SETTING,))
+            users = self.one("SELECT COUNT(*) AS n FROM users WHERE disabled_at IS NULL")
+            if row is None or not users or users["n"] == 0:
+                return 0
+            marks = ",".join("?" for _ in CONFIRMING_ROLES)
+            cursor = self.execute(
+                "UPDATE users SET pin_hash = ?, pin_set_at = ? "
+                f"WHERE pin_hash IS NULL AND disabled_at IS NULL AND role IN ({marks})",
+                (row["value"], time.time(), *CONFIRMING_ROLES),
+            )
+            self.execute("DELETE FROM settings WHERE key = ?", (SHARED_PIN_SETTING,))
+            return cursor.rowcount
+
+    @contextlib.contextmanager
+    def transaction(self) -> Iterator[Store]:
+        """Run several statements as one: all or nothing, and no other writer in between.
+
+        ``BEGIN IMMEDIATE`` takes the write lock at once, so a check followed by
+        a write ("no users yet" -> create the owner) cannot race another
+        process on the same file. Transactions do not nest.
+        """
+        with self._lock:
+            self._conn.execute("BEGIN IMMEDIATE")
+            try:
+                yield self
+            except BaseException:
+                self._conn.execute("ROLLBACK")
+                raise
+            self._conn.execute("COMMIT")
 
     def execute(self, sql: str, params: Iterable[Any] = ()) -> sqlite3.Cursor:
         with self._lock:
@@ -181,6 +266,9 @@ class Store:
             "ON CONFLICT(key) DO UPDATE SET value = excluded.value",
             (key, value),
         )
+
+    def delete_setting(self, key: str) -> None:
+        self.execute("DELETE FROM settings WHERE key = ?", (key,))
 
     def close(self) -> None:
         with self._lock:
