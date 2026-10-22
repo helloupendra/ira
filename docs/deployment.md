@@ -95,6 +95,53 @@ The schema is created with `IF NOT EXISTS`, and columns added since an older
 release are added in place on start-up. v0.x releases note any manual
 migration in the changelog.
 
+## On your own Mac, all day
+
+A personal Ira can run on the Mac you use every day, until (or instead of) a
+server. It answers while the Mac is awake; for answers around the clock, use a
+server ([AWS with Bedrock](#aws-with-bedrock) below).
+
+1. **A folder outside `~/Documents`, `~/Desktop` and `~/Downloads`**: macOS
+   does not let background (launchd) processes read those.
+
+    ```bash
+    ira init ~/ira-personal --provider bedrock --port 8801 --business "my own work"
+    ```
+
+2. **AWS credentials for Bedrock and Polly**, if you use them. On a Mac there
+   is no instance role, so create an IAM user for IRA alone, with only the
+   permissions in
+   [`deploy/aws/iam-policy.example.json`](https://github.com/helloupendra/ira/blob/main/deploy/aws/iam-policy.example.json),
+   and keep its access key in a named profile, never in the folder:
+
+    ```bash
+    aws configure --profile ira        # or edit ~/.aws/credentials (chmod 600)
+    ```
+
+    - **Rotate the access key every 90 days**: create a second key, put it in
+      the profile, check `AWS_PROFILE=ira ira doctor ~/ira-personal`, then
+      delete the old key.
+    - Set an **AWS Budgets** alert on the account, so an unexpected bill
+      cannot grow quietly.
+    - A key on a laptop is easier to lose than a role on a server: if the Mac
+      is lost, deactivate the key in the IAM console first.
+
+3. **Run it under launchd**, with the profile:
+
+    ```bash
+    deploy/mac/install-server.sh ~/ira-personal --aws-profile ira
+    ```
+
+    It installs IRA from GitHub into `~/ira-personal/.venv` (its own copy,
+    outside `~/Documents`), and writes a LaunchAgent that starts `ira serve`
+    at login and again if it stops, logging to `~/ira-personal/logs/ira.log`.
+    Run it again to upgrade (`--ref v0.3.0` pins a release); `--remove`
+    stops it and leaves the folder alone.
+
+4. **Create the owner** with the one-time link in the log
+   (`grep 'code=' ~/ira-personal/logs/ira.log`), then pair your Mac with the
+   [Mac companion](clients/mac.md).
+
 ## AWS with Bedrock
 
 One small EC2 instance can host several businesses side by side. Each
