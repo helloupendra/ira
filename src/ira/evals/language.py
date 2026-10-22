@@ -35,6 +35,7 @@ from ira.language import LANGUAGES, detect
 from ira.store import Store
 from ira.tools.personal import PersonalTool
 from ira.tools.registry import ToolRegistry
+from ira.voice.audio import pcm16_wav
 
 CASES = Path(__file__).resolve().parent / "language.yaml"
 
@@ -225,6 +226,25 @@ def stand_ins() -> list[PersonalTool]:
 
 
 VOICES = {"hi": "Lekha", "hinglish": "Rishi", "en": "Rishi"}
+# Polly's Kajal speaks both; Hinglish in Latin letters reads best as Indian English.
+POLLY_LANGUAGES = {"hi": "hi-IN", "hinglish": "en-IN", "en": "en-IN"}
+
+
+def synthesize_polly(text: str, language: str, region: str, client: Any = None) -> bytes:
+    """A request spoken by Amazon Polly (Kajal, neural), as 16 kHz mono WAV."""
+    if client is None:
+        import botocore.session
+
+        client = botocore.session.get_session().create_client("polly", region_name=region)
+    response = client.synthesize_speech(
+        Text=text,
+        OutputFormat="pcm",
+        SampleRate="16000",
+        VoiceId="Kajal",
+        Engine="neural",
+        LanguageCode=POLLY_LANGUAGES.get(language, "en-IN"),
+    )
+    return pcm16_wav(response["AudioStream"].read(), 16_000)
 
 
 def synthesize(text: str, language: str, folder: Path) -> bytes:
@@ -240,8 +260,14 @@ def synthesize(text: str, language: str, folder: Path) -> bytes:
     return wav.read_bytes()
 
 
-async def run(settings: Settings, *, spoken: bool = False, only: str | None = None) -> Report:
+async def run(
+    settings: Settings, *, spoken: bool = False, only: str | None = None, voice: str | None = None
+) -> Report:
     from ira.runtime import build_runtime
+
+    voice = voice or ("say" if shutil.which("say") else "polly")
+    tts = settings.voice.tts
+    polly_region = tts.region if tts.type == "polly" else "us-east-1"
 
     store = Store(":memory:")
     runtime = build_runtime(settings, registry=ToolRegistry(), store=store, load_tools=False)
@@ -260,9 +286,13 @@ async def run(settings: Settings, *, spoken: bool = False, only: str | None = No
                 if spoken:
                     if runtime.stt is None:
                         raise RuntimeError("voice.stt is not configured")
-                    heard = await runtime.stt.transcribe(
-                        synthesize(case.text, case.language, folder)
-                    )
+                    if voice == "polly":
+                        speech = await asyncio.to_thread(
+                            synthesize_polly, case.text, case.language, polly_region
+                        )
+                    else:
+                        speech = synthesize(case.text, case.language, folder)
+                    heard = await runtime.stt.transcribe(speech)
                     accuracy = word_accuracy(case.text, heard)
                     asked = heard
                 reply = await runtime.assistant.ask(
@@ -322,8 +352,15 @@ def render(report: Report) -> str:
     return "\n".join(lines)
 
 
-def main(settings: Settings, *, spoken: bool, only: str | None, as_json: bool) -> int:
-    report = asyncio.run(run(settings, spoken=spoken, only=only))
+def main(
+    settings: Settings,
+    *,
+    spoken: bool,
+    only: str | None,
+    as_json: bool,
+    voice: str | None = None,
+) -> int:
+    report = asyncio.run(run(settings, spoken=spoken, only=only, voice=voice))
     if as_json:
         data = {"model": report.model, "summary": report.table()}
         data["results"] = [asdict(r) for r in report.results]

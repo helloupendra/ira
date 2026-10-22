@@ -163,8 +163,9 @@ tokens**, which belong to a user and carry scopes (`ask`, `voice`, `actions`,
 
 ## Voice
 
-- **Speech to text**: an OpenAI-compatible chat model that accepts
-  `input_audio` (`chat_audio`), or Whisper's `/audio/transcriptions`.
+- **Speech to text**: Amazon Transcribe streaming (`transcribe`), an
+  OpenAI-compatible chat model that accepts `input_audio` (`chat_audio`), or
+  Whisper's `/audio/transcriptions`.
 - **Text to speech**: Amazon Polly or OpenAI's `/audio/speech`.
 - **Spoken text** is shortened first: markdown, tables, code and links are
   removed, and long answers are cut at a sentence with "Full details are in

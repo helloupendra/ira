@@ -478,6 +478,8 @@ async def _check_voice(
         report.add("skip", "speech-to-text", "not configured")
     else:
         what = f"{stt_cfg.type} {stt_cfg.model or ''}".strip()
+        if stt_cfg.type == "transcribe":
+            what = f"transcribe {', '.join(stt_cfg.languages)} ({stt_cfg.region})"
         try:
             engine = stt if stt is not None else build_stt(settings, https)
             heard, seconds = await _timed(engine.transcribe(silence_wav()), options.timeout)

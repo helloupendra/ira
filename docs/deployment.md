@@ -313,7 +313,21 @@ refused with "isn't supported on this route", it is served under
 refused audio for Voxtral ("Model does not support audio modality"), and
 `ira doctor` shows that as a failed speech-to-text check. Typing works;
 voice notes and the microphone do not, until another speech-to-text is
-configured. See [Hindi, English and Hinglish](language.md).
+configured: `voice.stt.type: transcribe` (Amazon Transcribe streaming, see
+the [admin guide](admin-guide.md#voice)) needs one more statement on the
+role:
+
+```json
+{
+  "Sid": "TranscribeStreaming",
+  "Effect": "Allow",
+  "Action": "transcribe:StartStreamTranscriptionWebSocket",
+  "Resource": "*"
+}
+```
+
+It is not yet checked against a live account here. See
+[Hindi, English and Hinglish](language.md).
 
 Each instance runs as `ira` in a hardened unit:
 

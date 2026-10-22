@@ -63,8 +63,11 @@ models:
 
 voice:
   stt:
-    # chat_audio: an OpenAI-compatible chat model that accepts input_audio,
-    # e.g. Voxtral on Bedrock Mantle. whisper: the /audio/transcriptions API.
+    # chat_audio: an OpenAI-compatible chat model that accepts input_audio.
+    # whisper: the /audio/transcriptions API. transcribe: Amazon Transcribe
+    # streaming, e.g. type: transcribe, region: ap-south-1,
+    # languages: [hi-IN, en-IN] (needs the aws extra and
+    # transcribe:StartStreamTranscriptionWebSocket).
     type: chat_audio
     provider: bedrock
     model: mistral.voxtral-small-24b-2507

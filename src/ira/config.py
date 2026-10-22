@@ -59,9 +59,14 @@ class ModelsConfig(_Strict):
 
 
 class STTConfig(_Strict):
-    type: Literal["none", "fake", "chat_audio", "whisper"] = "none"
-    provider: str | None = None  # a name under models.providers
+    type: Literal["none", "fake", "transcribe", "chat_audio", "whisper"] = "none"
+    provider: str | None = None  # a name under models.providers (chat_audio, whisper)
     model: str | None = None
+    # transcribe: Amazon Transcribe streaming. Two or more languages: it tells
+    # them apart; "many" also lets it switch inside one recording (Hinglish).
+    region: str = "us-east-1"
+    languages: list[str] = Field(default_factory=lambda: ["hi-IN", "en-IN"])
+    identify: Literal["one", "many"] = "many"
     prompt: str | None = None
     vocabulary: list[str] = Field(default_factory=list)
     fake_text: str = "what are your opening hours"

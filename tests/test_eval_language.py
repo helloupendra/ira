@@ -3,7 +3,10 @@
 from __future__ import annotations
 
 import asyncio
+import io
 from pathlib import Path
+
+import pytest
 
 from ira.config import Settings
 from ira.evals.language import (
@@ -14,8 +17,10 @@ from ira.evals.language import (
     reply_language,
     run,
     stand_ins,
+    synthesize_polly,
     word_accuracy,
 )
+from ira.voice.audio import wav_info
 
 
 def test_the_set_is_valid_and_covers_three_languages():
@@ -81,3 +86,32 @@ def test_a_run_with_the_demo_router_scores_every_case(tmp_path: Path):
     assert rows["hinglish"]["intent"] >= 0.9
     assert "Misses:" in render(report)
     assert not (tmp_path / "ira.db").exists()  # the run keeps nothing
+
+
+def test_polly_can_speak_the_requests():
+    botocore = pytest.importorskip("botocore.session")
+    from botocore.response import StreamingBody
+    from botocore.stub import Stubber
+
+    client = botocore.get_session().create_client(
+        "polly",
+        region_name="ap-south-1",
+        aws_access_key_id="AKIDEXAMPLE",
+        aws_secret_access_key="secret-for-tests",  # pragma: allowlist secret
+    )
+    pcm = b"\x01\x00" * 1600
+    with Stubber(client) as stub:
+        stub.add_response(
+            "synthesize_speech",
+            {"AudioStream": StreamingBody(io.BytesIO(pcm), len(pcm)), "ContentType": "audio/pcm"},
+            {
+                "Text": "आज की ख़बर",
+                "OutputFormat": "pcm",
+                "SampleRate": "16000",
+                "VoiceId": "Kajal",
+                "Engine": "neural",
+                "LanguageCode": "hi-IN",
+            },
+        )
+        wav = synthesize_polly("आज की ख़बर", "hi", "ap-south-1", client)
+    assert wav_info(wav).sample_rate == 16_000 and wav_info(wav).frames == 1600

@@ -39,14 +39,16 @@ reports:
   in words, with addresses and "quoted" or **bold** titles left out (a Hindi
   answer that lists English tab titles is a Hindi answer);
 - **heard** (with `--spoken`): each request is spoken by a macOS voice
-  (Lekha for Hindi, Rishi for English and Hinglish), transcribed by the
+  (Lekha for Hindi, Rishi for English and Hinglish), or with `--voice polly`
+  by Polly's Kajal (as `hi-IN` for Devanagari, `en-IN` otherwise), transcribed by the
   configured speech-to-text, and scored by word accuracy (1 minus the word
   error rate). The transcript is then what Ira is asked.
 
 ```bash
 cd ~/ira/me
 ira eval language              # typed requests: one or two model calls each
-ira eval language --spoken     # macOS only: speak, transcribe, then ask
+ira eval language --spoken     # speak, transcribe, then ask
+ira eval language --spoken --voice polly   # spoken by Polly's Kajal (any OS)
 ira eval language --json       # every request, answer and score
 ```
 
@@ -91,6 +93,8 @@ endpoint (Mantle) refused audio for Voxtral ("Model does not support audio
 modality"), with the audio part first or second, and AWS's model card now
 lists Voxtral's speech input under the Converse API only. So `chat_audio`
 with Voxtral on Mantle does not transcribe today, and the **heard** column
-has no real number yet. When a speech-to-text that works is configured, run
+has no real number yet. Amazon Transcribe streaming (`voice.stt.type:
+transcribe`, Hindi and English identified per recording) is the next to
+measure, once the server's role may use it. When a speech-to-text that works is configured, run
 `ira eval language --spoken` and add its row. Until then, IRA makes no claim
 about how well it hears Hindi or Hinglish.

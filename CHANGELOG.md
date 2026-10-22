@@ -56,6 +56,12 @@ switch it on.
   92-100% on both intent and reply language; the numbers and the misses are
   in [Hindi, English and Hinglish](docs/language.md). Speech is not measured
   yet: Bedrock's Mantle endpoint refuses audio for Voxtral.
+- **Amazon Transcribe streaming** as speech-to-text (`voice.stt.type:
+  transcribe`): Hindi and English identified per recording, switching inside
+  one for Hinglish, over Transcribe's WebSocket API with a presigned URL.
+  Not yet checked against a live account. `ira eval language --spoken
+  --voice polly` speaks the requests with Polly, so a Linux server can
+  measure hearing too.
 - **Half sentences**: when a tool that only reads can settle what was meant,
   Ira looks first and asks only when looking would not help.
 - `GET /admin` without a trailing slash redirects to the console.

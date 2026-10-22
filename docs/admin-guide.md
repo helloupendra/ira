@@ -288,6 +288,21 @@ Group chats are ignored. Voice notes need the `ogg` extra or `ffmpeg`.
 
 ### Voice
 
+Amazon Transcribe streaming, with Hindi and English told apart (and mixed
+inside one recording, for Hinglish), signed with the server's AWS
+credentials; the role needs `transcribe:StartStreamTranscriptionWebSocket`:
+
+```yaml
+voice:
+  stt:
+    type: transcribe
+    region: ap-south-1
+    languages: [hi-IN, en-IN]    # two or more: Transcribe identifies them
+    identify: many               # many: switch inside a recording; one: one each
+```
+
+Or an OpenAI-compatible model that takes audio, or Whisper:
+
 ```yaml
 voice:
   stt:

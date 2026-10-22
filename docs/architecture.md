@@ -18,6 +18,7 @@ src/ira/
     loader.py        import tool modules named in ira.yaml; setup/seed hooks
   voice/
     providers.py     chat_audio and Whisper STT; Polly and OpenAI TTS; fakes
+    transcribe.py    Amazon Transcribe streaming STT over its WebSocket API
     shorten.py       markdown -> speakable text, cut at a sentence
     audio.py         WAV checks, mono 16 kHz conversion, OGG/Opus decoding
   channels/

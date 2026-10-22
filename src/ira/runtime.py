@@ -321,6 +321,10 @@ def build_stt(settings: Settings, https: dict[str, HttpClient]) -> SpeechToText 
         return None
     if cfg.type == "fake":
         return FakeSTT(cfg.fake_text)
+    if cfg.type == "transcribe":
+        from ira.voice.transcribe import TranscribeSTT
+
+        return TranscribeSTT(cfg.region, cfg.languages, identify=cfg.identify)
     http = _voice_http("stt", cfg.provider, https)
     if cfg.type == "whisper":
         return WhisperSTT(http, cfg.model or "whisper-1", prompt=cfg.prompt)

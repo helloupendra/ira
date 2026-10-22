@@ -295,7 +295,9 @@ def cmd_doctor(args: argparse.Namespace) -> int:
 def cmd_eval_language(args: argparse.Namespace) -> int:
     from ira.evals.language import main as evaluate
 
-    return evaluate(_settings(args), spoken=args.spoken, only=args.only, as_json=args.json)
+    return evaluate(
+        _settings(args), spoken=args.spoken, only=args.only, as_json=args.json, voice=args.voice
+    )
 
 
 def cmd_version(args: argparse.Namespace) -> int:
@@ -407,8 +409,11 @@ def build_parser() -> argparse.ArgumentParser:
         dest="eval_command", required=True
     )
     p = add("language", cmd_eval_language, "Hindi, English and Hinglish: intent, reply", evals)
+    p.add_argument("--spoken", action="store_true", help="speak each request, then transcribe it")
     p.add_argument(
-        "--spoken", action="store_true", help="speak each request (macOS) and transcribe it"
+        "--voice",
+        choices=["say", "polly"],
+        help="who speaks for --spoken: macOS say, or Amazon Polly (default: say on macOS)",
     )
     p.add_argument("--only", choices=["hi", "hinglish", "en"], help="one language only")
     p.add_argument("--json", action="store_true", help="every result as JSON")
