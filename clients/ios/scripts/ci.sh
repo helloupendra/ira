@@ -78,12 +78,12 @@ release() {
 }
 
 # Which file the compiler spends its time on: one file per compiler process, and
-# every 30 s the files still compiling and for how long. Stops after 5 minutes.
+# every 30 s the files still compiling and for how long. Stops after 150 s.
 diagnose() {
     cd IraPhoneKit
     swift build -Xswiftc -disable-batch-mode -Xswiftc -j2 >../build/diagnose.log 2>&1 &
     build=$!
-    for tick in 1 2 3 4 5 6 7 8 9 10; do
+    for tick in 1 2 3 4 5; do
         sleep 30
         kill -0 "$build" 2>/dev/null || break
         echo "== after $((tick * 30)) s, still compiling:"

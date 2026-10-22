@@ -53,20 +53,20 @@ public final class DeviceClient: @unchecked Sendable {
     }
 
     public let url: URL
-    private let token: @Sendable () -> String?
-    private let tools: ToolRunner
-    private let label: String
-    private let connector: WebSocketConnector
-    private let timing: Timing
-    private let onState: @Sendable (DeviceState) -> Void
-    private let log: IraLog
+    let token: @Sendable () -> String?
+    let tools: ToolRunner
+    let label: String
+    let connector: WebSocketConnector
+    let timing: Timing
+    let onState: @Sendable (DeviceState) -> Void
+    let log: IraLog
 
-    private let lock = NSLock()
-    private var runner: Task<Void, Never>?
-    private var wake: CheckedContinuation<Void, Never>?
-    private var pauses = 0
-    private var stopped = false
-    private var current: WebSocketChannel?
+    let lock = NSLock()
+    var runner: Task<Void, Never>?
+    var wake: CheckedContinuation<Void, Never>?
+    var pauses = 0
+    var stopped = false
+    var current: WebSocketChannel?
 
     public init(
         url: URL,
@@ -88,7 +88,7 @@ public final class DeviceClient: @unchecked Sendable {
         self.onState = onState
     }
 
-    private func headers(_ token: String?) -> [String: String] {
+    func headers(_ token: String?) -> [String: String] {
         var headers = ["User-Agent": IraPhone.userAgent]
         if let token {
             // In a header, never in the address, so no proxy logs it.
@@ -135,199 +135,14 @@ public final class DeviceClient: @unchecked Sendable {
         wake?.resume()
     }
 
-    private var isStopped: Bool {
+    var isStopped: Bool {
         lock.withLock { stopped } || Task.isCancelled
-    }
-
-    func runForever() async {
-        var attempt = 0
-        while !isStopped {
-            guard let token = token() else {
-                log.warning("this iPhone's key could not be read from the Keychain; trying again later")
-                onState(.keyUnavailable)
-                await pause(timing.refusedWait)
-                continue
-            }
-            onState(.connecting)
-            let started = Date()
-            let closed = await runOnce(token: token)
-            if isStopped { return }
-            if closed?.unauthorized == true {
-                log.warning("the server refused this iPhone's token: it was removed or never paired")
-                onState(.refused)
-                await pause(timing.refusedWait)
-                attempt = 0
-                continue
-            }
-            if Date().timeIntervalSince(started) >= timing.stable {
-                attempt = 0
-            }
-            var delay = timing.backoff[min(attempt, timing.backoff.count - 1)]
-            attempt += 1
-            if timing.jitter { delay *= Double.random(in: 0.8...1.2) }
-            log.info(String(format: "reconnecting in %.0fs", delay))
-            onState(.waiting(seconds: delay, reason: closed?.reason ?? "the connection ended"))
-            await pause(delay)
-        }
-    }
-
-    /// Sleep, unless `reconnectNow` or `stop` comes first.
-    private func pause(_ seconds: Double) async {
-        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
-            let id: Int? = lock.withLock {
-                if stopped { return nil }
-                pauses += 1
-                wake = continuation
-                return pauses
-            }
-            guard let id else {
-                continuation.resume()
-                return
-            }
-            Task { [weak self] in
-                try? await Task.sleep(nanoseconds: UInt64(seconds * 1_000_000_000))
-                self?.endPause(id)
-            }
-        }
-    }
-
-    private func endPause(_ id: Int) {
-        let wake: CheckedContinuation<Void, Never>? = lock.withLock {
-            guard id == pauses, let wake else { return nil }
-            self.wake = nil
-            return wake
-        }
-        wake?.resume()
-    }
-
-    /// One connection, from hello until it closes. Returns how it closed, if known.
-    public func runOnce(token: String) async -> WebSocketClosed? {
-        let channel: WebSocketChannel
-        do {
-            channel = try await connector.connect(url: url, headers: headers(token))
-        } catch {
-            let closed = error as? WebSocketClosed ?? WebSocketClosed(reason: Pairing.reason(error))
-            log.warning("could not connect: \(closed.reason)")
-            return closed
-        }
-        lock.withLock { current = channel }
-        defer {
-            lock.withLock { current = nil }
-            channel.close(code: 1000)
-        }
-        let sender = FrameSender(channel: channel)
-        do {
-            try await sender.send(DeviceProtocol.hello(label: label, tools: tools.definitions).encoded())
-            let first = try await withTimeout(timing.silence) { try await channel.receive() }
-            guard case .text(let text) = first,
-                case .welcome(let deviceID, _, let skills, _, _) = try DeviceProtocol.decode(text)
-            else {
-                if case .text(let text) = first, case .error(let reason)? = try? DeviceProtocol.decode(text) {
-                    log.warning("the server refused the hello: \(reason)")
-                    return WebSocketClosed(code: 4400, reason: "the server refused the hello: \(reason)")
-                }
-                log.warning("the server did not welcome this iPhone")
-                return WebSocketClosed(reason: "the server did not welcome this iPhone")
-            }
-            log.info("connected as device \(deviceID.map(String.init) ?? "?") with skills \(skills)")
-            onState(.connected(deviceID: deviceID, skills: skills))
-            return await session(channel: channel, sender: sender, deviceID: deviceID)
-        } catch {
-            let closed = error as? WebSocketClosed ?? WebSocketClosed(reason: "the connection ended")
-            log.info("connection ended: \(closed.code.map(String.init) ?? "") \(closed.reason)")
-            return closed
-        }
-    }
-
-    private func session(channel: WebSocketChannel, sender: FrameSender, deviceID: Int?) async -> WebSocketClosed? {
-        let ping = timing.ping
-        let pinger = Task {
-            while !Task.isCancelled {
-                try? await Task.sleep(nanoseconds: UInt64(ping * 1_000_000_000))
-                if Task.isCancelled { return }
-                try? await sender.send(DeviceProtocol.ping.encoded())
-            }
-        }
-        var calls: [Task<Void, Never>] = []
-        defer {
-            pinger.cancel()
-            calls.forEach { $0.cancel() }
-        }
-        while !isStopped {
-            let message: WebSocketMessage
-            do {
-                message = try await withTimeout(timing.silence) { try await channel.receive() }
-            } catch is TimedOut {
-                log.warning(String(format: "heard nothing for %.0fs; reconnecting", timing.silence))
-                return WebSocketClosed(reason: "the server went quiet")
-            } catch {
-                let closed = error as? WebSocketClosed ?? WebSocketClosed(reason: "the connection ended")
-                log.info("connection ended: \(closed.code.map(String.init) ?? "") \(closed.reason)")
-                return closed
-            }
-            guard case .text(let text) = message, let frame = try? DeviceProtocol.decode(text) else {
-                continue  // a binary or broken frame: ignored
-            }
-            switch frame {
-            case .call(let id, let tool, let args):
-                calls.removeAll { $0.isCancelled }
-                let tools = self.tools
-                let log = self.log
-                calls.append(Task {
-                    // Every call is logged: its tool, how long, and how it ended. Never contents.
-                    let started = Date()
-                    let reply: JSONValue
-                    var outcome = "ok"
-                    do {
-                        let content = try await tools.call(tool, args: args)
-                        reply = DeviceProtocol.result(id: id, content: content)
-                    } catch let failure as ToolFailure {
-                        outcome = "failed"
-                        reply = DeviceProtocol.failure(id: id, error: failure.message)
-                    } catch {
-                        outcome = "failed (\(type(of: error)))"
-                        reply = DeviceProtocol.failure(id: id, error: error.localizedDescription)
-                    }
-                    log.info(String(format: "call %@ %@ in %.2fs", tool, outcome, Date().timeIntervalSince(started)))
-                    do {
-                        try await sender.send(DeviceProtocol.encodeResult(reply))
-                    } catch {
-                        log.warning("call \(tool): the answer could not be sent (the connection ended)")
-                    }
-                })
-            case .ping:
-                try? await sender.send(DeviceProtocol.pong.encoded())
-            case .skills(let now):
-                log.info("skills now \(now)")
-                onState(.connected(deviceID: deviceID, skills: now))
-            case .error(let reason):
-                log.warning("the server said: \(reason)")
-            case .welcome, .pong, .other:
-                break
-            }
-        }
-        return nil
-    }
-
-    /// Tell the server this iPhone is being removed: it revokes the token at once.
-    /// Sent instead of a hello.
-    public func sayGoodbye() async -> Bool {
-        do {
-            let channel = try await connector.connect(url: url, headers: headers(token()))
-            defer { channel.close(code: 1000) }
-            try await channel.send(.text(DeviceProtocol.bye.encoded()))
-            // The server closes the connection after revoking; wait a moment for that.
-            _ = try? await withTimeout(3) { try await channel.receive() }
-            return true
-        } catch {
-            return false
-        }
     }
 }
 
 /// Sends frames one at a time, so concurrent results never interleave.
 actor FrameSender {
-    private let channel: WebSocketChannel
+    let channel: WebSocketChannel
 
     init(channel: WebSocketChannel) {
         self.channel = channel
