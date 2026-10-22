@@ -9,6 +9,7 @@ from typing import Any
 
 from ira import overrides, setupcode
 from ira.accounts import Accounts
+from ira.approvals import Approvals, covered
 from ira.assistant import Assistant
 from ira.businesses import Businesses
 from ira.config import ConfigError, ProviderConfig, Settings, secret
@@ -86,6 +87,8 @@ class Runtime:
     businesses: Businesses = field(init=False)
     # The live calls open now, by their conversation: a confirmed action carries on in its call.
     live_calls: dict[str, Any] = field(default_factory=dict)
+    # Approval windows: one PIN on a screen-control action covers the next steps on a device.
+    approvals: Approvals = field(init=False)
     # Each person's connections to other services (MCP servers).
     connectors: Any = None
 
@@ -111,6 +114,17 @@ class Runtime:
             self.assistant.businesses = self.businesses.lines
         if self.assistant.switched_off is None:
             self.assistant.switched_off = self.switched_off
+        hub = self.hub
+        self.approvals = Approvals(
+            self.store,
+            minutes_for=self.approval_minutes,
+            connected=lambda device_id: hub is not None and hub.connected(device_id),
+        )
+        if self.assistant.approvals is None:
+            self.assistant.approvals = self.approvals
+            self.assistant.device_label = self.device_label
+        if self.guard.after_pin is None:
+            self.guard.after_pin = self._after_pin
         if self.assistant.after_turn is None:
             self.assistant.after_turn = self._learn_from
         if self.assistant.personal_tools is None:
@@ -173,6 +187,30 @@ class Runtime:
         if self.connectors is not None:
             tools += self.connectors.tools_for(user_id)
         return tools
+
+    def approval_minutes(self, user_id: int) -> int:
+        chosen = self.assistant.user_settings.get(user_id).approval_minutes
+        return chosen if chosen is not None else self.settings.actions.approval_minutes
+
+    def device_label(self, device_id: int) -> str:
+        device = self.hub.devices.get(device_id) if self.hub is not None else None
+        if device is None:
+            return "a device"
+        return f"{device.label} ({DEVICE_KINDS.get(device.kind, device.kind)})"
+
+    def _after_pin(self, pending: Any) -> None:
+        """A PIN confirmed an action: when it was screen control on a device, open (or
+        renew) that device's approval window."""
+        if pending.device_id is None or pending.user_id is None or self.hub is None:
+            return
+        device = self.hub.devices.get(pending.device_id)
+        skill = None
+        if device is not None:
+            skill = next(
+                (t.get("skill") for t in device.tools if t.get("name") == pending.tool), None
+            )
+        if covered(pending.tool, skill):
+            self.approvals.open(pending.user_id, pending.device_id, pending.id)
 
     async def going_away(self) -> None:
         """The server was asked to stop: tell devices and live calls first (1001, going away)

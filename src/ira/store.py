@@ -219,6 +219,21 @@ CREATE TABLE IF NOT EXISTS device_events (
 CREATE INDEX IF NOT EXISTS device_events_user ON device_events (user_id, id);
 
 -- "What Ira did": every tool call, without its arguments or results.
+-- Approval windows: after a PIN on a screen-control action, more steps on that device run
+-- without asking until expires_at (docs/security.md, "Approvals").
+CREATE TABLE IF NOT EXISTS approval_windows (
+    id         TEXT PRIMARY KEY,
+    user_id    INTEGER NOT NULL,
+    device_id  INTEGER NOT NULL,
+    opened_at  REAL NOT NULL,
+    expires_at REAL NOT NULL,
+    opened_by  TEXT,
+    steps      INTEGER NOT NULL DEFAULT 0,
+    closed_at  REAL,
+    closed_why TEXT
+);
+CREATE INDEX IF NOT EXISTS approval_windows_user ON approval_windows (user_id, device_id);
+
 -- The businesses a person works with, as they describe them: Ira keeps them in mind.
 CREATE TABLE IF NOT EXISTS businesses (
     id         TEXT PRIMARY KEY,

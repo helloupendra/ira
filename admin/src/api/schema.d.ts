@@ -1841,6 +1841,58 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/me/approvals": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Your open approval windows */
+        get: operations["my_approvals"];
+        put?: never;
+        post?: never;
+        /** Stop every approval window of yours */
+        delete: operations["stop_all"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/me/approvals/{window_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Stop one approval window */
+        delete: operations["stop_one"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/me/approvals/minutes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** How long an approval lasts */
+        put: operations["set_minutes"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -2143,6 +2195,47 @@ export interface components {
             last_login_at?: number | null;
             /** Has Pin */
             has_pin: boolean;
+        };
+        /** ApprovalMinutes */
+        ApprovalMinutes: {
+            /**
+             * Minutes
+             * @description 0 (off), or 5 to 60.
+             */
+            minutes: number;
+            /**
+             * Pin
+             * @description Needed to raise it.
+             */
+            pin?: string | null;
+        };
+        /** ApprovalWindowView */
+        ApprovalWindowView: {
+            /** Id */
+            id: string;
+            /** Device Id */
+            device_id: number;
+            /** Device */
+            device: string;
+            /** Opened At */
+            opened_at: number;
+            /** Expires At */
+            expires_at: number;
+            /**
+             * Steps
+             * @description Actions it has run so far.
+             */
+            steps: number;
+        };
+        /** ApprovalsView */
+        ApprovalsView: {
+            /**
+             * Minutes
+             * @description How long a PIN on screen control covers; 0 is off.
+             */
+            minutes: number;
+            /** Windows */
+            windows: components["schemas"]["ApprovalWindowView"][];
         };
         /** AskRequest */
         AskRequest: {
@@ -11122,6 +11215,110 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["OkResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    my_approvals: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApprovalsView"];
+                };
+            };
+        };
+    };
+    stop_all: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OkResponse"];
+                };
+            };
+        };
+    };
+    stop_one: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                window_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OkResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    set_minutes: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ApprovalMinutes"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApprovalsView"];
                 };
             };
             /** @description Validation Error */

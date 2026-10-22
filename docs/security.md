@@ -149,6 +149,95 @@ on its own it can never change anything.
 - The service worker never caches `/v1`.
 - API responses are `Cache-Control: no-store`.
 
+## Approvals: fewer PINs for one task
+
+Controlling a phone or a Mac takes many small steps (open YouTube, tap
+Search, type, tap the first video), and a PIN for each makes it unusable.
+Approvals let one confirmation cover such steps, never more than this.
+
+### What an approval never covers
+
+Whatever the approval, these keep their own tier and ask every time:
+sending a message, mail or a notification reply; placing a call; paying,
+buying or moving money; deleting; pushing code; switching on a skill or
+pairing a device (any new grant); and any action of a connection. A tool
+whose name says send, reply, call, pay, buy, transfer, delete, remove,
+push, grant or pair is never covered, whatever its skill.
+
+### 1. The approval window (built)
+
+When the person confirms a **screen-control** action on one of their
+devices **with their PIN**, a window opens for that person **on that
+device**: for the next 15 minutes (their setting: off, or 5 to 60; the
+server's default is `actions.approval_minutes`), screen and app control
+there runs without asking:
+
+- covered: the `screen` and `control` skills (`screen_read`, `screen_act`,
+  and Ira for Mac's `mac_*` control tools), and `app_open`, `url_open`,
+  `media_play`, `media_control` and `settings_toggle`;
+- each run is written to **What Ira did** as "within your approval", and
+  counted on the window;
+- the model is told the window is open, so it does not ask for a PIN at
+  each step;
+- it ends when its time is up, on **Stop** (the app's **Your assistant**,
+  or `DELETE /v1/me/approvals/{id}`), when the device disconnects, or when
+  the device is removed. Another PIN on a covered action makes it start
+  again from then.
+
+Inside a window, what Ira reads on the screen may lead to more taps and
+typing on that device: that is the point of it. It can never lead to
+anything on the never-list, which still needs a yes or the PIN, and after
+reading the screen still needs the person's own words in a new message.
+
+| Route | Who | Does |
+| --- | --- | --- |
+| `GET /v1/me/approvals` | `ask` (a device too) | `{"minutes": 15, "windows": [{"id", "device_id", "device", "opened_at", "expires_at", "steps"}]}` |
+| `DELETE /v1/me/approvals/{id}` | `ask` (a device too) | stops one window at once |
+| `DELETE /v1/me/approvals` | `ask` (a device too) | stops them all |
+| `PUT /v1/me/approvals/minutes` | a session with `actions` | `{"minutes": 0 or 5 to 60, "pin": "..."}`; the PIN only when raising it |
+
+A device can stop a window and never open or lengthen one: only a PIN on a
+confirm card does.
+
+### 2. Approving with the device's own key (designed)
+
+A phone or a Mac can approve with a fingerprint or Face ID instead of a
+typed PIN:
+
+1. **Enrol, once, with the PIN.** The app makes a key pair in the Android
+   Keystore or the Secure Enclave (EC P-256, usable only after the
+   person's biometric check) and sends the public key, with the PIN typed
+   on the device: `POST /v1/me/approval-keys` with the device's own token,
+   `{"public_key": "<base64 SubjectPublicKeyInfo, DER>", "algorithm":
+   "ES256", "pin": "1234"}`. One key per device; enrolling again replaces
+   it.
+2. **Approve.** For a Tier 3 action, the app asks for the fingerprint and
+   signs these bytes, UTF-8:
+
+   ```text
+   ira-approve:1
+   <action id>
+   <SHA-256 of the action's summary, hex>
+   <the action's expires_at, whole seconds>
+   ```
+
+   and sends `POST /v1/actions/{id}/confirm` with
+   `{"device_id": 4, "signature": "<base64url, DER ECDSA>"}` in place of
+   the PIN. The summary's hash binds the signature to what the person was
+   shown.
+3. A wrong signature counts as a wrong PIN (three lock actions for 15
+   minutes). `DELETE /v1/me/approval-keys/{device_id}` removes a key, and
+   removing the device removes it too.
+
+### 3. Trusted apps (designed)
+
+A person may name apps on a device where Ira may tap and type without
+asking (YouTube, for example): `PUT /v1/me/approvals/apps` with the PIN,
+`{"device_id": 4, "apps": ["com.google.android.youtube"]}`. A `screen_act`
+there runs as Tier 1 (done, then said). The device reports the app in front
+with each screen action (`"app"` in its result), and a step that lands in
+any other app ends the trust for that turn. The never-list still applies.
+
 ## What it does not do (yet)
 
 - **No TLS of its own.** Put a reverse proxy with HTTPS in front of any

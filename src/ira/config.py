@@ -146,6 +146,9 @@ class ActionsConfig(_Strict):
     expiry_seconds: float = 120
     max_wrong_pins: int = 3
     lock_minutes: float = 15
+    # After a PIN on a screen-control action, more on that device runs without asking for
+    # this long (0: never); each person may choose off or 5 to 60 (docs/security.md).
+    approval_minutes: int = Field(default=15, ge=0, le=60)
     # Who may confirm an action with their own PIN. A role also needs the
     # "actions" permission, which viewers never have.
     confirm_roles: list[RoleName] = Field(default_factory=lambda: ["owner", "admin", "staff"])

@@ -110,6 +110,9 @@ actions:
   expiry_seconds: 120
   max_wrong_pins: 3
   lock_minutes: 15
+  # After a PIN on a screen or app action on a device, more of them there run without
+  # asking for this long (0: never). Each person may choose off or 5 to 60.
+  approval_minutes: 15
   # Who may confirm an action with their own PIN (viewers never can).
   confirm_roles: [owner, admin, staff]
   # Narrow it for one action tool:

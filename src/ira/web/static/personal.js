@@ -14,6 +14,7 @@ const IraPersonal = (() => {
     proposed: "waited for you",
     refused: "refused",
     executed: "done after you confirmed",
+    approved: "done within your approval",
     failed: "failed after you confirmed",
   };
   let events = null;
@@ -359,7 +360,7 @@ const IraPersonal = (() => {
   // --- your assistant ---------------------------------------------------------------
 
   async function renderAssistant(body) {
-    const [settings, grants] = await Promise.all([call("/v1/me/settings"), call("/v1/me/grants")]);
+    const [settings, grants, approvals] = await Promise.all([call("/v1/me/settings"), call("/v1/me/grants"), call("/v1/me/approvals")]);
     const error = el("p", { className: "error", role: "alert" });
     const saved = el("p", { className: "muted small", role: "status" });
     const languages = settings.language_options.map((code) =>
@@ -398,7 +399,66 @@ const IraPersonal = (() => {
         error.textContent = problem.message;
       }
     });
-    body.replaceChildren(form, webSearch(settings.web_search, body), grantList(grants, body));
+    body.replaceChildren(form, webSearch(settings.web_search, body), approvalsCard(approvals, body), grantList(grants, body));
+  }
+
+  // One PIN on screen control lets the next steps on that device run, for a few minutes.
+  function approvalsCard(approvals, body) {
+    const minutes = el(
+      "select",
+      { name: "minutes", "aria-label": "How long one approval lasts" },
+      [0, 5, 10, 15, 20, 30, 45, 60].map((m) => el("option", { value: String(m), text: m ? `${m} minutes` : "Off: ask every time" })),
+    );
+    minutes.value = String(approvals.minutes);
+    const pin = pinField("Your PIN, to make it longer");
+    pin.hidden = true;
+    const error = el("p", { className: "error", role: "alert" });
+    const save = el("button", { type: "submit", className: "btn btn-ghost", text: "Save", hidden: true });
+    const windows = approvals.windows.map((w) =>
+      el(
+        "li",
+        { className: "row" },
+        el("span", {}, el("strong", { text: w.device }), el("span", { className: "muted small", text: ` until ${new Date(w.expires_at * 1000).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}, ${w.steps} step${w.steps === 1 ? "" : "s"} so far` })),
+        el("button", {
+          type: "button",
+          className: "btn btn-ghost",
+          text: "Stop",
+          onClick: async () => {
+            await call(`/v1/me/approvals/${encodeURIComponent(w.id)}`, { method: "DELETE" });
+            await renderAssistant(body);
+          },
+        }),
+      ),
+    );
+    const form = el(
+      "form",
+      { className: "stack card" },
+      el("h3", { text: "Approvals" }),
+      el("p", { className: "muted small", text: "After you confirm a screen or app action on a device with your PIN, Ira may go on tapping, typing and opening apps there, without asking, for:" }),
+      minutes,
+      pin,
+      save,
+      windows.length ? el("ul", { className: "stack-tight" }, windows) : el("p", { className: "muted small", text: "Nothing is approved right now." }),
+      el("p", { className: "muted small", text: "Sending messages, calls, payments and deleting always ask." }),
+      error,
+    );
+    minutes.addEventListener("change", () => {
+      const longer = Number(minutes.value) > approvals.minutes;
+      pin.hidden = !longer;
+      save.hidden = false;
+      $("input", pin).required = longer;
+    });
+    form.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      error.textContent = "";
+      try {
+        await call("/v1/me/approvals/minutes", { method: "PUT", json: { minutes: Number(minutes.value), pin: $("input", pin).value || undefined } });
+        await renderAssistant(body);
+      } catch (problem) {
+        error.textContent = problem.message;
+      }
+    });
+    return form;
   }
 
   function webSearch(state, body) {

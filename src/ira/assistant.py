@@ -234,6 +234,9 @@ class Assistant:
         self.businesses: Callable[[int | None], list[str]] | None = None
         # What the person's devices can do but they have not switched on, one line a device.
         self.switched_off: Callable[[int | None], list[str]] | None = None
+        # Approval windows: after a PIN on screen control, its next steps run without asking.
+        self.approvals: Any = None
+        self.device_label: Callable[[int], str] = lambda device_id: f"device {device_id}"
         # Told each finished turn, without delaying it: (person, their message). Learning.
         self.after_turn = after_turn
         self._background: set[asyncio.Task[Any]] = set()
@@ -293,6 +296,16 @@ class Assistant:
                 "- What you know about this person and the people in their life, which they "
                 "told you or approved; use it only when it helps:\n"
                 + "".join(f"  - {line}\n" for line in known)
+            )
+        approved = self.approvals.prompt_lines(user_id, self.device_label) if self.approvals else []
+        if approved:
+            prompt += (
+                "- The person approved screen and app control with their PIN, on:\n"
+                + "".join(f"  - {line}\n" for line in approved)
+                + "  There, screen_read, screen_act, the Mac's control tools, app_open, "
+                "url_open and media tools run at once: do not ask for a PIN or a yes for "
+                "them, and say briefly what you did. Sending, calls, payments and deleting "
+                "still ask.\n"
             )
         off = self.switched_off(user_id) if self.switched_off is not None else []
         if off:
@@ -787,6 +800,28 @@ class Assistant:
     ) -> ToolRun:
         arguments = call.parsed_arguments() or {}
         safe_call = _safe(call)
+        if extra.tier >= 2 and self.approvals is not None and extra.source == "device":
+            try:
+                target, _ = extra.target(arguments)
+            except ToolError:
+                target = None
+            window = self.approvals.covers(user_id, target, extra.name, extra.skill)
+            if window is not None:  # approved with a PIN for a few minutes: run it now
+                try:
+                    value = await extra.run(arguments)
+                except ToolError as exc:
+                    content = wrap_untrusted(
+                        extra.source, extra.label, _result({"error": str(exc)})
+                    )
+                    return ToolRun(content, False, safe_call, private=True, outcome="error")
+                self.approvals.step(window)
+                content = wrap_untrusted(
+                    extra.source, extra.label, _result(value, PERSONAL_RESULT_CHARS)
+                )
+                return ToolRun(
+                    content, True, safe_call, untrusted=taints(extra), private=True,
+                    outcome="approved",
+                )  # fmt: skip
         if extra.tier >= 2:
             # The tier is the device's or the skill's, from code; the model cannot lower it.
             if tainted:

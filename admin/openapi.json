@@ -8848,6 +8848,149 @@
                     }
                 }
             }
+        },
+        "/v1/me/approvals": {
+            "get": {
+                "tags": [
+                    "actions"
+                ],
+                "summary": "Your open approval windows",
+                "operationId": "my_approvals",
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ApprovalsView"
+                                }
+                            }
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "HTTPBearer": []
+                    }
+                ]
+            },
+            "delete": {
+                "tags": [
+                    "actions"
+                ],
+                "summary": "Stop every approval window of yours",
+                "operationId": "stop_all",
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/OkResponse"
+                                }
+                            }
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "HTTPBearer": []
+                    }
+                ]
+            }
+        },
+        "/v1/me/approvals/{window_id}": {
+            "delete": {
+                "tags": [
+                    "actions"
+                ],
+                "summary": "Stop one approval window",
+                "operationId": "stop_one",
+                "security": [
+                    {
+                        "HTTPBearer": []
+                    }
+                ],
+                "parameters": [
+                    {
+                        "name": "window_id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "title": "Window Id"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/OkResponse"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/v1/me/approvals/minutes": {
+            "put": {
+                "tags": [
+                    "actions"
+                ],
+                "summary": "How long an approval lasts",
+                "operationId": "set_minutes",
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/ApprovalMinutes"
+                            }
+                        }
+                    },
+                    "required": true
+                },
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ApprovalsView"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "HTTPBearer": []
+                    }
+                ]
+            }
         }
     },
     "components": {
@@ -9478,6 +9621,94 @@
                     "has_pin"
                 ],
                 "title": "AdminUserRow"
+            },
+            "ApprovalMinutes": {
+                "properties": {
+                    "minutes": {
+                        "type": "integer",
+                        "title": "Minutes",
+                        "description": "0 (off), or 5 to 60."
+                    },
+                    "pin": {
+                        "anyOf": [
+                            {
+                                "type": "string",
+                                "maxLength": 20
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Pin",
+                        "description": "Needed to raise it."
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "minutes"
+                ],
+                "title": "ApprovalMinutes"
+            },
+            "ApprovalWindowView": {
+                "properties": {
+                    "id": {
+                        "type": "string",
+                        "title": "Id"
+                    },
+                    "device_id": {
+                        "type": "integer",
+                        "title": "Device Id"
+                    },
+                    "device": {
+                        "type": "string",
+                        "title": "Device"
+                    },
+                    "opened_at": {
+                        "type": "number",
+                        "title": "Opened At"
+                    },
+                    "expires_at": {
+                        "type": "number",
+                        "title": "Expires At"
+                    },
+                    "steps": {
+                        "type": "integer",
+                        "title": "Steps",
+                        "description": "Actions it has run so far."
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "id",
+                    "device_id",
+                    "device",
+                    "opened_at",
+                    "expires_at",
+                    "steps"
+                ],
+                "title": "ApprovalWindowView"
+            },
+            "ApprovalsView": {
+                "properties": {
+                    "minutes": {
+                        "type": "integer",
+                        "title": "Minutes",
+                        "description": "How long a PIN on screen control covers; 0 is off."
+                    },
+                    "windows": {
+                        "items": {
+                            "$ref": "#/components/schemas/ApprovalWindowView"
+                        },
+                        "type": "array",
+                        "title": "Windows"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "minutes",
+                    "windows"
+                ],
+                "title": "ApprovalsView"
             },
             "AskRequest": {
                 "properties": {

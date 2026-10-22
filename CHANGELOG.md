@@ -86,6 +86,11 @@ switch it on.
   with their password again; an owner sets someone's password or email from
   Users & roles; `ira user password` and `ira user email` do it from the
   server. All go to the change log.
+- **Approval windows.** One PIN on a screen or app action on a device lets
+  the next such steps there run without asking, for 15 minutes (each person
+  chooses off or 5 to 60, under **Your assistant**, with **Stop**).
+  Sending, calls, payments, deleting and new grants always ask. The
+  fingerprint approval and trusted apps are designed in the security page.
 - **Restarts are quick.** As it stops, the server closes devices and live
   calls with 1001 (going away) and ends event streams, and waits 5 seconds
   at most for the rest; the service unit stops within 15. A restart no

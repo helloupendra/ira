@@ -1,0 +1,161 @@
+"""Approval windows: one PIN on a screen-control action lets the next steps on that device
+run without asking, for a few minutes (docs/security.md, "Approvals").
+
+A window belongs to one person and one device. Only a PIN on a confirm card opens or
+renews it; anyone it belongs to, or their device, may stop it. It never covers what is on
+the never-list: sending, calling, paying, deleting, pushing, or a new grant.
+"""
+
+from __future__ import annotations
+
+import re
+import secrets
+import time
+from collections.abc import Callable
+from dataclasses import dataclass
+from typing import Any
+
+from ira.store import Store
+
+COVERED_SKILLS = frozenset({"screen", "control"})
+COVERED_TOOLS = frozenset(
+    {"app_open", "url_open", "media_play", "media_control", "settings_toggle"}
+)
+# Never covered, whatever the skill: a name that says it sends, calls, pays, deletes...
+NEVER = re.compile(
+    r"(^|_)(send|reply|call|place|pay|payment|buy|transfer|delete|remove|push|grant|pair)(_|$)"
+)
+MINUTES_CHOICES = (0, 5, 10, 15, 20, 30, 45, 60)
+
+
+def covered(tool: str, skill: str | None) -> bool:
+    """Whether an approval window may run this tool without asking."""
+    if NEVER.search(tool):
+        return False
+    return tool in COVERED_TOOLS or (skill or "") in COVERED_SKILLS
+
+
+def valid_minutes(minutes: int) -> bool:
+    return minutes == 0 or 5 <= minutes <= 60
+
+
+@dataclass
+class Window:
+    id: str
+    user_id: int
+    device_id: int
+    opened_at: float
+    expires_at: float
+    steps: int
+
+
+def _window(row: Any) -> Window:
+    return Window(
+        id=row["id"],
+        user_id=row["user_id"],
+        device_id=row["device_id"],
+        opened_at=row["opened_at"],
+        expires_at=row["expires_at"],
+        steps=row["steps"],
+    )
+
+
+class Approvals:
+    def __init__(
+        self,
+        store: Store,
+        *,
+        minutes_for: Callable[[int], int],
+        connected: Callable[[int], bool],
+        clock: Callable[[], float] = time.time,
+    ) -> None:
+        self.store = store
+        self.minutes_for = minutes_for
+        self.connected = connected
+        self.clock = clock
+
+    def open(self, user_id: int, device_id: int, action_id: str | None = None) -> Window | None:
+        """A PIN confirmed a covered action on this device: open the window, or start it
+        again from now. None when the person switched approvals off."""
+        minutes = self.minutes_for(user_id)
+        if minutes <= 0:
+            return None
+        now = self.clock()
+        current = self.active(user_id, device_id)
+        if current is not None:
+            self.store.execute(
+                "UPDATE approval_windows SET expires_at = ? WHERE id = ?",
+                (now + minutes * 60, current.id),
+            )
+            current.expires_at = now + minutes * 60
+            return current
+        window_id = "apw_" + secrets.token_hex(6)
+        self.store.execute(
+            "INSERT INTO approval_windows (id, user_id, device_id, opened_at, expires_at, "
+            "opened_by) VALUES (?, ?, ?, ?, ?, ?)",
+            (window_id, user_id, device_id, now, now + minutes * 60, action_id),
+        )
+        return self.get(window_id)
+
+    def get(self, window_id: str) -> Window | None:
+        row = self.store.one("SELECT * FROM approval_windows WHERE id = ?", (window_id,))
+        return _window(row) if row else None
+
+    def active(self, user_id: int, device_id: int) -> Window | None:
+        """The open window for this person on this device; it ends when the device is gone."""
+        row = self.store.one(
+            "SELECT * FROM approval_windows WHERE user_id = ? AND device_id = ? "
+            "AND closed_at IS NULL AND expires_at > ? ORDER BY opened_at DESC LIMIT 1",
+            (user_id, device_id, self.clock()),
+        )
+        if row is None:
+            return None
+        if not self.connected(device_id):
+            self._close("device_id = ? AND user_id = ?", (device_id, user_id), "disconnected")
+            return None
+        return _window(row)
+
+    def for_user(self, user_id: int) -> list[Window]:
+        rows = self.store.query(
+            "SELECT * FROM approval_windows WHERE user_id = ? AND closed_at IS NULL "
+            "AND expires_at > ? ORDER BY opened_at",
+            (user_id, self.clock()),
+        )
+        return [w for w in map(_window, rows) if self.active(user_id, w.device_id) is not None]
+
+    def covers(self, user_id: int | None, device_id: int | None, tool: str, skill: str | None):
+        """The window that lets this tool run now, or None."""
+        if user_id is None or device_id is None or not covered(tool, skill):
+            return None
+        return self.active(user_id, device_id)
+
+    def step(self, window: Window) -> None:
+        self.store.execute(
+            "UPDATE approval_windows SET steps = steps + 1 WHERE id = ?", (window.id,)
+        )
+
+    def stop(self, user_id: int, window_id: str | None = None) -> int:
+        """Stop one window of this person's, or all of them. Returns how many stopped."""
+        if window_id is None:
+            return self._close("user_id = ?", (user_id,), "stopped")
+        return self._close("user_id = ? AND id = ?", (user_id, window_id), "stopped")
+
+    def end_for_device(self, device_id: int) -> None:
+        self._close("device_id = ?", (device_id,), "device removed")
+
+    def _close(self, where: str, params: tuple[Any, ...], why: str) -> int:
+        cursor = self.store.execute(
+            f"UPDATE approval_windows SET closed_at = ?, closed_why = ? "
+            f"WHERE {where} AND closed_at IS NULL AND expires_at > ?",
+            (self.clock(), why, *params, self.clock()),
+        )
+        return cursor.rowcount
+
+    def prompt_lines(self, user_id: int | None, label: Callable[[int], str]) -> list[str]:
+        if user_id is None:
+            return []
+        lines = []
+        for window in self.for_user(user_id):
+            left = max(1, round((window.expires_at - self.clock()) / 60))
+            lines.append(f"{label(window.device_id)}: for about {left} more minutes")
+        return lines

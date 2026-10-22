@@ -312,6 +312,12 @@ Each tool's `min_tier` comes from its annotations: read-only is 0, unmarked
 or writing is 2, destructive or about sending, paying, sharing, deleting,
 merging or pushing is 3. See [Your connections](connectors.md).
 
+### Approvals
+
+`GET /v1/me/approvals`, `DELETE /v1/me/approvals[/{id}]` and
+`PUT /v1/me/approvals/minutes`: see [Approvals](security.md#approvals-fewer-pins-for-one-task).
+A run inside a window shows in "What Ira did" with the outcome `approved`.
+
 ### Your tokens, for Siri and shortcuts
 
 | Route | Who | Does |

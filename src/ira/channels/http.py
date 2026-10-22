@@ -26,6 +26,7 @@ from ira.channels import (
     account,
     admin,
     admin_write,
+    approvals,
     businesses,
     connectors,
     devices,
@@ -605,6 +606,7 @@ def create_app(runtime: Runtime, *, start_channels: bool = True) -> FastAPI:
     app.include_router(reports.router)
     app.include_router(businesses.router)
     app.include_router(my_tokens.router)
+    app.include_router(approvals.router)
     devices.mask_tokens_in_logs()
 
     @app.get("/pair", include_in_schema=False)

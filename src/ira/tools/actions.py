@@ -161,6 +161,8 @@ class ActionGuard:
         self.device_runner: Callable[[PendingAction], Awaitable[Any]] | None = None
         # Runs a confirmed action of a person's own tool (a connection's): set by the runtime.
         self.personal_runner: Callable[[PendingAction], Awaitable[Any]] | None = None
+        # Told of each action confirmed with a right PIN (approval windows).
+        self.after_pin: Callable[[PendingAction], None] | None = None
 
     def confirm_roles_for(self, tool: str) -> tuple[str, ...]:
         """The roles allowed to confirm this action (they also need the actions permission)."""
@@ -517,7 +519,10 @@ class ActionGuard:
                 current, "already_done", f"This action is already {current.status}.", actor, channel
             )
         pending.status = "executing"
-        return await self._execute(pending, actor, channel)
+        outcome = await self._execute(pending, actor, channel)
+        if self.after_pin is not None and outcome.status in ("executed", "failed"):
+            self.after_pin(pending)  # the PIN was right: an approval window may open
+        return outcome
 
     async def approve(
         self,

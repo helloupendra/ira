@@ -52,6 +52,7 @@ class Prefs:
     learning_days: int = 90
     nudges: bool = False
     timezone: str | None = None  # an IANA name, such as Asia/Kolkata; None: the server's
+    approval_minutes: int | None = None  # None: the server's actions.approval_minutes
 
 
 def clean_name(value: str, limit: int) -> str:
@@ -152,6 +153,9 @@ class UserSettings:
         prefs.nudges = raw.get("nudges") is True
         if isinstance(raw.get("timezone"), str) and valid_timezone(raw["timezone"]):
             prefs.timezone = raw["timezone"]
+        minutes = raw.get("approval_minutes")
+        if isinstance(minutes, int) and (minutes == 0 or 5 <= minutes <= 60):
+            prefs.approval_minutes = minutes
         return prefs
 
     def overridden(self, user_id: int) -> set[str]:
