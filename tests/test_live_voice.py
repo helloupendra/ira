@@ -241,3 +241,51 @@ async def test_a_call_asks_for_spoken_answers_and_may_use_its_own_tier():
     assert "Never answer in any other language" in system
     await runtime.assistant.ask("hello", conversation_id="t", channel="web", user_id=1)
     assert "live voice call" not in provider.calls[1]["messages"][0].text
+
+
+def test_a_proposed_call_is_read_back_with_its_exact_number():
+    from typing import Any
+
+    from ira.models.base import ChatResponse, ToolCall
+    from ira.tools.personal import PersonalTool
+
+    arguments = '{"name": "Rahul Sharma", "number": "+91 98100 00000"}'
+    provider = ScriptedProvider(
+        [
+            ChatResponse(
+                text="", tool_calls=[ToolCall(id="c1", name="call_number", arguments=arguments)]
+            ),
+            "Rahul ko call karun?",
+        ]
+    )
+    runtime = runtime_with(provider=provider)
+
+    async def never(args: dict[str, Any]) -> Any:
+        raise AssertionError("a Tier 2 call waits for a yes")
+
+    runtime.assistant.personal_tools = lambda user_id: [
+        PersonalTool(
+            name="call_number",
+            description="Call a number.",
+            parameters={"type": "object", "properties": {}},
+            tier=2,
+            source="device",
+            label="Pixel 7",
+            run=never,
+            device_id=9,
+            skill="calls",
+        )
+    ]
+    client = app(runtime)
+    with client, client.websocket_connect("/v1/voice/live", headers=session(client)) as ws:
+        ws.send_json({"type": "start", "protocol": 1})
+        ws.receive_json()
+        ws.send_json({"type": "text", "text": "rahul ko call karo"})
+        seen = until(ws, "done")
+    spoken = [m["text"] for m in seen if m["type"] == "audio"]
+    assert spoken == [
+        "Ek second.",
+        "call number on Pixel 7: name Rahul Sharma, number +91 98100 00000. Haan ya na?",
+    ]
+    action = next(m for m in seen if m["type"] == "action")["action"]
+    assert action["tier"] == 2 and "+91 98100 00000" in action["summary"]

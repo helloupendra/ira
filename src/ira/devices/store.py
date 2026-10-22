@@ -43,6 +43,20 @@ SKILLS: dict[str, str] = {
     "about (PDF, Word, text) and open it. Only in folders you allow, only when you ask.",
     "screen": "Screen: read the text of the window in front of you, only when you ask. Only "
     "the text leaves the Mac, never a picture.",
+    # Skills the phone and Mac apps offer; Ira reads and acts only when you ask.
+    "calls": "Calls: who called, and placing a call after you say yes to the exact number.",
+    "contacts": "Contacts: find a person's number or email in your contacts.",
+    "messages": "Messages: read your recent texts, and send one after you say yes to the "
+    "exact words and person.",
+    "notifications": "Notifications: read new notifications, and reply where the app allows "
+    "it, after your yes.",
+    "calendar": "Calendar: your events, and adding or changing one after your yes.",
+    "reminders": "Reminders: your device's reminders and alarms.",
+    "mail": "Mail: read your recent mail, and send after your yes.",
+    "notes": "Notes: find and read your notes.",
+    "apps": "Apps: open an app or a shortcut you name.",
+    "location": "Location: where this device is, when you ask. Never tracked.",
+    "media": "Media: play, pause and skip what is playing.",
 }
 DEFAULT_LABELS = {"mac": "My Mac", "android": "My Android phone"}
 

@@ -36,6 +36,13 @@ REST_ON_SCREEN = "The rest is on your screen."
 SETTLED_SECONDS = 0.3  # a transcript unchanged this long at speech_end is final enough
 # Said when Ira must use a tool before it can answer, so the person hears it at once.
 ONE_MOMENT = {"en": "One moment.", "hi": "Ek second.", "hinglish": "Ek second."}
+# A proposed action is read back with its exact target, then the question.
+SAY_YES = {"en": "Say yes or no.", "hi": "Haan ya na?", "hinglish": "Haan ya na?"}
+PIN_IN_APP = {
+    "en": "For this, type your PIN in the app.",
+    "hi": "Iske liye app mein apna PIN daaliye.",
+    "hinglish": "Iske liye app mein apna PIN daaliye.",
+}
 # Scripts no one asked for (a model that drifts into Chinese, say) are never spoken.
 # Nor is a model's raw tool-call markup that leaked into its text.
 _UNSPEAKABLE = re.compile(
@@ -93,6 +100,7 @@ class Turn:
     interrupted: bool = False
     spoken_chars: int = 0
     seq: int = 0
+    read_back: bool = False  # an action was read back: the model's own question is not spoken
 
 
 def languages_for(languages: list[str]) -> list[str]:
@@ -341,6 +349,7 @@ class LiveCall:
                         self._queue(turn, speech, ONE_MOMENT[detect(turn.text)])
                     elif kind == "action":
                         action = event["action"]
+                        self._read_back(turn, speech, action)
                         view = self.action_view(action) if self.action_view else action
                         if hasattr(view, "model_dump"):
                             view = view.model_dump(mode="json")
@@ -383,8 +392,23 @@ class LiveCall:
     def _since(self, turn: Turn) -> int:
         return round((self.clock() - turn.started) * 1000)
 
-    def _queue(self, turn: Turn, speech: asyncio.Queue[str | None], sentence: str) -> None:
+    def _read_back(self, turn: Turn, speech: asyncio.Queue[str | None], action: dict) -> None:
+        from ira.language import detect
+
+        language = detect(turn.text)
+        if action.get("tier") == 3:
+            line = f"{read_back(str(action.get('summary', '')))}. {PIN_IN_APP[language]}"
+        else:
+            line = f"{read_back(str(action.get('summary', '')))}. {SAY_YES[language]}"
+        self._queue(turn, speech, line, own=True)
+        turn.read_back = True
+
+    def _queue(
+        self, turn: Turn, speech: asyncio.Queue[str | None], sentence: str, *, own: bool = False
+    ) -> None:
         if turn.interrupted or turn.spoken_chars >= self.max_spoken_chars:
+            return
+        if turn.read_back and not own:
             return
         if _UNSPEAKABLE.search(sentence):
             log.warning("a sentence in an unexpected script was not spoken")
@@ -433,6 +457,20 @@ class LiveCall:
         if self.answer is not None:
             with contextlib.suppress(Exception):
                 await asyncio.wait_for(asyncio.shield(self.answer), 30)
+
+
+def read_back(summary: str) -> str:
+    """An action's summary as it is said: "call number on Pixel 7: name Rahul, number ..."."""
+    head, found, rest = summary.partition(" with {")
+    if found:
+        try:
+            arguments = json.loads("{" + rest)
+        except ValueError:
+            arguments = None
+        if isinstance(arguments, dict):
+            said = ", ".join(f"{key.replace('_', ' ')} {value}" for key, value in arguments.items())
+            return f"{head.replace('_', ' ')}: {said}"
+    return summary.replace("_", " ")
 
 
 async def _quietly(work: Awaitable[Any]) -> None:
