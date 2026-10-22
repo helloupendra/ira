@@ -89,6 +89,9 @@ switch it on.
   with their password again; an owner sets someone's password or email from
   Users & roles; `ira user password` and `ira user email` do it from the
   server. All go to the change log.
+- **Your businesses.** A profile for each business a person works with:
+  what it is, its people, its terms, and what Ira may do for it. Ira keeps
+  them in mind, and updates one when told ("Sunrise pays in 30 days").
 - **The connector kit.** `ira connector new <name>` writes a tool pack for
   any business's API: one tool per operation from an OpenAPI description,
   three general tools from a base URL, or one that asks another Ira with an

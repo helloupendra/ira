@@ -219,6 +219,20 @@ CREATE TABLE IF NOT EXISTS device_events (
 CREATE INDEX IF NOT EXISTS device_events_user ON device_events (user_id, id);
 
 -- "What Ira did": every tool call, without its arguments or results.
+-- The businesses a person works with, as they describe them: Ira keeps them in mind.
+CREATE TABLE IF NOT EXISTS businesses (
+    id         TEXT PRIMARY KEY,
+    user_id    INTEGER NOT NULL,
+    name       TEXT NOT NULL,
+    about      TEXT NOT NULL DEFAULT '',
+    people     TEXT NOT NULL DEFAULT '',
+    terms      TEXT NOT NULL DEFAULT '',
+    may_do     TEXT NOT NULL DEFAULT '',
+    created_at REAL NOT NULL,
+    updated_at REAL NOT NULL
+);
+CREATE UNIQUE INDEX IF NOT EXISTS businesses_name ON businesses (user_id, name COLLATE NOCASE);
+
 -- Answers people reported (Play asks every AI app for this): which answer, why, when.
 CREATE TABLE IF NOT EXISTS reports (
     id         TEXT PRIMARY KEY,

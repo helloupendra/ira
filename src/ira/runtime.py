@@ -9,6 +9,7 @@ from typing import Any
 from ira import overrides, setupcode
 from ira.accounts import Accounts
 from ira.assistant import Assistant
+from ira.businesses import Businesses
 from ira.config import ConfigError, ProviderConfig, Settings, secret
 from ira.conversations import Conversations
 from ira.devices import DeviceHub, Devices
@@ -76,6 +77,8 @@ class Runtime:
     # What each person let Ira notice about their day, and what it learned.
     learning: LearningService | None = None
     learner: Learner | None = None
+    # The businesses each person works with, as they described them.
+    businesses: Businesses = field(init=False)
     # Each person's connections to other services (MCP servers).
     connectors: Any = None
 
@@ -96,6 +99,9 @@ class Runtime:
             self.learner = Learner(self.learning)
         if self.assistant.memory is None:
             self.assistant.memory = self.learner.memory
+        self.businesses = Businesses(self.store)
+        if self.assistant.businesses is None:
+            self.assistant.businesses = self.businesses.lines
         if self.assistant.after_turn is None:
             self.assistant.after_turn = self._learn_from
         if self.assistant.personal_tools is None:
@@ -154,6 +160,7 @@ class Runtime:
         if self.learning is not None and self.learner is not None:
             tools += reminder_tools(self.learning, user_id, self.learner.zone(user_id))
             tools += people_tools(self.learning.data, user_id)
+            tools += self.businesses.tools(user_id)
         if self.connectors is not None:
             tools += self.connectors.tools_for(user_id)
         return tools

@@ -356,6 +356,7 @@ def export_data(runtime: Runtime, principal: Principal) -> dict[str, Any]:
         "connections": [
             c.public() for c in (runtime.connectors.for_user(user_id) if runtime.connectors else [])
         ],
+        "businesses": [vars(b) for b in runtime.businesses.list(user_id)],
     }
 
 
@@ -434,6 +435,7 @@ async def delete_my_data(
         activity = store.execute("DELETE FROM tool_log WHERE user_id = ?", (user_id,)).rowcount
         store.execute("DELETE FROM voice_turns WHERE user_id = ?", (user_id,))
         store.execute("DELETE FROM reports WHERE user_id = ?", (user_id,))
+        store.execute("DELETE FROM businesses WHERE user_id = ?", (user_id,))
         store.execute("DELETE FROM device_pairings WHERE user_id = ?", (user_id,))
         devices = store.execute("DELETE FROM devices WHERE user_id = ?", (user_id,)).rowcount
         settings = store.execute("DELETE FROM user_settings WHERE user_id = ?", (user_id,)).rowcount

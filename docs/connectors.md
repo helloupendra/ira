@@ -184,6 +184,20 @@ business number, the WhatsApp Business Cloud API is the way. On a phone,
 the Android app reads notifications, including WhatsApp's, and replies
 through them, which is allowed.
 
+## Your businesses
+
+Each business you work with can have a profile, under **Your businesses** in
+the Ira app's menu: what it is to you, its people, its terms, and what Ira
+may do for it ("read its appointments; never message its patients"). Or tell
+Ira in a chat ("Sunrise pays in 30 days") and it updates the profile itself
+(Tier 1: it says what it saved). Ira keeps your profiles in mind in every
+conversation, so "send the Sunrise invoice" needs no explaining.
+
+What you write under **What Ira may do** is your rule, and Ira follows it;
+the tiers still ask before anything changes. Profiles are yours alone, kept
+until you remove them or delete your data, and included in **Export my
+data**.
+
 ## Any business: the connector kit
 
 A business that has an API, but no MCP server, gets a **tool pack**: one

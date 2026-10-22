@@ -305,6 +305,18 @@ Each tool's `min_tier` comes from its annotations: read-only is 0, unmarked
 or writing is 2, destructive or about sending, paying, sharing, deleting,
 merging or pushing is 3. See [Your connections](connectors.md).
 
+### Your businesses
+
+| Route | Who | Does |
+| --- | --- | --- |
+| `GET /v1/me/businesses` | `ask` (a device too) | `BusinessView[]`, the latest changed first |
+| `POST /v1/me/businesses` | a session with `ask` | `BusinessIn`: `name`, and `about`, `people`, `terms`, `may_do` (600, 600, 600 and 400 characters). `409` for a name you already have |
+| `PATCH /v1/me/businesses/{id}` | a session with `ask` | `BusinessChange`: any of the same fields |
+| `DELETE /v1/me/businesses/{id}` | a session with `ask` | removes it |
+
+Ira keeps them in its prompt (12 at most, 2,400 characters) and has a
+Tier 1 tool, `remember_business`, for what the person tells it in a chat.
+
 ### Reporting an answer
 
 | Route | Who | Does |

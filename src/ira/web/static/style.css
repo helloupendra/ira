@@ -61,7 +61,7 @@ p { margin: 0; }
 
 label { display: grid; gap: var(--s-1); font-size: var(--text-s); color: var(--muted); }
 
-input {
+input, textarea {
   font: inherit;
   color: var(--text);
   background: var(--panel);
@@ -73,8 +73,9 @@ input {
   width: 100%;
 }
 
-input::placeholder { color: var(--muted); opacity: 1; }
-input:focus-visible { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+textarea { padding: var(--s-2) var(--s-3); resize: vertical; line-height: 1.45; }
+input::placeholder, textarea::placeholder { color: var(--muted); opacity: 1; }
+input:focus-visible, textarea:focus-visible { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
 
 .stack { display: grid; gap: var(--s-4); }
 code { font-family: var(--mono); font-size: 0.9em; background: var(--bg-sunken); border-radius: 4px; padding: 0.05em 0.3em; }

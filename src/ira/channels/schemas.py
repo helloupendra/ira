@@ -1347,6 +1347,34 @@ class FeedbackIn(BaseModel):
     note: str | None = Field(default=None, max_length=300, description="What would be better.")
 
 
+class BusinessIn(BaseModel):
+    name: str = Field(min_length=1, max_length=80)
+    about: str = Field(default="", max_length=600, description="What it is, to you.")
+    people: str = Field(default="", max_length=600, description="Its people, and their roles.")
+    terms: str = Field(default="", max_length=600, description="Rates, payment, deadlines.")
+    may_do: str = Field(
+        default="", max_length=400, description="What Ira may do for it, and what not."
+    )
+
+
+class BusinessChange(BaseModel):
+    name: str | None = Field(default=None, min_length=1, max_length=80)
+    about: str | None = Field(default=None, max_length=600)
+    people: str | None = Field(default=None, max_length=600)
+    terms: str | None = Field(default=None, max_length=600)
+    may_do: str | None = Field(default=None, max_length=400)
+
+
+class BusinessView(BaseModel):
+    id: str
+    name: str
+    about: str
+    people: str
+    terms: str
+    may_do: str
+    updated_at: float
+
+
 ReportReason = Literal["wrong", "harmful", "offensive", "private", "other"]
 
 

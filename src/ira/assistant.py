@@ -176,6 +176,8 @@ class Assistant:
         self.tool_limit = ToolRateLimit(tool_calls_per_minute)
         # What the person let Ira learn about them and approved, for their prompt.
         self.memory = memory
+        # The businesses the person works with, as they described them.
+        self.businesses: Callable[[int | None], list[str]] | None = None
         # Told each finished turn, without delaying it: (person, their message). Learning.
         self.after_turn = after_turn
         self._background: set[asyncio.Task[Any]] = set()
@@ -235,6 +237,13 @@ class Assistant:
                 "- What you know about this person and the people in their life, which they "
                 "told you or approved; use it only when it helps:\n"
                 + "".join(f"  - {line}\n" for line in known)
+            )
+        businesses = self.businesses(user_id) if self.businesses is not None else []
+        if businesses:
+            prompt += (
+                "- The businesses this person works with, as they described them. Follow what "
+                "they say you may do for each; the tiers still ask before anything changes:\n"
+                + "".join(f"  - {line}\n" for line in businesses)
             )
         if self.instructions:
             prompt += "\n" + self.instructions + "\n"

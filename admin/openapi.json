@@ -8554,6 +8554,182 @@
                     }
                 }
             }
+        },
+        "/v1/me/businesses": {
+            "get": {
+                "tags": [
+                    "businesses"
+                ],
+                "summary": "Your business profiles",
+                "operationId": "list_businesses",
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "items": {
+                                        "$ref": "#/components/schemas/BusinessView"
+                                    },
+                                    "type": "array",
+                                    "title": "Response List Businesses"
+                                }
+                            }
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "HTTPBearer": []
+                    }
+                ]
+            },
+            "post": {
+                "tags": [
+                    "businesses"
+                ],
+                "summary": "Add a business profile",
+                "operationId": "add_business",
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/BusinessIn"
+                            }
+                        }
+                    },
+                    "required": true
+                },
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/BusinessView"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "HTTPBearer": []
+                    }
+                ]
+            }
+        },
+        "/v1/me/businesses/{business_id}": {
+            "patch": {
+                "tags": [
+                    "businesses"
+                ],
+                "summary": "Change a business profile",
+                "operationId": "change_business",
+                "security": [
+                    {
+                        "HTTPBearer": []
+                    }
+                ],
+                "parameters": [
+                    {
+                        "name": "business_id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "title": "Business Id"
+                        }
+                    }
+                ],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/BusinessChange"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/BusinessView"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            "delete": {
+                "tags": [
+                    "businesses"
+                ],
+                "summary": "Remove a business profile",
+                "operationId": "remove_business",
+                "security": [
+                    {
+                        "HTTPBearer": []
+                    }
+                ],
+                "parameters": [
+                    {
+                        "name": "business_id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "title": "Business Id"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/OkResponse"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
         }
     },
     "components": {
@@ -9415,6 +9591,159 @@
                     "available"
                 ],
                 "title": "BuiltinOffer"
+            },
+            "BusinessChange": {
+                "properties": {
+                    "name": {
+                        "anyOf": [
+                            {
+                                "type": "string",
+                                "maxLength": 80,
+                                "minLength": 1
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Name"
+                    },
+                    "about": {
+                        "anyOf": [
+                            {
+                                "type": "string",
+                                "maxLength": 600
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "About"
+                    },
+                    "people": {
+                        "anyOf": [
+                            {
+                                "type": "string",
+                                "maxLength": 600
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "People"
+                    },
+                    "terms": {
+                        "anyOf": [
+                            {
+                                "type": "string",
+                                "maxLength": 600
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Terms"
+                    },
+                    "may_do": {
+                        "anyOf": [
+                            {
+                                "type": "string",
+                                "maxLength": 400
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "May Do"
+                    }
+                },
+                "type": "object",
+                "title": "BusinessChange"
+            },
+            "BusinessIn": {
+                "properties": {
+                    "name": {
+                        "type": "string",
+                        "maxLength": 80,
+                        "minLength": 1,
+                        "title": "Name"
+                    },
+                    "about": {
+                        "type": "string",
+                        "maxLength": 600,
+                        "title": "About",
+                        "description": "What it is, to you.",
+                        "default": ""
+                    },
+                    "people": {
+                        "type": "string",
+                        "maxLength": 600,
+                        "title": "People",
+                        "description": "Its people, and their roles.",
+                        "default": ""
+                    },
+                    "terms": {
+                        "type": "string",
+                        "maxLength": 600,
+                        "title": "Terms",
+                        "description": "Rates, payment, deadlines.",
+                        "default": ""
+                    },
+                    "may_do": {
+                        "type": "string",
+                        "maxLength": 400,
+                        "title": "May Do",
+                        "description": "What Ira may do for it, and what not.",
+                        "default": ""
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "name"
+                ],
+                "title": "BusinessIn"
+            },
+            "BusinessView": {
+                "properties": {
+                    "id": {
+                        "type": "string",
+                        "title": "Id"
+                    },
+                    "name": {
+                        "type": "string",
+                        "title": "Name"
+                    },
+                    "about": {
+                        "type": "string",
+                        "title": "About"
+                    },
+                    "people": {
+                        "type": "string",
+                        "title": "People"
+                    },
+                    "terms": {
+                        "type": "string",
+                        "title": "Terms"
+                    },
+                    "may_do": {
+                        "type": "string",
+                        "title": "May Do"
+                    },
+                    "updated_at": {
+                        "type": "number",
+                        "title": "Updated At"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "id",
+                    "name",
+                    "about",
+                    "people",
+                    "terms",
+                    "may_do",
+                    "updated_at"
+                ],
+                "title": "BusinessView"
             },
             "CallRow": {
                 "properties": {

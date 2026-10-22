@@ -105,6 +105,7 @@ const IraPersonal = (() => {
     data: { title: "Your data", render: renderData },
     knows: { title: "What Ira knows about you", render: renderKnows },
     connections: { title: "Your connections", render: renderConnections },
+    businesses: { title: "Your businesses", render: renderBusinesses },
   };
 
   function open(name) {
@@ -845,6 +846,87 @@ const IraPersonal = (() => {
   const PRESETS = {
     github: { name: "GitHub", url: "https://api.githubcopilot.com/mcp/readonly", hint: "A fine-grained personal access token from github.com/settings/tokens. This address is read-only." },
   };
+
+  // --- your businesses ---------------------------------------------------------------
+
+  const BUSINESS_FIELDS = [
+    ["about", "What it is, to you", "For example: a small clinic; I keep its books.", 600],
+    ["people", "Its people", "For example: Dr. Mehta, the owner; Priya at the front desk.", 600],
+    ["terms", "Terms", "For example: a monthly invoice, paid in 15 days.", 600],
+    ["may_do", "What Ira may do for it", "For example: read its appointments; never message its patients.", 400],
+  ];
+
+  async function renderBusinesses(body) {
+    const businesses = await call("/v1/me/businesses");
+    const list = el("ul", { className: "cards" });
+    if (!businesses.length) {
+      list.append(el("li", { className: "muted", text: "None yet. Tell Ira about each business you work with, here or in a chat (\"Sunrise pays in 30 days\"), and it keeps them in mind." }));
+    }
+    for (const business of businesses) {
+      const gist = [business.about, business.may_do && `Ira may: ${business.may_do}`].filter(Boolean).join(" ");
+      list.append(
+        el(
+          "li",
+          { className: "card" },
+          el("details", {}, el("summary", {}, el("strong", { text: business.name }), gist ? el("span", { className: "muted small", text: ` ${gist}` }) : null), businessForm(business, body)),
+        ),
+      );
+    }
+    const add = el("details", { className: "card" }, el("summary", { text: "Add a business" }), businessForm(null, body));
+    body.replaceChildren(
+      el("p", { className: "muted small", text: "Ira follows what you say it may do. Anything that changes something still waits for your yes or your PIN." }),
+      list,
+      add,
+    );
+  }
+
+  function businessForm(business, body) {
+    const name = el("input", { name: "name", required: true, maxlength: "80", value: business ? business.name : "" });
+    const fields = Object.fromEntries(
+      BUSINESS_FIELDS.map(([key, , hint, max]) => [key, el("textarea", { name: key, rows: 2, maxlength: String(max), placeholder: hint, value: business ? business[key] : "" })]),
+    );
+    const error = el("p", { className: "error", role: "alert" });
+    const form = el(
+      "form",
+      { className: "stack-tight" },
+      el("label", {}, "Name", name),
+      ...BUSINESS_FIELDS.map(([key, label]) => el("label", {}, label, fields[key])),
+      el(
+        "div",
+        { className: "row" },
+        el("button", { type: "submit", className: "btn btn-primary", text: business ? "Save" : "Add" }),
+        business
+          ? el("button", {
+              type: "button",
+              className: "btn btn-ghost",
+              text: "Remove",
+              onClick: async () => {
+                if (!confirm(`Remove ${business.name}? Ira forgets what you told it about it.`)) return;
+                try {
+                  await call(`/v1/me/businesses/${encodeURIComponent(business.id)}`, { method: "DELETE" });
+                  await renderBusinesses(body);
+                } catch (problem) {
+                  error.textContent = problem.message;
+                }
+              },
+            })
+          : null,
+      ),
+      error,
+    );
+    form.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const json = { name: name.value.trim() };
+      for (const [key] of BUSINESS_FIELDS) json[key] = fields[key].value.trim();
+      try {
+        await call(business ? `/v1/me/businesses/${encodeURIComponent(business.id)}` : "/v1/me/businesses", { method: business ? "PATCH" : "POST", json });
+        await renderBusinesses(body);
+      } catch (problem) {
+        error.textContent = problem.message;
+      }
+    });
+    return form;
+  }
 
   async function renderConnections(body) {
     const view = await call("/v1/me/connections");

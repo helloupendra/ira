@@ -1770,6 +1770,42 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/me/businesses": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Your business profiles */
+        get: operations["list_businesses"];
+        put?: never;
+        /** Add a business profile */
+        post: operations["add_business"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/me/businesses/{business_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Remove a business profile */
+        delete: operations["remove_business"];
+        options?: never;
+        head?: never;
+        /** Change a business profile */
+        patch: operations["change_business"];
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -2172,6 +2208,65 @@ export interface components {
              * @description False: this server's owner has not set it up.
              */
             available: boolean;
+        };
+        /** BusinessChange */
+        BusinessChange: {
+            /** Name */
+            name?: string | null;
+            /** About */
+            about?: string | null;
+            /** People */
+            people?: string | null;
+            /** Terms */
+            terms?: string | null;
+            /** May Do */
+            may_do?: string | null;
+        };
+        /** BusinessIn */
+        BusinessIn: {
+            /** Name */
+            name: string;
+            /**
+             * About
+             * @description What it is, to you.
+             * @default
+             */
+            about: string;
+            /**
+             * People
+             * @description Its people, and their roles.
+             * @default
+             */
+            people: string;
+            /**
+             * Terms
+             * @description Rates, payment, deadlines.
+             * @default
+             */
+            terms: string;
+            /**
+             * May Do
+             * @description What Ira may do for it, and what not.
+             * @default
+             */
+            may_do: string;
+        };
+        /** BusinessView */
+        BusinessView: {
+            /** Id */
+            id: string;
+            /** Name */
+            name: string;
+            /** About */
+            about: string;
+            /** People */
+            people: string;
+            /** Terms */
+            terms: string;
+            /** May Do */
+            may_do: string;
+            /** Updated At */
+            updated_at: number;
         };
         /** CallRow */
         CallRow: {
@@ -10752,6 +10847,125 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["OkResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_businesses: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BusinessView"][];
+                };
+            };
+        };
+    };
+    add_business: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BusinessIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BusinessView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    remove_business: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                business_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OkResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    change_business: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                business_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BusinessChange"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BusinessView"];
                 };
             };
             /** @description Validation Error */
