@@ -23,8 +23,8 @@ object Approvals {
     /** The approval window: on, the server has it. */
     const val WINDOW = true
 
-    /** Fingerprint approval: off until the server has `/v1/me/approval-keys`. */
-    const val FINGERPRINT = false
+    /** Fingerprint approval: the server checks device keys (`/v1/me/approval-keys`). */
+    const val FINGERPRINT = true
 
     const val PATH = "/v1/me/approvals"
     const val KEYS_PATH = "/v1/me/approval-keys"

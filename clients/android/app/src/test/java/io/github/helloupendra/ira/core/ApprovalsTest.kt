@@ -99,7 +99,7 @@ class ApprovalsTest {
     fun `the requests are the spec's`() {
         assertEquals("""{"public_key":"MFkw","algorithm":"ES256","pin":"482916"}""", Approvals.enrollBody("MFkw", "482916"))
         assertEquals("""{"device_id":4,"signature":"MEQ"}""", Approvals.confirmBody(4, "MEQ"))
-        assertFalse(Approvals.FINGERPRINT)
+        assertTrue(Approvals.FINGERPRINT)
         assertTrue(Approvals.WINDOW)
     }
 }

@@ -114,8 +114,10 @@ class IraApp : Application() {
             when (reply.status) {
                 in 200..299 -> null
                 403 -> "That PIN is not right."
+                409 -> "Set an action PIN on your Ira first (Your account), then enroll."
+                422 -> "Your Ira did not accept this phone's key. Enroll again."
                 423 -> "Actions are locked after wrong PINs. Try again in 15 minutes."
-                404 -> "Your Ira does not offer fingerprint approval yet."
+                404, 405 -> "Your Ira does not offer fingerprint approval yet."
                 else -> "Your Ira answered HTTP ${reply.status}."
             }
         } catch (_: IOException) {
@@ -128,7 +130,9 @@ class IraApp : Application() {
         val server = settings.server.orEmpty()
         val token = secrets.token().orEmpty()
         return try {
-            Actions.parse(Net.postJson("${server.trimEnd('/')}/v1/actions/$actionId/confirm", token, Approvals.confirmBody(settings.deviceId, signature)))
+            val outcome = Actions.parse(Net.postJson("${server.trimEnd('/')}/v1/actions/$actionId/confirm", token, Approvals.confirmBody(settings.deviceId, signature)))
+            // A refused signature counts as a wrong PIN on the server.
+            if (outcome.status == "wrong_pin") outcome.copy(message = "Your Ira refused the fingerprint approval, and counted it as a wrong PIN. Type the PIN instead.") else outcome
         } catch (_: IOException) {
             Actions.Outcome("offline", "Could not reach your Ira. Check that the phone is online, then try again.", false)
         }
