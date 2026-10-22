@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import asyncio
 import base64
 import json
 import struct
@@ -141,7 +140,7 @@ class StandIn:
                 await socket.send(reply)
             if self.close:
                 return
-            await asyncio.sleep(30)
+            await socket.wait_closed()  # stays open until the client closes it
 
 
 async def run_against(stand_in: StandIn, wav: bytes, **kwargs) -> str:
