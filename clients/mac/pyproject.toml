@@ -1,0 +1,31 @@
+[build-system]
+requires = ["hatchling>=1.24"]
+build-backend = "hatchling.build"
+
+[project]
+name = "ira-mac"
+version = "0.3.0"
+description = "The IRA Mac companion: your own Ira reads and watches your Chrome tabs when you ask."
+license = "MIT"
+authors = [{ name = "Upendra Singh Chauhan" }]
+# macOS ships Python 3.9 with the Command Line Tools; the companion runs on it.
+requires-python = ">=3.9"
+dependencies = ["websockets>=13"]
+
+[project.optional-dependencies]
+dev = ["pytest>=8"]
+
+[tool.hatch.build.targets.wheel]
+packages = ["ira_mac"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+
+[tool.ruff]
+extend = "../../pyproject.toml"
+target-version = "py39"
+src = ["."]
+
+[tool.ruff.lint.isort]
+known-first-party = ["ira_mac"]
