@@ -111,6 +111,7 @@ jobs:
     # or key exists in this workflow; a TestFlight build is signed elsewhere
     # (docs/clients/iphone.md).
     runs-on: macos-latest
+    timeout-minutes: 75
     defaults:
       run:
         working-directory: clients/ios
@@ -124,7 +125,18 @@ jobs:
       - run: xcodebuild -version && xcodegen --version
       - name: Start a local Ira for the tests
         run: scripts/local-ira.sh >> "$GITHUB_ENV"
-      - run: scripts/ci.sh
+      - name: Boot an iPhone simulator
+        run: scripts/ci.sh simulator
+        timeout-minutes: 10
+      - name: IraPhoneKit's tests on the simulator
+        run: scripts/ci.sh kit
+        timeout-minutes: 25
+      - name: The app and its UI tests
+        run: scripts/ci.sh app
+        timeout-minutes: 25
+      - name: An unsigned Release build for the simulator
+        run: scripts/ci.sh release
+        timeout-minutes: 15
       - name: The local Ira's log
         if: failure()
         run: cat "$IRA_TEST_DIR/serve.log"
