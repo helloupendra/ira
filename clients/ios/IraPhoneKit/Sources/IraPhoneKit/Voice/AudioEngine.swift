@@ -54,7 +54,7 @@ public final class AudioEngine: NSObject {
     public func activateSession() throws {
         #if os(iOS)
         let session = AVAudioSession.sharedInstance()
-        try session.setCategory(.playAndRecord, mode: .voiceChat, options: [.defaultToSpeaker, .allowBluetooth])
+        try session.setCategory(.playAndRecord, mode: .voiceChat, options: [.defaultToSpeaker, .allowBluetoothHFP])
         try session.setPreferredIOBufferDuration(0.02)
         try session.setActive(true)
         if !observers.isEmpty { return }
@@ -259,16 +259,15 @@ public final class AudioEngine: NSObject {
             guard let out = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: AVAudioFrameCount(Double(frames) * ratio + 64)) else {
                 return nil
             }
-            var fed = false
+            let input = OneBuffer(source)
             var error: NSError?
             converter.convert(to: out, error: &error) { _, status in
-                if fed {
+                guard let next = input.take() else {
                     status.pointee = .endOfStream
                     return nil
                 }
-                fed = true
                 status.pointee = .haveData
-                return source
+                return next
             }
             return error == nil ? out : nil
         } catch {
@@ -309,19 +308,33 @@ final class Resampler: @unchecked Sendable {
         let ratio = target.sampleRate / buffer.format.sampleRate
         let capacity = AVAudioFrameCount(Double(buffer.frameLength) * ratio + 32)
         guard let out = AVAudioPCMBuffer(pcmFormat: target, frameCapacity: capacity) else { return nil }
-        var fed = false
+        let input = OneBuffer(buffer)
         var error: NSError?
         converter.convert(to: out, error: &error) { _, status in
-            if fed {
-                status.pointee = .noDataNow
+            guard let next = input.take() else {
+                status.pointee = .noDataNow  // the converter keeps its state for the next buffer
                 return nil
             }
-            fed = true
             status.pointee = .haveData
-            return buffer
+            return next
         }
         guard error == nil, let channel = out.floatChannelData?[0] else { return nil }
         return Array(UnsafeBufferPointer(start: channel, count: Int(out.frameLength)))
+    }
+}
+
+/// Hands one buffer to AVAudioConverter, which asks for input synchronously,
+/// during `convert`, on the calling thread.
+final class OneBuffer: @unchecked Sendable {
+    private var buffer: AVAudioPCMBuffer?
+
+    init(_ buffer: AVAudioPCMBuffer) {
+        self.buffer = buffer
+    }
+
+    func take() -> AVAudioPCMBuffer? {
+        defer { buffer = nil }
+        return buffer
     }
 }
 
