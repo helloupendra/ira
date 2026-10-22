@@ -9898,6 +9898,23 @@
                         ],
                         "title": "Tts"
                     },
+                    "browser_stt": {
+                        "type": "string",
+                        "enum": [
+                            "off",
+                            "fallback",
+                            "prefer"
+                        ],
+                        "title": "Browser Stt",
+                        "description": "May the web app recognise speech in the browser: when this server has no speech-to-text (fallback), always (prefer), or never (off).",
+                        "default": "off"
+                    },
+                    "mic_language": {
+                        "type": "string",
+                        "title": "Mic Language",
+                        "description": "The language to recognise in the browser, from your languages: hi-IN when you speak Hindi or Hinglish, else en-IN.",
+                        "default": "en-IN"
+                    },
                     "tools": {
                         "items": {
                             "$ref": "#/components/schemas/ToolView"

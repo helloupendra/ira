@@ -17,6 +17,7 @@ const state = {
   conversationId: null,
   mode: "idle", // idle | listening | transcribing | thinking | answering | speaking
   recorder: null,
+  recognizer: null, // the browser's own speech recognition, while it listens
   player: null,
   turns: [], // today's conversation, so a reload keeps it
   lastInputWasVoice: false,
@@ -1059,13 +1060,74 @@ function stopSpeaking() {
 
 // --- voice in: AudioWorklet -> level meter -> 16 kHz mono WAV -----------------------
 
+// The browser's own recognition, when the server allows it: always ("prefer"), or
+// when the server has no speech-to-text ("fallback"). It sends text, never audio, to
+// Ira; the browser itself may send the audio to its maker (Chrome: Google).
+function browserRecognition() {
+  const Recognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+  const policy = state.info.browser_stt || "off";
+  if (!Recognition || policy === "off") return null;
+  return policy === "prefer" || !state.info.stt ? Recognition : null;
+}
+
 function voiceProblem() {
   const { permissions, stt } = state.info;
   if (!permissions.includes("voice")) return "Your role can't use the microphone.";
-  if (!stt) return "Speech-to-text isn't set up on this server, so the mic is off. You can type.";
+  const inBrowser = browserRecognition();
+  if (!stt && !inBrowser) return "Speech-to-text isn't set up on this server, and this browser can't recognise speech. You can type.";
   if (!window.isSecureContext) return "The microphone needs a secure (HTTPS) address.";
+  if (inBrowser) return null;
   if (!navigator.mediaDevices || !window.AudioWorkletNode) return "This browser can't record audio.";
   return null;
+}
+
+const RECOGNITION_ERRORS = {
+  "not-allowed": "The microphone is blocked. Allow it for this site in your browser's site settings, then tap the mic again.",
+  "service-not-allowed": "This browser won't recognise speech here. You can type.",
+  "audio-capture": "No microphone was found on this device.",
+  network: "The browser couldn't reach its speech service. Check the connection, or type.",
+  "language-not-supported": "This browser can't recognise that language. Change your languages under Your assistant, or type.",
+};
+
+function startBrowserListening(Recognition) {
+  const recognizer = new Recognition();
+  recognizer.lang = state.info.mic_language || "en-IN";
+  recognizer.interimResults = true;
+  recognizer.continuous = false;
+  recognizer.maxAlternatives = 1;
+  const heard = { final: "", error: "", cancelled: false };
+  recognizer.onresult = (event) => {
+    let interim = "";
+    for (let i = event.resultIndex; i < event.results.length; i++) {
+      const result = event.results[i];
+      if (result.isFinal) heard.final += result[0].transcript;
+      else interim += result[0].transcript;
+    }
+    if (state.recognizer === recognizer) $("#listen-label").textContent = (heard.final + interim).trim() || "Listening…";
+  };
+  recognizer.onerror = (event) => {
+    if (event.error === "aborted") return;
+    heard.error = event.error === "no-speech" ? "I didn't hear anything. Tap the mic to try again." : RECOGNITION_ERRORS[event.error] || `Voice failed: ${event.error}.`;
+  };
+  recognizer.onend = () => {
+    if (state.recognizer !== recognizer) return;
+    state.recognizer = null;
+    const text = heard.final.trim();
+    if (heard.cancelled) return;
+    if (text) {
+      setMode("idle");
+      send(text, { voice: true });
+      return;
+    }
+    state.notice = heard.error || "I didn't catch that. Tap the mic to try again.";
+    setMode("idle");
+  };
+  recognizer.cancel = () => {
+    heard.cancelled = true;
+    recognizer.abort();
+  };
+  state.recognizer = recognizer;
+  recognizer.start();
 }
 
 function micMessage(error) {
@@ -1084,8 +1146,10 @@ async function listen() {
   if (problem) return setStatus(problem);
   if (state.mode !== "idle") return;
   stopSpeaking();
+  const inBrowser = browserRecognition();
   try {
-    await startRecording();
+    if (inBrowser) startBrowserListening(inBrowser);
+    else await startRecording();
   } catch (error) {
     return setStatus(micMessage(error));
   }
@@ -1138,6 +1202,12 @@ async function stopRecording() {
 }
 
 async function finishListening() {
+  if (state.recognizer && state.mode === "listening") {
+    setMode("transcribing");
+    $("#listen-label").textContent = "Transcribing…";
+    state.recognizer.stop(); // its end event sends what it heard
+    return;
+  }
   if (!state.recorder || state.mode !== "listening") return;
   setMode("transcribing");
   $("#listen-label").textContent = "Transcribing…";
@@ -1166,6 +1236,11 @@ async function finishListening() {
 }
 
 async function cancelListening(message) {
+  if (state.recognizer) {
+    const recognizer = state.recognizer;
+    state.recognizer = null;
+    recognizer.cancel();
+  }
   try {
     await stopRecording();
   } catch {

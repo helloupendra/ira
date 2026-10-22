@@ -257,6 +257,16 @@ class InfoResponse(BaseModel):
     version: str
     stt: str | None
     tts: str | None
+    browser_stt: Literal["off", "fallback", "prefer"] = Field(
+        default="off",
+        description="May the web app recognise speech in the browser: when this server has "
+        "no speech-to-text (fallback), always (prefer), or never (off).",
+    )
+    mic_language: str = Field(
+        default="en-IN",
+        description="The language to recognise in the browser, from your languages: hi-IN "
+        "when you speak Hindi or Hinglish, else en-IN.",
+    )
     tools: list[ToolView]
     user: UserView
     permissions: list[str]

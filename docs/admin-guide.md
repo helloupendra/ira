@@ -306,6 +306,11 @@ voice:
     identify: many               # many: switch inside a recording; one: one each
 ```
 
+With no speech-to-text on the server, the Ira app can recognise speech in
+the browser and send only the text (`voice.browser_stt`: `fallback`, the
+default; `prefer` to use it always; `off` never). Chrome sends that audio to
+Google; see [Privacy](privacy.md).
+
 Or an OpenAI-compatible model that takes audio, or Whisper:
 
 ```yaml

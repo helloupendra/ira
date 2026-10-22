@@ -74,6 +74,11 @@ switch it on.
 - **Half sentences**: when a tool that only reads can settle what was meant,
   Ira looks first and asks only when looking would not help.
 - `GET /admin` without a trailing slash redirects to the console.
+- **Speech in the browser.** When the server has no speech-to-text, the
+  Ira app recognises speech with the browser's own engine (`hi-IN` or
+  `en-IN`, from the person's languages) and sends only the text
+  (`voice.browser_stt`: `fallback` by default, `prefer`, `off`). Chrome
+  sends that audio to Google; the privacy page says so.
 - **Passwords and emails can change.** Each person changes their own
   password (their other sessions end) and email under Tokens & security,
   with their password again; an owner sets someone's password or email from

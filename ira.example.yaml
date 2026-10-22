@@ -72,6 +72,9 @@ voice:
     provider: bedrock
     model: mistral.voxtral-small-24b-2507
     vocabulary: [Ira]             # unusual words the transcriber should expect
+  # The Ira app may recognise speech in the browser and send text: fallback (when
+  # stt is none), prefer (always) or off. Chrome sends that audio to Google.
+  browser_stt: fallback
   tts:
     # polly needs the aws extra and polly:SynthesizeSpeech permission.
     type: polly

@@ -213,3 +213,21 @@ def test_a_bearer_session_needs_no_csrf_header(client, runtime, owner):
     session, _ = runtime.accounts.start_session(owner)
     evil = {**bearer(session), "Origin": "https://evil.example.com"}
     assert client.post("/v1/ask", json={"text": "hi"}, headers=evil).status_code == 200
+
+
+def test_info_says_whether_the_browser_may_recognise_speech(registry):
+    runtime = make_runtime(registry=registry)
+    user = runtime.accounts.create_first_owner("owner@example.com", PASSWORD)
+    token, _ = runtime.accounts.create_token(user, "script", ["ask"])
+    headers = {"Authorization": f"Bearer {token}"}
+    with TestClient(create_app(runtime, start_channels=False)) as client:
+        info = client.get("/v1/info", headers=headers).json()
+        assert (info["stt"], info["browser_stt"], info["mic_language"]) == (
+            None,
+            "fallback",
+            "hi-IN",
+        )
+        runtime.assistant.user_settings.set(user.id, "languages", ["en"])
+        assert client.get("/v1/info", headers=headers).json()["mic_language"] == "en-IN"
+        runtime.settings.voice.browser_stt = "off"
+        assert client.get("/v1/info", headers=headers).json()["browser_stt"] == "off"

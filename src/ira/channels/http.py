@@ -190,11 +190,15 @@ api = APIRouter(prefix="/v1")
 def info(
     principal: Principal = Depends(get_principal), runtime: Runtime = Depends(get_runtime)
 ) -> InfoResponse:
+    prefs = runtime.assistant.user_settings.get(principal.user.id)
+    hindi = prefs.reply_language != "en" and bool({"hi", "hinglish"} & set(prefs.languages))
     return InfoResponse(
         name=runtime.assistant.name_for(principal.user.id),
         version=__version__,
         stt=getattr(runtime.stt, "name", None),
         tts=getattr(runtime.tts, "name", None),
+        browser_stt=runtime.settings.voice.browser_stt,
+        mic_language="hi-IN" if hindi else "en-IN",
         tools=[
             ToolView(name=t.name, kind=t.kind, description=t.description)
             for t in runtime.registry

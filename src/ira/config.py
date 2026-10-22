@@ -85,6 +85,10 @@ class TTSConfig(_Strict):
 class VoiceConfig(_Strict):
     stt: STTConfig = Field(default_factory=STTConfig)
     tts: TTSConfig = Field(default_factory=TTSConfig)
+    # The web app may recognise speech in the browser and send text: "fallback"
+    # when this server has no speech-to-text, "prefer" always, "off" never.
+    # The browser's recognition may send the audio to its maker (Google, Apple).
+    browser_stt: Literal["off", "fallback", "prefer"] = "fallback"
     max_spoken_chars: int = 400
     max_audio_seconds: float = 60
 

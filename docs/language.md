@@ -13,6 +13,13 @@ jaaye, batana".
   only reads can settle what they meant ("upload kitna hua": look at the
   tabs), Ira looks first, and asks one short question back only when looking
   would not help.
+- **Speech in the browser, when the server has none.** With
+  `voice.browser_stt: fallback` (the default), the Ira app recognises speech
+  with the browser's own engine when the server has no speech-to-text, and
+  sends Ira only the text: `hi-IN` for someone who speaks Hindi or Hinglish,
+  `en-IN` otherwise. `prefer` uses it even when the server has
+  speech-to-text; `off` never. Chrome sends the audio to Google to do this
+  (see [Privacy](privacy.md)).
 - **Transcription keeps the words.** The speech-to-text prompt says to
   transcribe in the language spoken and never to translate, answer or tidy
   up. A vocabulary list (`voice.stt.vocabulary`) helps with names.

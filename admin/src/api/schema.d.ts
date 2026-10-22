@@ -2520,6 +2520,19 @@ export interface components {
             stt: string | null;
             /** Tts */
             tts: string | null;
+            /**
+             * Browser Stt
+             * @description May the web app recognise speech in the browser: when this server has no speech-to-text (fallback), always (prefer), or never (off).
+             * @default off
+             * @enum {string}
+             */
+            browser_stt: "off" | "fallback" | "prefer";
+            /**
+             * Mic Language
+             * @description The language to recognise in the browser, from your languages: hi-IN when you speak Hindi or Hinglish, else en-IN.
+             * @default en-IN
+             */
+            mic_language: string;
             /** Tools */
             tools: components["schemas"]["ToolView"][];
             user: components["schemas"]["UserView"];
