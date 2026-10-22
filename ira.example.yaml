@@ -104,3 +104,18 @@ actions:
   # tools:
   #   reorder:
   #     confirm_roles: [owner]
+
+# Web and news search. Off for everyone until each person switches it on for
+# themselves (with their PIN) in the Ira app's settings.
+search:
+  # The key goes in .env; without it web_search says it is not configured.
+  brave_api_key_env: BRAVE_SEARCH_API_KEY  # pragma: allowlist secret
+  calls_per_hour: 30                        # for the whole server: the key is shared
+  results: 5
+  # country: IN
+  news:
+    cache_minutes: 15
+    # RSS or Atom feeds; news_search searches them on this server.
+    feeds: []
+    # feeds:
+    #   - { name: Example News, url: https://news.example.com/rss }

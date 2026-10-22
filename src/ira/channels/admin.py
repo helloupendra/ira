@@ -623,6 +623,7 @@ def keys(_: Principal = Depends(reader), runtime: Runtime = Depends(get_runtime)
     telegram = runtime.settings.channels.telegram
     if telegram.enabled:
         used.setdefault(telegram.token_env, []).append("telegram")
+    used.setdefault(runtime.settings.search.brave_api_key_env, []).append("web search")
     return [
         KeyView(env=env, used_by=who, present=bool(os.environ.get(env)))
         for env, who in sorted(used.items())

@@ -470,6 +470,7 @@ def test_keys_show_presence_never_values(two_model_runtime, monkeypatch):
     )
     monkeypatch.setenv(CLOUD_KEY_ENV, "value-that-must-not-leak")
     monkeypatch.delenv(SPARE_KEY_ENV, raising=False)
+    monkeypatch.delenv("BRAVE_SEARCH_API_KEY", raising=False)
     runtime = build_runtime(settings, registry=ToolRegistry(), store=Store(":memory:"))
     people = People(runtime)
     with TestClient(create_app(runtime, start_channels=False)) as client:
@@ -479,6 +480,7 @@ def test_keys_show_presence_never_values(two_model_runtime, monkeypatch):
     assert {k["env"]: k["present"] for k in keys.json()} == {
         CLOUD_KEY_ENV: True,
         SPARE_KEY_ENV: False,
+        "BRAVE_SEARCH_API_KEY": False,  # web search, which each person switches on
     }
     assert "value-that-must-not-leak" not in keys.text + models.text
     providers = {p["name"]: p for p in models.json()["providers"]}

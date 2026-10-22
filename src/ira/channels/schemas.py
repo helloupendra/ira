@@ -962,6 +962,17 @@ class MySettings(BaseModel):
     )
     language_options: list[str]
     reply_language_options: list[str]
+    web_search: WebSearchState
+
+
+class WebSearchState(BaseModel):
+    """Web and news search for you: off until you switch it on, with your PIN."""
+
+    on: bool
+    web_ready: bool = Field(
+        description="The server has a web search key, so web_search can answer."
+    )
+    news_ready: bool = Field(description="The server reads news feeds, so news_search can answer.")
 
 
 class MySettingsUpdate(BaseModel):
@@ -971,6 +982,28 @@ class MySettingsUpdate(BaseModel):
     wake_phrase: str | None = Field(default=None, max_length=64)
     languages: list[str] | None = Field(default=None, max_length=10)
     reply_language: str | None = Field(default=None, max_length=16)
+    web_search: bool | None = Field(
+        default=None, description="Switch web and news search on (needs pin) or off."
+    )
+    pin: str | None = Field(
+        default=None,
+        min_length=PIN_MIN_LENGTH,
+        max_length=PIN_MAX_LENGTH,
+        description="Your action PIN; needed only to switch web search on.",
+    )
+
+
+class GrantView(BaseModel):
+    """Something a person allowed Ira to use: a skill on one of their devices, or web search."""
+
+    id: str = Field(description="device-<device id>-<skill>, or web-<user id>.")
+    user_id: int
+    email: str | None = None
+    kind: Literal["device_skill", "web_search"]
+    skill: str
+    description: str
+    device_id: int | None = None
+    device: str | None = Field(default=None, description="The device's name.")
 
 
 class ActivityRow(BaseModel):

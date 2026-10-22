@@ -4860,6 +4860,282 @@
                 }
             }
         },
+        "/v1/me/grants": {
+            "get": {
+                "tags": [
+                    "your assistant"
+                ],
+                "summary": "What you allowed Ira to use",
+                "operationId": "my_grants",
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "items": {
+                                        "$ref": "#/components/schemas/GrantView"
+                                    },
+                                    "type": "array",
+                                    "title": "Response My Grants"
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Bad input",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ErrorDetail"
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "No credential, or an invalid one",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ErrorDetail"
+                                }
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "Not allowed: role, token, or a missing CSRF header",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ErrorDetail"
+                                }
+                            }
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "HTTPBearer": []
+                    }
+                ]
+            }
+        },
+        "/v1/me/grants/{grant_id}": {
+            "delete": {
+                "tags": [
+                    "your assistant"
+                ],
+                "summary": "Switch one of your grants off",
+                "operationId": "revoke_my_grant",
+                "security": [
+                    {
+                        "HTTPBearer": []
+                    }
+                ],
+                "parameters": [
+                    {
+                        "name": "grant_id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "title": "Grant Id"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/OkResponse"
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Bad input",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ErrorDetail"
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "No credential, or an invalid one",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ErrorDetail"
+                                }
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "Not allowed: role, token, or a missing CSRF header",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ErrorDetail"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/v1/admin/grants": {
+            "get": {
+                "tags": [
+                    "your assistant",
+                    "admin"
+                ],
+                "summary": "Everyone's grants: device skills and web search, each one can be switched off",
+                "operationId": "all_grants",
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "items": {
+                                        "$ref": "#/components/schemas/GrantView"
+                                    },
+                                    "type": "array",
+                                    "title": "Response All Grants"
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Bad input",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ErrorDetail"
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "No credential, or an invalid one",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ErrorDetail"
+                                }
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "Not allowed: role, token, or a missing CSRF header",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ErrorDetail"
+                                }
+                            }
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "HTTPBearer": []
+                    }
+                ]
+            }
+        },
+        "/v1/admin/grants/{grant_id}": {
+            "delete": {
+                "tags": [
+                    "your assistant",
+                    "admin: changes"
+                ],
+                "summary": "Switch anyone's grant off (only its owner switches one on)",
+                "operationId": "revoke_any_grant",
+                "security": [
+                    {
+                        "HTTPBearer": []
+                    }
+                ],
+                "parameters": [
+                    {
+                        "name": "grant_id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "title": "Grant Id"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/OkResponse"
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Bad input",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ErrorDetail"
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "No credential, or an invalid one",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ErrorDetail"
+                                }
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "Not allowed: role, token, or a missing CSRF header",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ErrorDetail"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
         "/v1/devices/pair": {
             "post": {
                 "tags": [
@@ -7441,6 +7717,79 @@
                 "title": "EventView",
                 "description": "Something a device announced, such as a watched tab that finished."
             },
+            "GrantView": {
+                "properties": {
+                    "id": {
+                        "type": "string",
+                        "title": "Id",
+                        "description": "device-<device id>-<skill>, or web-<user id>."
+                    },
+                    "user_id": {
+                        "type": "integer",
+                        "title": "User Id"
+                    },
+                    "email": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Email"
+                    },
+                    "kind": {
+                        "type": "string",
+                        "enum": [
+                            "device_skill",
+                            "web_search"
+                        ],
+                        "title": "Kind"
+                    },
+                    "skill": {
+                        "type": "string",
+                        "title": "Skill"
+                    },
+                    "description": {
+                        "type": "string",
+                        "title": "Description"
+                    },
+                    "device_id": {
+                        "anyOf": [
+                            {
+                                "type": "integer"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Device Id"
+                    },
+                    "device": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Device",
+                        "description": "The device's name."
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "id",
+                    "user_id",
+                    "kind",
+                    "skill",
+                    "description"
+                ],
+                "title": "GrantView",
+                "description": "Something a person allowed Ira to use: a skill on one of their devices, or web search."
+            },
             "HTTPValidationError": {
                 "properties": {
                     "detail": {
@@ -8092,6 +8441,9 @@
                         },
                         "type": "array",
                         "title": "Reply Language Options"
+                    },
+                    "web_search": {
+                        "$ref": "#/components/schemas/WebSearchState"
                     }
                 },
                 "type": "object",
@@ -8101,7 +8453,8 @@
                     "languages",
                     "reply_language",
                     "language_options",
-                    "reply_language_options"
+                    "reply_language_options",
+                    "web_search"
                 ],
                 "title": "MySettings",
                 "description": "Your own assistant. Each value is yours, or the installation's default."
@@ -8158,6 +8511,32 @@
                             }
                         ],
                         "title": "Reply Language"
+                    },
+                    "web_search": {
+                        "anyOf": [
+                            {
+                                "type": "boolean"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Web Search",
+                        "description": "Switch web and news search on (needs pin) or off."
+                    },
+                    "pin": {
+                        "anyOf": [
+                            {
+                                "type": "string",
+                                "maxLength": 12,
+                                "minLength": 4
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Pin",
+                        "description": "Your action PIN; needed only to switch web search on."
                     }
                 },
                 "type": "object",
@@ -10120,6 +10499,32 @@
                 ],
                 "title": "VoiceOption",
                 "description": "A voice id the configured text-to-speech provider accepts."
+            },
+            "WebSearchState": {
+                "properties": {
+                    "on": {
+                        "type": "boolean",
+                        "title": "On"
+                    },
+                    "web_ready": {
+                        "type": "boolean",
+                        "title": "Web Ready",
+                        "description": "The server has a web search key, so web_search can answer."
+                    },
+                    "news_ready": {
+                        "type": "boolean",
+                        "title": "News Ready",
+                        "description": "The server reads news feeds, so news_search can answer."
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "on",
+                    "web_ready",
+                    "news_ready"
+                ],
+                "title": "WebSearchState",
+                "description": "Web and news search for you: off until you switch it on, with your PIN."
             }
         },
         "securitySchemes": {

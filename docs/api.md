@@ -217,6 +217,30 @@ it, with no PIN: `executed`, `failed`, `not_allowed` (403, someone else's),
 `GET /v1/info` returns the name you chose. Nobody reads another person's
 settings or activity through these routes.
 
+**Web and news search** are off until you switch them on:
+`PATCH /v1/me/settings` with `{"web_search": true, "pin": "..."}`. It is a new
+grant (your questions go to the search provider), so it needs your PIN;
+`{"web_search": false}` never does. `MySettings.web_search` says whether it is
+on, and whether the server can answer: `web_ready` (a Brave Search API key in
+`BRAVE_SEARCH_API_KEY`) and `news_ready` (feeds under `search.news.feeds`).
+Without a key, `web_search` answers that it is not configured. The server
+makes at most 30 web searches an hour, for everyone together.
+
+### Grants
+
+Everything you allowed Ira to use: a skill on one of your devices, or web
+search. Each can be switched off at once, without a PIN.
+
+| Route | Needs | Returns |
+| --- | --- | --- |
+| `GET /v1/me/grants` | `ask` | `GrantView[]`: `id` (`device-<id>-<skill>` or `web-<user id>`), `kind`, `skill`, `description`, and the device |
+| `DELETE /v1/me/grants/{id}` | a session with `ask` | `OkResponse`; `404` if it is not one of yours |
+| `GET /v1/admin/grants` | a session with `admin.write` | everyone's, with `email` |
+| `DELETE /v1/admin/grants/{id}` | a session with `admin.write` | switch anyone's off; only its owner switches it on |
+
+Switching web search writes `grant.web_search` to the change log, and switching
+a grant off `grant.revoked`.
+
 ## Devices
 
 The protocol, limits and security are in [Devices](devices.md). The routes:

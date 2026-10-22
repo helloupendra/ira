@@ -157,6 +157,29 @@ class AssistantConfig(_Strict):
     reply_language: Literal["auto", "en", "hi", "hinglish"] = "auto"
 
 
+class FeedConfig(_Strict):
+    name: str  # how answers name the source, e.g. "Example News"
+    url: str  # an RSS or Atom feed
+
+
+class NewsConfig(_Strict):
+    feeds: list[FeedConfig] = Field(default_factory=list)
+    cache_minutes: float = 15
+    results: int = 8
+
+
+class SearchConfig(_Strict):
+    """Web and news search, which each person switches on for themselves."""
+
+    # A Brave Search API key, in .env. Without it, web_search says it is not configured.
+    brave_api_key_env: str = "BRAVE_SEARCH_API_KEY"
+    calls_per_hour: int = 30
+    results: int = 5
+    country: str | None = None  # two letters, e.g. IN
+    search_lang: str | None = None  # e.g. en
+    news: NewsConfig = Field(default_factory=NewsConfig)
+
+
 class Settings(_Strict):
     assistant: AssistantConfig = Field(default_factory=AssistantConfig)
     data_dir: Path = Path("data")
@@ -165,6 +188,7 @@ class Settings(_Strict):
     voice: VoiceConfig = Field(default_factory=VoiceConfig)
     channels: ChannelsConfig = Field(default_factory=ChannelsConfig)
     actions: ActionsConfig = Field(default_factory=ActionsConfig)
+    search: SearchConfig = Field(default_factory=SearchConfig)
     config_dir: Path = Field(default_factory=Path.cwd, exclude=True)
 
     @field_validator("tools")

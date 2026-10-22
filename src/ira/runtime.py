@@ -20,6 +20,7 @@ from ira.models.gateway import Gateway, Price
 from ira.models.http import Auth, BearerAuth, HeaderKeyAuth, HttpClient, NoAuth
 from ira.models.openai_compat import OpenAICompatProvider
 from ira.overrides import DEFAULT_VOICES
+from ira.search import Search
 from ira.store import Store
 from ira.tools.actions import ActionGuard
 from ira.tools.loader import load_tool_modules
@@ -68,10 +69,14 @@ class Runtime:
     telegram_api: Any = None
     # People's paired devices, live.
     hub: DeviceHub | None = None
+    # Web and news search, for the people who switched them on.
+    search: Search | None = None
 
     def __post_init__(self) -> None:
         if self.hub is None:
             self.hub = DeviceHub(Devices(self.store))
+        if self.search is None:
+            self.search = Search(self.settings.search)
         if self.assistant.personal_tools is None:
             self.assistant.personal_tools = self.personal_tools
         if self.guard.device_runner is None:
@@ -79,9 +84,13 @@ class Runtime:
         self.hub.welcome_extra = self._welcome
 
     def personal_tools(self, user_id: int | None) -> list[PersonalTool]:
-        """One person's own tools for a turn: their devices' tools whose skill is on."""
-        assert self.hub is not None
-        return self.hub.tools_for(user_id)
+        """One person's own tools for a turn: their devices' tools whose skill is on,
+        and web and news search if they switched them on."""
+        assert self.hub is not None and self.search is not None
+        tools = self.hub.tools_for(user_id)
+        if user_id is not None and self.assistant.user_settings.get(user_id).web_search:
+            tools += self.search.tools()
+        return tools
 
     def _welcome(self, user_id: int) -> dict[str, Any]:
         prefs = self.assistant.user_settings.get(user_id)
@@ -118,6 +127,8 @@ class Runtime:
     async def aclose(self) -> None:
         for client in self.http_clients:
             await client.aclose()
+        if self.search is not None:
+            await self.search.aclose()
         close = getattr(self.telegram_api, "aclose", None)
         if close is not None:
             await close()

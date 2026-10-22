@@ -6,13 +6,25 @@ another person's preferences or activity through these routes.
 
 from __future__ import annotations
 
+from typing import Any
+
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
 
-from ira import toollog
+from ira import changes, toollog
 from ira.accounts import Principal
 from ira.channels.deps import get_runtime, require, require_session
 from ira.channels.paging import PAGED, page
-from ira.channels.schemas import ERRORS, ActivityRow, MySettings, MySettingsUpdate, SettingValue
+from ira.channels.schemas import (
+    ERRORS,
+    ActivityRow,
+    GrantView,
+    MySettings,
+    MySettingsUpdate,
+    OkResponse,
+    SettingValue,
+    WebSearchState,
+)
+from ira.devices.store import SKILLS
 from ira.runtime import Runtime
 from ira.usersettings import (
     DEFAULT_WAKE_PHRASE,
@@ -26,7 +38,9 @@ from ira.usersettings import (
     clean_name,
 )
 
-router = APIRouter(prefix="/v1/me", tags=["your assistant"], responses=ERRORS)
+router = APIRouter(tags=["your assistant"], responses=ERRORS)
+PIN_STATUS = {"wrong_pin": 403, "locked": 423, "no_pin": 409}
+WEB_SEARCH = "Web and news search: your questions go to the web search provider."
 
 
 def my_settings(runtime: Runtime, user_id: int) -> MySettings:
@@ -48,10 +62,15 @@ def my_settings(runtime: Runtime, user_id: int) -> MySettings:
         reply_language=prefs.reply_language,
         language_options=list(LANGUAGES),
         reply_language_options=list(REPLY_LANGUAGES),
+        web_search=WebSearchState(
+            on=prefs.web_search,
+            web_ready=runtime.search.web_ready if runtime.search else False,
+            news_ready=runtime.search.news_ready if runtime.search else False,
+        ),
     )
 
 
-@router.get("/settings", response_model=MySettings, summary="Your own assistant's settings")
+@router.get("/v1/me/settings", response_model=MySettings, summary="Your own assistant's settings")
 def get_my_settings(
     principal: Principal = Depends(require("ask")), runtime: Runtime = Depends(get_runtime)
 ) -> MySettings:
@@ -59,11 +78,11 @@ def get_my_settings(
 
 
 @router.patch(
-    "/settings",
+    "/v1/me/settings",
     response_model=MySettings,
     summary="Name your assistant, set your wake phrase and languages (null resets)",
 )
-def update_my_settings(
+async def update_my_settings(
     body: MySettingsUpdate,
     principal: Principal = Depends(require_session("ask")),
     runtime: Runtime = Depends(get_runtime),
@@ -88,11 +107,42 @@ def update_my_settings(
             settings.set(user_id, "reply_language", reply)
     except SettingsError as exc:
         raise HTTPException(400, detail=str(exc)) from None
+    if "web_search" in sent and body.web_search is not None:
+        await switch_web_search(runtime, principal, body.web_search, body.pin)
     return my_settings(runtime, user_id)
 
 
+async def switch_web_search(runtime: Runtime, who: Principal, on: bool, pin: str | None) -> None:
+    settings = runtime.assistant.user_settings
+    before = settings.get(who.user.id).web_search
+    if on and not before:
+        # A new grant (questions leave the server): Tier 3, the person's own PIN.
+        if not pin:
+            raise HTTPException(403, detail="switching web search on needs your PIN")
+        outcome = await runtime.guard.check_pin(
+            pin,
+            user_id=who.user.id,
+            what="switch on web search",
+            actor=who.actor,
+            channel=who.channel,
+        )
+        if outcome.status != "confirmed":
+            raise HTTPException(PIN_STATUS.get(outcome.status, 403), detail=outcome.message)
+    if on != before:
+        settings.set(who.user.id, "web_search", True if on else None)
+        changes.record(
+            runtime.store,
+            who.actor,
+            "grant.web_search",
+            who.user.email,
+            channel=who.channel,
+            before=before,
+            after=on,
+        )
+
+
 @router.get(
-    "/activity",
+    "/v1/me/activity",
     response_model=list[ActivityRow],
     summary="What Ira did for you: each tool it used and each action that ran, no contents",
     responses=PAGED,
@@ -106,3 +156,115 @@ def my_activity(
 ) -> list[ActivityRow]:
     rows = toollog.recent(runtime.store, principal.user.id, limit + 1, before_id)
     return [ActivityRow(**row) for row in page(rows, limit, response)]
+
+
+# Grants: everything a person allowed Ira to use, each with "turn off" beside it.
+
+
+def grants(runtime: Runtime, user_id: int | None = None) -> list[GrantView]:
+    """Every grant switched on: one person's, or everyone's."""
+    assert runtime.hub is not None
+    devices = runtime.hub.devices
+    found = devices.for_user(user_id) if user_id is not None else devices.everyone()
+    out = [
+        GrantView(
+            id=f"device-{device.id}-{skill}",
+            user_id=device.user_id,
+            email=device.email,
+            kind="device_skill",
+            skill=skill,
+            description=SKILLS.get(skill, skill),
+            device_id=device.id,
+            device=device.label,
+        )
+        for device in found
+        for skill in device.skills
+    ]
+    sql = (
+        "SELECT s.user_id, u.email FROM user_settings s JOIN users u ON u.id = s.user_id "
+        "WHERE s.key = 'web_search' AND s.value = 'true' AND u.disabled_at IS NULL"
+    )
+    params: list[Any] = []
+    if user_id is not None:
+        sql += " AND s.user_id = ?"
+        params.append(user_id)
+    for row in runtime.store.query(sql + " ORDER BY u.email", params):
+        out.append(
+            GrantView(
+                id=f"web-{row['user_id']}",
+                user_id=row["user_id"],
+                email=row["email"],
+                kind="web_search",
+                skill="web",
+                description=WEB_SEARCH,
+            )
+        )
+    return out
+
+
+def revoke_grant(runtime: Runtime, who: Principal, grant_id: str, user_id: int | None) -> None:
+    """Switch one grant off. ``user_id`` limits it to that person's own grants."""
+    grant = next((g for g in grants(runtime, user_id) if g.id == grant_id), None)
+    if grant is None:
+        raise HTTPException(404, detail="no such grant")
+    if grant.kind == "web_search":
+        runtime.assistant.user_settings.set(grant.user_id, "web_search", None)
+    else:
+        assert runtime.hub is not None and grant.device_id is not None
+        device = runtime.hub.devices.get(grant.device_id)
+        assert device is not None
+        runtime.hub.devices.set_skills(device.id, [s for s in device.skills if s != grant.skill])
+    changes.record(
+        runtime.store,
+        who.actor,
+        "grant.revoked",
+        grant.id,
+        channel=who.channel,
+        before={"user": grant.email, "skill": grant.skill, "device": grant.device},
+    )
+
+
+@router.get("/v1/me/grants", response_model=list[GrantView], summary="What you allowed Ira to use")
+def my_grants(
+    principal: Principal = Depends(require("ask")), runtime: Runtime = Depends(get_runtime)
+) -> list[GrantView]:
+    return grants(runtime, principal.user.id)
+
+
+@router.delete(
+    "/v1/me/grants/{grant_id}", response_model=OkResponse, summary="Switch one of your grants off"
+)
+def revoke_my_grant(
+    grant_id: str,
+    principal: Principal = Depends(require_session("ask")),
+    runtime: Runtime = Depends(get_runtime),
+) -> OkResponse:
+    revoke_grant(runtime, principal, grant_id, principal.user.id)
+    return OkResponse()
+
+
+@router.get(
+    "/v1/admin/grants",
+    response_model=list[GrantView],
+    tags=["admin"],
+    summary="Everyone's grants: device skills and web search, each one can be switched off",
+)
+def all_grants(
+    _: Principal = Depends(require_session("admin.write")), runtime: Runtime = Depends(get_runtime)
+) -> list[GrantView]:
+    return grants(runtime)
+
+
+@router.delete(
+    "/v1/admin/grants/{grant_id}",
+    response_model=OkResponse,
+    tags=["admin: changes"],
+    summary="Switch anyone's grant off (only its owner switches one on)",
+)
+def revoke_any_grant(
+    grant_id: str,
+    principal: Principal = Depends(require_session("admin.write")),
+    runtime: Runtime = Depends(get_runtime),
+) -> OkResponse:
+    revoke_grant(runtime, principal, grant_id, None)
+    return OkResponse()
