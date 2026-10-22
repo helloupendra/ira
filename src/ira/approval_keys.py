@@ -35,7 +35,7 @@ def _b64(text: str) -> bytes:
 
 def message(action_id: str, summary: str, expires_at: float) -> bytes:
     """What a device signs to confirm an action: bound to its id, what the person was
-    shown, and when it expires."""
+    shown, and when it expires (the action's ``expires_at``, whole seconds)."""
     digest = hashlib.sha256(summary.encode("utf-8")).hexdigest()
     return f"ira-approve:1\n{action_id}\n{digest}\n{int(expires_at)}".encode()
 

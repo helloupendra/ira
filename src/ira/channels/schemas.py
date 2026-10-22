@@ -26,6 +26,11 @@ class ActionView(BaseModel):
     summary: str
     status: str = Field(description="pending, executing, executed, failed, cancelled or expired.")
     expires_in: int = Field(description="Seconds left to confirm.")
+    expires_at: int | None = Field(
+        default=None,
+        description="When it expires, in whole epoch seconds: what a device signs, with the "
+        "action's id and summary, to approve it with its key (see Security, Approvals).",
+    )
     confirm_roles: list[str] = Field(
         description="The roles that may confirm this action: "
         "actions.tools.<name>.confirm_roles in ira.yaml, or else actions.confirm_roles."

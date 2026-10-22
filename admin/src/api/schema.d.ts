@@ -2117,6 +2117,11 @@ export interface components {
              */
             expires_in: number;
             /**
+             * Expires At
+             * @description When it expires, in whole epoch seconds: what a device signs, with the action's id and summary, to approve it with its key (see Security, Approvals).
+             */
+            expires_at?: number | null;
+            /**
              * Confirm Roles
              * @description The roles that may confirm this action: actions.tools.<name>.confirm_roles in ira.yaml, or else actions.confirm_roles.
              */

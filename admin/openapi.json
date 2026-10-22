@@ -9495,6 +9495,18 @@
                         "title": "Expires In",
                         "description": "Seconds left to confirm."
                     },
+                    "expires_at": {
+                        "anyOf": [
+                            {
+                                "type": "integer"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Expires At",
+                        "description": "When it expires, in whole epoch seconds: what a device signs, with the action's id and summary, to approve it with its key (see Security, Approvals)."
+                    },
                     "confirm_roles": {
                         "items": {
                             "type": "string"

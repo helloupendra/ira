@@ -85,6 +85,8 @@ class PendingAction:
             "summary": self.summary,
             "status": self.status,
             "expires_in": max(0, round(self.expires_at - now)) if self.status == "pending" else 0,
+            # Whole seconds, exactly as a device signs it to approve with its key.
+            "expires_at": int(self.expires_at),
             "tier": self.tier,
         }
 

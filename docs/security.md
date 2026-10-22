@@ -218,7 +218,7 @@ typed PIN:
    ira-approve:1
    <action id>
    <SHA-256 of the action's summary, hex>
-   <the action's expires_at, whole seconds>
+   <the action's expires_at, as the action gives it: whole epoch seconds>
    ```
 
    and sends `POST /v1/actions/{id}/confirm` with

@@ -30,8 +30,9 @@ def public(key: ec.EllipticCurvePrivateKey) -> str:
     return base64.b64encode(der).decode()
 
 
-def sign(key: ec.EllipticCurvePrivateKey, pending) -> str:
-    data = message(pending.id, pending.summary, pending.expires_at)
+def sign(key: ec.EllipticCurvePrivateKey, action: dict) -> str:
+    """As a device does: from the action it was given, never the server's own record."""
+    data = message(action["id"], action["summary"], action["expires_at"])
     return b64(key.sign(data, ec.ECDSA(hashes.SHA256())))
 
 
@@ -73,8 +74,9 @@ def test_a_fingerprint_on_the_device_confirms_instead_of_the_pin(registry, ledge
         ]
 
         action = client.post("/v1/ask", json={"text": "refund A1"}, headers=me).json()["action"]
-        pending = runtime.guard.get(action["id"])
-        path = f"/v1/actions/{pending.id}/confirm"
+        pending = action  # what the device received, with expires_at in whole seconds
+        assert action["expires_at"] == int(runtime.guard.get(action["id"]).expires_at)
+        path = f"/v1/actions/{action['id']}/confirm"
         neither = client.post(path, json={}, headers=device)
         assert neither.status_code == 422
         bad = client.post(
@@ -90,11 +92,11 @@ def test_a_fingerprint_on_the_device_confirms_instead_of_the_pin(registry, ledge
 
         # A signature is for one action only, and a removed key signs nothing.
         second = client.post("/v1/ask", json={"text": "refund A1 again"}, headers=me).json()
-        later = runtime.guard.get(second["action"]["id"])
+        later = second["action"]
         replay = {"device_id": phone.id, "signature": good["signature"]}
-        assert client.post(f"/v1/actions/{later.id}/confirm", json=replay, headers=device).json()[
-            "status"
-        ] in ("wrong_pin", "locked")
+        assert client.post(
+            f"/v1/actions/{later['id']}/confirm", json=replay, headers=device
+        ).json()["status"] in ("wrong_pin", "locked")
         assert client.delete(f"/v1/me/approval-keys/{phone.id}", headers=me).json() == {"ok": True}
         assert client.get("/v1/me/approval-keys", headers=me).json() == []
     assert ledger.refunds == [("A1", 5)]
