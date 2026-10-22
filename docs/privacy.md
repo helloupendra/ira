@@ -57,7 +57,7 @@ each person switches web search on for themselves.
 | Service | What it receives | Their terms |
 | --- | --- | --- |
 | A language model (OpenAI, Anthropic, Amazon Bedrock, or one you run yourself) | each conversation turn, with tool results | [OpenAI: business data](https://openai.com/business-data/) (API data is not used for training by default); [Anthropic: commercial terms](https://www.anthropic.com/legal/commercial-terms) (no training on customer content); [Amazon Bedrock: data protection](https://docs.aws.amazon.com/bedrock/latest/userguide/data-protection.html) (prompts are not stored, used for training or shared with model providers) |
-| Speech-to-text and text-to-speech (Bedrock, Polly, OpenAI) | your voice clips, and the text Ira speaks | as above, and the [AWS data privacy FAQ](https://aws.amazon.com/compliance/data-privacy-faq/) |
+| Speech-to-text and text-to-speech (Amazon Transcribe, Polly, Bedrock, OpenAI) | your voice clips, and the text Ira speaks | as above, and the [AWS data privacy FAQ](https://aws.amazon.com/compliance/data-privacy-faq/). Amazon Transcribe and Polly may keep and use what they process to improve their services unless the server's AWS account opts out with an [AI services opt-out policy](https://docs.aws.amazon.com/accounts/latest/reference/opt-out-ai-data-use.html) |
 | Your browser's speech recognition (the Ira app's mic when the server has no speech-to-text, or always if the owner set `voice.browser_stt: prefer`) | your voice, sent by the browser itself to its maker; Ira's server receives only the text | Chrome sends the audio to Google ([Chrome's guide to the Web Speech API](https://developer.chrome.com/blog/voice-driven-web-apps-introduction-to-the-web-speech-api)); Safari to Apple ([Siri and Dictation privacy](https://www.apple.com/legal/privacy/data/en/ask-siri-dictation/)). The owner can switch it off: `voice.browser_stt: off` |
 | A service you connected (GitHub, any MCP server) | what Ira asks of it for you (a repository's name, an issue's title) and your token | that service's own terms |
 | Brave Search (web search, if you switched it on) | your search words only | [Brave Search API privacy notice](https://api-dashboard.search.brave.com/privacy-policy) (queries kept up to 90 days for billing, not linked to a person) |
@@ -94,8 +94,13 @@ and nothing else:
 
 - **your voice, only during a call** that you started: the audio of what you
   say, while you speak, streamed to your server and from there to its
-  speech-to-text (Amazon Transcribe, which keeps nothing). There is no wake
-  word yet; the microphone never starts on its own;
+  speech-to-text (Amazon Transcribe on most servers: see
+  [what leaves your server](#what-leaves-your-server-and-only-if-you-set-it-up)).
+  There is no wake word yet; the microphone never starts on its own;
+- **in phone mode** (when your server has no live voice), the mic uses the
+  phone's own speech recognizer instead: on the phone first, else online
+  (Google's, on most phones). Your audio goes to it, never to your Ira
+  server, which receives only the text;
 - **what a phone tool returns, only when Ira uses it for you** and only
   with that tool's skill switched on, with your PIN: a few recent calls, a
   contact, some text messages, the notifications showing at that moment, a
