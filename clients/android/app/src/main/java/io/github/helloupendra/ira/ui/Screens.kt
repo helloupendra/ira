@@ -211,6 +211,7 @@ fun SettingsScreen(app: IraApp, onBack: () -> Unit, onUnpaired: () -> Unit) {
             HorizontalDivider()
             TextButton(onClick = { app.settings.checklistHidden = false; onBack() }) { Text("Show the setup checklist") }
             TextButton(onClick = { openAppSettings(context) }) { Text("Android's settings for Ira (permissions, notifications)") }
+            TextButton(onClick = { open(context, app.settings.server.orEmpty()) }) { Text("Export or delete your data (on your Ira, Your data)") }
             TextButton(onClick = { open(context, PRIVACY_URL) }) { Text("Privacy policy") }
             TextButton(onClick = { open(context, "https://github.com/helloupendra/ira") }) { Text("Source code (MIT licence)") }
             HorizontalDivider()
