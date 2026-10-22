@@ -128,10 +128,6 @@ jobs:
       - run: xcodebuild -version && xcodegen --version
       - name: Start a local Ira for the tests
         run: scripts/local-ira.sh >> "$GITHUB_ENV"
-      - name: Where the compiler spends its time
-        run: scripts/ci.sh diagnose
-        timeout-minutes: 8
-        continue-on-error: true
       - name: Boot an iPhone simulator
         run: scripts/ci.sh simulator
         timeout-minutes: 10

@@ -16,9 +16,12 @@ final class IraUITests: XCTestCase {
         app.launch()
         XCTAssertTrue(app.navigationBars["Get Ira ready"].waitForExistence(timeout: 10))
         for title in ["Pair with your Ira", "Microphone", "Speech recognition", "Contacts", "Calendar", "Reminders", "Location", "Calls"] {
-            XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH %@", title)).firstMatch.exists, title)
+            let row = app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH %@", title)).firstMatch
+            for _ in 0..<4 where !row.exists { app.swipeUp() }  // a list shows only the rows on screen
+            XCTAssertTrue(row.exists, title)
         }
         XCTAssertFalse(app.buttons["start"].isEnabled)
+        for _ in 0..<4 { app.swipeDown() }
 
         let pair = app.buttons["pair-action"]
         if pair.exists {
