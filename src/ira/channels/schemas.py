@@ -1143,6 +1143,14 @@ class EventView(BaseModel):
     data: dict[str, Any] = Field(default_factory=dict)
 
 
+class DownloadView(BaseModel):
+    name: str = Field(description="The file name, as in /v1/downloads/<name>.")
+    title: str
+    description: str = Field(description="How to install it, in a sentence.")
+    available: bool = Field(description="This server has it; else get it from GitHub Releases.")
+    url: str = Field(description="Where to download it: here, or the project's releases page.")
+
+
 class SkillView(BaseModel):
     name: str
     description: str

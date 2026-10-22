@@ -22,7 +22,7 @@ from collections.abc import AsyncIterator
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, WebSocket
-from fastapi.responses import StreamingResponse
+from fastapi.responses import Response, StreamingResponse
 
 from ira import changes
 from ira.accounts import Principal
@@ -33,6 +33,7 @@ from ira.channels.schemas import (
     DeviceToolView,
     DeviceUpdate,
     DeviceView,
+    DownloadView,
     EventView,
     OkResponse,
     PairingCreate,
@@ -519,3 +520,63 @@ async def revoke_any_device(
 ) -> OkResponse:
     await revoke_device(runtime, who, _any_device(runtime, device_id))
     return OkResponse()
+
+
+# --- downloads (public: the clients are open source) ----------------------------------
+
+RELEASES = "https://github.com/helloupendra/ira/releases/latest"
+_built: dict[str, bytes] = {}
+
+
+@router.get(
+    "/v1/downloads",
+    response_model=list[DownloadView],
+    tags=["downloads"],
+    summary="Public: the Mac installer and the Chrome extension, and where to get them",
+)
+def downloads() -> list[DownloadView]:
+    from ira import clients
+
+    here = clients.root() is not None
+    return [
+        DownloadView(
+            name=d.name,
+            title=d.title,
+            description=d.description,
+            available=here,
+            url=f"/v1/downloads/{d.name}" if here else RELEASES,
+        )
+        for d in clients.DOWNLOADS
+    ]
+
+
+@router.get(
+    "/v1/downloads/{name}",
+    tags=["downloads"],
+    summary="Public: download a client as a zip",
+    response_class=Response,
+    responses={
+        200: {"content": {"application/zip": {}}},
+        404: {"description": "No such file here"},
+    },
+)
+def download(name: str) -> Response:
+    from ira import clients
+
+    if name not in {d.name for d in clients.DOWNLOADS}:
+        raise HTTPException(404, detail="no such download")
+    if name not in _built:
+        try:
+            _built[name] = clients.build(name)
+        except FileNotFoundError:
+            raise HTTPException(
+                404, detail=f"this server does not carry the clients; see {RELEASES}"
+            ) from None
+    return Response(
+        content=_built[name],
+        media_type="application/zip",
+        headers={
+            "Content-Disposition": f'attachment; filename="{name}"',
+            "Cache-Control": "no-cache",
+        },
+    )

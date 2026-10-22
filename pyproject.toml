@@ -58,8 +58,24 @@ Issues = "https://github.com/helloupendra/ira/issues"
 [tool.hatch.build.targets.wheel]
 packages = ["src/ira"]
 
+# The Mac installer and the Chrome extension, so a server can offer them as downloads.
+[tool.hatch.build.targets.wheel.force-include]
+"clients/mac/ira_mac" = "ira/client_files/mac/ira_mac"
+"clients/mac/install.sh" = "ira/client_files/mac/install.sh"
+"clients/mac/uninstall.sh" = "ira/client_files/mac/uninstall.sh"
+"clients/mac/README.md" = "ira/client_files/mac/README.md"
+"clients/mac/pyproject.toml" = "ira/client_files/mac/pyproject.toml"
+"clients/chrome-extension/manifest.json" = "ira/client_files/chrome-extension/manifest.json"
+"clients/chrome-extension/background.js" = "ira/client_files/chrome-extension/background.js"
+"clients/chrome-extension/reader.js" = "ira/client_files/chrome-extension/reader.js"
+"clients/chrome-extension/popup.html" = "ira/client_files/chrome-extension/popup.html"
+"clients/chrome-extension/popup.js" = "ira/client_files/chrome-extension/popup.js"
+"clients/chrome-extension/popup.css" = "ira/client_files/chrome-extension/popup.css"
+"clients/chrome-extension/README.md" = "ira/client_files/chrome-extension/README.md"
+"clients/chrome-extension/icons" = "ira/client_files/chrome-extension/icons"
+
 [tool.hatch.build.targets.sdist]
-include = ["src/ira", "tests", "examples", "docs", "deploy", "README.md", "LICENSE"]
+include = ["src/ira", "tests", "examples", "docs", "deploy", "clients", "README.md", "LICENSE"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

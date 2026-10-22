@@ -6269,6 +6269,134 @@
                     }
                 }
             }
+        },
+        "/v1/downloads": {
+            "get": {
+                "tags": [
+                    "devices",
+                    "downloads"
+                ],
+                "summary": "Public: the Mac installer and the Chrome extension, and where to get them",
+                "operationId": "downloads",
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "items": {
+                                        "$ref": "#/components/schemas/DownloadView"
+                                    },
+                                    "type": "array",
+                                    "title": "Response Downloads"
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Bad input",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ErrorDetail"
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "No credential, or an invalid one",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ErrorDetail"
+                                }
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "Not allowed: role, token, or a missing CSRF header",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ErrorDetail"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/v1/downloads/{name}": {
+            "get": {
+                "tags": [
+                    "devices",
+                    "downloads"
+                ],
+                "summary": "Public: download a client as a zip",
+                "operationId": "download",
+                "parameters": [
+                    {
+                        "name": "name",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "title": "Name"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/zip": {}
+                        }
+                    },
+                    "400": {
+                        "description": "Bad input",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ErrorDetail"
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "No credential, or an invalid one",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ErrorDetail"
+                                }
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "Not allowed: role, token, or a missing CSRF header",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ErrorDetail"
+                                }
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "No such file here"
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
         }
     },
     "components": {
@@ -7789,6 +7917,43 @@
                 ],
                 "title": "DoneEvent",
                 "description": "The turn is over. Always the last event."
+            },
+            "DownloadView": {
+                "properties": {
+                    "name": {
+                        "type": "string",
+                        "title": "Name",
+                        "description": "The file name, as in /v1/downloads/<name>."
+                    },
+                    "title": {
+                        "type": "string",
+                        "title": "Title"
+                    },
+                    "description": {
+                        "type": "string",
+                        "title": "Description",
+                        "description": "How to install it, in a sentence."
+                    },
+                    "available": {
+                        "type": "boolean",
+                        "title": "Available",
+                        "description": "This server has it; else get it from GitHub Releases."
+                    },
+                    "url": {
+                        "type": "string",
+                        "title": "Url",
+                        "description": "Where to download it: here, or the project's releases page."
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "name",
+                    "title",
+                    "description",
+                    "available",
+                    "url"
+                ],
+                "title": "DownloadView"
             },
             "ErrorDetail": {
                 "properties": {
