@@ -8,9 +8,12 @@
 # Output, in clients/macos/dist/:
 #   Ira.app, Ira-<version>.zip, Ira-<version>.dmg
 #
-# The app is signed ad hoc ("codesign --sign -"): macOS runs it after a
-# right-click and Open the first time. A Developer ID signature and
-# notarization come when the project has an Apple Developer account.
+# Signing: with the identity scripts/make-signing-identity.sh makes (once per
+# Mac), every build is the same app to macOS, so its permissions and its
+# Keychain access stay. Without it, the app is signed ad hoc, and macOS asks
+# again after each build. Either way a dmg needs right-click, Open the first
+# time on another Mac; a Developer ID and notarization need the paid Apple
+# Developer Program (docs/clients/macos.md).
 set -eu
 
 here=$(cd "$(dirname "$0")/.." && pwd)
@@ -92,13 +95,21 @@ cat > "$app/Contents/Info.plist" <<PLIST
   <key>NSCalendarsUsageDescription</key><string>Ira reads your calendar when you ask what is on, and adds an event only after your yes.</string>
   <key>NSRemindersFullAccessUsageDescription</key><string>Ira reads and adds reminders when you ask.</string>
   <key>NSRemindersUsageDescription</key><string>Ira reads and adds reminders when you ask.</string>
-  <key>NSAppleEventsUsageDescription</key><string>Ira uses Mail, Notes and Messages only when you ask: to search and read, to draft an email for you to send, or to send a message after your yes.</string>
+  <key>NSAppleEventsUsageDescription</key><string>Ira uses Mail, Notes, Messages and your browser only when you ask: to search and read, to draft an email for you to send, to send a message after your yes, or to list your tabs and bring one to the front.</string>
+  <key>NSSpeechRecognitionUsageDescription</key><string>Only for “Hey Ira”, if you switch it on: this Mac listens for the phrase by itself, and nothing leaves it until it hears the phrase.</string>
 </dict>
 </plist>
 PLIST
 plutil -lint "$app/Contents/Info.plist" >/dev/null
 
-codesign --force --sign - --identifier in.ira.mac --timestamp=none "$app"
+identity="${IRA_SIGNING_NAME:-Ira Local Signing}"
+if security find-identity -p codesigning 2>/dev/null | grep -q "\"$identity\""; then
+  echo "Signing with \"$identity\""
+  codesign --force --sign "$identity" --identifier in.ira.mac --timestamp=none "$app"
+else
+  echo "Signing ad hoc (run scripts/make-signing-identity.sh once to keep permissions between builds)"
+  codesign --force --sign - --identifier in.ira.mac --timestamp=none "$app"
+fi
 codesign --verify --strict "$app"
 
 zip="$dist/Ira-$version.zip"
