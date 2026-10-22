@@ -2,7 +2,7 @@
 
 ## [Unreleased]
 
-### Your own Ira: devices, Chrome and search
+### Your own Ira: devices, the Mac and search
 
 Anyone can now run Ira as their own assistant, on their own server or as one
 person on a shared one. Everything below is per person and off until they
@@ -13,20 +13,17 @@ switch it on.
   `irad_` token, kept only as a hash and valid only on the device WebSocket
   (`/v1/devices/ws`). Its tools are offered only in its owner's
   conversations, only while the skill they belong to is switched on, and its
-  events ("the upload finished") reach only its owner: the web app, their
+  events ("the task is done") reach only its owner: the web app, their
   Telegram chats and their Android devices. Limits: 1 MB frames, 25-second
   calls, 4 in flight, 30 tools, one event per 30 seconds, one connection per
   device. Revoking a device disconnects it at once.
-- **The Mac companion** (`clients/mac/`): a LaunchAgent that holds the
-  WebSocket and keeps its token in the Keychain, a thin Chrome native
-  messaging host, and three tools: list Chrome's tabs, read one tab (title,
-  address without its query, visible text, progress), and watch a tab until
-  it finishes. `install.sh` and `uninstall.sh` are safe to run again.
-- **Ira for Chrome** (`clients/chrome-extension/`): a Manifest V3 extension
-  with no network of its own and no resident script. Its reader is injected
-  into one tab on request and never reads form fields or passwords.
-- **Downloads**: `/v1/downloads` serves the Mac installer and the extension,
-  and a workflow attaches them to each `v*` release. Nothing is signed yet.
+- **Downloads**: `/v1/downloads` names Ira for Mac (`Ira.dmg`) on the
+  project's latest release, where a macOS runner attaches it for each `v*`
+  tag. It is signed ad hoc until there is a Developer ID.
+- **Retired before release:** the Python Mac companion (`clients/mac`) and
+  the Ira for Chrome extension, built first, are gone. Ira for Mac does
+  their work natively, takes over a companion's pairing and network code,
+  and removes it; the old download names answer 404 with a pointer.
 - **Web and news search**: `web_search` through the Brave Search API
   (`BRAVE_SEARCH_API_KEY`, 30 an hour per server) and `news_search` over RSS
   and Atom feeds in `ira.yaml`, both switched on per person with the PIN.
@@ -61,8 +58,8 @@ switch it on.
   reminders and an iPhone Shortcuts key; a question in the chat has Yes and
   No buttons, and answers get thumbs when that source is on. See [What Ira
   learns](docs/learning.md).
-- New docs: [Your own Ira in 15 minutes](docs/personal-assistant.md), [the Mac
-  companion](docs/clients/mac.md), [Privacy](docs/privacy.md),
+- New docs: [Your own Ira in 15 minutes](docs/personal-assistant.md), [Ira
+  for Mac](docs/clients/macos.md), [Privacy](docs/privacy.md),
   [Devices](docs/devices.md), and a design note.
 - **`ira eval language [--spoken]`**: a small fictional set of Hindi, English
   and Hinglish requests, scored for intent, reply language and (spoken by a
@@ -145,13 +142,21 @@ switch it on.
   (Spotlight), `file_read` (PDF, Word, RTF, text), `file_open` and
   `screen_read` (the front window's text, read on the Mac with Vision). Talk
   by typing or by voice over `/v1/voice/live`, with barge-in; servers without
-  live voice use the HTTP API after a sign-in. Built with SwiftPM alone into
-  an ad-hoc-signed `Ira.app`, zip and dmg, in CI on a macOS runner.
-  The Mac's own abilities follow, each behind a skill and a tier: Contacts,
-  calendars and reminders (EventKit), Mail search, read and draft, Notes,
-  iMessage, apps, web pages, VS Code, the clipboard, Shortcuts, and coding
-  tasks in a sandboxed git worktree with VS Code open on it, whose branch is
-  pushed only after the PIN and never to a protected default branch.
+  live voice use the HTTP API, both with the device token. Built with SwiftPM
+  alone into `Ira.app`, a zip and a dmg, in CI on a macOS runner; a
+  one-time local signing identity keeps permissions between builds.
+  The Mac's own abilities follow, each behind a skill and a tier: browser
+  tabs in Chrome, Safari, Arc, Edge and Brave (titles and addresses, then
+  the screen), Contacts, calendars and reminders (EventKit), Mail search,
+  read and draft, Notes, iMessage, apps, web pages, VS Code, the clipboard,
+  Shortcuts, the routine skill, and coding tasks in a sandboxed git worktree
+  with VS Code open on it (progress, done and failed as events), whose
+  branch is pushed only after the PIN and never to a protected default
+  branch. A first-run checklist, permissions shown in Settings, an optional
+  on-device "Hey Ira", a pin to keep the window on top, a live "working"
+  row, a PIN box for Tier 3, deadlines on every tool, and "Remove Ira from
+  this Mac". Every Mac skill can be ticked at pairing, and devices may send
+  `task_progress`.
 - **Ira for Android** (`clients/android/`, [guide](docs/clients/android.md)):
   Kotlin and Compose, Android 10 and later. Pairs with a link or a code and
   keeps its key encrypted with an Android Keystore key. Live voice over
@@ -169,17 +174,8 @@ switch it on.
   agent configured on the Mac, in a new git worktree and branch of a
   repository the person allowed there. It runs in macOS's sandbox, its git
   cannot push, and Ira reports the files changed and the tests. Starting a
-  task needs a yes; pushing its branch (`task_push`, never `main`) needs the
-  PIN. `ira-mac detach` and Full Disk Access are documented for
-  repositories in `~/Documents`. Re-pairing a Mac now keeps its network salt.
-- **The Mac companion checks certificates on any Python.** It uses macOS's
-  own trust store (`truststore`), else a bundle, so python.org's Python no
-  longer fails to pair with "could not reach"; failures now say why. The
-  installer prefers Homebrew's or Apple's Python and names the one it used.
-- **A typed pairing code finds its server.** A Mac zip downloaded from an
-  IRA server carries that server's address, so typing the code works; with
-  no address known the companion asks instead of trying this Mac. The
-  pairing card offers the link first.
+  task needs a yes; pushing its branch needs the PIN. Now part of Ira for
+  Mac.
 - **The setup link survives restarts.** The setup code is kept in the
   database for 24 hours, so a link already handed out keeps working after a
   restart; `ira setup --new-code` replaces it.

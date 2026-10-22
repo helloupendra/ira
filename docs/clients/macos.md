@@ -17,9 +17,9 @@ email, send an iMessage, run one of your Shortcuts, or start a coding task:
 >
 > kal ka calendar batao
 
-It needs no browser extension and no Terminal. It replaces the
-[Mac companion](mac.md) for most people; the companion stays for Chrome tabs
-and coding tasks.
+It needs no browser extension and no Terminal. It is the one Mac client: it
+replaces the old Python companion and the Chrome extension, and takes over
+from them by itself (see [Moving from the old companion](#moving-from-the-old-companion)).
 
 Ira reads nothing until you ask, and only with the skills you switch on. See
 [what Ira can and cannot see](#what-ira-can-and-cannot-see).
@@ -30,8 +30,8 @@ You need a Mac with macOS 14 (Sonoma) or newer, and your own Ira running
 somewhere: on this Mac, on a server, or one your family or team shares (see
 [the quick start](../personal-assistant.md)).
 
-1. Download **Ira-0.1.0.dmg** from the project's GitHub page (Releases, or
-   the latest build's artifacts) and open it.
+1. Download **Ira.dmg** (the link on **Your devices**, or the project's
+   latest GitHub Release) and open it.
 2. Drag **Ira** onto **Applications**.
 3. Open Applications and find Ira. The first time only, macOS will not open
    it straight away, because the app is not yet signed by a registered
@@ -51,10 +51,11 @@ Pairing tells this Mac which Ira is yours, once.
 
 1. In the Ira app in your browser, open the menu and choose **Your devices**.
 2. Under **Add a device**, choose **Mac**, give it a name, and tick what it
-   may do: for example **Files** (find, read and open your files) and
-   **Screen** (read the window in front). Type your PIN and press **Make a
-   pairing code**. The other skills (Contacts, Calendar and the rest) appear
-   on the Mac's card once it has connected; switch them on there.
+   may do. **Files** (find, read and open your files), **Screen** (read the
+   window in front) and **Browser** (your open tabs) are ticked for you; tick
+   Contacts, Calendar, Mail or the others too if you want them, or switch
+   them on later on the Mac's card. Type your PIN and press **Make a pairing
+   code**.
 3. Press **Copy the pairing link**.
 4. On the Mac, press **Option-Space** (or click the four bars in the menu bar
    and choose **Open Ira**). Ira shows **Pair this Mac with your Ira** and
@@ -63,31 +64,55 @@ Pairing tells this Mac which Ira is yours, once.
     You can also type the code (`ABCD-EFGH`) and your Ira's address.
 
 The code works once, for 10 minutes. This Mac gets its own key, which Ira
-keeps in your Keychain, never in a file. You can switch Files or Screen on or
-off later on **Your devices**; switching one on needs your PIN.
+keeps in your Keychain, never in a file. You can switch skills on or off
+later on **Your devices**; switching one on needs your PIN.
+
+### Moving from the old companion
+
+If the Python companion (installed with `./install.sh`) is still on this
+Mac, Ira for Mac says so on its first page and offers:
+
+- **Use its pairing and remove it**: Ira for Mac takes over the companion's
+  pairing (its server, key and network code, so named places keep their
+  names) and needs no new code. It then stops the companion and removes it
+  from this Mac, as its `uninstall.sh` did.
+- **Remove it and pair with a new code**: the companion tells your Ira to
+  forget it, is removed, and you pair Ira for Mac as above.
+
+Remove the old Ira extension in `chrome://extensions` yourself: Ira for Mac
+reads your tabs without it.
 
 ## Grant permissions
 
-After pairing, Ira shows **What Ira may use on this Mac**. Each permission
-has one plain sentence:
+The first time, Ira walks you through three steps: **Pair**, **Allow** and
+**Try it** (a test question that checks the whole way). On **Allow**, each
+permission has one plain sentence, shows whether it is allowed, and has
+**Allow** or **Open System Settings** beside it. **Settings → Permissions**
+shows the same list later. While System Settings is open, Ira's window
+steps aside, so nothing covers a password sheet there.
 
 | Permission | Why | When macOS asks |
 | --- | --- | --- |
 | **Microphone** | So you can talk to Ira. It listens only after you press the mic, and stops when you press it again or stay quiet for a while. | when you press **Allow**, or the mic the first time |
 | **Files and folders** | So Ira can find a file and read it to you. | the first time Ira opens something in Documents, Desktop or Downloads: choose **Allow** |
-| **Screen Recording** | Only for "what is on my screen?". Ira takes a picture of the window in front, reads its words on this Mac, and sends only the words. | when you press **Allow**; macOS then sends you to System Settings to switch Ira on |
+| **Screen Recording** | Only for "what is on my screen?". Ira takes a picture of the window in front, reads its words on this Mac, and sends only the words. | when you press **Allow**; macOS then sends you to System Settings to switch Ira on. macOS applies it only after Ira restarts: Ira shows **Reopen Ira** (or **Restart Ira**) for that |
 | **Contacts** | So Ira can put a name to a number, or find the number or email to write to. | when you press **Allow**, or the first lookup |
 | **Calendars and Reminders** | So Ira can tell you what is on your day, and add an event or a reminder. A new event waits for your yes. | when you press **Allow** |
 | **Automation: Mail, Notes, Messages** | So Ira can search your inbox and notes, draft an email, and send an iMessage. | the first time Ira uses each app ("Ira wants to control Mail") |
+| **Automation: your browser** | So Ira can list your Chrome, Safari, Arc, Edge or Brave tabs and bring one to the front. Never page contents or passwords. | the first time Ira looks at that browser |
+| **Speech Recognition** | Only for "Hey Ira", if you switch it on: the Mac listens for the phrase by itself. | when you switch "Hey Ira" on |
 | **Documents** (coding tasks only) | Ira works in your repositories, which often live in Documents. | the first coding task |
 
 You can change any of these in **System Settings → Privacy & Security**.
 
 !!! note "After an update"
     Until the app is signed by a registered developer, macOS treats each new
-    version as a new app: it may ask for these permissions again, and ask
-    once whether Ira may use its key in your Keychain (choose **Always
-    Allow**).
+    downloaded version as a new app: it may ask for these permissions again
+    (in Privacy & Security, remove the old Ira with "−" and switch the new
+    one on), and ask once whether Ira may use its key in your Keychain
+    (choose **Always Allow**). You do not need to pair again. If you build
+    Ira yourself, a signing identity made once keeps the permissions: see
+    [building from source](#for-developers-building-from-source).
 
 ## Talk to Ira
 
@@ -100,16 +125,47 @@ You can change any of these in **System Settings → Privacy & Security**.
   used, or the one you chose under **Your assistant**.
 - **When Ira proposes something** that changes the world (a message, an
   event), the window shows it with **Yes** and **No**; or just say "haan" or
-  "nahi". Anything that needs your PIN is confirmed in the Ira app in your
-  browser, never by voice.
+  "nahi". Anything that needs your PIN shows a PIN box: type it there (it
+  goes only to your Ira's confirm step, never to the assistant). Never say a
+  PIN aloud.
+- **While Ira works**, the window shows moving dots and the step ("Finding
+  files…", "Reading the screen…"), the seconds after 3, and after 30 seconds
+  with nothing, "No answer yet" with **Try again**. Every problem shows in
+  the window with what to do next. The dot next to Ira's name says, when you
+  point at it, whether this Mac is connected.
+- **The window** hides when you click another app, and comes back with
+  Option-Space; a question still running carries on, and its answer arrives
+  as a notification. Press the **pin** to keep it on top while you work in
+  other apps. Esc closes it. It remembers where you put it and its size.
+- **Copy and paste** work as everywhere (Cmd-C, Cmd-V, Cmd-X, Cmd-A, Cmd-Z),
+  and you can select and copy any answer.
 
-Ira talks over a live connection when your Ira server offers live voice. If
-it does not yet, the window asks you to **sign in** once with your Ira email
-and password, and then uses the server's ordinary voice and chat instead.
+Ira talks over a live connection when your Ira server offers live voice, and
+over its ordinary voice and chat when it does not, with this Mac's own key
+either way: no email or password.
 
 **Settings…** (in the menu-bar menu, or the **⋯** button) changes the
-shortcut, whether typed answers are spoken too, and which folders Ira may
-use.
+shortcut, "Hey Ira", whether typed answers are spoken too, starting at
+login, and which folders Ira may use, and shows each permission.
+
+## "Hey Ira"
+
+Off until you switch it on in **Settings**. Then the Mac listens for "Hey
+Ira" (or the wake phrase you chose under **Your assistant**) by itself, with
+macOS's speech recognition on this Mac: no sound and no words leave the Mac
+until it hears the phrase. Then the window opens and Ira listens as if you
+had pressed the mic. The menu-bar mark shows a dot while it listens. It
+needs the Microphone and Speech Recognition permissions, and English speech
+recognition on the Mac (Siri and Dictation languages, downloaded).
+
+## Routine
+
+If you switch on the **Routine** skill for this Mac, Ira for Mac tells your
+Ira, every 30 seconds while something changed, when the Mac locks, unlocks,
+sleeps and wakes, its first activity of the day, and which network it is
+on, as a code made with a salt kept on this Mac. Never the network's name,
+never what is on the screen or which apps run. See [What Ira
+learns](../learning.md).
 
 ## What Ira can do on your Mac
 
@@ -125,6 +181,7 @@ needs your PIN (Tier 3).
 | --- | --- | --- |
 | **files** | find files (Spotlight), read one (PDF, Word, RTF, text), open one | 0, 0, 1 |
 | **screen** | read the text of the window in front | 0 |
+| **browser** | list your tabs in Chrome, Safari, Arc, Edge or Brave (titles and addresses); bring one to the front, so Ira can read it from the screen | 0; 1 |
 | **contacts** | look up a person by name, number or email | 0 |
 | **calendar** | read your calendars (iCloud, Google, Exchange: all those added to the Mac); add an event | 0; 2 |
 | **reminders** | list reminders; add one; mark one done | 0; 1; 1 |
@@ -135,6 +192,7 @@ needs your PIN (Tier 3).
 | **clipboard** | read what you copied, when you ask | 0 |
 | **shortcuts** | list your Shortcuts; run one (it can do whatever you built it to) | 0; 2 |
 | **tasks** | start, follow and stop a coding task; push its branch | 2, 0, 1; 3 |
+| **routine** | lock, sleep, wake and the network's code, for learning your day | (no tool) |
 
 Ira chains these by itself: "98765 43210 kiska number hai?" looks the number
 up in Contacts; "usko message karo..." then proposes the message to that
@@ -153,11 +211,18 @@ Ira **can**, only when you ask:
   says when it did;
 - **read the window in front**, in any app: Ira reads its words on this Mac
   and sends only them, with the app's name and the window's title. No
-  picture ever leaves the Mac.
+  picture ever leaves the Mac;
+- **list your browser tabs**: their titles and addresses (without the part
+  after `?` or `#`), and bring one to the front so it can read it from the
+  screen, as you would look at it.
 
 Ira **cannot**:
 
-- read anything you did not ask about. Nothing runs in the background;
+- read anything you did not ask about. Nothing runs in the background,
+  except "Hey Ira" if you switch it on, which listens on the Mac itself;
+- read a web page through the browser, form fields or passwords; or the
+  windows of System Settings, the password prompt, Keychain Access and
+  password managers (it says so by name);
 - read your **Library folder** (mail, messages, browser data, the Keychain),
   **hidden files and folders** (such as `.ssh` and `.aws`), or files that
   hold keys and passwords (`.env`, `.pem`, `.key`, `id_rsa`, password
@@ -181,7 +246,7 @@ give Ira orders, and is kept only in that conversation (see
 **What I read** (the list button at the top of the window, and the
 menu-bar menu) shows the last things Ira used on this Mac: what it did and
 on which file or window, never what was in them. The app's own log, in
-`~/Library/Logs/Ira/`, holds only tool names and timings.
+`~/Library/Logs/Ira/`, holds only tool names, timings and outcomes.
 
 ## Coding tasks (optional)
 
@@ -236,10 +301,12 @@ the request in but do not send it: you press Return.
 
 ## Remove Ira from this Mac
 
-- **Settings → Remove this Mac** tells your Ira server to forget this Mac (its
-  key stops working at once) and deletes the key from your Keychain.
-- Or remove the Mac on **Your devices**: it disconnects at once.
-- Then drag Ira from Applications to the Bin.
+Choose **Remove Ira from this Mac…** in the menu-bar menu (or **Settings**).
+Your Ira forgets this Mac at once (its key stops working), and the app
+deletes its key, settings, logs and login item here, and the old companion
+if it is still around; your files are not touched. Then drag Ira from
+Applications to the Bin. You can also remove the Mac on **Your devices**: it
+disconnects at once.
 
 ## If something does not work
 
@@ -248,12 +315,15 @@ the request in but do not send it: you press Return.
 | "Not paired: that code is used, expired or mistyped" | Make a new code on **Your devices** and paste the new link |
 | "use https:// for a server on another machine" | Your Ira's address must start with `https://`, unless it runs on this Mac |
 | The menu says "This Mac was removed from Ira" | It was removed on **Your devices**: choose **Settings → Pair again** |
-| Ira says Screen Recording is off | **System Settings → Privacy & Security → Screen & System Audio Recording**, switch Ira on, then quit and reopen Ira |
+| Ira says Screen Recording is off | **System Settings → Privacy & Security → Screen & System Audio Recording**, switch Ira on, then press **Restart Ira** |
+| Ira says macOS needs it restarted | Screen Recording was switched on while Ira ran: press **Restart Ira** in its window |
+| "No answer yet. The server is slow or unreachable." | Check that this Mac is online and your Ira is running, then press **Try again** |
 | Ira says macOS did not let it open a file | **System Settings → Privacy & Security → Files and Folders**, switch on Ira's folders |
 | Option-Space does nothing | Another app took it: choose a new shortcut in **Settings → Shortcut** |
 | Ira says it may not use Mail, Notes or Messages | **System Settings → Privacy & Security → Automation**, switch on Ira's apps |
 | Ira says Contacts, Calendars or Reminders are off | **System Settings → Privacy & Security**, the matching page, switch Ira on |
 | Ira does not offer coding tasks | Check `tasks.json` lists a `command` and at least one repository, then **Settings → Reload tools** |
+| macOS asks for every permission again after an update | See the note under [Grant permissions](#grant-permissions) |
 
 ## For developers: building from source
 
@@ -266,7 +336,24 @@ swift build                  # debug build
 scripts/test.sh              # the tests (Swift Testing)
 scripts/make-app.sh          # dist/Ira.app, dist/Ira-<version>.zip and .dmg
 UNIVERSAL=1 scripts/make-app.sh   # Apple silicon and Intel in one app
+scripts/make-signing-identity.sh  # once: keep permissions between your builds
 ```
+
+**Signing.** Without a paid Apple Developer account, the app is signed ad
+hoc, and macOS sees each build as a new app: it asks again for every
+permission, and for the Keychain item. `make-signing-identity.sh` makes a
+self-signed code-signing certificate ("Ira Local Signing", ten years) in
+your login keychain, once; `make-app.sh` signs with it whenever it is there,
+so builds made on that Mac keep their permissions and Keychain access.
+Nothing is sent anywhere. (`--remove` deletes it.)
+
+**Notarization** is the owner's decision: a Developer ID certificate and
+Apple's notary service need the Apple Developer Program ($99 a year). With
+them, `make-app.sh` would sign with the Developer ID and the hardened
+runtime, `xcrun notarytool submit` would send the dmg to Apple, and
+`xcrun stapler staple` would attach the ticket; people could then open the
+downloaded app with a double-click, and permissions would carry over between
+releases. Until then, the first open is right-click, Open (or Open Anyway).
 
 `make-app.sh` builds in release mode, draws the icon from
 `src/ira/web/static/icon.svg` with `sips` and `iconutil`, writes
@@ -289,14 +376,16 @@ SDKs make a macro whose plugin ships with Xcode only.
 | `Sources/IraKit/Tools/` | `ToolCatalog` (every tool's JSON Schema, skill and tier) and `Toolbox` (calls and "What I read"); the path policy and its deny list; Spotlight; PDF, Word, RTF and text reading; ScreenCaptureKit and Vision; Contacts; EventKit; Mail, Notes and Messages through fixed AppleScripts that take the model's words only as arguments; apps, the clipboard and Shortcuts; coding tasks and the push guard |
 | `Sources/IraKit/Voice/`, `Talk/` | `VoiceTransport`: live voice over `/v1/voice/live` ([Real-time voice](../realtime.md), protocol 1) with the device token, or the HTTP API with a signed-in session; the energy voice detector; sentence splitting |
 | `Sources/Ira/` | the app: menu bar, the global hotkey (Carbon, so no Accessibility permission), the floating window, microphone and speaker on one `AVAudioEngine` with echo cancellation |
-| `Tests/IraKitTests/` | pairing against a URLProtocol stub, device and live-voice frames against a fake WebSocket, the deny list, a tiny `.docx` fixture, a PDF drawn in the test, tool schemas, and the voice detector on synthetic audio. No test opens a network connection |
+| `Tests/IraKitTests/` | pairing against a URLProtocol stub, device and live-voice frames against a fake WebSocket, the deny list, a tiny `.docx` fixture, a PDF drawn in the test, tool schemas and deadlines, the browser scripts, the routine readings, taking over the companion, the wake phrase, and the voice detector on synthetic audio. No test opens a network connection |
+| `Tests/IraAppTests/` | the window: Cmd-V pastes into the Ask field (with the pasteboard put back after), the editing keys, and letting go of the keyboard. They need a desktop session |
 
-The tools the app offers (28; the server takes 30 per device):
+The tools the app offers (30, the server's most per device):
 
 | Tool | Skill | Tier |
 | --- | --- | --- |
 | `files_find {query?, kind?, modifiedWithinDays?, folder?}`, `file_read {path, maxChars?}`, `file_open {path}` | `files` | 0, 0, 1 |
 | `screen_read {}` | `screen` | 0 |
+| `browser_tabs {browser?}`, `browser_show_tab {match?, id?, browser?}` | `browser` | 0, 1 |
 | `contacts_lookup {query}` | `contacts` | 0 |
 | `calendar_read {from?, days?, query?, calendar?}`, `calendar_add {title, start, end?, durationMinutes?, allDay?, location?, notes?, calendar?}` | `calendar` | 0, 2 |
 | `reminders_list {list?, includeDone?, query?}`, `reminders_add {title, due?, list?, notes?}`, `reminders_done {id?, title?}` | `reminders` | 0, 1, 1 |
@@ -309,6 +398,10 @@ The tools the app offers (28; the server takes 30 per device):
 | `code_task_start {repo, instruction, openInVSCode?}`, `code_task_status {id}`, `code_task_list {}`, `code_task_stop {id}`, `code_task_push {id}` | `tasks` | 2, 0, 0, 1, 3 |
 
 The coding-task tools are in the hello only when `tasks.json` is set up.
-Done and failed tasks are announced as `task_done` and `task_failed` events.
+A long task says how it is going with `task_progress` (after 5 minutes, then
+every 10), and ends with `task_done` or `task_failed`. Each tool has a
+deadline under the server's 25 seconds (15 for `screen_read`, 22 for the
+scripted apps, 10 for most), and every call is logged with its tool, time
+and outcome. The routine skill sends `observe` frames, not tool calls.
 
 There are no third-party dependencies: everything comes with macOS.

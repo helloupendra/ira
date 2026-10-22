@@ -56,10 +56,13 @@ on its own it can never change anything.
 - Frames are capped at 1 MB, calls at 25 seconds and 4 in flight, tools at
   30, events at one per 30 seconds; event text is stripped of markup.
 - A `?token=` in a WebSocket address is masked in every log line IRA writes.
-- The Mac companion keeps its token in the Keychain (never in a file, a log
-  or a command line), runs from `~/Library/Application Support`, and logs no
-  page text or full addresses. The Chrome extension has no network access
-  and reads no form fields.
+- Ira for Mac keeps its token in the Keychain (never in a file, a log or a
+  command line) and logs no contents. Its file tools refuse `~/Library`,
+  hidden files and key files; its browser tools read titles and addresses
+  only; its screen tool sends text, never a picture, and never reads
+  password managers or System Settings; its scripts take the model's words
+  only as arguments. Each tool answers within its own deadline, under the
+  server's 25 seconds.
 
 ### The PIN never reaches a model
 

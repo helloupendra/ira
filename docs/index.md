@@ -33,9 +33,10 @@ runs it after the owner confirms with a PIN.
   tokens and cost, on a phone or a laptop.
 - **Runs with no key.** A keyword-routing demo provider makes the example
   clinic work out of the box.
-- **Your own assistant, too.** Pair your Mac, and Ira reads and watches a
-  Chrome tab when you ask, tells you when it finishes, and searches the web
-  and the news, for you alone. See [Your own Ira](personal-assistant.md).
+- **Your own assistant, too.** Install Ira for Mac, and Ira finds and reads
+  your files, reads the window in front of you and your browser tabs, and
+  searches the web and the news, for you alone, when you ask. See [Your own
+  Ira](personal-assistant.md).
 
 ## Try it
 

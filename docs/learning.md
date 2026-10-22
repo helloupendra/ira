@@ -24,7 +24,7 @@ Everything here is in the Ira app: menu, **What Ira knows about you**.
 A **Mac** is switched on separately, under **Your devices**: its *routine*
 skill. With it on, the Mac tells Ira when it locks, unlocks, sleeps and
 wakes, and which network it is on, as a code only (see
-[the Mac companion](clients/mac.md#its-routine)).
+[Ira for Mac](clients/macos.md#routine)).
 
 ## Name your places
 

@@ -33,7 +33,7 @@ field errors on `422`).
 | `GET /v1/me/settings`, `GET /v1/me/activity` | `ask` |
 | `PATCH /v1/me/settings` | a session with `ask` |
 | `POST /v1/devices/pair` | nothing (the one-time pairing code) |
-| `GET /v1/downloads`, `GET /v1/downloads/{name}` | nothing: the Mac installer and the Chrome extension are open source |
+| `GET /v1/downloads`, `GET /v1/downloads/{name}` | nothing: Ira for Mac is open source |
 | `GET /v1/devices/ws` | a device token (`irad_...`), and nothing else |
 | `GET /v1/me/devices`, `GET /v1/me/skills`, `GET /v1/me/devices/pairings/{id}`, `GET /v1/me/events`, `GET /v1/me/events/stream` | `ask` |
 | `POST /v1/me/devices/pairing`, `PATCH`/`DELETE /v1/me/devices/{id}`, `DELETE /v1/me/events` | a session with `ask` (and your PIN to pair or switch a skill on) |
@@ -350,11 +350,12 @@ The protocol, limits and security are in [Devices](devices.md). The routes:
 | `PATCH /v1/admin/devices/{id}` | `DeviceUpdate` | switch someone's skills off (`403` to switch one on) |
 | `DELETE /v1/admin/devices/{id}` | | revoke anyone's device |
 
-`GET /v1/downloads` lists `ira-mac.zip` (the installer, with the extension
-inside) and `ira-chrome-extension.zip`, each with `available` and a `url`: the
-server's own copy when it has the clients (a checkout, or the wheel's copy),
-else the project's GitHub Releases page, where CI attaches the same zips to
-each `v*` tag. Nothing is signed yet.
+`GET /v1/downloads` lists `Ira.dmg` (Ira for Mac), with its `url` on the
+project's latest GitHub Release, where CI attaches it to each `v*` tag;
+`available` is false, since the server does not carry it.
+`GET /v1/downloads/Ira.dmg` redirects there. The retired `ira-mac.zip` and
+`ira-chrome-extension.zip` answer `404`, naming Ira for Mac instead. The app
+is signed ad hoc until the project has an Apple Developer ID.
 
 Pairing writes `device.pairing_started` (never the code) and `device.paired`
 to the change log; switching skills writes `device.skills`, renaming

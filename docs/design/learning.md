@@ -1,5 +1,8 @@
 # Design note: Ira learns your routines (section 6b)
 
+The Mac side described here ("the companion") now lives in [Ira for
+Mac](../clients/macos.md#routine), with the same frames and network codes.
+
 A person can let their own Ira notice how their day goes (when they reach
 the office, when they leave, how long the commute takes, how they like to be
 answered) and use it, but only what they agreed to, with the evidence shown,

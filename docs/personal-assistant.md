@@ -2,19 +2,23 @@
 
 By the end of this page you can ask your own Ira, by typing or by voice:
 
+> vo PDF kahan hai jo kal download kiya?
+>
+> padh kar sunao
+>
+> screen pe kya hai?
+>
 > Chrome mein kya chal raha hai?
 
-and Ira answers from the tabs open on your Mac. Then: "us upload tab mein
-kitna hua?" ("The upload tab shows 63%, about 4 minutes left"), and "jab
-khatam ho jaaye, batana": Ira watches the tab and tells you when it is done.
+and Ira answers from your own Mac: it finds the file, reads it to you, reads
+the window in front of you, and lists your browser tabs.
 
-Ira works for you alone. It reads a tab only when you ask, only with the
-skills you switch on, and never form fields or passwords. See
-[Privacy](privacy.md) for exactly what is kept.
+Ira works for you alone. It reads only when you ask, only with the skills
+you switch on, and never your passwords. See [Privacy](privacy.md) for
+exactly what is kept.
 
-![The Ira app on a phone: three questions in Hinglish about Chrome tabs, Ira's answers, and a note that the upload finished](images/personal-chat-phone-light.png){ width="300" }
-
-You need a Mac with Google Chrome, and about 15 minutes. No programming.
+You need a Mac with macOS 14 (Sonoma) or newer, and about 15 minutes. No
+programming.
 
 ## 1. Start Ira (3 minutes)
 
@@ -52,52 +56,37 @@ real language model, see [Getting started](getting-started.md).
 Open Ira at `http://127.0.0.1:8765`, sign in, open the menu (the three
 lines, top left), and choose **Your devices**.
 
-![Your devices: Studio Mac, connected, with Chrome switched on; below it, the form to add a device](images/personal-devices-phone-light.png){ width="300" }
-
-1. Under **Add a device**, keep **Mac**, give it a name, keep **Chrome**
-   ticked, type your PIN, and press **Make a pairing code**.
+1. Under **Add a device**, keep **Mac** and give it a name. Tick what it may
+   do: **Files**, **Screen** and **Browser** are ticked for you; tick more
+   if you like (Contacts, Calendar, Mail and the others), or switch them on
+   later. Type your PIN and press **Make a pairing code**.
 2. Ira shows a code like `GUQC-6JSB`, a QR code, and the steps. The code
-   works once, for 10 minutes.
+   works once, for 10 minutes. Press **Copy the pairing link**.
+3. Download **Ira for Mac** (the link in the first step of the card), open
+   it, and drag **Ira** to **Applications**.
+4. Open Ira from Applications. The first time only, macOS will not open it
+   straight away, because it is not yet signed by a registered developer:
+   on macOS 14, right-click Ira and choose **Open**; on macOS 15 and later,
+   open **System Settings → Privacy & Security** and choose **Open Anyway**.
+5. Ira opens on **Pair this Mac with your Ira** and finds the link you
+   copied. Press **Pair**.
 
-![A pairing code, its QR code, and five numbered steps](images/personal-pairing-phone-light.png){ width="300" }
+The card on **Your devices** says **is paired** when it worked. Ira then
+walks you through what it may use on this Mac, one permission at a time,
+and asks a test question. See [Ira for Mac](clients/macos.md) for each
+permission in plain words.
 
-3. Download **the Ira companion for Mac** (the link in step 1 of the card)
-   and open the zip from your Downloads folder.
-4. In Terminal, run:
+## 4. Ask (2 minutes)
 
-    ```bash
-    cd ~/Downloads/ira-mac && ./install.sh
-    ```
+Press **Option-Space** anywhere: Ira's window opens. Type, or press the mic
+and talk:
 
-    When it asks, paste the **pairing link** (the "Copy the pairing link"
-    button), or type the code: a zip downloaded from your Ira already knows
-    its address. The installer keeps this Mac's own key in your Keychain and
-    starts the companion; it starts again by itself when you log in.
+- `vo PDF kahan hai jo kal download kiya?`, then `padh kar sunao`
+- `screen pe kya hai?`
+- `Chrome mein kya chal raha hai?`, then `us upload tab mein kitna hua?`
 
-The card says **is paired** when it worked.
-
-## 4. Add Ira to Chrome (3 minutes)
-
-1. In Chrome, open `chrome://extensions`.
-2. Switch on **Developer mode** (top right).
-3. Click **Load unpacked** and choose the folder the installer named:
-   `Library/Application Support/ira-mac/chrome-extension` in your home
-   folder. (In the file chooser, press Cmd+Shift+G and paste
-   `~/Library/Application Support/ira-mac/chrome-extension`.)
-4. Click the puzzle piece in the toolbar, then the Ira icon: it says
-   **Connected**.
-
-## 5. Ask (2 minutes)
-
-Back in the Ira app, type (or tap the mic and say):
-
-- `Chrome mein kya chal raha hai?` or `Chrome mein kaunse tabs khule hain?`
-- `us upload tab mein kitna hua?`
-- `upload tab khatam ho jaaye to batana`
-
-When the tab finishes, Ira writes a note in the app and says it aloud if
-**Speak replies aloud** is on in the menu. If you paired Telegram, the note
-arrives there too.
+Ira shows what it is doing ("Finding files…", "Reading the screen…") while
+it works, and answers by voice when you spoke to it.
 
 ## Your assistant, your way
 
@@ -134,14 +123,15 @@ which also has the steps for an iPhone Shortcut.
 
 | You see | Do this |
 | --- | --- |
-| "Not paired: that code is used, expired or mistyped" | Make a new code on **Your devices** and run `./install.sh --pair` |
-| The extension says "Not connected" | Run `./install.sh` again, then quit and reopen Chrome |
-| Ira says "Chrome is not connected" | Open Chrome; check the extension is on in `chrome://extensions` |
-| Ira says it "cannot read" a tab | Chrome does not let extensions read its own pages (`chrome://`), the Web Store or PDFs |
-| The device shows "Last seen …" | In Terminal: `launchctl kickstart -k gui/$(id -u)/in.ira.mac` |
+| "Not paired: that code is used, expired or mistyped" | Make a new code on **Your devices** and paste the new link in Ira |
+| Option-Space does nothing | Another app took it: choose another shortcut in Ira's **Settings** |
+| Ira says Screen Recording is off, or asks to be restarted | Switch Ira on in **System Settings → Privacy & Security → Screen & System Audio Recording**, then press **Restart Ira** |
+| Ira says it may not use Chrome, Mail or Notes | **System Settings → Privacy & Security → Automation**: switch Ira on for that app |
+| The device shows "Last seen …" | Open Ira (it starts at login if you chose that); its menu-bar mark says whether it is connected |
 
-To remove everything from the Mac, run `./uninstall.sh` from the same
-folder; it also tells Ira to forget this Mac. You can remove the Mac on
+To remove Ira from the Mac, choose **Remove Ira from this Mac…** in its
+menu: your Ira forgets this Mac at once, and the app deletes its key,
+settings and logs. Then drag Ira to the Bin. You can also remove the Mac on
 **Your devices** at any time: it stops working at once.
 
-More detail: [the Mac companion](clients/mac.md) and [Devices](devices.md).
+More detail: [Ira for Mac](clients/macos.md) and [Devices](devices.md).

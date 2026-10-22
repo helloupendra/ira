@@ -158,25 +158,27 @@ sentence with "Full details are in the text above."
 ## Your own Ira
 
 IRA is also a personal assistant, for anyone who runs it or has an account
-on a shared server. Pair your Mac and Ira reads a Chrome tab when you ask,
-watches it, and tells you when it finishes:
+on a shared server. Install **Ira for Mac**, pair it, and Ira can use your
+Mac when you ask: find a file and read it to you, read the window in front,
+list your browser tabs, look up a contact, check your calendar:
 
 ```text
-You:  Chrome mein kaunse tabs khule hain?
-Ira:  3 tabs open: Inbox, Upload - Example Drive, Build #812. In front: Upload.
-You:  us upload tab mein kitna hua?
-Ira:  Upload - Example Drive: 63%, about 4 min left.
-You:  jab khatam ho jaaye, batana
-Ira:  Watching it. I'll tell you when it reaches 100%.
-      ...  Upload - Example Drive is done. It reached 100%.
+You:  vo PDF kahan hai jo kal download kiya?
+Ira:  invoice-42.pdf, in Downloads, downloaded yesterday at 18:20.
+You:  padh kar sunao
+Ira:  Sunrise Dental Clinic, invoice 42: two check-ups and a cleaning...
+You:  Chrome mein kya chal raha hai?
+Ira:  Chrome has 3 tabs: Inbox, Upload - Example Drive, Build #812.
 ```
 
 - **Devices** pair with a one-time code or QR code, hold one WebSocket each,
   and offer tools only to their own person, only with the skills they
   switched on (with their PIN). See [Devices](docs/devices.md).
-- **The Mac companion** and **Ira for Chrome** read one tab on request, never
-  form fields or passwords, and keep their key in the Keychain. See [the Mac
-  companion](docs/clients/mac.md).
+- **Ira for Mac**, a menu-bar app (Option-Space), pairs in the app, keeps its
+  key in the Keychain, talks by voice or text, and offers files, the screen,
+  browser tabs, contacts, calendar, reminders, mail, notes, messages, apps,
+  Shortcuts and coding tasks, each behind a skill and a tier. See [Ira for
+  Mac](docs/clients/macos.md).
 - **Web and news search** through the Brave Search API and RSS feeds, with
   sources named by site and date.
 - **Tiers**: reading runs at once, small changes are reported, outward ones
@@ -284,7 +286,7 @@ over a private operations system. Some lessons from running it are built in:
 
 ## Roadmap
 
-- **v0.3**: devices (done: the Mac companion, Chrome, search); coding and
+- **v0.3**: devices (done: Ira for Mac, search); coding and
   research tasks run on your Mac with no push; the Android "ear" with an
   on-device "Hey Ira" wake word; learning your routines with your consent;
   then voice ID. Also a Siri Shortcut endpoint, WhatsApp, a Docker image, and

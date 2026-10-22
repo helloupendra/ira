@@ -42,7 +42,7 @@ src/ira/
   search.py        web_search (Brave) and news_search (RSS), per person
   toollog.py       "What Ira did": every tool call, without contents
   usersettings.py  each person's assistant name, wake phrase, languages, web search
-  clients.py       the Mac installer and the Chrome extension as zips
+  clients.py       where to download Ira for Mac (the latest release)
   conversations.py history in SQLite
   accounts.py      users, roles, sessions, API tokens, invitations, sign-in throttling
   changes.py       the change log of console writes
@@ -132,11 +132,12 @@ second SQLite file.
 ## Devices
 
 ```text
-Chrome ── Ira extension ──native messaging──> in.ira.mac host ──unix socket──> ira-mac daemon
-                                                                                    │
-                                              WebSocket /v1/devices/ws, irad_ token │
-                                                                                    ▼
-             web app, Telegram, Android <──events── IRA server: hub, assistant, search
+Ira for Mac (files, screen, browser tabs, contacts, calendar, mail, ...)
+                          │
+                          │ WebSocket /v1/devices/ws, irad_ token: hello, calls, events
+                          │ (and /v1/voice/live for its voice, with the same token)
+                          ▼
+web app, Telegram, Android <──events── IRA server: hub, assistant, search
 ```
 
 Each turn, the assistant offers the registry's tools plus the person's own:

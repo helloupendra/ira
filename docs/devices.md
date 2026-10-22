@@ -1,9 +1,9 @@
 # Devices
 
 A **device** is something a person pairs with their own Ira: a Mac running
-the companion, or (later) an Android phone that listens for "Hey Ira". A
-device connects to the server over one WebSocket, offers tools, runs them
-when Ira calls, and announces events ("the upload finished").
+[Ira for Mac](clients/macos.md), or an Android phone. A device connects to
+the server over one WebSocket, offers tools, runs them when Ira calls, and
+announces events ("the coding task is done").
 
 Devices are personal. A device belongs to one person; its tools are offered
 only in that person's conversations, its events reach only that person, and
@@ -28,7 +28,7 @@ POST /v1/devices/pair
 
 ```json
 {"device_id": 3, "token": "irad_...", "kind": "mac", "label": "Office Mac",
- "skills": ["chrome"], "name": "Ira", "websocket": "/v1/devices/ws"}
+ "skills": ["files"], "name": "Ira", "websocket": "/v1/devices/ws"}
 ```
 
 Five wrong codes from one address in 15 minutes give `429` for 15 minutes. A
@@ -66,7 +66,7 @@ devices, once the review is over. Making such a code goes into the change log.
 - Send it as `Authorization: Bearer irad_...`. A client that cannot set
   headers may use `?token=`; IRA masks the value in every log line it writes,
   but a proxy in front may log it, so prefer the header.
-- The Mac companion keeps it in the macOS Keychain, the Android app in the
+- Ira for Mac keeps it in the macOS Keychain, the Android app in the
   Android Keystore. Neither writes it to a file or a log.
 - **Revoking** a device (`DELETE /v1/me/devices/{id}`, or an admin's
   `DELETE /v1/admin/devices/{id}`) stops the token at once and closes the
@@ -82,16 +82,16 @@ JSON text frames, each an object with a `type`.
 ```json
 {"type": "hello", "kind": "mac", "label": "Office Mac", "version": "0.3.0",
  "tools": [
-   {"name": "chrome_read_tab", "description": "Read one Chrome tab.",
-    "parameters": {"type": "object", "properties": {"match": {"type": "string"}}},
-    "skill": "chrome", "tier": 0}
+   {"name": "file_read", "description": "Read the text of one file.",
+    "parameters": {"type": "object", "properties": {"path": {"type": "string"}}},
+    "skill": "files", "tier": 0}
  ]}
 ```
 
 The server answers:
 
 ```json
-{"type": "welcome", "deviceId": 3, "label": "Office Mac", "skills": ["chrome"],
+{"type": "welcome", "deviceId": 3, "label": "Office Mac", "skills": ["files"],
  "assistant": "Ira", "wakePhrase": "Hey Ira"}
 ```
 
@@ -99,7 +99,7 @@ The server answers:
 - Each tool has a `name` matching `^[a-z][a-z0-9_]{2,40}$`, a `description`,
   and `parameters` as a JSON Schema object (8 KB at most).
 - `skill` is the grant the tool belongs to; it defaults to the name up to the
-  first underscore (`chrome_read_tab` belongs to `chrome`).
+  first underscore (`files_find` belongs to `files`).
 - `tier` is the tool's tier: 0 reads, 1 small and undoable, 2 needs the
   person's "yes", 3 needs their PIN. A tool that does not say is Tier 2.
 - A hello that breaks a rule gets `{"type": "error", "error": "..."}` and the
@@ -108,14 +108,14 @@ The server answers:
 **Calls.** The server calls a tool:
 
 ```json
-{"type": "call", "id": "9b0c...", "tool": "chrome_read_tab", "args": {"match": "upload"}}
+{"type": "call", "id": "9b0c...", "tool": "file_read", "args": {"path": "~/Downloads/invoice.pdf"}}
 ```
 
 and the device answers with the same `id`:
 
 ```json
-{"type": "result", "id": "9b0c...", "ok": true, "content": {"summary": "Upload: 63%"}}
-{"type": "result", "id": "9b0c...", "ok": false, "error": "no tab matches 'upload'"}
+{"type": "result", "id": "9b0c...", "ok": true, "content": {"summary": "Read invoice.pdf (PDF).", "text": "..."}}
+{"type": "result", "id": "9b0c...", "ok": false, "error": "there is no file at that path"}
 ```
 
 `content` is any JSON. A `summary` string in it is what a no-key demo reads
@@ -124,8 +124,8 @@ out, and helps a model too.
 **Events.** The device announces something its person should hear:
 
 ```json
-{"type": "event", "event": "watch_done", "title": "Upload finished",
- "text": "The Upload tab reached 100%.", "data": {"tabId": 812}}
+{"type": "event", "event": "task_done", "title": "Task t1a2b3 in shop is done",
+ "text": "Added the invoice total test. 2 files changed. Tests: passed.", "data": {"id": "t1a2b3"}}
 ```
 
 `event` is `watch_done`, `task_progress` (a long task saying how it is
@@ -187,4 +187,5 @@ Any program that speaks the protocol can be a device. In outline:
    with a growing delay when the connection drops.
 5. Keep events to one per 30 seconds; queue the rest.
 
-The Mac companion in `clients/mac/` is a complete example in Python.
+Ira for Mac in `clients/macos/` (Swift) and the Android app in
+`clients/android/` (Kotlin) are complete examples.

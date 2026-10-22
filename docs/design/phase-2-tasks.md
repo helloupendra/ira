@@ -1,5 +1,11 @@
 # Phase 2: tasks on your Mac
 
+!!! note "Superseded"
+    The Python companion and the Chrome extension this note describes are
+    retired: [Ira for Mac](../clients/macos.md) does their work natively
+    (files, the screen, browser tabs, coding tasks and the routine skill). The
+    note stays as the record of the first design.
+
 Status: design, 22 Oct 2026.
 
 ## What it is

@@ -1,5 +1,11 @@
 # Design note: devices, Chrome and search (phase 1)
 
+!!! note "Superseded"
+    The Python companion and the Chrome extension this note describes are
+    retired: [Ira for Mac](../clients/macos.md) does their work natively
+    (files, the screen, browser tabs, coding tasks and the routine skill). The
+    note stays as the record of the first design.
+
 IRA so far answers over a business's own tools. Phase 1 makes it a personal
 assistant too: a person pairs their own Mac, Ira reads a Chrome tab when
 asked, watches it and says when it is done, and searches the web and the

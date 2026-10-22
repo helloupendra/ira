@@ -22,17 +22,20 @@ Ira keeps, who can see it, and how to take it away.
 
 Ira never keeps:
 
-- **page text outside your conversation.** What a tab said is part of the
-  answer you asked for, and nothing else;
+- **what your Mac read outside your conversation.** What a file, a window or
+  a tab said is part of the answer you asked for, and nothing else;
 - **the contents of "What Ira did"**: not what was asked of a tool, not what
   it returned;
-- **form fields or passwords** from Chrome: the reader skips them all;
+- **pictures of your screen**: Ira for Mac reads the window's words on the
+  Mac and sends only the words; it never reads a page's contents through
+  the browser, form fields or passwords, nor password managers' windows;
 - **your password, PIN or keys in readable form**: only salted hashes or
   one-way fingerprints;
 - **your IP address** with your account, sessions or logs.
 
-The Mac companion's own logs hold tool names, tab numbers and timings, never
-page text, never a full address and never its key.
+Ira for Mac's own log (`~/Library/Logs/Ira`) holds tool names, timings and
+outcomes, never what it read or heard, never a full address and never its
+key.
 
 ## Who can see what
 
@@ -70,8 +73,9 @@ not train on what you send. Check their pages yourself: terms change.
 - **Grants.** Ira uses a device's skill, or web search, only after you switch
   it on with your PIN. **Your assistant** lists everything you allowed, each
   with **Turn off**.
-- **Reading is on request.** No part of the Chrome extension runs in a page
-  until you ask about that page.
+- **Reading is on request.** Ira for Mac reads a file, a window, your tabs
+  or your clipboard only when you ask; nothing runs in the background except
+  "Hey Ira", if you switch it on, which listens on the Mac itself.
 - **Actions need you.** Anything that sends, spends or deletes waits for your
   "yes" or your PIN. A page, an email or a device's output can never start
   one on its own.

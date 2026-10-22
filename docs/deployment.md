@@ -139,8 +139,8 @@ server ([AWS with Bedrock](#aws-with-bedrock) below).
     stops it and leaves the folder alone.
 
 4. **Create the owner** with the one-time link in the log
-   (`grep 'code=' ~/ira-personal/logs/ira.log`), then pair your Mac with the
-   [Mac companion](clients/mac.md).
+   (`grep 'code=' ~/ira-personal/logs/ira.log`), then pair your Mac with
+   [Ira for Mac](clients/macos.md).
 
 ## AWS with Bedrock
 
@@ -388,7 +388,7 @@ For each later business, add its two ingress lines (`ira-add-business`
 prints them), route its hostname, and `sudo systemctl restart cloudflared`.
 
 - Cloudflare serves HTTPS, which the browser's microphone requires.
-- Devices (the Mac companion, later the phone) connect to
+- Devices (Ira for Mac, the Android app) connect to
   `wss://<hostname>/v1/devices/ws` through the same tunnel: cloudflared
   passes WebSockets through with no extra setting. Cloudflare closes a
   WebSocket idle for 100 seconds; both sides ping every 30, and a device
