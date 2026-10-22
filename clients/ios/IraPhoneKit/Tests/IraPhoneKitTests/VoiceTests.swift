@@ -102,7 +102,12 @@ struct VADTests {
     }
 
     @Test func pcm() {
-        #expect(PCM.int16Data([0, 1, -1, 0.5]) == Data([0x00, 0x00, 0xFF, 0x7F, 0x01, 0x80, 0xFF, 0x3F]))
+        let data = PCM.int16Data([0, 1, -1, 0.5])
+        #expect(data == Data([0x00, 0x00, 0xFF, 0x7F, 0x01, 0x80, 0xFF, 0x3F]))
+        let back = PCM.floats(data)
+        #expect(back.count == 4)
+        #expect(back[0] == 0 && back[1] == 1 && back[2] == -1 && abs(back[3] - 0.5) < 0.001)
+        #expect(PCM.floats(data.dropFirst(2)).count == 3)  // a slice keeps its own indices
     }
 }
 

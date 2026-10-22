@@ -121,13 +121,13 @@ struct SettingsTests {
         #expect(settings.conversationID == "ios-server-made")
     }
 
-    @Test func forgettingThePairingKeepsPreferences() {
+    @Test func forgettingThePairingStartsSetupAgain() {
         let settings = freshSettings()
         settings.server = "https://ira.example.com"
-        settings.speakTypedReplies = true
+        settings.setupDone = true
         settings.forgetPairing()
         #expect(settings.server.isEmpty)
-        #expect(settings.speakTypedReplies)
+        #expect(!settings.setupDone)
         #expect(settings.deviceLabel == "My iPhone")
     }
 

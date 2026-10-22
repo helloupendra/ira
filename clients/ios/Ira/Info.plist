@@ -1,0 +1,79 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CFBundleDevelopmentRegion</key>
+	<string>en</string>
+	<key>CFBundleDisplayName</key>
+	<string>Ira</string>
+	<key>CFBundleExecutable</key>
+	<string>$(EXECUTABLE_NAME)</string>
+	<key>CFBundleIdentifier</key>
+	<string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
+	<key>CFBundleInfoDictionaryVersion</key>
+	<string>6.0</string>
+	<key>CFBundleName</key>
+	<string>$(PRODUCT_NAME)</string>
+	<key>CFBundlePackageType</key>
+	<string>APPL</string>
+	<key>CFBundleShortVersionString</key>
+	<string>$(MARKETING_VERSION)</string>
+	<key>CFBundleVersion</key>
+	<string>$(CURRENT_PROJECT_VERSION)</string>
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleURLName</key>
+			<string>io.github.helloupendra.ira.pair</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>ira</string>
+			</array>
+		</dict>
+	</array>
+	<key>ITSAppUsesNonExemptEncryption</key>
+	<false/>
+	<key>LSRequiresIPhoneOS</key>
+	<true/>
+	<key>NSAppTransportSecurity</key>
+	<dict>
+		<key>NSAllowsLocalNetworking</key>
+		<true/>
+	</dict>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>So you can talk to Ira. Ira listens only during a call you start, and sends what you say only to your own Ira.</string>
+	<key>NSSpeechRecognitionUsageDescription</key>
+	<string>So the iPhone can turn what you say into text when your Ira has no live calls. It recognises on the iPhone when it can.</string>
+	<key>NSContactsUsageDescription</key>
+	<string>So Ira can put a name to a number, or find the number to call, when you ask.</string>
+	<key>NSCalendarsFullAccessUsageDescription</key>
+	<string>So Ira can tell you what is on your day, and add an event after your yes.</string>
+	<key>NSCalendarsUsageDescription</key>
+	<string>So Ira can tell you what is on your day, and add an event after your yes.</string>
+	<key>NSRemindersFullAccessUsageDescription</key>
+	<string>So Ira can list your reminders, add one, and tick one off, when you ask.</string>
+	<key>NSRemindersUsageDescription</key>
+	<string>So Ira can list your reminders, add one, and tick one off, when you ask.</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>So Ira can say where you are when you ask. Only while you use Ira; the iPhone keeps nothing.</string>
+	<key>UIApplicationSceneManifest</key>
+	<dict>
+		<key>UIApplicationSupportsMultipleScenes</key>
+		<false/>
+	</dict>
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>audio</string>
+	</array>
+	<key>UILaunchScreen</key>
+	<dict/>
+	<key>UIRequiredDeviceCapabilities</key>
+	<array>
+		<string>arm64</string>
+	</array>
+	<key>UISupportedInterfaceOrientations</key>
+	<array>
+		<string>UIInterfaceOrientationPortrait</string>
+	</array>
+</dict>
+</plist>
