@@ -1,6 +1,8 @@
 package io.github.helloupendra.ira.voice
 
 import android.content.Context
+import android.media.AudioFocusRequest
+import android.media.AudioManager
 import android.net.Uri
 import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
@@ -30,6 +32,8 @@ class SentencePlayer(context: Context, private val listener: Listener) {
     private val audio = ConcurrentHashMap<String, ByteArray>()
     private var started: String? = null
 
+    private val focus = AudioFocus(context)
+
     private val player: ExoPlayer =
         ExoPlayer.Builder(context)
             .setMediaSourceFactory(
@@ -37,14 +41,9 @@ class SentencePlayer(context: Context, private val listener: Listener) {
                     DataSource.Factory { ByteArrayDataSource { uri -> audio[uri.toString()] ?: ByteArray(0) } },
                 ),
             )
-            .setAudioAttributes(
-                AudioAttributes.Builder()
-                    .setUsage(C.USAGE_ASSISTANT)
-                    .setContentType(C.AUDIO_CONTENT_TYPE_SPEECH)
-                    .build(),
-                true, // music ducks while Ira speaks, and comes back after
-
-            )
+            // ExoPlayer handles audio focus only for media and games; Ira's voice is an
+            // assistant's, so AudioFocus asks for it instead (other sound ducks meanwhile).
+            .setAudioAttributes(attributes(), HANDLES_FOCUS)
             .build()
             .apply {
                 playWhenReady = true
@@ -61,6 +60,7 @@ class SentencePlayer(context: Context, private val listener: Listener) {
         get() = player.isPlaying || player.mediaItemCount > 0 && player.playbackState != Player.STATE_ENDED
 
     fun enqueue(sentences: List<SentenceAudio>) {
+        focus.request()
         for (sentence in sentences) {
             val id = "${sentence.turn}:${sentence.seq}"
             val uri = "ira-audio://$id"
@@ -79,6 +79,7 @@ class SentencePlayer(context: Context, private val listener: Listener) {
         player.clearMediaItems()
         audio.clear()
         started = null
+        focus.abandon()
     }
 
     fun release() {
@@ -98,6 +99,7 @@ class SentencePlayer(context: Context, private val listener: Listener) {
             started = null
             player.clearMediaItems()
             audio.clear()
+            focus.abandon()
         }
     }
 
@@ -111,5 +113,47 @@ class SentencePlayer(context: Context, private val listener: Listener) {
         val turn = parts.getOrNull(0)?.toIntOrNull() ?: return null
         val seq = parts.getOrNull(1)?.toIntOrNull() ?: return null
         return turn to seq
+    }
+
+    companion object {
+        /** ExoPlayer may handle focus only for USAGE_MEDIA and USAGE_GAME; this player does not ask it to. */
+        const val HANDLES_FOCUS = false
+
+        /** Ira's voice: an assistant speaking. */
+        fun attributes(): AudioAttributes =
+            AudioAttributes.Builder()
+                .setUsage(C.USAGE_ASSISTANT)
+                .setContentType(C.AUDIO_CONTENT_TYPE_SPEECH)
+                .build()
+    }
+}
+
+/**
+ * Transient audio focus while Ira speaks: music and other sound duck, and come back when she
+ * stops. Asked for by the app because ExoPlayer handles focus only for media and games.
+ */
+class AudioFocus(context: Context) {
+    private val manager = context.getSystemService(AudioManager::class.java)
+    private var held = false
+    private val request =
+        AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK)
+            .setAudioAttributes(
+                android.media.AudioAttributes.Builder()
+                    .setUsage(android.media.AudioAttributes.USAGE_ASSISTANT)
+                    .setContentType(android.media.AudioAttributes.CONTENT_TYPE_SPEECH)
+                    .build(),
+            )
+            .setOnAudioFocusChangeListener { }
+            .build()
+
+    fun request() {
+        if (held) return
+        held = manager?.requestAudioFocus(request) == AudioManager.AUDIOFOCUS_REQUEST_GRANTED
+    }
+
+    fun abandon() {
+        if (!held) return
+        manager?.abandonAudioFocusRequest(request)
+        held = false
     }
 }
