@@ -41,7 +41,11 @@ struct SettingsView: View {
                 }
                 HStack {
                     Button("Reconnect") { model.reconnect() }
-                    Button("Pair again…") { state.confirmRepair = true }
+                    Button("Pair again…") {
+                        model.startRepair()
+                        NotificationCenter.default.post(name: .iraShowPanel, object: nil)
+                    }
+                    .help("Pair with a new code. This Mac's current pairing stays until the new one works.")
                     Spacer()
                 }
             }
@@ -155,11 +159,7 @@ struct SettingsView: View {
         } message: {
             Text("Your Ira forgets this Mac at once, and the app deletes its key, settings and logs here. Your files are not touched. Then drag Ira from Applications to the Bin.")
         }
-        .confirmationDialog("Pair this Mac again?", isPresented: $state.confirmRepair) {
-            Button("Pair again", role: .destructive) { Task { await model.removeEverything() } }
-        } message: {
-            Text("This Mac's current pairing ends at once. Then make a new pairing code on Your devices.")
-        }
+
     }
 
     static func permissionName(_ permission: String) -> String {

@@ -76,6 +76,8 @@ public final class Toolbox: ToolRunner, @unchecked Sendable {
     private let record: @Sendable (Activity) -> Void
     private let log: IraLog
     private let eventKit = EventKitTools()
+    /// Which of Documents, Desktop and Downloads Ira may look into.
+    public let folderGrants: FolderGrants
     /// Coding tasks; their done and failed events go out through `announce`.
     public let tasks: CodeTasks
 
@@ -84,6 +86,7 @@ public final class Toolbox: ToolRunner, @unchecked Sendable {
         frontApp: @escaping FrontApp,
         opener: @escaping Opener = Toolbox.workspaceOpen,
         tasks: CodeTasks = CodeTasks(),
+        folderGrants: FolderGrants = FolderGrants(),
         log: IraLog = .shared,
         record: @escaping @Sendable (Activity) -> Void
     ) {
@@ -91,6 +94,7 @@ public final class Toolbox: ToolRunner, @unchecked Sendable {
         self.frontApp = frontApp
         self.opener = opener
         self.tasks = tasks
+        self.folderGrants = folderGrants
         self.log = log
         self.record = record
     }
@@ -287,8 +291,14 @@ public final class Toolbox: ToolRunner, @unchecked Sendable {
             if let refusal = policy.refusal(path) { throw ToolFailure(refusal) }
             scopes = [URL(fileURLWithPath: PathPolicy.expand(path, home: policy.home)?.path ?? path)]
         }
-        let predicate = FileSearch.predicate(for: query)
-        let found = await FileSearch.run(predicate, scopes: scopes, policy: policy)
+        let blocked = folderGrants.blocked(in: scopes)
+        var found: [FileSearch.Found]
+        if kind == "folder", let words = query.words.isEmpty ? nil : query.words {
+            found = await findFolders(words.joined(separator: " "), scopes: scopes, policy: policy, blocked: blocked)
+        } else {
+            found = await FileSearch.run(FileSearch.predicate(for: query), scopes: scopes, policy: policy)
+        }
+        found = Array(found.prefix(FileSearch.maxResults))
         let formatter = ISO8601DateFormatter()
         let results: [JSONValue] = found.map { file in
             var entry: [String: JSONValue] = [
@@ -305,18 +315,49 @@ public final class Toolbox: ToolRunner, @unchecked Sendable {
             return .object(entry)
         }
         log.info("files_find found \(found.count)")
-        return [
+        var content: [String: JSONValue] = [
             "results": .array(results),
             "count": .number(Double(found.count)),
-            "summary": .string(Toolbox.findSummary(found, policy: policy)),
+            "summary": .string(Toolbox.findSummary(found, policy: policy, notSearched: blocked)),
         ]
+        if !blocked.isEmpty { content["notSearched"] = .array(blocked.map { .string($0) }) }
+        return .object(content)
     }
 
-    static func findSummary(_ found: [FileSearch.Found], policy: PathPolicy) -> String {
-        if found.isEmpty { return "No files matched." }
+    /// Folders by what the person calls them: Spotlight's candidates ranked by
+    /// `FolderMatch`, and when Spotlight has none, a short walk of the usual
+    /// places (3 levels, 2 seconds), never into a folder Ira may not open.
+    func findFolders(_ words: String, scopes: [URL], policy: PathPolicy, blocked: [String]) async -> [FileSearch.Found] {
+        let candidates = await FileSearch.run(
+            FileSearch.folderPredicate(for: FolderMatch.words(words)), scopes: scopes, policy: policy, limit: 300)
+        var ranked: [(FileSearch.Found, Double)] = candidates.compactMap { found in
+            FolderMatch.score(query: words, name: found.url.lastPathComponent).map { (found, $0) }
+        }
+        if ranked.isEmpty {
+            let home = policy.home
+            let places = ["Documents/GitHub", "Documents", "Desktop", "Downloads", "Developer"]
+                .filter { place in !blocked.contains { place == $0 || place.hasPrefix($0 + "/") } }
+                .map { home.appendingPathComponent($0) }
+                .filter { url in scopes.contains { PathPolicy.isInside(url, $0) || PathPolicy.isInside($0, url) } }
+            let walked = await Task.detached(priority: .userInitiated) {
+                FolderMatch.walk(places, query: words, policy: policy)
+            }.value
+            ranked = walked.map { item in
+                let modified = try? item.url.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate
+                return (FileSearch.Found(url: item.url, kind: "Folder", size: nil, modified: modified), item.score)
+            }
+        }
+        var seen = Set<String>()
+        return ranked.sorted { $0.1 != $1.1 ? $0.1 > $1.1 : $0.0.url.path.count < $1.0.url.path.count }
+            .map(\.0).filter { seen.insert($0.url.path).inserted }
+    }
+
+    static func findSummary(_ found: [FileSearch.Found], policy: PathPolicy, notSearched: [String] = []) -> String {
+        let unsearched = FolderGrants.notSearched(notSearched).map { " " + $0 } ?? ""
+        if found.isEmpty { return "Nothing matched where I could look." + unsearched }
         let names = found.prefix(5).map { "\($0.url.lastPathComponent) in \(policy.display($0.url.deletingLastPathComponent()))" }
         let more = found.count > 5 ? " and \(found.count - 5) more" : ""
-        return "Found \(found.count) file\(found.count == 1 ? "" : "s"): \(names.joined(separator: "; "))\(more)."
+        return "Found \(found.count) file\(found.count == 1 ? "" : "s"): \(names.joined(separator: "; "))\(more)." + unsearched
     }
 
     // file_read

@@ -1,12 +1,29 @@
 import Foundation
 import Security
 
+/// What reading a secret found. A read that fails (the Keychain locked, a
+/// prompt refused, an item another build of Ira made) is not the same as no
+/// secret, and must never be taken for "not paired".
+public enum SecretRead: Equatable, Sendable {
+    case found(String)
+    case missing
+    case failed(Int32)
+}
+
 /// Where the app keeps its secret: the device token. Never in a file,
 /// UserDefaults or a log.
 public protocol SecretStore: Sendable {
-    func load(_ account: String) -> String?
+    func read(_ account: String) -> SecretRead
     func save(_ value: String, account: String) throws
     @discardableResult func delete(_ account: String) -> Bool
+}
+
+extension SecretStore {
+    /// The secret, or nil when it is missing or cannot be read.
+    public func load(_ account: String) -> String? {
+        if case .found(let value) = read(account) { return value }
+        return nil
+    }
 }
 
 public enum SecretAccount {
@@ -19,12 +36,23 @@ public struct SecretError: LocalizedError {
     public var errorDescription: String? { message }
 }
 
-/// The login Keychain, service `in.ira.mac`.
+/// The login Keychain, service `in.ira.mac` (a test build with another bundle
+/// id, such as `in.ira.mac.test`, keeps its own).
 public struct KeychainStore: SecretStore {
     public let service: String
+    /// Fail instead of asking (for scripted checks): a read that would show
+    /// macOS's "Ira wants to use your confidential information" answers `failed`.
+    public let interactive: Bool
 
-    public init(service: String = "in.ira.mac") {
+    public static var defaultService: String {
+        let id = Bundle.main.bundleIdentifier ?? ""
+        return id.hasPrefix("in.ira.mac") ? id : "in.ira.mac"
+    }
+
+    public init(service: String = KeychainStore.defaultService,
+                interactive: Bool = ProcessInfo.processInfo.environment["IRA_KEYCHAIN_NO_UI"] == nil) {
         self.service = service
+        self.interactive = interactive
     }
 
     private func query(_ account: String) -> [String: Any] {
@@ -35,15 +63,25 @@ public struct KeychainStore: SecretStore {
         ]
     }
 
-    public func load(_ account: String) -> String? {
+    public func read(_ account: String) -> SecretRead {
         var query = query(account)
         query[kSecReturnData as String] = true
         query[kSecMatchLimit as String] = kSecMatchLimitOne
+        if !interactive {
+            query[kSecUseAuthenticationUI as String] = kSecUseAuthenticationUIFail
+            SecKeychainSetUserInteractionAllowed(false)
+        }
         var item: CFTypeRef?
-        guard SecItemCopyMatching(query as CFDictionary, &item) == errSecSuccess,
-            let data = item as? Data
-        else { return nil }
-        return String(data: data, encoding: .utf8)
+        let status = SecItemCopyMatching(query as CFDictionary, &item)
+        switch status {
+        case errSecSuccess:
+            guard let data = item as? Data, let text = String(data: data, encoding: .utf8) else { return .failed(status) }
+            return .found(text)
+        case errSecItemNotFound:
+            return .missing
+        default:
+            return .failed(status)
+        }
     }
 
     public func save(_ value: String, account: String) throws {
@@ -78,10 +116,15 @@ public final class MemorySecretStore: SecretStore, @unchecked Sendable {
         self.values = values
     }
 
-    public func load(_ account: String) -> String? {
+    /// Accounts whose reads fail, as a refused Keychain prompt would.
+    public var failing: [String: Int32] = [:]
+    public private(set) var deletions: [String] = []
+
+    public func read(_ account: String) -> SecretRead {
         lock.lock()
         defer { lock.unlock() }
-        return values[account]
+        if let status = failing[account] { return .failed(status) }
+        return values[account].map { .found($0) } ?? .missing
     }
 
     public func save(_ value: String, account: String) throws {
@@ -95,8 +138,61 @@ public final class MemorySecretStore: SecretStore, @unchecked Sendable {
         lock.lock()
         defer { lock.unlock() }
         values[account] = nil
+        deletions.append(account)
         return true
     }
+}
+
+/// This Mac's pairing: the server in the settings and the key in the Keychain.
+///
+/// Two rules, tested: a key that cannot be read is never "not paired" (the
+/// app asks for the Keychain instead), and nothing here deletes the key or
+/// forgets the server except `removeOnPurpose`, which only the person's
+/// "Remove Ira from this Mac" calls. Pairing again overwrites the key.
+public struct PairingRecord: Sendable {
+    public enum Status: Equatable, Sendable {
+        case unpaired
+        case paired
+        /// The Keychain did not hand over the key (a refused prompt, a locked
+        /// Keychain, another build of Ira). Ask again; never unpair.
+        case keyUnreadable(Int32)
+    }
+
+    public let settings: AppSettings
+    public let secrets: SecretStore
+
+    public init(settings: AppSettings, secrets: SecretStore) {
+        self.settings = settings
+        self.secrets = secrets
+    }
+
+    public var status: Status {
+        switch secrets.read(SecretAccount.device) {
+        case .found: return settings.server.isEmpty ? .unpaired : .paired
+        case .missing: return .unpaired
+        case .failed(let code): return settings.server.isEmpty ? .unpaired : .keyUnreadable(code)
+        }
+    }
+
+    /// A new pairing: the key is replaced (never deleted first), with its server.
+    public func adopt(server: String, token: String, deviceID: Int?, label: String) throws {
+        try secrets.save(token, account: SecretAccount.device)
+        settings.server = server
+        settings.deviceID = deviceID
+        settings.deviceLabel = label
+    }
+
+    /// The person chose "Remove Ira from this Mac": forget the key and the server.
+    public func removeOnPurpose() {
+        secrets.delete(SecretAccount.device)
+        secrets.delete("session")  // left by 0.1.0's sign-in, if any
+        settings.forgetPairing()
+        settings.firstRunDone = false
+    }
+
+    /// The sentence the app shows for an unreadable key.
+    public static let unreadable =
+        "Ira can't read its key in the Keychain. Choose Always Allow when macOS asks, or pair again."
 }
 
 public enum TokenShape {

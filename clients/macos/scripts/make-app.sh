@@ -4,9 +4,12 @@
 #
 #   scripts/make-app.sh              this Mac's architecture
 #   UNIVERSAL=1 scripts/make-app.sh  Apple silicon and Intel in one app (slower)
+#   BUNDLE_ID=in.ira.mac.test ...    a test build with its own settings and Keychain item
+#   IRA_SIGNING_NAME=none ...        ad hoc, even when a signing identity exists
 #
-# Output, in clients/macos/dist/:
-#   Ira.app, Ira-<version>.zip, Ira-<version>.dmg
+# Output, in clients/macos/dist/: Ira-<version>.zip and Ira-<version>.dmg.
+# The app itself is built in dist/build.noindex/, a folder Spotlight skips, so
+# Launchpad and Spotlight never show a second Ira that is not installed.
 #
 # Signing: with the identity scripts/make-signing-identity.sh makes (once per
 # Mac), every build is the same app to macOS, so its permissions and its
@@ -21,9 +24,11 @@ repo=$(cd "$here/../.." && pwd)
 cd "$here"
 
 version=$(sed -n 's/.*static let version = "\(.*\)".*/\1/p' Sources/IraKit/Support/Version.swift)
-build=$(git -C "$repo" rev-list --count HEAD 2>/dev/null || echo 1)
+build="${BUILD_NUMBER:-$(git -C "$repo" rev-list --count HEAD 2>/dev/null || echo 1)}"
 dist="$here/dist"
-app="$dist/Ira.app"
+bundle_id="${BUNDLE_ID:-in.ira.mac}"
+app="$dist/build.noindex/Ira.app"
+rm -rf "$dist/Ira.app"  # an older layout
 
 arch_flags=""
 if [ "${UNIVERSAL:-0}" = 1 ]; then
@@ -68,7 +73,7 @@ cat > "$app/Contents/Info.plist" <<PLIST
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-  <key>CFBundleIdentifier</key><string>in.ira.mac</string>
+  <key>CFBundleIdentifier</key><string>$bundle_id</string>
   <key>CFBundleName</key><string>Ira</string>
   <key>CFBundleDisplayName</key><string>Ira</string>
   <key>CFBundleExecutable</key><string>Ira</string>
@@ -103,14 +108,17 @@ PLIST
 plutil -lint "$app/Contents/Info.plist" >/dev/null
 
 identity="${IRA_SIGNING_NAME:-Ira Local Signing}"
-if security find-identity -p codesigning 2>/dev/null | grep -q "\"$identity\""; then
+if [ "$identity" != none ] && security find-identity -p codesigning 2>/dev/null | grep -q "\"$identity\""; then
   echo "Signing with \"$identity\""
-  codesign --force --sign "$identity" --identifier in.ira.mac --timestamp=none "$app"
+  codesign --force --sign "$identity" --identifier "$bundle_id" --timestamp=none "$app"
 else
   echo "Signing ad hoc (run scripts/make-signing-identity.sh once to keep permissions between builds)"
-  codesign --force --sign - --identifier in.ira.mac --timestamp=none "$app"
+  codesign --force --sign - --identifier "$bundle_id" --timestamp=none "$app"
 fi
 codesign --verify --strict "$app"
+# What macOS will match permissions and the Keychain against.
+codesign -d -r- "$app" 2>&1 | sed -n 's/^#* *designated => /Designated requirement: /p'
+codesign -dvv "$app" 2>&1 | sed -n 's/^Authority=/Signed by: /p' | head -1
 
 zip="$dist/Ira-$version.zip"
 dmg="$dist/Ira-$version.dmg"
@@ -124,6 +132,6 @@ ln -s /Applications "$stage/Applications"
 hdiutil create -quiet -volname "Ira" -srcfolder "$stage" -ov -format UDZO "$dmg"
 
 echo "Built:"
-echo "  $app"
 echo "  $zip"
 echo "  $dmg"
+echo "(the app itself: $app)"

@@ -4,8 +4,8 @@ import Foundation
 ///
 /// The person pastes the pairing link (`https://ira.example.com/pair#code=ABCD-EFGH`)
 /// or types the server's address and the code. The app sends the code to
-/// `POST /v1/devices/pair` exactly as the Python companion does (`exchange()` in
-/// `clients/mac/ira_mac/pair.py`), and keeps the token it gets in the Keychain.
+/// `POST /v1/devices/pair` exactly as the retired Python companion did (its
+/// `exchange()`), and keeps the token it gets in the Keychain.
 /// The code works once, within 10 minutes.
 public enum Pairing {
     public struct Failure: LocalizedError, Equatable {

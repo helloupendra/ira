@@ -25,6 +25,7 @@ struct MainView: View {
         Group {
             switch model.screen {
             case .setup: SetupView(model: model, conversation: conversation)
+            case .keyProblem: KeyProblemView(model: model)
             case .chat: ChatView(model: model, conversation: conversation, openSettings: openSettings)
             }
         }
@@ -116,6 +117,31 @@ struct PairView: View {
             }
             form.working = false
         }
+    }
+}
+
+/// The Keychain did not hand over this Mac's key. Nothing is forgotten: ask
+/// again, or pair again.
+struct KeyProblemView: View {
+    @ObservedObject var model: AppModel
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            Header(title: "Ira can't read its key")
+            Text(PairingRecord.unreadable)
+                .fixedSize(horizontal: false, vertical: true)
+            Text("This happens after installing a new build of Ira: macOS asks whether the new copy may use the key the old one saved. Your pairing is still here.")
+                .font(.callout)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+            HStack {
+                Button("Try again") { model.retryKey() }
+                    .keyboardShortcut(.defaultAction)
+                Button("Pair again") { model.startRepair() }
+            }
+            Spacer()
+        }
+        .padding(20)
     }
 }
 
@@ -259,7 +285,7 @@ struct ChatView: View {
         switch model.deviceState {
         case .connected: return .green
         case .connecting, .waiting: return .orange
-        case .refused, .stopped: return .red
+        case .refused, .stopped, .keyUnavailable: return .red
         }
     }
 

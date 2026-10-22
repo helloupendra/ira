@@ -77,6 +77,16 @@ public enum FileSearch {
         parts.count == 1 ? parts[0] : NSCompoundPredicate(orPredicateWithSubpredicates: parts)
     }
 
+    /// Folder candidates for a name a person said: folders whose names hold the
+    /// start of any of its words. `FolderMatch` then decides which really match.
+    public static func folderPredicate(for words: [String]) -> NSPredicate {
+        let folder = NSPredicate(format: "%K == %@", "kMDItemContentTypeTree", "public.folder")
+        let starts = Set(words.map { String($0.prefix(min(4, $0.count))) }).filter { $0.count >= 2 }.sorted()
+        guard !starts.isEmpty else { return folder }
+        let names = any(starts.map { NSPredicate(format: "%K LIKE[cd] %@", "kMDItemFSName", "*\($0)*") })
+        return all([folder, names])
+    }
+
     /// The folder a person named ("Downloads", "~/Projects", "/Volumes/Work") as a path.
     public static func folderPath(_ folder: String, home: URL) -> String {
         let trimmed = folder.trimmingCharacters(in: .whitespacesAndNewlines)

@@ -13,7 +13,7 @@ enum EditMenu {
         let main = NSMenu()
         let appItem = NSMenuItem()
         let appMenu = NSMenu(title: "Ira")
-        appMenu.addItem(withTitle: "Quit Ira", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
+        appMenu.addItem(withTitle: "Quit Ira", action: #selector(AppDelegate.quitFromMenu), keyEquivalent: "q")
         appItem.submenu = appMenu
         main.addItem(appItem)
 

@@ -349,3 +349,72 @@ struct FileSearchTests {
         #expect(FileSearch.folderPath("Projects/app", home: home) == "/Users/avery/Projects/app")
     }
 }
+
+@Suite("Finding a folder by what you call it")
+struct FolderMatchTests {
+    // A folder called invoice-reminder-service, asked for the ways people say it.
+    @Test(arguments: ["invoicereminder service", "Invoicereminder servise", "invoice reminder service", "reminder service", "invo reminder"])
+    func findsTheService(query: String) {
+        #expect(FolderMatch.score(query: query, name: "invoice-reminder-service") != nil, "\(query)")
+    }
+
+    @Test(arguments: ["client-data", "CATALOG.md", "service-room-photos-2019", "reminder"])
+    func notEverythingMatches(name: String) {
+        #expect(FolderMatch.score(query: "invoicereminder service", name: name) == nil, "\(name)")
+    }
+
+    @Test func exactAndPrefixRankFirst() throws {
+        let exact = try #require(FolderMatch.score(query: "invoice reminder service", name: "invoice-reminder-service"))
+        let prefix = try #require(FolderMatch.score(query: "invoice reminder", name: "invoice-reminder-service"))
+        let fuzzy = try #require(FolderMatch.score(query: "invoicereminder servise", name: "invoice-reminder-service"))
+        #expect(exact > prefix)
+        #expect(prefix > fuzzy)
+        #expect(FolderMatch.words("IraForMac_v2-final") == ["ira", "for", "mac", "v2", "final"])
+    }
+
+    @Test func aShortWalkFindsItWhereSpotlightCannot() throws {
+        let home = try temporaryFolder()
+        let manager = FileManager.default
+        for path in ["Documents/GitHub/invoice-reminder-service/src", "Documents/GitHub/ira", "Documents/notes",
+                     "Documents/GitHub/node_modules/invoice-reminder-service", "Documents/.hidden/invoice-reminder-service",
+                     "Documents/a/b/c/d/invoice-reminder-service-deep"] {
+            try manager.createDirectory(at: home.appendingPathComponent(path), withIntermediateDirectories: true)
+        }
+        let found = FolderMatch.walk([home.appendingPathComponent("Documents")], query: "Invoicereminder servise", policy: PathPolicy(home: home))
+        #expect(found.map { PathPolicy(home: home).display($0.url) } == ["~/Documents/GitHub/invoice-reminder-service"])
+    }
+
+    @Test func aSearchSaysWhatItCouldNotLookInto() throws {
+        let home = try temporaryFolder()
+        let defaults = UserDefaults(suiteName: "ira-tests-\(UUID().uuidString)")!
+        let grants = FolderGrants(defaults: defaults, home: home)
+        #expect(grants.blocked(in: [home]) == ["Documents", "Desktop", "Downloads"])
+        grants.record("Documents", .granted)
+        grants.record("Desktop", .denied)
+        #expect(grants.blocked(in: [home]) == ["Desktop", "Downloads"])
+        #expect(grants.blocked(in: [home.appendingPathComponent("Documents/GitHub")]) == [])
+        #expect(FolderGrants.notSearched(["Desktop", "Downloads"])?.hasPrefix("I can't search Desktop and Downloads yet.") == true)
+        #expect(Toolbox.findSummary([], policy: PathPolicy(home: home), notSearched: ["Documents"])
+            == "Nothing matched where I could look. I can't search Documents yet. Allow Ira for it in Ira's checklist (Settings → Permissions → Files and Folders), then ask again.")
+        // Asking on purpose records the answer (a test folder is not guarded, so it is allowed).
+        try FileManager.default.createDirectory(at: home.appendingPathComponent("Downloads"), withIntermediateDirectories: true)
+        #expect(grants.ask("Downloads") == .granted)
+        #expect(grants.access("Downloads") == .granted)
+    }
+
+    @Test func theFolderToolFallsBackToTheWalk() async throws {
+        let home = try temporaryFolder()
+        try FileManager.default.createDirectory(
+            at: home.appendingPathComponent("Documents/GitHub/invoice-reminder-service"), withIntermediateDirectories: true)
+        let defaults = UserDefaults(suiteName: "ira-tests-\(UUID().uuidString)")!
+        let grants = FolderGrants(defaults: defaults, home: home)
+        for folder in FolderGrants.guarded { grants.record(folder, .granted) }
+        let toolbox = Toolbox(policy: { PathPolicy(home: home) }, frontApp: { nil }, opener: { _ in true },
+                              folderGrants: grants, log: IraLog(directory: nil), record: { _ in })
+        let result = try await toolbox.call("files_find", args: ["kind": "folder", "query": "Invoicereminder servise"])
+        let first = try #require(result["results"]?.arrayValue?.first)
+        #expect(first["name"] == "invoice-reminder-service")
+        #expect(first["folder"] == "~/Documents/GitHub")
+        #expect(result["notSearched"] == nil)
+    }
+}

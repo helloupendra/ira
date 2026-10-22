@@ -22,12 +22,14 @@ public enum DeviceState: Equatable, Sendable {
     case waiting(seconds: Double, reason: String)
     /// The server refused this Mac's token: it was removed, or never paired.
     case refused
+    /// The Keychain did not hand over this Mac's key (nothing was forgotten).
+    case keyUnavailable
     case stopped
 }
 
 /// Holds this Mac's device WebSocket and answers the server's calls.
 ///
-/// The same behaviour as the Python companion's daemon (`clients/mac/ira_mac/daemon.py`):
+/// The same behaviour as the retired Python companion's daemon:
 ///
 /// * says hello with the tools, waits for welcome, then answers each `call`
 ///   with a `result` (several at once), and pings every 30 seconds;
@@ -240,8 +242,8 @@ public final class DeviceClient: @unchecked Sendable {
         var attempt = 0
         while !isStopped {
             guard let token = token() else {
-                log.warning("no device token in the Keychain: pair this Mac again")
-                onState(.refused)
+                log.warning("this Mac's key could not be read from the Keychain; trying again later")
+                onState(.keyUnavailable)
                 await pause(timing.refusedWait)
                 continue
             }

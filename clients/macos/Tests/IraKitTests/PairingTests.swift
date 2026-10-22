@@ -181,3 +181,52 @@ struct SecretsAndLogTests {
         #expect(!everything.contains("irad_"))
     }
 }
+
+/// The two pairing rules that keep a person from losing their pairing.
+@Suite("Keeping the pairing")
+struct PairingRecordTests {
+    func record(server: String = "https://ira.example.com", token: String? = "irad_" + String(repeating: "t", count: 43))
+        -> (PairingRecord, MemorySecretStore, AppSettings)
+    {
+        let defaults = UserDefaults(suiteName: "ira-tests-\(UUID().uuidString)")!
+        let settings = AppSettings(defaults: defaults)
+        settings.server = server
+        settings.firstRunDone = true
+        let store = MemorySecretStore(token.map { [SecretAccount.device: $0] } ?? [:])
+        return (PairingRecord(settings: settings, secrets: store), store, settings)
+    }
+
+    @Test(arguments: [Int32(-25293), Int32(-25308), Int32(-128)])  // auth failed, interaction not allowed, cancelled
+    func anUnreadableKeyIsNeverUnpaired(status: Int32) {
+        let (record, store, settings) = record()
+        store.failing[SecretAccount.device] = status
+        #expect(record.status == .keyUnreadable(status))
+        // Looking again changes nothing, and nothing was deleted or forgotten.
+        _ = record.status
+        #expect(store.deletions.isEmpty)
+        #expect(settings.server == "https://ira.example.com")
+        #expect(settings.firstRunDone)
+        store.failing[SecretAccount.device] = nil
+        #expect(record.status == .paired)
+    }
+
+    @Test func onlyRemovingOnPurposeForgets() throws {
+        let (record, store, settings) = record()
+        #expect(record.status == .paired)
+        // Pairing again replaces the key; it never deletes it first.
+        try record.adopt(server: "https://ira.example.com", token: "irad_" + String(repeating: "n", count: 43), deviceID: 9, label: "Mac")
+        #expect(store.deletions.isEmpty)
+        #expect(store.load(SecretAccount.device)?.hasPrefix("irad_nnn") == true)
+        #expect(settings.deviceID == 9)
+        record.removeOnPurpose()
+        #expect(store.deletions.contains(SecretAccount.device))
+        #expect(settings.server == "")
+        #expect(!settings.firstRunDone)
+        #expect(record.status == .unpaired)
+    }
+
+    @Test func aMissingKeyOrServerIsUnpaired() {
+        #expect(record(token: nil).0.status == .unpaired)
+        #expect(record(server: "").0.status == .unpaired)
+    }
+}

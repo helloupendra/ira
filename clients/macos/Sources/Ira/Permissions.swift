@@ -71,16 +71,31 @@ final class PermissionCenter: ObservableObject {
             default: return .missing
             }
         }()
-        var list = [
+        var list: [Permission] = [
             Permission(id: "mic", title: "Microphone",
                        why: "So you can talk to Ira. It listens only after you press the mic, or say “Hey Ira” if you switched that on.",
                        icon: "mic", state: mic, pane: "Privacy_Microphone", askable: true),
             Permission(id: "screen", title: "Screen Recording",
                        why: "Only for “what is on my screen?”. Ira reads the words of the window in front on this Mac and sends only the words.",
                        icon: "macwindow", state: ScreenText.permitted ? .granted : .missing, pane: "Privacy_ScreenCapture", askable: true),
-            Permission(id: "files", title: "Files and Folders",
-                       why: "So Ira can read a file you ask about. macOS asks the first time Ira opens something in Documents, Desktop or Downloads.",
-                       icon: "folder", state: .unknown, pane: "Privacy_FilesAndFolders", askable: false),
+        ]
+        // Spotlight leaves these folders out silently until Ira may open them,
+        // so each has its own Allow: Ira looks inside once, and macOS asks.
+        let grants = FolderGrants()
+        for folder in FolderGrants.guarded {
+            let state: Permission.State
+            switch grants.access(folder) {
+            case .granted: state = .granted
+            case .denied: state = .missing
+            case .notAsked: state = .notAsked
+            }
+            list.append(Permission(
+                id: "folder-\(folder)", title: "Files: \(folder)",
+                why: "So Ira can find and read files in your \(folder) folder when you ask. Until you allow it, Ira cannot search there at all.",
+                icon: folder == "Documents" ? "doc" : folder == "Desktop" ? "menubar.dock.rectangle" : "arrow.down.circle",
+                state: state, pane: "Privacy_FilesAndFolders", askable: true))
+        }
+        list += [
             Permission(id: "contacts", title: "Contacts",
                        why: "So Ira can put a name to a number, or find the number or email to write to.",
                        icon: "person.crop.circle", state: contacts, pane: "Privacy_Contacts", askable: true),
@@ -126,7 +141,11 @@ final class PermissionCenter: ObservableObject {
     }
 
     /// Ask for one permission (macOS shows its own dialog), then look again.
+    /// Ira's window stays while macOS asks: it steps below the dialog, and
+    /// comes back with the answer.
     func ask(_ permission: Permission) async {
+        NotificationCenter.default.post(name: .iraAskingPermission, object: nil)
+        defer { NotificationCenter.default.post(name: .iraAskedPermission, object: nil) }
         switch permission.id {
         case "mic": _ = await AVCaptureDevice.requestAccess(for: .audio)
         case "screen": ScreenText.requestPermission()
@@ -138,7 +157,11 @@ final class PermissionCenter: ObservableObject {
                 SFSpeechRecognizer.requestAuthorization { _ in continuation.resume() }
             }
         default:
-            if permission.id.hasPrefix("automation-") {
+            if permission.id.hasPrefix("folder-") {
+                let folder = String(permission.id.dropFirst("folder-".count))
+                // Looking inside raises macOS's "Ira would like to access files in your ... folder".
+                _ = await Task.detached { FolderGrants().ask(folder) }.value
+            } else if permission.id.hasPrefix("automation-") {
                 let bundleID = String(permission.id.dropFirst("automation-".count))
                 let target = NSAppleEventDescriptor(bundleIdentifier: bundleID)
                 if let desc = target.aeDesc {
@@ -168,6 +191,7 @@ final class PermissionCenter: ObservableObject {
 
     /// Quit and open Ira again: macOS applies Screen Recording only to a fresh start.
     static func reopen() {
+        QuitReason.set("the Reopen Ira button (Screen Recording)")
         let path = Bundle.main.bundlePath
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/bin/sh")

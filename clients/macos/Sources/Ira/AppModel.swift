@@ -6,15 +6,18 @@ import IraKit
 /// "Hey Ira", and taking over from the old companion.
 @MainActor
 final class AppModel: ObservableObject {
-    enum Screen { case setup, chat }
+    enum Screen { case setup, chat, keyProblem }
 
     @Published var screen: Screen = .setup
     @Published var deviceState: DeviceState = .stopped
     @Published var activity: [Activity] = []
     @Published var assistant: String
-    /// The old Python companion is still on this Mac (`clients/mac`, retired).
+    /// The old Python companion (retired) is still on this Mac.
     @Published var companion: Companion.Found?
     @Published var companionPresent = false
+    /// Pairing again from Settings: the pairing page shows, and nothing is
+    /// forgotten until a new pairing succeeds.
+    @Published var repairing = false
     @Published var wakeListening = false
     @Published var wakeProblem: String?
     /// Keep the window on top while working in other apps.
@@ -54,12 +57,37 @@ final class AppModel: ObservableObject {
         if settings.wakeWord { Task { await self.setWakeWord(true) } }
     }
 
-    var paired: Bool {
-        !settings.server.isEmpty && secrets.load(SecretAccount.device) != nil
-    }
+    var record: PairingRecord { PairingRecord(settings: settings, secrets: secrets) }
+
+    /// The pairing as last looked at: the Keychain is asked in `route`, not on
+    /// every redraw, so it never shows its prompt more than once at a time.
+    @Published private(set) var pairingStatus: PairingRecord.Status = .unpaired
+
+    var paired: Bool { pairingStatus == .paired }
 
     func route() {
-        screen = paired && settings.firstRunDone ? .chat : .setup
+        pairingStatus = record.status
+        switch pairingStatus {
+        case .keyUnreadable:
+            screen = repairing ? .setup : .keyProblem
+        case .paired:
+            screen = settings.firstRunDone && !repairing ? .chat : .setup
+        case .unpaired:
+            screen = .setup
+        }
+    }
+
+    /// Look at the Keychain again (after "Always Allow"), and connect if it answers.
+    func retryKey() {
+        route()
+        if paired { startDevice() }
+    }
+
+    /// Pair again from Settings: show the pairing page; the current pairing
+    /// stays until the new one succeeds.
+    func startRepair() {
+        repairing = true
+        route()
     }
 
     // MARK: Pairing
@@ -77,16 +105,16 @@ final class AppModel: ObservableObject {
             assistant = name
         }
         IraLog.shared.info("paired as device \(paired.deviceID)")
+        route()
     }
 
     private func adopt(server: String, token: String, deviceID: Int?, label: String) throws {
         stopDevice()
         conversation.disconnect()
-        try secrets.save(token, account: SecretAccount.device)
-        settings.server = server
-        settings.deviceID = deviceID
-        settings.deviceLabel = label
+        try record.adopt(server: server, token: token, deviceID: deviceID, label: label)
+        repairing = false
         startDevice()
+        route()
     }
 
     // MARK: The old companion
@@ -100,6 +128,10 @@ final class AppModel: ObservableObject {
     /// named networks keep their names), then remove it. Nothing changes on the
     /// server: the same device goes on, now with the app's tools.
     func takeOverCompanion() async throws {
+        // Never over an existing pairing: that one stays until the person removes it.
+        guard pairingStatus == .unpaired else {
+            throw Pairing.Failure("this Mac is already paired; remove the old companion instead")
+        }
         guard let found = oldCompanion.settings(), !found.server.isEmpty else {
             throw Pairing.Failure("the old companion was never paired; pair Ira for Mac with a new code")
         }
@@ -140,14 +172,12 @@ final class AppModel: ObservableObject {
         stopDevice()
         await setWakeWord(false)
         conversation.clear()
-        secrets.delete(SecretAccount.device)
         _ = LoginItem.set(false)
         if oldCompanion.present { await removeCompanion() }
+        record.removeOnPurpose()  // the only place the key and the server are forgotten
         if let domain = Bundle.main.bundleIdentifier {
             settings.defaults.removePersistentDomain(forName: domain)
         }
-        settings.forgetPairing()
-        settings.firstRunDone = false
         if let logs = IraLog.defaultDirectory { try? FileManager.default.removeItem(at: logs) }
         activity.removeAll()
         IraLog.shared.info("this Mac was removed")

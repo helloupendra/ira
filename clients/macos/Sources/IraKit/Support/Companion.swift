@@ -1,6 +1,6 @@
 import Foundation
 
-/// The old Python companion (`clients/mac`, retired): finding it, taking over its
+/// The old Python companion (retired): finding it, taking over its
 /// pairing, and removing it, as its `uninstall.sh` did.
 ///
 /// The companion lived in `~/Library/Application Support/ira-mac`, ran from the

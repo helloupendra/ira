@@ -71,11 +71,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var escapeMonitor: Any?
     /// The window stepped aside for System Settings and comes back after it.
     private var returnAfterSettings = false
+    /// Ira has asked macOS for a permission and waits for the answer.
+    private var askingPermission = false
+    private var capturing = false
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         ScreenText.noteLaunch()
+        let last = QuitReason.takeLast() ?? "it did not say (it crashed, was force-quit, or the Mac shut down)"
+        IraLog.shared.info("Ira \(IraApp.version) started; last time Ira quit because of \(last)")
         model = AppModel()
-        IraLog.shared.info("Ira \(IraApp.version) started")
 
         let root = MainView(model: model, conversation: model.conversation, openSettings: { [weak self] in
             self?.showSettings()
@@ -97,6 +101,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         hotKey = HotKey { [weak self] in self?.togglePanel() }
         registerHotKey()
         model.onWake = { [weak self] in self?.showPanel() }
+        observers.append(NotificationCenter.default.addObserver(forName: .iraShowPanel, object: nil, queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated { self?.showPanel() }
+        })
         watchOtherApps()
         // The menu-bar mark: a dot while "Hey Ira" listens, moving bars while Ira works.
         wakeWatch = model.$wakeListening.sink { [weak self] _ in
@@ -107,7 +114,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
         model.conversation.onAnswer = { [weak self] text in self?.answered(text) }
         // First launch, or not paired yet: show the window so pairing is the first thing seen.
-        if model.screen == .setup {
+        if model.screen != .chat {
             showPanel()
         }
     }
@@ -155,7 +162,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         remove.target = self
         menu.addItem(remove)
         menu.addItem(.separator())
-        let quit = NSMenuItem(title: "Quit Ira", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
+        let quit = NSMenuItem(title: "Quit Ira", action: #selector(quitFromMenu), keyEquivalent: "q")
+        quit.target = self
         menu.addItem(quit)
     }
 
@@ -169,6 +177,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         case .connecting: return "Connecting…"
         case .waiting(let seconds, _): return "Cannot reach your Ira: trying again in \(Int(seconds.rounded())) s"
         case .refused: return "Your Ira no longer knows this Mac: pair it again in Settings"
+        case .keyUnavailable: return "Ira can't read its key in the Keychain: open Ira and press Try again"
         case .stopped: return "Not connected"
         }
     }
@@ -184,6 +193,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         guard alert.runModal() == .alertFirstButtonReturn else { return }
         Task {
             await model.removeEverything()
+            QuitReason.set("Remove Ira from this Mac")
             let done = NSAlert()
             done.messageText = "Ira is removed from this Mac"
             done.informativeText = "Drag Ira from Applications to the Bin to finish. To use Ira again, open it and pair it with a new code."
@@ -231,7 +241,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         ) { [weak self] note in
             let app = note.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication
             guard app?.processIdentifier != getpid() else { return }
-            MainActor.assumeIsolated { self?.otherAppActive() }
+            let bundleID = app?.bundleIdentifier
+            MainActor.assumeIsolated { self?.otherAppActive(bundleID) }
         })
         observers.append(workspace.addObserver(
             forName: NSWorkspace.didDeactivateApplicationNotification, object: nil, queue: .main
@@ -263,7 +274,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             forName: ScreenText.capturing, object: nil, queue: .main
         ) { [weak self] _ in
             MainActor.assumeIsolated {
-                guard let self, self.panel.isVisible else { return }
+                guard let self else { return }
+                self.capturing = true
+                guard self.panel.isVisible else { return }
                 self.panel.level = .normal
                 self.panel.giveUpKeyboard()
             }
@@ -271,7 +284,34 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         observers.append(NotificationCenter.default.addObserver(
             forName: ScreenText.captured, object: nil, queue: .main
         ) { [weak self] _ in
-            MainActor.assumeIsolated { self?.panel.level = .floating }
+            MainActor.assumeIsolated {
+                self?.capturing = false
+                self?.panel.level = .floating
+            }
+        })
+        // While Ira asks macOS for a permission, its window stays: below the
+        // dialog, then back on top with the keyboard once the answer is in.
+        observers.append(NotificationCenter.default.addObserver(
+            forName: .iraAskingPermission, object: nil, queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated {
+                guard let self else { return }
+                self.askingPermission = true
+                guard self.panel.isVisible else { return }
+                self.panel.level = .normal
+                self.panel.giveUpKeyboard()
+            }
+        })
+        observers.append(NotificationCenter.default.addObserver(
+            forName: .iraAskedPermission, object: nil, queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated {
+                guard let self else { return }
+                self.askingPermission = false
+                self.panel.level = .floating
+                self.model.permissions.refresh()
+                if !self.returnAfterSettings { self.panel.makeKeyAndOrderFront(nil) }
+            }
         })
         // Esc closes the window, wherever the cursor is in it.
         escapeMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
@@ -284,13 +324,48 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     /// Another app (or a system prompt) became active: the window lets go of the
     /// keyboard, and unless it is pinned, gets out of the way. A question still
     /// running carries on; its answer arrives as a notification.
-    private func otherAppActive() {
+    private func otherAppActive(_ bundleID: String?) {
         guard panel.isVisible else { return }
-        if model.settings.panelPinned {
+        switch PanelPolicy.onOtherApp(
+            bundleID: bundleID, pinned: model.settings.panelPinned, askingPermission: askingPermission, capturing: capturing)
+        {
+        case .hide: panel.orderOut(nil)
+        case .stepBelow:
+            panel.level = .normal
             panel.giveUpKeyboard()
-        } else {
-            panel.orderOut(nil)
+        case .letGoOfKeyboard: panel.giveUpKeyboard()
         }
+    }
+
+    // MARK: Quitting, with a reason in the log
+
+    func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        if UserDefaults.standard.string(forKey: QuitReason.key) == nil {
+            QuitReason.set(AppDelegate.quitAsker())
+        }
+        return .terminateNow
+    }
+
+    func applicationWillTerminate(_ notification: Notification) {
+        IraLog.shared.info("Ira quits: \(UserDefaults.standard.string(forKey: QuitReason.key) ?? "no reason given")")
+    }
+
+    /// Who asked Ira to quit, when it was not the person through Ira's own menu.
+    static func quitAsker() -> String {
+        guard let event = NSAppleEventManager.shared().currentAppleEvent,
+            event.eventClass == AEEventClass(kCoreEventClass), event.eventID == AEEventID(kAEQuitApplication)
+        else { return "a quit from outside Ira's menu" }
+        if let pid = event.attributeDescriptor(forKeyword: AEKeyword(keySenderPIDAttr))?.int32Value,
+            let app = NSRunningApplication(processIdentifier: pid_t(pid))
+        {
+            return "a quit request from \(app.localizedName ?? app.bundleIdentifier ?? "process \(pid)") (macOS asks this after a permission change)"
+        }
+        return "a quit request from macOS (for example after a permission change)"
+    }
+
+    @objc func quitFromMenu() {
+        QuitReason.set("Quit in Ira's menu")
+        NSApp.terminate(nil)
     }
 
     private func answered(_ text: String) {
@@ -375,4 +450,5 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
 extension Notification.Name {
     static let iraFocusInput = Notification.Name("in.ira.mac.focusInput")
+    static let iraShowPanel = Notification.Name("in.ira.mac.showPanel")
 }

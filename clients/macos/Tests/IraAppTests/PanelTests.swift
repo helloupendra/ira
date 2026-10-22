@@ -98,3 +98,41 @@ struct PanelTests {
         #expect(closed)
     }
 }
+
+/// When another app becomes active: hide for an ordinary app, but step below a
+/// system prompt, and below anything while Ira asks for a permission.
+@Suite("The window and other apps")
+struct PanelPolicyTests {
+    @Test func anOrdinaryAppHidesIt() {
+        #expect(PanelPolicy.onOtherApp(bundleID: "com.google.Chrome", pinned: false, askingPermission: false, capturing: false) == .hide)
+        #expect(PanelPolicy.onOtherApp(bundleID: "com.google.Chrome", pinned: true, askingPermission: false, capturing: false) == .letGoOfKeyboard)
+    }
+
+    @Test(arguments: ["com.apple.UserNotificationCenter", "com.apple.SecurityAgent", "com.apple.tccd", "com.apple.coreservices.uiagent"])
+    func aSystemPromptNeverHidesIt(bundleID: String) {
+        #expect(PanelPolicy.onOtherApp(bundleID: bundleID, pinned: false, askingPermission: false, capturing: false) == .stepBelow)
+    }
+
+    @Test func aPermissionRequestKeepsIt() {
+        // Pressing Allow: whatever comes to the front, the window stays on screen.
+        #expect(PanelPolicy.onOtherApp(bundleID: "com.apple.systempreferences", pinned: false, askingPermission: true, capturing: false) == .stepBelow)
+        #expect(PanelPolicy.onOtherApp(bundleID: nil, pinned: false, askingPermission: false, capturing: true) == .stepBelow)
+    }
+
+    @MainActor
+    @Test func steppingBelowKeepsItOnScreen() {
+        _ = NSApplication.shared
+        let panel = FloatingPanel(content: NSHostingView(rootView: Text("Ira")))
+        panel.makeKeyAndOrderFront(nil)
+        defer { panel.orderOut(nil) }
+        // What the app does for .stepBelow while a permission dialog is up.
+        panel.level = .normal
+        panel.giveUpKeyboard()
+        #expect(panel.isVisible)
+        #expect(!panel.isKeyWindow)
+        // And when the answer is in.
+        panel.level = .floating
+        panel.makeKeyAndOrderFront(nil)
+        #expect(panel.isKeyWindow)
+    }
+}

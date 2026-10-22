@@ -24,7 +24,7 @@ struct SetupView: View {
         self.permissions = model.permissions
     }
 
-    private var step: Int { model.paired ? state.step : 1 }
+    private var step: Int { model.paired && !model.repairing ? state.step : 1 }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -54,7 +54,7 @@ struct SetupView: View {
     // MARK: 1. Pair
 
     @ViewBuilder private var pairStep: some View {
-        if model.companionPresent {
+        if model.companionPresent && !model.paired && !model.repairing {
             VStack(alignment: .leading, spacing: 14) {
                 Header(title: "The old Ira companion is on this Mac")
                 Text(companionText)
