@@ -169,7 +169,20 @@ keeps working as before.
   s after you stop, Ira answers, sentence by sentence.
 - **Speak over Ira** to interrupt her: she stops at once. Or tap **Stop**.
 - **Type** in the box at the bottom; typing alone does not turn the
-  microphone on.
+  microphone on. A typed message stays in the box until your Ira has it; if
+  it cannot get there, the app says why and offers **Retry**.
+
+**Live call, or the phone's own speech.** When your Ira has live voice
+(streaming speech-to-text and a voice, `GET /v1/info` says `live`), the
+microphone starts a **Live call**. When it has not, Ira says so and uses
+**Talk (phone recognition)** instead: Android's own speech recognition
+turns what you say into text (on the phone when the language pack is
+installed, otherwise online through Google's service), the text goes to
+your Ira like typing (`/v1/ask/stream`), and the answer is spoken by your
+Ira's voice if it has one, else by the phone's (Android's text-to-speech,
+in Hindi or Indian English). In this mode Ira listens again after she
+finishes speaking; speaking over her does not stop her, so tap the button
+to stop. Typed messages always go over HTTP unless a live call is on.
 - **A yes**: when Ira proposes something that acts for you (a call, an SMS,
   a reply, a calendar event), she reads it back with its exact target and
   waits. Say "haan" or "yes", or tap **Yes**. Anything that needs your PIN
@@ -226,8 +239,8 @@ Ira **can**, when you ask, and only with the skill on:
 
 Ira **cannot**:
 
-- listen when no call is on. There is no wake word yet, and the microphone
-  never starts on its own, at boot or otherwise;
+- listen when you are not talking to it. There is no wake word yet, and the
+  microphone never starts on its own, at boot or otherwise;
 - read anything you did not ask about. Notification access reads only the
   notifications showing when you ask; nothing is copied or kept;
 - see one-time passwords in notifications: Android 15 and later hide them
@@ -299,8 +312,13 @@ devices**, from anywhere. Then uninstall the app as usual.
 - **A call or app does not open** and a notification says "Tap to...": make
   Ira the digital assistant, or keep Ira on screen; Android limits what a
   background app may open.
-- **The live call says the server has no streaming speech-to-text**: your
-  Ira needs `voice.stt.type: transcribe` ([Real-time voice](../realtime.md)).
+- **"Live calls need your Ira to have speech set up"**: your Ira has no
+  streaming speech-to-text, so the app uses the phone's own speech
+  recognition. For live calls, the server needs `voice.stt.type: transcribe`
+  and a voice ([Real-time voice](../realtime.md)).
+- **"The phone cannot recognise Hindi or English speech yet"**: add the
+  language in Android's settings (**Settings → System → Languages → Speech**,
+  or the Google app's voice settings), or type.
 
 ## The wake word ("Hey Ira"): a later step
 
