@@ -1,0 +1,9 @@
+# SwiftPM and Xcode output
+.build/
+.swiftpm/
+DerivedData/
+build/
+# Made from project.yml by XcodeGen (scripts/generate.sh)
+*.xcodeproj/
+*.xcworkspace/
+xcuserdata/
