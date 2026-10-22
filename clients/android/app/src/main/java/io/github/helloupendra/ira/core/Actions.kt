@@ -1,6 +1,7 @@
 package io.github.helloupendra.ira.core
 
 import java.io.IOException
+import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
 
@@ -14,8 +15,24 @@ object Actions {
         val status: String,
         /** What to show the person, in plain words. */
         val message: String,
+        /** The action is over (done, failed, gone): its card should go. */
         val done: Boolean,
+        /** A short form of what the action returned, for the result card. */
+        val detail: String? = null,
     )
+
+    /** What an action returned, short: its `summary`, its text, or its JSON cut to 200 characters. */
+    fun detail(result: kotlinx.serialization.json.JsonElement?): String? {
+        val text =
+            when (result) {
+                null, is kotlinx.serialization.json.JsonNull -> return null
+                is JsonObject -> result.string("summary") ?: result.toString()
+                is kotlinx.serialization.json.JsonPrimitive -> result.content
+                else -> result.toString()
+            }.trim()
+        if (text.isEmpty()) return null
+        return if (text.length <= 200) text else text.take(199) + "…"
+    }
 
     fun confirmBody(pin: String): String = buildJsonObject { put("pin", JsonPrimitive(pin)) }.toString()
 
@@ -43,19 +60,19 @@ object Actions {
         return when {
             reply.status == 401 || (reply.status == 403 && status.isEmpty()) ->
                 Outcome("refused", "Your Ira did not accept this phone. Pair it again in Settings.", false)
-            status == "executed" -> Outcome(status, server ?: "Done.", true)
+            status == "executed" -> Outcome(status, server ?: "Done.", true, detail(body?.get("result")))
             status == "wrong_pin" ->
                 Outcome(status, "That PIN is not right." + (left?.let { " $it tries left before actions lock for 15 minutes." } ?: ""), false)
             status == "locked" ->
                 Outcome(status, "Actions are locked after wrong PINs." + (lockedSeconds?.let { " Try again in ${(it + 59) / 60} min." } ?: ""), false)
             status == "no_pin" -> Outcome(status, "Set an action PIN on your Ira first (Your account), then try again.", false)
-            status == "expired" -> Outcome(status, "That request expired. Ask Ira again.", false)
-            status == "failed" -> Outcome(status, server ?: "It did not work.", true)
+            status == "expired" -> Outcome(status, "That request expired. Ask Ira again.", true)
+            status == "failed" -> Outcome(status, server ?: "It did not work.", true, detail(body?.get("result")))
             status == "already_done" -> Outcome(status, "That was already done.", true)
             status == "cancelled" -> Outcome(status, "That was cancelled.", true)
             status == "not_allowed" || status == "needs_pin" ->
                 Outcome(status, server ?: "Your role on this Ira cannot confirm that. Ask the Ira's owner.", false)
-            status == "not_found" || reply.status == 404 -> Outcome("gone", "That request is no longer waiting. Ask Ira again.", false)
+            status == "not_found" || reply.status == 404 -> Outcome("gone", "That request is no longer waiting. Ask Ira again.", true)
             else -> Outcome(status.ifEmpty { "error" }, server ?: "Your Ira answered HTTP ${reply.status}.", false)
         }
     }

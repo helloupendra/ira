@@ -15,6 +15,7 @@ import io.github.helloupendra.ira.core.Permissions
 import io.github.helloupendra.ira.net.Net
 import io.github.helloupendra.ira.tools.PhoneState
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -100,7 +101,8 @@ fun TalkScreen(app: IraApp, talkRequests: Int, onSkills: () -> Unit, onSettings:
     var sendError by remember { mutableStateOf<String?>(null) }
     val lines by app.transcript.lines.collectAsState()
     var confirming by remember { mutableStateOf(false) }
-    var outcome by remember { mutableStateOf<String?>(null) }
+    // What happened to the last action, shown once its card is gone: (title, short result).
+    var result by remember { mutableStateOf<Pair<String, String?>?>(null) }
     var refresh by remember { mutableIntStateOf(0) }
     var reporting by remember { mutableStateOf<Transcript.Line?>(null) }
     val server = app.settings.server.orEmpty().removePrefix("https://").removePrefix("http://")
@@ -188,7 +190,21 @@ fun TalkScreen(app: IraApp, talkRequests: Int, onSkills: () -> Unit, onSettings:
             )
         }
         Conversation(ui, lines, Modifier.weight(1f), onReport = { reporting = it })
-        ui.action?.let { card ->
+        val card = ui.action
+        // Only the newest pending action is shown: a new one replaces the card and any result.
+        LaunchedEffect(card?.id) {
+            if (card == null) return@LaunchedEffect
+            result = null
+            val seconds = card.expiresIn ?: return@LaunchedEffect
+            delay(seconds * 1000L)
+            if (session?.ui?.value?.action?.id == card.id) {
+                session?.dismissAction()
+                result = "That request expired" to "Ask Ira again."
+            }
+        }
+        if (card != null) {
+            // The PIN's outcome belongs to this card only.
+            var outcome by remember(card.id) { mutableStateOf<String?>(null) }
             ActionCardView(
                 card = card,
                 busy = confirming,
@@ -199,24 +215,26 @@ fun TalkScreen(app: IraApp, talkRequests: Int, onSkills: () -> Unit, onSettings:
                     confirming = true
                     outcome = null
                     scope.launch {
-                        val result =
+                        val confirmed =
                             withContext(Dispatchers.IO) {
                                 Actions.confirm(app.settings.server.orEmpty(), app.secrets.token().orEmpty(), card.id, pin, Net.post)
                             }
                         confirming = false
-                        outcome = result.message
-                        if (result.done) {
-                            session?.dismissAction()
-                            outcome = null
-                            session?.note(result.message)
+                        if (confirmed.done) {
+                            // Never a stale PIN card: it goes, and what happened shows instead.
+                            if (session?.ui?.value?.action?.id == card.id) session?.dismissAction()
+                            val title = if (confirmed.status == "executed") "Done: ${confirmed.message}" else confirmed.message
+                            result = title to confirmed.detail
+                            session?.note(listOfNotNull(title, confirmed.detail).joinToString(" "))
+                        } else {
+                            outcome = confirmed.message
                         }
                     }
                 },
-                onDismiss = {
-                    outcome = null
-                    session?.dismissAction()
-                },
+                onDismiss = { session?.dismissAction() },
             )
+        } else {
+            result?.let { (title, detail) -> ResultCard(title, detail) { result = null } }
         }
         ui.notice?.let {
             Text(
@@ -567,6 +585,21 @@ private fun ActionCardView(
                 }
             }
             outcome?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodyMedium) }
+        }
+    }
+}
+
+/** What happened after a confirmed action: "Done: ..." and a short result. */
+@Composable
+private fun ResultCard(title: String, detail: String?, onClose: () -> Unit) {
+    Card(
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+    ) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Text(title, fontWeight = FontWeight.SemiBold)
+            detail?.let { Text(it, style = MaterialTheme.typography.bodyMedium) }
+            TextButton(onClick = onClose) { Text("OK") }
         }
     }
 }

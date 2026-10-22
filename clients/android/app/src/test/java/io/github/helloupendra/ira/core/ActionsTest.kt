@@ -25,6 +25,18 @@ class ActionsTest {
     }
 
     @Test
+    fun `a done action carries a short result for its card`() {
+        val done = Actions.parse(HttpReply(200, """{"status": "executed", "message": "Ran screen_read.", "result": {"app": "YouTube", "summary": "On screen in YouTube: Hindi news live"}}"""))
+        assertEquals(Actions.Outcome("executed", "Ran screen_read.", true, "On screen in YouTube: Hindi news live"), done)
+        val long = Actions.parse(HttpReply(200, """{"status": "executed", "message": "Done.", "result": "${"x".repeat(300)}"}"""))
+        assertEquals(200, long.detail!!.length)
+        assertEquals(null, Actions.parse(HttpReply(200, """{"status": "executed", "message": "Done."}""")).detail)
+        // Expired and gone take their card away too.
+        assertTrue(Actions.parse(HttpReply(410, """{"status": "expired"}""")).done)
+        assertTrue(Actions.parse(HttpReply(404, """{"status": "not_found"}""")).done)
+    }
+
+    @Test
     fun `outcomes say what to do next`() {
         assertTrue(Actions.parse(HttpReply(403, """{"status": "wrong_pin", "attempts_left": 2}""")).message.contains("2 tries left"))
         assertTrue(Actions.parse(HttpReply(423, """{"status": "locked", "locked_seconds": 600}""")).message.contains("10 min"))
