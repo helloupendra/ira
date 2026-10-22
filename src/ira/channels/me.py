@@ -6,17 +6,22 @@ another person's preferences or activity through these routes.
 
 from __future__ import annotations
 
+import datetime as dt
+import json
+import time
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Response
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 
 from ira import changes, toollog
 from ira.accounts import Principal
-from ira.channels.deps import get_runtime, require, require_session
+from ira.channels.deps import client_ip, get_runtime, require, require_session
 from ira.channels.paging import PAGED, page
 from ira.channels.schemas import (
     ERRORS,
     ActivityRow,
+    DataDeleted,
+    DataDeleteRequest,
     GrantView,
     MySettings,
     MySettingsUpdate,
@@ -268,3 +273,158 @@ def revoke_any_grant(
 ) -> OkResponse:
     revoke_grant(runtime, principal, grant_id, None)
     return OkResponse()
+
+
+# Your data: take a copy, or delete it.
+
+
+def _rows(runtime: Runtime, sql: str, params: tuple[Any, ...]) -> list[dict[str, Any]]:
+    return [dict(row) for row in runtime.store.query(sql, params)]
+
+
+def export_data(runtime: Runtime, principal: Principal) -> dict[str, Any]:
+    """Everything IRA keeps about one person, as they would read it. No hashes, no tokens."""
+    assert runtime.hub is not None
+    user_id = principal.user.id
+    runtime.guard.expire_overdue()
+    conversations = []
+    for row in _rows(
+        runtime,
+        "SELECT id, channel, started_at, last_at, turns FROM conversations "
+        "WHERE user_id = ? ORDER BY started_at",
+        (user_id,),
+    ):
+        row["messages"] = runtime.conversations.transcript(row["id"])
+        conversations.append(row)
+    devices = runtime.hub.devices
+    return {
+        "exported_at": time.time(),
+        "user": principal.user.public(),
+        "settings": {
+            row["key"]: json.loads(row["value"])
+            for row in runtime.store.query(
+                "SELECT key, value FROM user_settings WHERE user_id = ?", (user_id,)
+            )
+        },
+        "conversations": conversations,
+        "actions": _rows(
+            runtime,
+            "SELECT id, tool, params, summary, conversation_id, channel, created_at, status, "
+            "result, finished_at, tier, device_id FROM pending_actions "
+            "WHERE user_id = ? OR actor = ? ORDER BY created_at",
+            (user_id, principal.user.email),
+        ),
+        "devices": [
+            {
+                "id": d.id,
+                "kind": d.kind,
+                "label": d.label,
+                "created_at": d.created_at,
+                "last_seen_at": d.last_seen_at,
+                "version": d.version,
+                "tools": d.tools,
+                "skills": d.skills,
+            }
+            for d in devices.for_user(user_id)
+        ],
+        "events": devices.events(user_id, 1000),
+        "activity": toollog.recent(runtime.store, user_id, 100_000),
+        "telegram_chats": _rows(
+            runtime,
+            "SELECT chat_id, name, paired_at FROM telegram_chats WHERE user_id = ?",
+            (user_id,),
+        ),
+        "api_tokens": _rows(
+            runtime,
+            "SELECT id, label, scopes, created_at, last_used_at, revoked_at FROM api_tokens "
+            "WHERE user_id = ?",
+            (user_id,),
+        ),
+        "sessions": [
+            {k: s[k] for k in ("id", "created_at", "last_used_at", "expires_at", "user_agent")}
+            for s in runtime.accounts.sessions(user_id)
+        ],
+    }
+
+
+@router.get(
+    "/v1/me/export",
+    summary="Export my data: a JSON file of your conversations, devices, events and settings",
+    response_class=Response,
+    responses={200: {"content": {"application/json": {}}}},
+)
+def export_my_data(
+    principal: Principal = Depends(require_session()), runtime: Runtime = Depends(get_runtime)
+) -> Response:
+    data = export_data(runtime, principal)
+    day = dt.date.today().isoformat()
+    return Response(
+        content=json.dumps(data, ensure_ascii=False, indent=2, default=str),
+        media_type="application/json",
+        headers={"Content-Disposition": f'attachment; filename="ira-my-data-{day}.json"'},
+    )
+
+
+@router.post(
+    "/v1/me/data/delete",
+    response_model=DataDeleted,
+    summary="Delete my data: your conversations, devices, events, activity and settings",
+)
+async def delete_my_data(
+    body: DataDeleteRequest,
+    request: Request,
+    principal: Principal = Depends(require_session()),
+    runtime: Runtime = Depends(get_runtime),
+) -> DataDeleted:
+    limiter = runtime.accounts.limiter
+    key = f"delete-password:{principal.user.id}"
+    if limiter.blocked(key, f"ip:{client_ip(request)}"):
+        raise HTTPException(429, detail="too many wrong passwords; try again in 15 minutes")
+    if not runtime.accounts.check_password(principal.user.id, body.password):
+        limiter.fail(key)
+        raise HTTPException(403, detail="that is not your password")
+    limiter.clear(key)
+    assert runtime.hub is not None
+    user_id = principal.user.id
+    store = runtime.store
+    for device in runtime.hub.devices.for_user(user_id):
+        await runtime.hub.disconnect(device.id, "its owner deleted their data")
+    with store.transaction():
+        ids = [
+            r["id"]
+            for r in store.query("SELECT id FROM conversations WHERE user_id = ?", (user_id,))
+        ]
+        messages = 0
+        for conversation_id in ids:
+            messages += store.execute(
+                "DELETE FROM messages WHERE conversation_id = ?", (conversation_id,)
+            ).rowcount
+        conversations = store.execute(
+            "DELETE FROM conversations WHERE user_id = ?", (user_id,)
+        ).rowcount
+        # Actions on the person's own devices are theirs; a business's actions stay its records.
+        store.execute(
+            "DELETE FROM pending_actions WHERE user_id = ? AND device_id IS NOT NULL", (user_id,)
+        )
+        events = store.execute("DELETE FROM device_events WHERE user_id = ?", (user_id,)).rowcount
+        activity = store.execute("DELETE FROM tool_log WHERE user_id = ?", (user_id,)).rowcount
+        store.execute("DELETE FROM device_pairings WHERE user_id = ?", (user_id,))
+        devices = store.execute("DELETE FROM devices WHERE user_id = ?", (user_id,)).rowcount
+        settings = store.execute("DELETE FROM user_settings WHERE user_id = ?", (user_id,)).rowcount
+    deleted = DataDeleted(
+        conversations=conversations,
+        messages=messages,
+        devices=devices,
+        events=events,
+        activity=activity,
+        settings=settings,
+    )
+    changes.record(
+        store,
+        principal.actor,
+        "me.data_deleted",
+        principal.user.email,
+        channel=principal.channel,
+        after=deleted.model_dump(),
+    )
+    return deleted

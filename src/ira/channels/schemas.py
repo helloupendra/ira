@@ -1147,3 +1147,18 @@ class SkillView(BaseModel):
     name: str
     description: str
     kinds: list[str] = Field(description="Which devices offer it.")
+
+
+class DataDeleteRequest(BaseModel):
+    password: str = Field(max_length=1024, description="Your account password, checked again.")
+
+
+class DataDeleted(BaseModel):
+    """What "Delete my data" removed. Your account stays; an owner can remove it."""
+
+    conversations: int
+    messages: int
+    devices: int
+    events: int
+    activity: int
+    settings: int

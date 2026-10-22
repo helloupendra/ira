@@ -5136,6 +5136,134 @@
                 }
             }
         },
+        "/v1/me/export": {
+            "get": {
+                "tags": [
+                    "your assistant"
+                ],
+                "summary": "Export my data: a JSON file of your conversations, devices, events and settings",
+                "operationId": "export_my_data",
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {}
+                        }
+                    },
+                    "400": {
+                        "description": "Bad input",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ErrorDetail"
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "No credential, or an invalid one",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ErrorDetail"
+                                }
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "Not allowed: role, token, or a missing CSRF header",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ErrorDetail"
+                                }
+                            }
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "HTTPBearer": []
+                    }
+                ]
+            }
+        },
+        "/v1/me/data/delete": {
+            "post": {
+                "tags": [
+                    "your assistant"
+                ],
+                "summary": "Delete my data: your conversations, devices, events, activity and settings",
+                "operationId": "delete_my_data",
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/DataDeleteRequest"
+                            }
+                        }
+                    },
+                    "required": true
+                },
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/DataDeleted"
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Bad input",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ErrorDetail"
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "No credential, or an invalid one",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ErrorDetail"
+                                }
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "Not allowed: role, token, or a missing CSRF header",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ErrorDetail"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "HTTPBearer": []
+                    }
+                ]
+            }
+        },
         "/v1/devices/pair": {
             "post": {
                 "tags": [
@@ -7315,6 +7443,60 @@
                     "output_tokens"
                 ],
                 "title": "CostDay"
+            },
+            "DataDeleteRequest": {
+                "properties": {
+                    "password": {
+                        "type": "string",
+                        "maxLength": 1024,
+                        "title": "Password",
+                        "description": "Your account password, checked again."
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "password"
+                ],
+                "title": "DataDeleteRequest"
+            },
+            "DataDeleted": {
+                "properties": {
+                    "conversations": {
+                        "type": "integer",
+                        "title": "Conversations"
+                    },
+                    "messages": {
+                        "type": "integer",
+                        "title": "Messages"
+                    },
+                    "devices": {
+                        "type": "integer",
+                        "title": "Devices"
+                    },
+                    "events": {
+                        "type": "integer",
+                        "title": "Events"
+                    },
+                    "activity": {
+                        "type": "integer",
+                        "title": "Activity"
+                    },
+                    "settings": {
+                        "type": "integer",
+                        "title": "Settings"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "conversations",
+                    "messages",
+                    "devices",
+                    "events",
+                    "activity",
+                    "settings"
+                ],
+                "title": "DataDeleted",
+                "description": "What \"Delete my data\" removed. Your account stays; an owner can remove it."
             },
             "DeltaEvent": {
                 "properties": {

@@ -241,6 +241,20 @@ search. Each can be switched off at once, without a PIN.
 Switching web search writes `grant.web_search` to the change log, and switching
 a grant off `grant.revoked`.
 
+### Your data
+
+| Route | Needs | Returns |
+| --- | --- | --- |
+| `GET /v1/me/export` | a session | a JSON file (`ira-my-data-<day>.json`): your account, settings, conversations with every message, actions you proposed, devices (never a token), events, "What Ira did", paired Telegram chats, API tokens and sessions (never a token or a hash) |
+| `POST /v1/me/data/delete` | a session, and `password` again | `DataDeleted`: how many conversations, messages, devices, events, activity rows and settings went |
+
+Deleting removes your conversations and their messages, your devices (they
+disconnect at once), their pairing codes and events, actions on your own
+devices, "What Ira did" and your settings. Your account stays, and so do the
+records a business keeps: the actions you proposed with its tools, and the
+audit and change logs. An owner removes the account itself. It writes
+`me.data_deleted` with the counts. Five wrong passwords in 15 minutes give `429`.
+
 ## Devices
 
 The protocol, limits and security are in [Devices](devices.md). The routes:
