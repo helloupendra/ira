@@ -77,11 +77,31 @@ release() {
     ls -l dist
 }
 
+# Which file the compiler spends its time on: one file per compiler process, and
+# every 30 s the files still compiling and for how long. Stops after 5 minutes.
+diagnose() {
+    cd IraPhoneKit
+    swift build -Xswiftc -disable-batch-mode -Xswiftc -j2 >../build/diagnose.log 2>&1 &
+    build=$!
+    for tick in 1 2 3 4 5 6 7 8 9 10; do
+        sleep 30
+        kill -0 "$build" 2>/dev/null || break
+        echo "== after $((tick * 30)) s, still compiling:"
+        ps -axo etime=,args= | grep '[s]wift-frontend' | sed -n 's/^ *\([0-9:]*\) .*-primary-file \([^ ]*\).*/\1 \2/p' | sort -u
+    done
+    kill "$build" 2>/dev/null || true
+    pkill -f swift-frontend || true
+    grep -E "error|warning: (expression|instance method|function)" ../build/diagnose.log | head -20 || true
+    tail -5 ../build/diagnose.log
+    cd ..
+}
+
 case "${1:-all}" in
     simulator) simulator ;;
     kit) kit ;;
     app) app ;;
     release) release ;;
+    diagnose) diagnose ;;
     all) simulator && kit && app && release ;;
     *) echo "usage: scripts/ci.sh [simulator|kit|app|release]" >&2; exit 2 ;;
 esac
