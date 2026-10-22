@@ -2,14 +2,20 @@
 
 **Ira for Mac** is a small app that lives in your menu bar. Press
 **Option-Space** anywhere, and a window opens where you can type to Ira or
-press the mic and talk. Ira can then find a file on your Mac, read it to you,
-open it, and read the window in front of you, in any app:
+press the mic and talk. Ira can then use what your Mac can do, for you, when
+you ask: find a file and read it to you, read the window in front of you in
+any app, look up who a number belongs to, check your calendar, draft an
+email, send an iMessage, run one of your Shortcuts, or start a coding task:
 
 > vo PDF kahan hai jo kal download kiya?
 >
 > padh kar sunao
 >
 > screen pe kya hai?
+>
+> 98765 43210 kiska number hai? usko message karo ki main 10 minute late hoon
+>
+> kal ka calendar batao
 
 It needs no browser extension and no Terminal. It replaces the
 [Mac companion](mac.md) for most people; the companion stays for Chrome tabs
@@ -45,8 +51,10 @@ Pairing tells this Mac which Ira is yours, once.
 
 1. In the Ira app in your browser, open the menu and choose **Your devices**.
 2. Under **Add a device**, choose **Mac**, give it a name, and tick what it
-   may do: **Files** (find, read and open your files) and **Screen** (read
-   the window in front). Type your PIN and press **Make a pairing code**.
+   may do: for example **Files** (find, read and open your files) and
+   **Screen** (read the window in front). Type your PIN and press **Make a
+   pairing code**. The other skills (Contacts, Calendar and the rest) appear
+   on the Mac's card once it has connected; switch them on there.
 3. Press **Copy the pairing link**.
 4. On the Mac, press **Option-Space** (or click the four bars in the menu bar
    and choose **Open Ira**). Ira shows **Pair this Mac with your Ira** and
@@ -68,6 +76,10 @@ has one plain sentence:
 | **Microphone** | So you can talk to Ira. It listens only after you press the mic, and stops when you press it again or stay quiet for a while. | when you press **Allow**, or the mic the first time |
 | **Files and folders** | So Ira can find a file and read it to you. | the first time Ira opens something in Documents, Desktop or Downloads: choose **Allow** |
 | **Screen Recording** | Only for "what is on my screen?". Ira takes a picture of the window in front, reads its words on this Mac, and sends only the words. | when you press **Allow**; macOS then sends you to System Settings to switch Ira on |
+| **Contacts** | So Ira can put a name to a number, or find the number or email to write to. | when you press **Allow**, or the first lookup |
+| **Calendars and Reminders** | So Ira can tell you what is on your day, and add an event or a reminder. A new event waits for your yes. | when you press **Allow** |
+| **Automation: Mail, Notes, Messages** | So Ira can search your inbox and notes, draft an email, and send an iMessage. | the first time Ira uses each app ("Ira wants to control Mail") |
+| **Documents** (coding tasks only) | Ira works in your repositories, which often live in Documents. | the first coding task |
 
 You can change any of these in **System Settings → Privacy & Security**.
 
@@ -99,6 +111,35 @@ and password, and then uses the server's ordinary voice and chat instead.
 shortcut, whether typed answers are spoken too, and which folders Ira may
 use.
 
+## What Ira can do on your Mac
+
+Each ability belongs to a **skill** you switch on for this Mac on **Your
+devices**, with your PIN; nothing is on until you do. Each has a **tier**:
+reading needs nothing more (Tier 0); opening or adding something small, Ira
+does and tells you (Tier 1); anything that reaches another person or changes
+your calendar, Ira reads back exactly ("Send *I am 10 minutes late* to Avery
+Example, +91 98765 43210?") and waits for your yes (Tier 2); pushing code
+needs your PIN (Tier 3).
+
+| Skill | What Ira can do | Tier |
+| --- | --- | --- |
+| **files** | find files (Spotlight), read one (PDF, Word, RTF, text), open one | 0, 0, 1 |
+| **screen** | read the text of the window in front | 0 |
+| **contacts** | look up a person by name, number or email | 0 |
+| **calendar** | read your calendars (iCloud, Google, Exchange: all those added to the Mac); add an event | 0; 2 |
+| **reminders** | list reminders; add one; mark one done | 0; 1; 1 |
+| **mail** | search the inbox and read an email (read only); draft an email, opened in Mail for you to send | 0; 2 |
+| **notes** | search and read Apple Notes; add a note | 0; 1 |
+| **messages** | send an iMessage to a number or email | 2 |
+| **apps** | open an app; open a folder in VS Code; open a web page | 1; 1; 2 |
+| **clipboard** | read what you copied, when you ask | 0 |
+| **shortcuts** | list your Shortcuts; run one (it can do whatever you built it to) | 0; 2 |
+| **tasks** | start, follow and stop a coding task; push its branch | 2, 0, 1; 3 |
+
+Ira chains these by itself: "98765 43210 kiska number hai?" looks the number
+up in Contacts; "usko message karo..." then proposes the message to that
+person, and sends it on your "haan".
+
 ## What Ira can and cannot see
 
 Ira **can**, only when you ask:
@@ -126,7 +167,12 @@ Ira **cannot**:
 - open scripts, installers, programs or web links: these could run
   something;
 - see the screen at all unless the **Screen** skill is on and you allowed
-  Screen Recording.
+  Screen Recording;
+- send an email. It writes a draft and opens it in Mail; you press Send;
+- read your clipboard when a password manager marked what you copied as
+  private;
+- use any ability whose skill is off, or whose permission macOS has not
+  given.
 
 What Ira reads goes to your own Ira server, marked as data that can never
 give Ira orders, and is kept only in that conversation (see
@@ -136,6 +182,57 @@ give Ira orders, and is kept only in that conversation (see
 menu-bar menu) shows the last things Ira used on this Mac: what it did and
 on which file or window, never what was in them. The app's own log, in
 `~/Library/Logs/Ira/`, holds only tool names and timings.
+
+## Coding tasks (optional)
+
+Ira can hand a coding job to a coding agent on this Mac, for example "open
+the shop repository in VS Code and add a test for the invoice total". Ira
+makes a **new git worktree** of the repository on its own branch
+(`ira/task-...`), opens VS Code on it so you can watch the changes as they
+happen, runs the agent there, then tells you which files changed and whether
+the tests passed.
+
+It is off until you set it up, in
+`~/Library/Application Support/Ira/tasks.json` on this Mac (never in a
+repository, never on the server):
+
+```json
+{
+  "command": ["/path/to/agent", "-p", "{prompt}", "--output-format", "stream-json"],
+  "repos": {
+    "shop": {"path": "~/code/shop", "test": "pytest -q"},
+    "site": {"path": "~/code/site", "protected": true}
+  },
+  "worktrees": "~/ira-tasks",
+  "minutes": 60,
+  "vscode": {"open": true}
+}
+```
+
+- `command` is your coding agent's command line; `{prompt}` is replaced by
+  the task. Its output may be plain lines or stream-json.
+- `repos` are the only repositories tasks may use. `test` runs after the
+  agent finishes.
+- `protected: true` is for a repository that deploys when its main branch
+  moves. Ira then pushes only its own `ira/task-...` branches there.
+- Then choose **Settings → Reload tools** so Ira learns about the tasks.
+
+The safety rules:
+
+- The agent runs in macOS's sandbox: it can write only in its worktree, the
+  repository's `.git` and temporary folders, and its git cannot push.
+- Starting a task needs your yes. Pushing needs your PIN, and pushes only the
+  task's own branch: never `main`, `master` or the repository's default
+  branch, never forced, nothing merged.
+- These stop accidents and a confused agent; they are not a wall against
+  hostile code. Give tasks only repositories you trust.
+
+**VS Code's assistant.** Ira opens VS Code on the worktree; it does not click
+in VS Code. If your editor extension documents a link that opens it with a
+request filled in (some do: a `vscode://...` link with a `prompt`), put that
+link in `tasks.json` as `"vscode": {"promptURI": "vscode://.../open?prompt={prompt}"}`,
+and `vscode_open` with a prompt fills the request in for you. Such links fill
+the request in but do not send it: you press Return.
 
 ## Remove Ira from this Mac
 
@@ -154,6 +251,9 @@ on which file or window, never what was in them. The app's own log, in
 | Ira says Screen Recording is off | **System Settings → Privacy & Security → Screen & System Audio Recording**, switch Ira on, then quit and reopen Ira |
 | Ira says macOS did not let it open a file | **System Settings → Privacy & Security → Files and Folders**, switch on Ira's folders |
 | Option-Space does nothing | Another app took it: choose a new shortcut in **Settings → Shortcut** |
+| Ira says it may not use Mail, Notes or Messages | **System Settings → Privacy & Security → Automation**, switch on Ira's apps |
+| Ira says Contacts, Calendars or Reminders are off | **System Settings → Privacy & Security**, the matching page, switch Ira on |
+| Ira does not offer coding tasks | Check `tasks.json` lists a `command` and at least one repository, then **Settings → Reload tools** |
 
 ## For developers: building from source
 
@@ -186,18 +286,29 @@ SDKs make a macro whose plugin ships with Xcode only.
 | Where | What |
 | --- | --- |
 | `Sources/IraKit/Device/` | pairing (`POST /v1/devices/pair`, as the Python companion's `exchange()`), the device WebSocket's frames, and the client that holds it: hello, calls, ping and pong, 90-second silence, reconnect with backoff, `bye` when removed |
-| `Sources/IraKit/Tools/` | the tools and their JSON Schemas, skills and tiers; the path policy and its deny list; Spotlight; PDF, Word, RTF and text reading; ScreenCaptureKit and Vision |
+| `Sources/IraKit/Tools/` | `ToolCatalog` (every tool's JSON Schema, skill and tier) and `Toolbox` (calls and "What I read"); the path policy and its deny list; Spotlight; PDF, Word, RTF and text reading; ScreenCaptureKit and Vision; Contacts; EventKit; Mail, Notes and Messages through fixed AppleScripts that take the model's words only as arguments; apps, the clipboard and Shortcuts; coding tasks and the push guard |
 | `Sources/IraKit/Voice/`, `Talk/` | `VoiceTransport`: live voice over `/v1/voice/live` ([Real-time voice](../realtime.md), protocol 1) with the device token, or the HTTP API with a signed-in session; the energy voice detector; sentence splitting |
 | `Sources/Ira/` | the app: menu bar, the global hotkey (Carbon, so no Accessibility permission), the floating window, microphone and speaker on one `AVAudioEngine` with echo cancellation |
 | `Tests/IraKitTests/` | pairing against a URLProtocol stub, device and live-voice frames against a fake WebSocket, the deny list, a tiny `.docx` fixture, a PDF drawn in the test, tool schemas, and the voice detector on synthetic audio. No test opens a network connection |
 
-The tools the app offers:
+The tools the app offers (28; the server takes 30 per device):
 
-| Tool | Skill | Tier | What it does |
-| --- | --- | --- | --- |
-| `files_find {query?, kind?, modifiedWithinDays?, folder?}` | `files` | 0 | Spotlight, up to 20 results |
-| `file_read {path, maxChars?}` | `files` | 0 | PDF, Word, RTF, text, Markdown; 20,000 characters at most |
-| `file_open {path}` | `files` | 1 | `NSWorkspace.open`; never scripts, installers or links |
-| `screen_read {}` | `screen` | 0 | the front window's text, read on the Mac |
+| Tool | Skill | Tier |
+| --- | --- | --- |
+| `files_find {query?, kind?, modifiedWithinDays?, folder?}`, `file_read {path, maxChars?}`, `file_open {path}` | `files` | 0, 0, 1 |
+| `screen_read {}` | `screen` | 0 |
+| `contacts_lookup {query}` | `contacts` | 0 |
+| `calendar_read {from?, days?, query?, calendar?}`, `calendar_add {title, start, end?, durationMinutes?, allDay?, location?, notes?, calendar?}` | `calendar` | 0, 2 |
+| `reminders_list {list?, includeDone?, query?}`, `reminders_add {title, due?, list?, notes?}`, `reminders_done {id?, title?}` | `reminders` | 0, 1, 1 |
+| `mail_search {query?, days?, limit?}`, `mail_read {id, maxChars?}`, `mail_draft {to, cc?, subject?, body?}` | `mail` | 0, 0, 2 |
+| `messages_send {to, name?, text}` | `messages` | 2 |
+| `notes_search {query?, limit?}`, `notes_read {id, maxChars?}`, `notes_add {title, body?, folder?}` | `notes` | 0, 0, 1 |
+| `app_open {name}`, `vscode_open {path, prompt?}`, `url_open {url}` | `apps` | 1, 1, 2 |
+| `clipboard_read {}` | `clipboard` | 0 |
+| `shortcuts_list {}`, `shortcuts_run {name, input?}` | `shortcuts` | 0, 2 |
+| `code_task_start {repo, instruction, openInVSCode?}`, `code_task_status {id}`, `code_task_list {}`, `code_task_stop {id}`, `code_task_push {id}` | `tasks` | 2, 0, 0, 1, 3 |
+
+The coding-task tools are in the hello only when `tasks.json` is set up.
+Done and failed tasks are announced as `task_done` and `task_failed` events.
 
 There are no third-party dependencies: everything comes with macOS.
