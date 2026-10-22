@@ -290,6 +290,16 @@ personal build's own source folder and manifest
 (`clients/android/app/src/personal/`), and a unit test checks that no Play
 tool needs it.
 
+## Move to another Ira
+
+In Ira, **Settings → Pair with another Ira…**: paste the other Ira's pairing
+link (or type its code and address) and press **Pair**. The phone stays
+paired with your current Ira until the new pairing works; only then does it
+switch its key and address, and start a fresh conversation. Your current
+Ira keeps listing the phone unless you also tick **Also remove this phone
+from** it, which tells it to forget the phone once the new pairing has
+worked.
+
 ## Remove Ira from this phone
 
 In Ira, **Settings → Remove this phone from Ira**: the phone tells your Ira,

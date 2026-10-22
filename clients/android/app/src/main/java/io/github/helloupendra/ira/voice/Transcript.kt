@@ -38,6 +38,11 @@ class Transcript {
         }
     }
 
+    /** Another Ira: the old conversation belongs to the old server. */
+    fun clear() {
+        state.value = emptyList()
+    }
+
     fun stopped(key: String) {
         state.update { lines -> lines.map { if (it.key == key) it.copy(stopped = true) else it } }
     }

@@ -18,6 +18,9 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
+import androidx.compose.ui.semantics.Role
+import androidx.compose.foundation.selection.toggleable
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
@@ -198,13 +201,17 @@ fun SettingsScreen(app: IraApp, onBack: () -> Unit, onUnpaired: () -> Unit) {
     val link by app.deviceStatus.collectAsState()
     var confirm by remember { mutableStateOf(false) }
     var removing by remember { mutableStateOf(false) }
+    var another by remember { mutableStateOf(false) }
+    var server by remember { mutableStateOf(app.settings.server.orEmpty()) }
+    var switched by remember { mutableStateOf<String?>(null) }
     Column(Modifier.fillMaxSize()) {
         TopRow("Settings", onBack)
         Column(
             Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 24.dp, vertical = 8.dp),
             verticalArrangement = Arrangement.spacedBy(14.dp),
         ) {
-            Fact("Your Ira", app.settings.server ?: "")
+            Fact("Your Ira", server)
+            switched?.let { Text(it, color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.bodyMedium) }
             Fact("This phone", app.settings.label)
             Fact("Connection for the phone's tools", linkText(link))
             Fact("App", "${BuildConfig.VERSION_NAME} (${if (app.tools.flavor.name == "PLAY") "Google Play build" else "personal build"})")
@@ -215,6 +222,12 @@ fun SettingsScreen(app: IraApp, onBack: () -> Unit, onUnpaired: () -> Unit) {
             TextButton(onClick = { open(context, PRIVACY_URL) }) { Text("Privacy policy") }
             TextButton(onClick = { open(context, "https://github.com/helloupendra/ira") }) { Text("Source code (MIT licence)") }
             HorizontalDivider()
+            OutlinedButton(onClick = { another = true }, enabled = !removing) { Text("Pair with another Ira…") }
+            Text(
+                "Move this phone to another Ira server. It stays paired with this one until the new pairing works.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
             OutlinedButton(onClick = { confirm = true }, enabled = !removing) { Text(if (removing) "Removing..." else "Remove this phone from Ira") }
             Text(
                 "Removing the phone stops its key on your Ira at once and forgets it here. To use Ira again, pair the phone again.",
@@ -222,6 +235,17 @@ fun SettingsScreen(app: IraApp, onBack: () -> Unit, onUnpaired: () -> Unit) {
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
+    }
+    if (another) {
+        PairAnotherDialog(
+            app = app,
+            onPaired = { paired, forgot ->
+                another = false
+                server = paired
+                switched = "Paired with $paired." + if (forgot) " The old Ira was told to forget this phone." else " The old Ira still lists this phone; remove it there if you like."
+            },
+            onClose = { another = false },
+        )
     }
     if (confirm) {
         AlertDialog(
@@ -267,4 +291,83 @@ fun open(context: Context, url: String) {
 @Composable
 fun OnStart(key: Any?, block: () -> Unit) {
     LaunchedEffect(key) { block() }
+}
+
+/**
+ * Pair with another Ira (Ira for Mac does the same): this pairing stays until the new one
+ * works, and the old Ira is told to forget the phone only when the box is ticked.
+ */
+@Composable
+private fun PairAnotherDialog(app: IraApp, onPaired: (server: String, forgotOld: Boolean) -> Unit, onClose: () -> Unit) {
+    val context = LocalContext.current
+    var entry by remember { mutableStateOf("") }
+    var typedServer by remember { mutableStateOf("") }
+    var removeOld by remember { mutableStateOf(false) }
+    var busy by remember { mutableStateOf(false) }
+    var error by remember { mutableStateOf<String?>(null) }
+    val oldHost = app.settings.server.orEmpty().removePrefix("https://").removePrefix("http://")
+    val typedCode = Regex("^[A-Za-z0-9-]{8,20}$").matches(entry.trim())
+    AlertDialog(
+        onDismissRequest = { if (!busy) onClose() },
+        title = { Text("Pair with another Ira") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text(
+                    "On the other Ira, open Your devices, add an Android phone, and copy its pairing link. " +
+                        "This phone stays paired with $oldHost until the new pairing works.",
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+                OutlinedTextField(
+                    value = entry,
+                    onValueChange = {
+                        entry = it
+                        error = null
+                    },
+                    label = { Text("Pairing link or code") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                TextButton(onClick = {
+                    context.getSystemService(ClipboardManager::class.java).primaryClip?.getItemAt(0)?.coerceToText(context)?.toString()?.trim()?.let {
+                        entry = it
+                        error = null
+                    }
+                }) { Text("Paste") }
+                if (typedCode) {
+                    OutlinedTextField(
+                        value = typedServer,
+                        onValueChange = {
+                            typedServer = it
+                            error = null
+                        },
+                        label = { Text("The other Ira's address") },
+                        placeholder = { Text("https://ira.example.com") },
+                        singleLine = true,
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri),
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                }
+                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth().toggleable(value = removeOld, onValueChange = { removeOld = it }, role = Role.Checkbox)) {
+                    Checkbox(checked = removeOld, onCheckedChange = null)
+                    Text("Also remove this phone from $oldHost", modifier = Modifier.padding(start = 8.dp), style = MaterialTheme.typography.bodyMedium)
+                }
+                error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+            }
+        },
+        confirmButton = {
+            TextButton(
+                enabled = entry.isNotBlank() && !busy,
+                onClick = {
+                    busy = true
+                    error = null
+                    val ticked = removeOld
+                    app.pairAnother(entry, typedServer, ticked) { problem ->
+                        busy = false
+                        if (problem == null) onPaired(app.settings.server.orEmpty(), ticked) else error = problem
+                    }
+                },
+            ) { Text(if (busy) "Pairing..." else "Pair") }
+        },
+        dismissButton = { TextButton(onClick = onClose, enabled = !busy) { Text("Cancel") } },
+    )
 }

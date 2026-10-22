@@ -13,6 +13,7 @@ import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.ProcessLifecycleOwner
 import io.github.helloupendra.ira.core.DeviceFrame
 import io.github.helloupendra.ira.core.Paired
+import io.github.helloupendra.ira.core.Repair
 import io.github.helloupendra.ira.store.SecretStore
 import io.github.helloupendra.ira.store.Settings
 import io.github.helloupendra.ira.device.DeviceLink
@@ -98,6 +99,42 @@ class IraApp : Application() {
         skills.value = paired.skills.toSet()
         rebuildLink()
     }
+
+    /**
+     * Pair with another Ira, keeping this pairing until the new one works: the token and the
+     * address change only after the new server answered 200, and the old server is told to
+     * forget the phone only when [removeOld] (Repair). [done] gets null, or what went wrong.
+     */
+    fun pairAnother(entry: String, typedServer: String?, removeOld: Boolean, done: (String?) -> Unit) {
+        thread(name = "ira-repair") {
+            val (paired, error) = Repair.pair(entry, typedServer, BuildConfig.VERSION_NAME, Net.post)
+            main.post {
+                if (paired == null) {
+                    done(error ?: "That did not work.")
+                } else {
+                    Repair.commit(holder, paired, removeOld) { server, path, token -> DeviceLink.farewell(server, path, token) }
+                    done(null)
+                }
+            }
+        }
+    }
+
+    private val holder =
+        object : Repair.Holder {
+            override val server: String?
+                get() = settings.server
+            override val token: String?
+                get() = secrets.token()
+            override val websocketPath: String
+                get() = settings.websocketPath
+
+            override fun replace(paired: Paired) {
+                endCall()
+                transcript.clear()
+                info = null
+                savePairing(paired)
+            }
+        }
 
     /** Remove this phone: the server revokes the token, and the phone forgets it. */
     fun unpair(done: () -> Unit) {

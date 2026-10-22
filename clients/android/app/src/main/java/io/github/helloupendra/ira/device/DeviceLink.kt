@@ -137,6 +137,26 @@ class DeviceLink(
         scope.cancel()
     }
 
+    companion object {
+        /** Tell a server to forget this phone (its token stops at once): `bye` on its device WebSocket. */
+        fun farewell(server: String, path: String, token: String) {
+            Net.openWebSocket(
+                Pairing.websocketUrl(server, path),
+                token,
+                object : WebSocketListener() {
+                    override fun onOpen(webSocket: WebSocket, response: Response) {
+                        webSocket.send("""{"type":"bye"}""")
+                        webSocket.close(1000, "bye")
+                    }
+
+                    override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
+                        IraLog.warn("device: the old Ira could not be told", t)
+                    }
+                },
+            )
+        }
+    }
+
     private fun connect() {
         if (!running) return
         val bearer = token()
