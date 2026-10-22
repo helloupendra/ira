@@ -10,6 +10,7 @@ import { useSession } from '../ui/Session';
 import { Empty, ErrorState, Loading, sentenceFor } from '../ui/states';
 import { useToast } from '../ui/toast';
 import { useApi, type ApiState } from '../ui/useApi';
+import { AccountDialog } from './users/AccountDialog';
 import { InviteDialog } from './users/InviteDialog';
 import {
   failureText,
@@ -77,6 +78,7 @@ interface PersonProps {
   error: string | null;
   onRole: (role: string) => void;
   onReset: () => void;
+  onAccount: () => void;
   onRemove: () => void;
 }
 
@@ -124,6 +126,14 @@ function ResetPinButton({ user, onReset }: Pick<PersonProps, 'user' | 'onReset'>
   );
 }
 
+function AccountButton({ onAccount }: Pick<PersonProps, 'onAccount'>) {
+  return (
+    <button type="button" className="btn btn-small" onClick={onAccount}>
+      Email &amp; password
+    </button>
+  );
+}
+
 function RemoveButton({ reason, onRemove }: { reason: string | null; onRemove: () => void }) {
   return (
     <button
@@ -150,7 +160,7 @@ function You({ user, meId }: Pick<PersonProps, 'user' | 'meId'>) {
   return <span className="badge badge-muted">you</span>;
 }
 
-function PersonRow({ user, users, meId, role, busy, error, onRole, onReset, onRemove }: PersonProps) {
+function PersonRow({ user, users, meId, role, busy, error, onRole, onReset, onAccount, onRemove }: PersonProps) {
   const note = removeReason(user, users, meId);
   return (
     <tr>
@@ -185,13 +195,16 @@ function PersonRow({ user, users, meId, role, busy, error, onRole, onReset, onRe
       </td>
       <td className="cell-nowrap">{lastSignIn(user)}</td>
       <td>
-        <RemoveButton reason={note} onRemove={onRemove} />
+        <span className="cell-actions">
+          <AccountButton onAccount={onAccount} />
+          <RemoveButton reason={note} onRemove={onRemove} />
+        </span>
       </td>
     </tr>
   );
 }
 
-function PersonCard({ user, users, meId, role, busy, error, onRole, onReset, onRemove }: PersonProps) {
+function PersonCard({ user, users, meId, role, busy, error, onRole, onReset, onAccount, onRemove }: PersonProps) {
   const note = removeReason(user, users, meId);
   const id = `role-${user.id}`;
   return (
@@ -217,6 +230,7 @@ function PersonCard({ user, users, meId, role, busy, error, onRole, onReset, onR
       )}
       <div className="card-actions">
         <ResetPinButton user={user} onReset={onReset} />
+        <AccountButton onAccount={onAccount} />
         <RemoveButton reason={note} onRemove={onRemove} />
       </div>
       {note && <p className="inline-note">{note}</p>}
@@ -252,6 +266,7 @@ export default function Users() {
   const [confirmBusy, setConfirmBusy] = useState(false);
   const [confirmError, setConfirmError] = useState<string | null>(null);
   const [inviting, setInviting] = useState(false);
+  const [editing, setEditing] = useState<AdminUserRow | null>(null);
 
   // A chosen role shows at once and stays until fresh data arrives.
   const [shown, setShown] = useState<Record<number, string>>({});
@@ -364,6 +379,7 @@ export default function Users() {
       error: roleError?.id === user.id ? roleError.text : null,
       onRole: (role) => void changeRole(user, role),
       onReset: () => resetPin(user),
+      onAccount: () => setEditing(user),
       onRemove: () => remove(user),
     });
     if (!desktop) {
@@ -562,6 +578,17 @@ export default function Users() {
         roles={roles.data}
         onClose={() => setInviting(false)}
         onCreated={() => invites.reload()}
+      />
+      <AccountDialog
+        user={editing}
+        onClose={() => setEditing(null)}
+        onChanged={(text) => {
+          toast(text);
+          setEditing(null);
+          users.reload();
+          // Your own email shows in the header.
+          if (editing?.id === meId) void session.refresh();
+        }}
       />
     </Page>
   );

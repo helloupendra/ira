@@ -27,13 +27,16 @@ from ira.channels.deps import get_runtime, require_session
 from ira.channels.schemas import (
     ERRORS,
     AdminUserRow,
+    EmailSet,
     ErrorDetail,
     InviteCreated,
     InviteCreateRequest,
     ModelTestRequest,
     ModelTestResult,
     OkResponse,
+    PasswordReset,
     RoleChange,
+    SessionsEnded,
     SettingsUpdate,
     SettingsView,
     TelegramPairing,
@@ -171,6 +174,44 @@ def reset_pin(
     runtime.guard.clear_pin(user_id, actor=who.actor, channel=who.channel)
     _log(runtime, who, "user.pin_reset", user.email, before=user.has_pin, after=False)
     return OkResponse()
+
+
+@router.put(
+    "/users/{user_id}/password",
+    response_model=SessionsEnded,
+    summary="Set a user's password (they can change it); all their sessions end",
+)
+def reset_password(
+    user_id: int,
+    body: PasswordReset,
+    who: Principal = Depends(owner),
+    runtime: Runtime = Depends(get_runtime),
+) -> SessionsEnded:
+    user = _user_or_404(runtime, user_id)
+    keep = who.credential_id if user_id == who.user.id else None
+    try:
+        ended = runtime.accounts.set_password(user_id, body.new_password, keep_session=keep)
+    except AccountError as exc:
+        raise HTTPException(400, detail=str(exc)) from None
+    _log(runtime, who, "user.password_reset", user.email, after={"sessions_ended": ended})
+    return SessionsEnded(ended=ended)
+
+
+@router.put("/users/{user_id}/email", response_model=AdminUserRow, summary="Change a user's email")
+def change_email(
+    user_id: int,
+    body: EmailSet,
+    who: Principal = Depends(owner),
+    runtime: Runtime = Depends(get_runtime),
+) -> AdminUserRow:
+    _user_or_404(runtime, user_id)
+    try:
+        user, before = runtime.accounts.set_email(user_id, body.email)
+    except AccountError as exc:
+        raise HTTPException(400, detail=str(exc)) from None
+    if before != user.email:
+        _log(runtime, who, "user.email", user.email, before=before, after=user.email)
+    return AdminUserRow(**user.public(), has_pin=user.has_pin)
 
 
 # Sessions (owner only).

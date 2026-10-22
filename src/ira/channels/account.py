@@ -24,10 +24,12 @@ from ira.channels.deps import (
 )
 from ira.channels.paging import HAS_MORE_HEADER, page
 from ira.channels.schemas import (
+    EmailChange,
     ErrorDetail,
     InviteAcceptRequest,
     InviteTokenRequest,
     OkResponse,
+    PasswordChange,
     PinSetRequest,
     PinStatus,
     PublicInvite,
@@ -316,3 +318,87 @@ def end_my_other_sessions(
             after={"ended": ended},
         )
     return SessionsEnded(ended=ended)
+
+
+# Your own password and email. Both need your password again.
+
+
+def _recheck(runtime: Runtime, request: Request, principal: Principal, password: str) -> None:
+    limiter = runtime.accounts.limiter
+    key = f"password-check:{principal.user.id}"
+    if limiter.blocked(key, f"ip:{client_ip(request)}"):
+        raise HTTPException(429, detail="too many wrong passwords; try again in 15 minutes")
+    if not runtime.accounts.check_password(principal.user.id, password):
+        limiter.fail(key)
+        raise HTTPException(403, detail="that is not your password")
+    limiter.clear(key)
+
+
+@router.put(
+    "/me/password",
+    response_model=SessionsEnded,
+    summary="Change your password; your other sessions are signed out",
+    responses=_errors(
+        e400="The new password is too short",
+        e401="Not signed in",
+        e403="Wrong password, an API token, or no CSRF header",
+        e429="Too many wrong passwords; wait 15 minutes",
+    ),
+)
+def change_my_password(
+    body: PasswordChange,
+    request: Request,
+    principal: Principal = Depends(signed_in),
+    runtime: Runtime = Depends(get_runtime),
+) -> SessionsEnded:
+    _recheck(runtime, request, principal, body.current_password)
+    try:
+        ended = runtime.accounts.set_password(
+            principal.user.id, body.new_password, keep_session=principal.credential_id
+        )
+    except AccountError as exc:
+        raise HTTPException(400, detail=str(exc)) from None
+    changes.record(
+        runtime.store,
+        principal.actor,
+        "account.password",
+        principal.user.email,
+        channel=principal.channel,
+        after={"sessions_ended": ended},
+    )
+    return SessionsEnded(ended=ended)
+
+
+@router.put(
+    "/me/email",
+    response_model=OkResponse,
+    summary="Change the email you sign in with",
+    responses=_errors(
+        e400="Not an email address, or another account has it",
+        e401="Not signed in",
+        e403="Wrong password, an API token, or no CSRF header",
+        e429="Too many wrong passwords; wait 15 minutes",
+    ),
+)
+def change_my_email(
+    body: EmailChange,
+    request: Request,
+    principal: Principal = Depends(signed_in),
+    runtime: Runtime = Depends(get_runtime),
+) -> OkResponse:
+    _recheck(runtime, request, principal, body.password)
+    try:
+        user, before = runtime.accounts.set_email(principal.user.id, body.email)
+    except AccountError as exc:
+        raise HTTPException(400, detail=str(exc)) from None
+    if user.email != before:
+        changes.record(
+            runtime.store,
+            principal.actor,
+            "account.email",
+            user.email,
+            channel=principal.channel,
+            before=before,
+            after=user.email,
+        )
+    return OkResponse()

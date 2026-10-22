@@ -286,6 +286,42 @@ class Accounts:
         except (VerifyMismatchError, VerificationError, InvalidHashError):
             return False
 
+    def set_password(self, user_id: int, password: str, *, keep_session: str | None = None) -> int:
+        """A new password; every session but ``keep_session`` ends. Returns how many ended.
+
+        API tokens stay: they are separate keys, revoked on their own.
+        """
+        _check_password(password)
+        password_hash = _hasher.hash(password)  # slow on purpose: outside the write lock
+        now = self.clock()
+        with self.store.transaction():
+            if self.get_user(user_id) is None:
+                raise AccountError("no such user")
+            self.store.execute(
+                "UPDATE users SET password_hash = ? WHERE id = ?", (password_hash, user_id)
+            )
+            ended = self.store.execute(
+                "UPDATE sessions SET revoked_at = ? "
+                "WHERE user_id = ? AND id != ? AND revoked_at IS NULL",
+                (now, user_id, keep_session or ""),
+            ).rowcount
+        return ended
+
+    def set_email(self, user_id: int, email: str) -> tuple[User, str]:
+        """Change an account's email. Returns (updated user, the email before)."""
+        email = normalise_email(email)
+        with self.store.transaction():
+            user = self.get_user(user_id)
+            if user is None:
+                raise AccountError("no such user")
+            if email != user.email:
+                if self.store.one("SELECT id FROM users WHERE email = ?", (email,)):
+                    raise AccountError("a user with that email already exists")
+                self.store.execute("UPDATE users SET email = ? WHERE id = ?", (email, user_id))
+        updated = self.get_user(user_id)
+        assert updated is not None
+        return updated, user.email
+
     def _owners_besides(self, user_id: int) -> int:
         row = self.store.one(
             "SELECT COUNT(*) AS n FROM users "

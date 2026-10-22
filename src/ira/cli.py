@@ -242,6 +242,63 @@ def cmd_user_add(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_user_password(args: argparse.Namespace) -> int:
+    from ira import changes
+
+    settings = _settings(args)
+    store = _store(settings)
+    accounts = Accounts(store)
+    user = accounts.find_user(args.email)
+    if user is None:
+        print(f"No account {args.email}.", file=sys.stderr)
+        return 1
+    password = _secret_input("New password (10+ characters): ", confirm=True)
+    try:
+        ended = accounts.set_password(user.id, password)
+    except AccountError as exc:
+        print(f"Error: {exc}", file=sys.stderr)
+        return 1
+    changes.record(
+        store,
+        "cli",
+        "user.password_reset",
+        user.email,
+        channel="cli",
+        after={"sessions_ended": ended},
+    )
+    print(f"Changed the password of {user.email}; {ended} session(s) signed out.")
+    return 0
+
+
+def cmd_user_email(args: argparse.Namespace) -> int:
+    from ira import changes
+
+    settings = _settings(args)
+    store = _store(settings)
+    accounts = Accounts(store)
+    user = accounts.find_user(args.email)
+    if user is None:
+        print(f"No account {args.email}.", file=sys.stderr)
+        return 1
+    try:
+        updated, before = accounts.set_email(user.id, args.new_email)
+    except AccountError as exc:
+        print(f"Error: {exc}", file=sys.stderr)
+        return 1
+    if updated.email != before:
+        changes.record(
+            store,
+            "cli",
+            "user.email",
+            updated.email,
+            channel="cli",
+            before=before,
+            after=updated.email,
+        )
+    print(f"{before} now signs in as {updated.email}.")
+    return 0
+
+
 def cmd_user_list(args: argparse.Namespace) -> int:
     settings = _settings(args)
     for user in Accounts(_store(settings)).users():
@@ -404,6 +461,11 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--email", required=True)
     p.add_argument("--role", required=True, choices=[r for r in ROLES if r != "owner"])
     add("list", cmd_user_list, "list accounts", user)
+    p = add("password", cmd_user_password, "set an account's password (signs it out)", user)
+    p.add_argument("email")
+    p = add("email", cmd_user_email, "change the email an account signs in with", user)
+    p.add_argument("email")
+    p.add_argument("new_email")
 
     evals = sub.add_parser("eval", help="evaluations against the configured models").add_subparsers(
         dest="eval_command", required=True

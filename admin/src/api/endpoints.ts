@@ -102,6 +102,10 @@ export const me = {
   pin: (signal?: AbortSignal) => request<PinStatus>('/v1/me/pin', { signal }),
   setPin: (password: string, pin: string) =>
     request<OkResponse>('/v1/me/pin', { method: 'PUT', json: { password, pin } }),
+  changePassword: (current_password: string, new_password: string) =>
+    request<SessionsEnded>('/v1/me/password', { method: 'PUT', json: { current_password, new_password } }),
+  changeEmail: (email: string, password: string) =>
+    request<OkResponse>('/v1/me/email', { method: 'PUT', json: { email, password } }),
   sessions: (signal?: AbortSignal) => request<SessionView[]>('/v1/me/sessions', { signal }),
   sessionsPage: (query: SessionsQuery = {}, signal?: AbortSignal) =>
     requestPage<SessionView[]>('/v1/me/sessions', { query, signal }),
@@ -193,6 +197,10 @@ export const admin = {
   removeUser: (userId: number) => request<OkResponse>(`/v1/admin/users/${userId}`, { method: 'DELETE' }),
   resetPin: (userId: number) =>
     request<OkResponse>(`/v1/admin/users/${userId}/reset-pin`, { method: 'POST' }),
+  resetPassword: (userId: number, new_password: string) =>
+    request<SessionsEnded>(`/v1/admin/users/${userId}/password`, { method: 'PUT', json: { new_password } }),
+  changeEmail: (userId: number, email: string) =>
+    request<AdminUserRow>(`/v1/admin/users/${userId}/email`, { method: 'PUT', json: { email } }),
   revokeSession: (id: string) =>
     request<OkResponse>(`/v1/admin/sessions/${enc(id)}`, { method: 'DELETE' }),
   createToken: (label: string, scopes: string[]) =>

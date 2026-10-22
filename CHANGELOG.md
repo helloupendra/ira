@@ -74,6 +74,11 @@ switch it on.
 - **Half sentences**: when a tool that only reads can settle what was meant,
   Ira looks first and asks only when looking would not help.
 - `GET /admin` without a trailing slash redirects to the console.
+- **Passwords and emails can change.** Each person changes their own
+  password (their other sessions end) and email under Tokens & security,
+  with their password again; an owner sets someone's password or email from
+  Users & roles; `ira user password` and `ira user email` do it from the
+  server. All go to the change log.
 - **A typed pairing code finds its server.** A Mac zip downloaded from an
   IRA server carries that server's address, so typing the code works; with
   no address known the companion asks instead of trying this Mac. The

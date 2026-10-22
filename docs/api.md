@@ -527,6 +527,17 @@ A wrong password gives `403`; five in 15 minutes give `429`. Setting a PIN
 here does not lift a wrong-PIN lock; `ira pin set` on the server does. The
 outcome is written to the action audit log as `pin_set`.
 
+### Your password and email
+
+| Route | Needs | Body | Returns |
+| --- | --- | --- | --- |
+| `PUT /v1/me/password` | a session | `PasswordChange`: `current_password`, `new_password` (10+ characters) | `SessionsEnded`: your other sessions, signed out; this one stays |
+| `PUT /v1/me/email` | a session | `EmailChange`: `email`, `password` (checked again) | `OkResponse` |
+
+A wrong password gives `403`; five in 15 minutes give `429`. API tokens are
+not touched by a new password: revoke them on their own. Both are written to
+the change log (`account.password`, `account.email`), never the password.
+
 ### Your sessions
 
 Each sign-in is a session. The list shows the active ones (not ended, not
@@ -572,6 +583,8 @@ change log. Removing a user also ends their sessions.
 | `PATCH /v1/admin/users/{user_id}` | `users` | `RoleChange`: `role` | `AdminUserRow`; `409` for the last owner | `user.role` (before, after) |
 | `DELETE /v1/admin/users/{user_id}` | `users` | | `OkResponse`; `409` for the last owner | `user.removed` |
 | `POST /v1/admin/users/{user_id}/reset-pin` | `users` | | `OkResponse` | `user.pin_reset` |
+| `PUT /v1/admin/users/{user_id}/password` | `users` | `PasswordReset`: `new_password` | `SessionsEnded`: all their sessions end | `user.password_reset` |
+| `PUT /v1/admin/users/{user_id}/email` | `users` | `EmailSet`: `email` | `AdminUserRow` | `user.email` (before and after) |
 | `POST /v1/admin/tokens` | `admin.write` | `TokenCreateRequest`: `label`, `scopes` | `TokenCreated` (the `token` value, once) | `token.created` |
 | `DELETE /v1/admin/tokens/{token_id}` | `admin.write` | | `OkResponse`; `404` if not active | `token.revoked` |
 | `DELETE /v1/admin/sessions/{session_id}` | `users` | | `OkResponse`; `404` if not active | `session.revoked` |

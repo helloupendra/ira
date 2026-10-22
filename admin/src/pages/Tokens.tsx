@@ -19,6 +19,7 @@ import { useSession } from '../ui/Session';
 import { Empty, sentenceFor } from '../ui/states';
 import { useToast } from '../ui/toast';
 import { useApi, type ApiState } from '../ui/useApi';
+import { AccountSection } from './tokens/AccountSection';
 import { Body } from './tokens/Body';
 import { cursorAfter, type Cursor } from './tokens/paging';
 import {
@@ -852,7 +853,7 @@ export default function Tokens() {
   return (
     <Page
       title="Tokens & security"
-      subtitle="API tokens, signed-in devices, and the rules that guard actions"
+      subtitle="API tokens, signed-in devices, your password and PIN, and the rules that guard actions"
       actions={
         <button type="button" className="btn btn-ghost btn-small" onClick={reload}>
           <Icon name="refresh" />
@@ -874,6 +875,10 @@ export default function Tokens() {
           wide={wide}
           onChanged={sessionsChanged}
         />
+      </section>
+      <section className="section">
+        <h2 className="section-title">Your account</h2>
+        <AccountSection />
       </section>
       <section className="section">
         <h2 className="section-title">Your action PIN</h2>

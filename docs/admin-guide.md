@@ -204,10 +204,15 @@ Add the others from the command line (the password is read without echo):
 ira user add --email desk@example.com --role staff
 ira user add --email accountant@example.com --role viewer
 ira user list
+ira user password desk@example.com       # a new password; their sessions end
+ira user email desk@example.com front@example.com
 ```
 
 The console's Users & roles screen does the same, and more: invitations by
-link, role changes, removals and PIN resets, each written to the change log.
+link, role changes, new passwords and emails, removals and PIN resets, each
+written to the change log. Each person changes their own password and email
+under **Tokens & security** (their password is asked again; their other
+sessions are signed out).
 See [Console API](api.md#console-api). The last owner can never be removed
 or demoted.
 

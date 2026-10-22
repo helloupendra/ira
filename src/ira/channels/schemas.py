@@ -725,6 +725,26 @@ class SessionsEnded(BaseModel):
     ended: int = Field(description="How many sessions were signed out.")
 
 
+class PasswordChange(BaseModel):
+    current_password: str = Field(max_length=1024)
+    new_password: str = Field(max_length=1024, description="10 characters or more.")
+
+
+class PasswordReset(BaseModel):
+    new_password: str = Field(
+        max_length=1024, description="10 characters or more. Tell them; they can change it."
+    )
+
+
+class EmailChange(BaseModel):
+    email: str = Field(max_length=254)
+    password: str = Field(max_length=1024, description="Your account password, checked again.")
+
+
+class EmailSet(BaseModel):
+    email: str = Field(max_length=254)
+
+
 # Console writes.
 
 
