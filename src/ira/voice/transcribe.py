@@ -3,7 +3,7 @@
 One recording is one stream: a presigned ``wss://`` URL (SigV4, service
 ``transcribe``, signed with botocore's default credentials), then the audio
 as 16 kHz mono 16-bit PCM in event-stream ``AudioEvent`` frames, then an
-empty frame to end it. The final (not partial) results are joined.
+empty frame to end it. Each result's last text is kept, and they are joined.
 
 With two or more languages Transcribe identifies them itself; ``many`` lets
 it switch language inside one recording, which suits Hinglish. The role needs
@@ -204,9 +204,12 @@ class TranscribeSTT:
         await socket.send(audio_event(b""))  # the end of the stream
 
     async def _receive(self, socket: Any, sender: asyncio.Task[None]) -> list[str]:
+        """Each result's final text, in order. A result left partial when the stream
+        ends counts with its last text: with single-language identification,
+        Transcribe closes the stream without marking the last result final."""
         import websockets
 
-        parts: list[str] = []
+        latest: dict[str, str] = {}  # result id -> its text so far, in first-seen order
         while True:
             try:
                 if sender.done():
@@ -215,9 +218,9 @@ class TranscribeSTT:
                 else:
                     message = await socket.recv()
             except TimeoutError:
-                return parts  # all audio sent and nothing more came
+                return list(latest.values())  # all audio sent and nothing more came
             except websockets.ConnectionClosedOK:
-                return parts
+                return list(latest.values())
             except websockets.ConnectionClosed as exc:
                 raise self._error(f"stream closed ({exc.code})", kind="network") from None
             if isinstance(message, str):
@@ -234,7 +237,6 @@ class TranscribeSTT:
             if headers.get(":event-type") != "TranscriptEvent":
                 continue
             for result in body.get("Transcript", {}).get("Results", []):
-                if result.get("IsPartial"):
-                    continue
                 alternatives = result.get("Alternatives") or [{}]
-                parts.append(str(alternatives[0].get("Transcript") or ""))
+                key = str(result.get("ResultId") or len(latest))
+                latest[key] = str(alternatives[0].get("Transcript") or "")

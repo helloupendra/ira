@@ -91,7 +91,7 @@ def test_the_url_is_presigned_for_transcribe():
     assert "secret-for-tests" not in url
 
 
-def transcript(text: str, partial: bool, language: str = "hi-IN") -> bytes:
+def transcript(text: str, partial: bool, language: str = "hi-IN", result: str = "") -> bytes:
     body = {
         "Transcript": {
             "Results": [
@@ -99,6 +99,7 @@ def transcript(text: str, partial: bool, language: str = "hi-IN") -> bytes:
                     "Alternatives": [{"Transcript": text}],
                     "IsPartial": partial,
                     "LanguageCode": language,
+                    "ResultId": result or language,
                 }
             ]
         }
@@ -201,3 +202,14 @@ async def test_a_server_that_stays_open_still_gives_its_results(monkeypatch):
     monkeypatch.setattr(transcribe, "QUIET_SECONDS", 0.2)
     stand_in = StandIn([transcript("aaj ki khabar", False, "en-IN")], close=False)
     assert await run_against(stand_in, ONE_SECOND) == "aaj ki khabar"
+
+
+async def test_a_stream_that_ends_on_a_partial_keeps_its_last_text():
+    # Single-language identification ends without a final result (seen on 22 Oct 2026).
+    stand_in = StandIn(
+        [
+            transcript("What is the", True, "en-IN", "r1"),
+            transcript("What is the news today?", True, "en-IN", "r1"),
+        ]
+    )
+    assert await run_against(stand_in, ONE_SECOND, identify="one") == "What is the news today?"
