@@ -256,6 +256,35 @@ records a business keeps: the actions you proposed with its tools, and the
 audit and change logs. An owner removes the account itself. It writes
 `me.data_deleted` with the counts. Five wrong passwords in 15 minutes give `429`.
 
+### Learning
+
+Off until the person switches it on, with their PIN, and only from the
+sources they choose (`phone`, `conversation`, `feedback`; a Mac is switched
+by its `routine` skill). See [Privacy](privacy.md) for what is kept.
+
+| Route | Who | Returns |
+| --- | --- | --- |
+| `GET /v1/me/learning` | a session | `LearningView`: on, sources, Macs, days kept, nudges, named networks, phone tokens, counts of observations by kind, learnings and open reminders |
+| `PATCH /v1/me/learning` | a session | `LearningUpdate`: `on`, `sources`, `days` (14-365), `nudges`, and `pin` to switch anything on |
+| `PUT`/`DELETE /v1/me/networks/{fingerprint}` | a session | name a network a Mac reported by its salted hash (`NetworkName`), or forget it |
+| `POST`/`DELETE /v1/me/learning/phone-token` | a session (PIN to create) | a token whose only scope is `observe`, for iPhone Shortcuts; shown once |
+| `POST /v1/observations` | a token with `observe` | `ObservationIn`: `event` (`arrive`, `leave`) and `place`, nothing else; `recorded` is false when learning or the phone source is off |
+| `GET /v1/me/observations?days=&kind=` | `ask` | your own observations of the last `days` (30 by default), oldest first |
+| `POST /v1/me/learning/refresh` | a session | `LearningView`, after looking for patterns now (the learner also runs nightly, after 03:00 in your time zone) |
+| `POST /v1/me/learnings/{id}/approve` | a session | `LearningItem`, now `active`: it goes into your assistant's context |
+| `POST /v1/me/learnings/{id}/reject` | a session | `LearningItem`, now `rejected`; never asked again |
+| `PATCH /v1/me/learnings/{id}` | a session | reword it (`text`); `400` if a number in it is not in its evidence |
+| `DELETE /v1/me/learnings/{id}` | a session | `LearningForgotten`: it and the observations behind it are deleted |
+| `GET /v1/me/reminders`, `DELETE /v1/me/reminders/{id}` | a session | your open reminders; cancel one |
+| `POST /v1/me/feedback` | a session | `FeedbackIn`: `message_id` (from `/v1/ask` or the stream's `done` event), `rating` (`up`, `down`), optional `note`. `learned` is false when learning or the feedback source is off; `404` for an answer that is not yours |
+
+A learning's `text` is written from its `evidence` (median time, middle half,
+"seen on 9 of the last 15 weekdays") and every number in it is checked
+against that evidence. Learnings are `proposed` until there is enough
+evidence (8 days over at least 14, a steady time), `ready` then `asked`
+once, and only `active` after a yes. Active ones `fade` after 21 days unseen,
+and are asked about again when they `change`.
+
 ## Devices
 
 The protocol, limits and security are in [Devices](devices.md). The routes:

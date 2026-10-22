@@ -47,6 +47,15 @@ switch it on.
 - The Ira app gains **Your devices**, **Your assistant**, **What Ira did**
   and **Your data**, and speaks device events as they arrive. The console
   gains a **Devices** screen.
+- **Learning, if a person wants it.** Off by default; switched on with the
+  PIN, source by source: a Mac's lock, sleep and network (by a salted hash
+  the person names), iPhone Shortcuts reporting places, what they say about
+  where they are going (kept only if the quote is word for word theirs),
+  and thumbs on answers. A nightly learner finds routine times, commute
+  durations and answer preferences, writes each as a sentence whose every
+  number is in its evidence, and asks once; only a yes puts it in the
+  assistant's context. Reminders by time or place (`remind_me`), and an
+  optional nudge 15 minutes before a routine. Each person has a time zone.
 - New docs: [Your own Ira in 15 minutes](docs/personal-assistant.md), [the Mac
   companion](docs/clients/mac.md), [Privacy](docs/privacy.md),
   [Devices](docs/devices.md), and a design note.

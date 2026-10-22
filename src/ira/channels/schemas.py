@@ -92,6 +92,9 @@ class AskResponse(BaseModel):
         default_factory=list, description="Each tool call in this turn, in order."
     )
     model: str | None = None
+    message_id: int | None = Field(
+        default=None, description="The stored answer's id, for POST /v1/me/feedback."
+    )
 
 
 # Server-sent events from POST /v1/ask/stream: one JSON object per `data:` line.
@@ -152,6 +155,9 @@ class DoneEvent(BaseModel):
     text: str = Field(description="The full answer.")
     model: str | None = Field(description="provider:model that answered; null if none did.")
     conversation_id: str
+    message_id: int | None = Field(
+        default=None, description="The stored answer's id, for POST /v1/me/feedback."
+    )
 
 
 class StreamEvent(
@@ -1294,6 +1300,18 @@ class ObservationIn(BaseModel):
 
 class ObservationOut(BaseModel):
     recorded: bool = Field(description="False when learning or the phone source is off.")
+
+
+class FeedbackIn(BaseModel):
+    message_id: int = Field(description="The answer's message_id, from ask or the done event.")
+    rating: Literal["up", "down"]
+    note: str | None = Field(default=None, max_length=300, description="What would be better.")
+
+
+class FeedbackKept(BaseModel):
+    learned: bool = Field(
+        description="True when it was kept: learning and its feedback source are on."
+    )
 
 
 class LearningEdit(BaseModel):

@@ -11,6 +11,7 @@ with a token whose only scope is ``observe``.
 from __future__ import annotations
 
 from collections import Counter
+from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 
@@ -19,6 +20,8 @@ from ira.accounts import Principal
 from ira.channels.deps import get_runtime, require, require_session
 from ira.channels.schemas import (
     ERRORS,
+    FeedbackIn,
+    FeedbackKept,
     LearningEdit,
     LearningForgotten,
     LearningItem,
@@ -389,3 +392,38 @@ def forget_learning(
     except LearningError as exc:
         raise HTTPException(404, detail=str(exc)) from None
     return LearningForgotten(observations=deleted)
+
+
+# Feedback on an answer: a thumb, and what would be better.
+
+
+@router.post(
+    "/v1/me/feedback",
+    response_model=FeedbackKept,
+    summary="A thumb up or down on one of Ira's answers to you",
+)
+async def give_feedback(
+    body: FeedbackIn,
+    who: Principal = Depends(your_session),
+    runtime: Runtime = Depends(get_runtime),
+) -> FeedbackKept:
+    from ira.language import detect
+
+    row = runtime.store.one(
+        "SELECT m.content FROM messages m JOIN conversations c ON c.id = m.conversation_id "
+        "WHERE m.id = ? AND m.role = 'assistant' AND c.user_id = ?",
+        (body.message_id, who.user.id),
+    )
+    if row is None:  # someone else's answer is "not found" too
+        raise HTTPException(404, detail="no such answer")
+    answer = row["content"] or ""
+    detail: dict[str, Any] = {
+        "rating": body.rating,
+        "language": detect(answer),
+        "chars": len(answer),
+        "message_id": body.message_id,
+    }
+    if body.note and body.note.strip():
+        detail["note"] = " ".join(body.note.split())[:300]
+    kept = await learning_of(runtime).record(who.user.id, "feedback", "feedback", detail=detail)
+    return FeedbackKept(learned=kept is not None)

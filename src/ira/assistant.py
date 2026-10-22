@@ -19,7 +19,7 @@ import inspect
 import json
 import logging
 import time
-from collections.abc import AsyncIterator, Callable
+from collections.abc import AsyncIterator, Awaitable, Callable
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -71,6 +71,7 @@ class Reply:
     tools_used: list[str] = field(default_factory=list)
     tool_calls: list[dict[str, Any]] = field(default_factory=list)
     model: str | None = None
+    message_id: int | None = None
 
     def public(self) -> dict[str, Any]:
         return {
@@ -80,6 +81,7 @@ class Reply:
             "tools_used": self.tools_used,
             "tool_calls": self.tool_calls,
             "model": self.model,
+            "message_id": self.message_id,
         }
 
 
@@ -145,6 +147,7 @@ class Assistant:
         user_settings: UserSettings | None = None,
         tool_calls_per_minute: int = 30,
         memory: Callable[[int | None], list[str]] | None = None,
+        after_turn: Callable[[int, str], Awaitable[Any]] | None = None,
     ) -> None:
         self.gateway = gateway
         self.registry = registry
@@ -162,6 +165,9 @@ class Assistant:
         self.tool_limit = ToolRateLimit(tool_calls_per_minute)
         # What the person let Ira learn about them and approved, for their prompt.
         self.memory = memory
+        # Told each finished turn, without delaying it: (person, their message). Learning.
+        self.after_turn = after_turn
+        self._background: set[asyncio.Task[Any]] = set()
         self._locks: dict[str, asyncio.Lock] = {}
 
     # Identity.
@@ -259,6 +265,7 @@ class Assistant:
             elif event["type"] == "done":
                 reply.model = event.get("model")
                 reply.text = event["text"]
+                reply.message_id = event.get("message_id")
         if not reply.text:
             reply.text = "".join(parts)
         return reply
@@ -438,8 +445,12 @@ class Assistant:
             history.append(Message(role="assistant", content=final_text))
             yield {"type": "delta", "text": final_text}
 
-        self.conversations.append(conversation_id, history[start:])
-        yield {"type": "done", "text": final_text, "model": model}
+        ids = self.conversations.append(conversation_id, history[start:])
+        if self.after_turn is not None and user_id is not None:
+            task = asyncio.create_task(self.after_turn(user_id, text))
+            self._background.add(task)
+            task.add_done_callback(self._background.discard)
+        yield {"type": "done", "text": final_text, "model": model, "message_id": ids[-1]}
 
     async def _run_tool(
         self,

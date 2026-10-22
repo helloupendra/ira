@@ -7527,6 +7527,82 @@
                     }
                 }
             }
+        },
+        "/v1/me/feedback": {
+            "post": {
+                "tags": [
+                    "learning"
+                ],
+                "summary": "A thumb up or down on one of Ira's answers to you",
+                "operationId": "give_feedback",
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/FeedbackIn"
+                            }
+                        }
+                    },
+                    "required": true
+                },
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/FeedbackKept"
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Bad input",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ErrorDetail"
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "No credential, or an invalid one",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ErrorDetail"
+                                }
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "Not allowed: role, token, or a missing CSRF header",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ErrorDetail"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "HTTPBearer": []
+                    }
+                ]
+            }
         }
     },
     "components": {
@@ -8204,6 +8280,18 @@
                             }
                         ],
                         "title": "Model"
+                    },
+                    "message_id": {
+                        "anyOf": [
+                            {
+                                "type": "integer"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Message Id",
+                        "description": "The stored answer's id, for POST /v1/me/feedback."
                     }
                 },
                 "type": "object",
@@ -9051,6 +9139,18 @@
                     "conversation_id": {
                         "type": "string",
                         "title": "Conversation Id"
+                    },
+                    "message_id": {
+                        "anyOf": [
+                            {
+                                "type": "integer"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Message Id",
+                        "description": "The stored answer's id, for POST /v1/me/feedback."
                     }
                 },
                 "type": "object",
@@ -9208,6 +9308,56 @@
                 ],
                 "title": "EventView",
                 "description": "Something a device announced, such as a watched tab that finished."
+            },
+            "FeedbackIn": {
+                "properties": {
+                    "message_id": {
+                        "type": "integer",
+                        "title": "Message Id",
+                        "description": "The answer's message_id, from ask or the done event."
+                    },
+                    "rating": {
+                        "type": "string",
+                        "enum": [
+                            "up",
+                            "down"
+                        ],
+                        "title": "Rating"
+                    },
+                    "note": {
+                        "anyOf": [
+                            {
+                                "type": "string",
+                                "maxLength": 300
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Note",
+                        "description": "What would be better."
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "message_id",
+                    "rating"
+                ],
+                "title": "FeedbackIn"
+            },
+            "FeedbackKept": {
+                "properties": {
+                    "learned": {
+                        "type": "boolean",
+                        "title": "Learned",
+                        "description": "True when it was kept: learning and its feedback source are on."
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "learned"
+                ],
+                "title": "FeedbackKept"
             },
             "GrantView": {
                 "properties": {

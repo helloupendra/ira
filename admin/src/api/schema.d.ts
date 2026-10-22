@@ -1530,6 +1530,23 @@ export interface paths {
         patch: operations["edit_learning"];
         trace?: never;
     };
+    "/v1/me/feedback": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** A thumb up or down on one of Ira's answers to you */
+        post: operations["give_feedback"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -1850,6 +1867,11 @@ export interface components {
             tool_calls?: components["schemas"]["AskToolCall"][];
             /** Model */
             model?: string | null;
+            /**
+             * Message Id
+             * @description The stored answer's id, for POST /v1/me/feedback.
+             */
+            message_id?: number | null;
         };
         /**
          * AskToolCall
@@ -2255,6 +2277,11 @@ export interface components {
             model: string | null;
             /** Conversation Id */
             conversation_id: string;
+            /**
+             * Message Id
+             * @description The stored answer's id, for POST /v1/me/feedback.
+             */
+            message_id?: number | null;
         };
         /** DownloadView */
         DownloadView: {
@@ -2337,6 +2364,32 @@ export interface components {
             data?: {
                 [key: string]: unknown;
             };
+        };
+        /** FeedbackIn */
+        FeedbackIn: {
+            /**
+             * Message Id
+             * @description The answer's message_id, from ask or the done event.
+             */
+            message_id: number;
+            /**
+             * Rating
+             * @enum {string}
+             */
+            rating: "up" | "down";
+            /**
+             * Note
+             * @description What would be better.
+             */
+            note?: string | null;
+        };
+        /** FeedbackKept */
+        FeedbackKept: {
+            /**
+             * Learned
+             * @description True when it was kept: learning and its feedback source are on.
+             */
+            learned: boolean;
         };
         /**
          * GrantView
@@ -9392,6 +9445,66 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["LearningItem"];
+                };
+            };
+            /** @description Bad input */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorDetail"];
+                };
+            };
+            /** @description No credential, or an invalid one */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorDetail"];
+                };
+            };
+            /** @description Not allowed: role, token, or a missing CSRF header */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorDetail"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    give_feedback: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["FeedbackIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FeedbackKept"];
                 };
             };
             /** @description Bad input */

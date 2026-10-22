@@ -100,6 +100,8 @@ def daily_points(observations: list[dict[str, Any]], zone: ZoneInfo) -> dict[str
             keep(f"arrive:{label}", day, minutes, oid, True)
         elif kind == "leave" and label:
             keep(f"leave:{label}", day, minutes, oid, False)
+        elif kind == "heading" and label:
+            keep(f"heading:{label}", day, minutes, oid, True)
         elif kind == "first_activity":
             keep("first_activity", day, minutes, oid, True)
         if obs.get("source") == "mac":
@@ -120,6 +122,8 @@ def _routine_words(key: str) -> tuple[str, str]:
         return "arrive", f"reach {key.split(':', 1)[1]}"
     if key.startswith("leave:"):
         return "leave", f"leave {key.split(':', 1)[1]}"
+    if key.startswith("heading:"):
+        return "heading", f"head to {key.split(':', 1)[1]}"
     if key == "first_activity":
         return "first_activity", "start on your Mac"
     return "last_activity", "stop using your Mac"

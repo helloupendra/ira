@@ -93,11 +93,21 @@ class Runtime:
             self.learner = Learner(self.learning)
         if self.assistant.memory is None:
             self.assistant.memory = self.learner.memory
+        if self.assistant.after_turn is None:
+            self.assistant.after_turn = self._learn_from
         if self.assistant.personal_tools is None:
             self.assistant.personal_tools = self.personal_tools
         if self.guard.device_runner is None:
             self.guard.device_runner = self.hub.run_action
         self.hub.welcome_extra = self._welcome
+
+    async def _learn_from(self, user_id: int, message: str) -> None:
+        """After a turn: what the person said about where they are going, if they allow it."""
+        from ira.learning.extract import extract
+
+        assert self.learning is not None
+        tier = "fast" if "fast" in self.gateway.tiers else self.assistant.tier
+        await extract(self.learning, self.gateway, user_id, message, tier=tier)
 
     def personal_tools(self, user_id: int | None) -> list[PersonalTool]:
         """One person's own tools for a turn: their devices' tools whose skill is on,

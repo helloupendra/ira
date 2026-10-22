@@ -59,11 +59,13 @@ class Conversations:
             is not None
         )
 
-    def append(self, conversation_id: str, messages: list[Message]) -> None:
+    def append(self, conversation_id: str, messages: list[Message]) -> list[int]:
+        """Store messages; returns their ids, in order."""
         now = self.clock()
+        ids = []
         for message in messages:
             content, calls = _encode(message)
-            self.store.execute(
+            cursor = self.store.execute(
                 "INSERT INTO messages (conversation_id, at, role, content, tool_calls, "
                 "tool_call_id, name, action_id, model, private) "
                 "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
@@ -80,11 +82,13 @@ class Conversations:
                     int(message.private),
                 ),
             )
+            ids.append(int(cursor.lastrowid or 0))
         turns = sum(1 for m in messages if m.role == "user")
         self.store.execute(
             "UPDATE conversations SET last_at = ?, turns = turns + ? WHERE id = ?",
             (now, turns, conversation_id),
         )
+        return ids
 
     def load(self, conversation_id: str, limit: int) -> list[Message]:
         """The latest ``limit`` messages since the last reset, starting at a user turn.

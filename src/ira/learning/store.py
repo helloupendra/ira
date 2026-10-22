@@ -28,6 +28,7 @@ KINDS = (
     "network",
     "arrive",
     "leave",
+    "heading",
     "said",
     "feedback",
 )
