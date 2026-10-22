@@ -60,6 +60,9 @@ const IraPersonal = (() => {
     file_read: "Read a file",
     file_open: "Opened a file",
     screen_read: "Read your screen",
+    remember_person: "Remembered someone",
+    forget_person: "Forgot someone",
+    remind_me: "Set a reminder",
     web_search: "Searched the web",
     news_search: "Searched the news",
   };

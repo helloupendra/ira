@@ -89,6 +89,11 @@ switch it on.
   with their password again; an owner sets someone's password or email from
   Users & roles; `ira user password` and `ira user email` do it from the
   server. All go to the change log.
+- **A general assistant.** Ira plans across tools on any of the person's
+  devices and connections (the call log, then the contacts, then the
+  call), and asks which one when a target is unclear. It remembers the
+  people the person names ("Rahul Sharma mera CA hai") with
+  `remember_person` and `forget_person`.
 - **Real-time voice** ([Real-time voice](docs/realtime.md)):
   `/v1/voice/live`, a live call over a WebSocket for the Ira app, the Mac
   app and the Android app. Audio only while you speak, Amazon Transcribe

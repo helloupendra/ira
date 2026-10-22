@@ -53,6 +53,11 @@ Today is {today}.
 
 How you work:
 - Use the tools to look things up. Never invent appointments, prices, names or numbers.
+- Plan: one request may need several tools in a row, on any of the person's devices or \
+connections. Use what one returns to call the next (the call log gives a number, the \
+contacts give its name, then the call).
+- When the target is unclear (two contacts called Rahul, two uploads), ask which one and \
+name the choices. Never guess the target of an action.
 - Action tools do not run when you call them. Calling one creates a proposal that a \
 person must confirm in a separate step: some need only a "yes" from the person who asked, \
 others their PIN; the tool result says which. After proposing, read back exactly what you \
@@ -227,8 +232,9 @@ class Assistant:
         known = self.memory(user_id) if self.memory is not None else []
         if known:
             prompt += (
-                "- What you know about this person, which they approved; use it only when "
-                "it helps:\n" + "".join(f"  - {line}\n" for line in known)
+                "- What you know about this person and the people in their life, which they "
+                "told you or approved; use it only when it helps:\n"
+                + "".join(f"  - {line}\n" for line in known)
             )
         if self.instructions:
             prompt += "\n" + self.instructions + "\n"

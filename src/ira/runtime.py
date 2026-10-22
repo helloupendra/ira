@@ -13,6 +13,7 @@ from ira.config import ConfigError, ProviderConfig, Settings, secret
 from ira.conversations import Conversations
 from ira.devices import DeviceHub, Devices
 from ira.learning.learner import Learner
+from ira.learning.people import people_tools
 from ira.learning.reminders import reminder_tools
 from ira.learning.service import LearningService
 from ira.models.anthropic import AnthropicProvider
@@ -120,6 +121,7 @@ class Runtime:
             tools += self.search.tools()
         if self.learning is not None and self.learner is not None:
             tools += reminder_tools(self.learning, user_id, self.learner.zone(user_id))
+            tools += people_tools(self.learning.data, user_id)
         return tools
 
     def _welcome(self, user_id: int) -> dict[str, Any]:

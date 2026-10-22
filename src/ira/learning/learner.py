@@ -198,17 +198,25 @@ class Learner:
     # Use.
 
     def memory(self, user_id: int | None) -> list[str]:
-        """The person's active learnings, for their prompt, within the budget."""
-        if user_id is None or not self.service.user_settings.get(user_id).learning:
+        """The person's active learnings, for their prompt, within the budget: the people
+        they told Ira about (always), then routines and preferences (when learning is on)."""
+        if user_id is None:
             return []
+        from ira.learning.people import people_lines
+
+        people = people_lines(self.data, user_id)
+        if not self.service.user_settings.get(user_id).learning:
+            return people
         lines: list[str] = []
         used = 0
         for learning in self.data.learnings(user_id, ("active",)):
+            if learning.kind == "person":
+                continue
             if len(lines) >= MAX_LINES or used + len(learning.text) > MAX_CHARS:
                 break
             lines.append(learning.text)
             used += len(learning.text)
-        return lines
+        return people + lines
 
     async def nudge(self, user_id: int) -> int:
         """Nudge 15 minutes before an active routine on a day it has not happened yet."""

@@ -76,6 +76,17 @@ middle half).
 At most 8 remembered sentences, 600 characters in all, go into what Ira
 reads before answering you.
 
+## People in your life
+
+Tell Ira who someone is, and it remembers: "Rahul Sharma mera CA hai", or
+"remember that Priya runs the Pune office". It says what it saved, and
+uses it when it helps ("call my CA" finds Rahul Sharma; with two Rahuls in
+your contacts, it asks which one). "Forget Rahul" forgets him. People you
+told Ira about show under **What Ira knows**, where **Forget it** works too.
+
+This needs no switch: telling Ira to remember is the yes. At most 20
+people, 1,200 characters in all, go into what Ira reads before answering.
+
 ## Reminders and nudges
 
 Ask in your own words:

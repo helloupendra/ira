@@ -358,7 +358,34 @@ def test_learnings_over_http_are_the_callers_own(registry):
             == "Asia/Kolkata"
         )
         prompt = runtime.assistant.system_prompt(owner.id)
-        assert "which they approved" in prompt and "18:34" in prompt
+        assert "told you or approved" in prompt and "18:34" in prompt
         assert client.delete(f"/v1/me/learnings/{item['id']}", headers=mine).json() == {
             "observations": 9
         }
+
+
+async def test_people_the_person_names_are_remembered_and_used(store):
+    from ira.learning.people import people_tools
+
+    learner, user, _, _ = setup(store)
+    learner.service.user_settings.set(user.id, "learning", None)  # no switch needed
+    remember, forget = people_tools(learner.data, user.id)
+    assert remember.tier == 1 and forget.tier == 1
+    done = await remember.run({"name": "Rahul Sharma", "about": "my CA, files the GST"})
+    assert done == {"summary": "I'll remember: Rahul Sharma: my CA, files the GST"}
+    await remember.run({"name": "rahul  sharma", "about": "my CA"})  # the same person, updated
+    assert learner.memory(user.id) == ["rahul sharma: my CA"]
+    with pytest.raises(ToolError, match="say who it is"):
+        await remember.run({"name": "Priya", "about": " "})
+    other = Accounts(store).create_user("staff@example.com", PASSWORD, "staff")
+    assert learner.memory(other.id) == []
+    assert (await forget.run({"name": "Rahul Sharma"}))["summary"].startswith("Forgotten")
+    assert learner.memory(user.id) == []
+    assert (await forget.run({"name": "Nobody"}))["summary"] == "I had nothing saved about Nobody."
+
+
+def test_the_prompt_asks_to_chain_tools_and_ask_back(registry):
+    runtime = make_runtime(registry=registry)
+    prompt = runtime.assistant.system_prompt(None)
+    assert "several tools in a row" in prompt
+    assert "ask which one and name the choices" in prompt
