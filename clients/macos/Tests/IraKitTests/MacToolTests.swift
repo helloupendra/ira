@@ -320,6 +320,15 @@ struct CodeTaskTests {
         #expect(CodeTasks.argv(["agent"], prompt: "do it") == ["agent", "do it"])
     }
 
+    @Test func longTasksSayHowTheyAreGoing() {
+        let start = Date(timeIntervalSince1970: 1_000_000)
+        #expect(!CodeTasks.progressDue(started: start, last: start, now: start.addingTimeInterval(120)))
+        #expect(CodeTasks.progressDue(started: start, last: start, now: start.addingTimeInterval(301)))
+        let said = start.addingTimeInterval(301)
+        #expect(!CodeTasks.progressDue(started: start, last: said, now: said.addingTimeInterval(300)))
+        #expect(CodeTasks.progressDue(started: start, last: said, now: said.addingTimeInterval(601)))
+    }
+
     @Test func agentProgress() {
         let (text, _) = AgentOutput.progress(#"{"type":"assistant","message":{"content":[{"type":"text","text":"Reading the tests"}]}}"#)
         #expect(text == "Reading the tests")

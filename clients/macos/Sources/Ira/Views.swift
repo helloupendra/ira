@@ -134,12 +134,6 @@ struct Header: View {
 
 // MARK: First run
 
-func openPrivacy(_ anchor: String) {
-    if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?\(anchor)") {
-        NSWorkspace.shared.open(url)
-    }
-}
-
 struct PermissionRow: View {
     let permission: Permission
     let ask: () -> Void
@@ -172,8 +166,17 @@ struct PermissionRow: View {
                     .font(.callout)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
-                if permission.state == .missing {
-                    Text("Off. Switch Ira on there; you may need to quit and reopen Ira after.")
+                if permission.state == .missing && permission.id == "screen" {
+                    HStack(alignment: .firstTextBaseline) {
+                        Text("Switch Ira on there. macOS then asks to quit and reopen Ira; if it does not, press Reopen Ira.")
+                            .font(.caption)
+                            .foregroundStyle(.orange)
+                            .fixedSize(horizontal: false, vertical: true)
+                        Button("Reopen Ira") { PermissionCenter.reopen() }
+                            .controlSize(.small)
+                    }
+                } else if permission.state == .missing {
+                    Text("Off. Switch Ira on there, then come back.")
                         .font(.caption)
                         .foregroundStyle(.orange)
                 }

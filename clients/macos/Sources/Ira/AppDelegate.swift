@@ -32,6 +32,19 @@ final class FloatingPanel: NSPanel {
     override func cancelOperation(_ sender: Any?) {
         onEscape?()
     }
+
+    /// Stop taking the keyboard, but stay on screen: typing then goes to the app
+    /// or the system prompt the person turned to (a password sheet included).
+    func giveUpKeyboard() {
+        guard isKeyWindow, isVisible else { return }
+        orderOut(nil)
+        orderFrontRegardless()
+    }
+}
+
+extension Notification.Name {
+    /// Ira is about to open System Settings for a permission: its window steps aside.
+    static let iraOpensSystemSettings = Notification.Name("in.ira.mac.opensSystemSettings")
 }
 
 @MainActor
@@ -42,6 +55,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var settingsWindow: NSWindow?
     private var hotKey: HotKey?
     private var wakeWatch: Any?
+    private var observers: [NSObjectProtocol] = []
+    private var escapeMonitor: Any?
+    /// The window stepped aside for System Settings and comes back after it.
+    private var returnAfterSettings = false
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         model = AppModel()
@@ -63,6 +80,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         hotKey = HotKey { [weak self] in self?.togglePanel() }
         registerHotKey()
         model.onWake = { [weak self] in self?.showPanel() }
+        watchOtherApps()
         // The menu-bar mark shows a dot while "Hey Ira" listens.
         wakeWatch = model.$wakeListening.sink { [weak self] listening in
             self?.statusItem.button?.image = AppDelegate.menuBarImage(listening: listening)
@@ -179,6 +197,57 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
         panel.makeKeyAndOrderFront(nil)
         NotificationCenter.default.post(name: .iraFocusInput, object: nil)
+    }
+
+    /// The window never keeps the keyboard from another app or a system prompt:
+    /// when anything else becomes active, it lets go. It steps aside entirely
+    /// while Ira has System Settings open for a permission, and comes back after.
+    private func watchOtherApps() {
+        let workspace = NSWorkspace.shared.notificationCenter
+        observers.append(workspace.addObserver(
+            forName: NSWorkspace.didActivateApplicationNotification, object: nil, queue: .main
+        ) { [weak self] note in
+            let app = note.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication
+            guard app?.processIdentifier != getpid() else { return }
+            MainActor.assumeIsolated { self?.panel.giveUpKeyboard() }
+        })
+        observers.append(workspace.addObserver(
+            forName: NSWorkspace.didDeactivateApplicationNotification, object: nil, queue: .main
+        ) { [weak self] note in
+            let app = note.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication
+            guard app?.bundleIdentifier == "com.apple.systempreferences" else { return }
+            MainActor.assumeIsolated { self?.settingsClosed() }
+        })
+        observers.append(workspace.addObserver(
+            forName: NSWorkspace.didTerminateApplicationNotification, object: nil, queue: .main
+        ) { [weak self] note in
+            let app = note.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication
+            guard app?.bundleIdentifier == "com.apple.systempreferences" else { return }
+            MainActor.assumeIsolated { self?.settingsClosed() }
+        })
+        observers.append(NotificationCenter.default.addObserver(
+            forName: .iraOpensSystemSettings, object: nil, queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated {
+                guard let self, self.panel.isVisible else { return }
+                self.returnAfterSettings = true
+                self.panel.orderOut(nil)
+            }
+        })
+        // Esc closes the window, wherever the cursor is in it.
+        escapeMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
+            guard event.keyCode == 53, let self, event.window === self.panel else { return event }
+            self.hidePanel()
+            return nil
+        }
+    }
+
+    private func settingsClosed() {
+        model.permissions.refresh()
+        guard returnAfterSettings else { return }
+        returnAfterSettings = false
+        // Back, but without the keyboard: the person may be typing elsewhere.
+        panel.orderFrontRegardless()
     }
 
     func hidePanel() {

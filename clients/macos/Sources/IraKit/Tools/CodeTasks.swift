@@ -155,6 +155,9 @@ public final class CodeTasks: @unchecked Sendable {
     public typealias Announce = @Sendable (_ event: String, _ title: String, _ text: String, _ data: JSONValue) -> Void
 
     public static let maxRunning = 2
+    /// A long task says how it is going: first after 5 minutes, then every 10.
+    public static let progressAfter: Double = 300
+    public static let progressEvery: Double = 600
     public static let maxInstruction = 4000
     public static let maxFiles = 50
     static let noPushURL = "ira-task-cannot-push:"
@@ -341,6 +344,13 @@ public final class CodeTasks: @unchecked Sendable {
 
     // MARK: Running
 
+    /// Whether a running task should say how it is going now.
+    public static func progressDue(started: Date, last: Date, now: Date) -> Bool {
+        let running = now.timeIntervalSince(started)
+        guard running >= progressAfter else { return false }
+        return last == started || now.timeIntervalSince(last) >= progressEvery
+    }
+
     func environment() -> [String: String] {
         var env = ProcessInfo.processInfo.environment
         env["GIT_CONFIG_COUNT"] = "2"
@@ -393,9 +403,19 @@ public final class CodeTasks: @unchecked Sendable {
             }
             async let errors = Command.readAll(command.stderr, limit: 16 * 1024)
             var final: JSONValue?
+            var lastProgressEvent = task.started
             for await line in Command.lines(command.stdout) {
                 let (progress, result) = AgentOutput.progress(line)
-                if let progress { update(id) { $0.progress = Array(($0.progress + [progress]).suffix(5)) } }
+                if let progress {
+                    update(id) { $0.progress = Array(($0.progress + [progress]).suffix(5)) }
+                    let now = Date()
+                    if CodeTasks.progressDue(started: task.started, last: lastProgressEvent, now: now) {
+                        lastProgressEvent = now
+                        let minutes = Int(now.timeIntervalSince(task.started) / 60)
+                        announce("task_progress", "Task \(task.id) in \(task.repo.name): \(minutes) minutes in",
+                                 progress, ["id": .string(task.id), "repo": .string(task.repo.name)])
+                    }
+                }
                 if let result { final = result }
             }
             let code = await command.wait()

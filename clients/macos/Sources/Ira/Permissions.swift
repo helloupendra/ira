@@ -154,9 +154,26 @@ final class PermissionCenter: ObservableObject {
     }
 
     func open(_ permission: Permission) {
-        if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?\(permission.pane)") {
+        PermissionCenter.openPane(permission.pane)
+    }
+
+    /// Open a Privacy & Security page. Ira's window steps aside first, so it never
+    /// sits over the page or the password sheet macOS may show there.
+    static func openPane(_ pane: String) {
+        NotificationCenter.default.post(name: .iraOpensSystemSettings, object: nil)
+        if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?\(pane)") {
             NSWorkspace.shared.open(url)
         }
+    }
+
+    /// Quit and open Ira again: macOS applies Screen Recording only to a fresh start.
+    static func reopen() {
+        let path = Bundle.main.bundlePath
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/bin/sh")
+        process.arguments = ["-c", "sleep 1; /usr/bin/open \"$0\"", path]
+        try? process.run()
+        NSApp.terminate(nil)
     }
 }
 
