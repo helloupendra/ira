@@ -55,7 +55,8 @@ SKILLS: dict[str, str] = {
     "scroll and choose menu items), each step after your PIN or within an approval it "
     "opened. Never in password fields, password managers or System Settings' private pages.",
     # Skills the phone and Mac apps offer; Ira reads and acts only when you ask.
-    "calls": "Calls: who called, and placing a call after you say yes to the exact number.",
+    "calls": "Calls: placing a call after you say yes to the exact number, and on Android, "
+    "who called.",
     "contacts": "Contacts: find a person's number or email in your contacts.",
     "messages": "Messages: read your recent texts, and send one after you say yes to the "
     "exact words and person.",
@@ -70,7 +71,7 @@ SKILLS: dict[str, str] = {
     "location": "Location: where this device is, when you ask. Never tracked.",
     "media": "Media: play, pause and skip what is playing.",
 }
-DEFAULT_LABELS = {"mac": "My Mac", "android": "My Android phone"}
+DEFAULT_LABELS = {"mac": "My Mac", "android": "My Android phone", "ios": "My iPhone"}
 
 
 class DeviceError(ValueError):
