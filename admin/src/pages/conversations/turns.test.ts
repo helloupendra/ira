@@ -24,7 +24,7 @@ const T = Date.UTC(2026, 9, 12, 15, 55) / 1000;
 let nextId = 100;
 function msg(role: string, content: string | null, extra: Partial<MessageRow> = {}): MessageRow {
   nextId += 1;
-  return { id: nextId, at: 1_791_800_000 + nextId, role, content, tool_calls: [], tool_call_id: null, name: null, ...extra };
+  return { id: nextId, at: 1_791_800_000 + nextId, role, content, tool_calls: [], tool_call_id: null, name: null, private: false, ...extra };
 }
 
 const call = (id: string, name: string, args: string) => ({ id, name, arguments: args });
@@ -35,6 +35,7 @@ const proposal = (status: string): MessageAction => ({
   summary: 'Cancel appointment #17: Avery Example on Tuesday 20 October at 09:30',
   status,
   expires_at: T + 120,
+  tier: 3,
 });
 
 describe('buildTurns', () => {

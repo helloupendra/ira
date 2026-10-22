@@ -19,6 +19,7 @@ from __future__ import annotations
 import asyncio
 import base64
 import json
+import re
 from typing import Any, Protocol
 
 from ira.models.base import ProviderError
@@ -176,8 +177,9 @@ class PollyTTS:
             "VoiceId": self.voice,
             "Engine": self.engine,
         }
-        if self.language_code:
-            params["LanguageCode"] = self.language_code
+        language = language_for(text, self.language_code)
+        if language:
+            params["LanguageCode"] = language
         try:
             response = self.client.synthesize_speech(**params)
         except Exception as exc:  # botocore's ClientError, NoCredentialsError, ...
@@ -186,6 +188,22 @@ class PollyTTS:
 
     async def speak(self, text: str) -> bytes:
         return await asyncio.to_thread(self._synthesize, text)
+
+
+# Indian English and Hindi: a bilingual voice (Kajal) reads Devanagari as Hindi.
+_BILINGUAL = ("en-IN", "hi-IN")
+_DEVANAGARI = re.compile(r"[\u0900-\u097f]")
+
+
+def language_for(text: str, configured: str | None) -> str | None:
+    """The Polly language code for one reply: Hindi when it holds Devanagari.
+
+    Only with an Indian English or Hindi configuration, so other voices are unchanged.
+    Hinglish in Latin letters stays Indian English, which reads it naturally.
+    """
+    if configured in _BILINGUAL:
+        return "hi-IN" if _DEVANAGARI.search(text) else "en-IN"
+    return configured
 
 
 # A few frames of silent MPEG-1 Layer III audio: valid MP3 that players accept.

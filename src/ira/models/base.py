@@ -57,6 +57,7 @@ class Message:
     # Kept with the transcript only; providers never send it.
     action_id: str | None = None  # role="tool": the action this call proposed
     model: str | None = None  # role="assistant": the provider:model that wrote it
+    private: bool = False  # role="tool": a device's output, shown only to its own user
 
     @property
     def text(self) -> str:

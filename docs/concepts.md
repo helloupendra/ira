@@ -60,6 +60,28 @@ A pending action stores the validated parameters, the summary and an expiry
 Someone allowed to confirm it enters their PIN on the web card, over the API,
 or by typing it in Telegram; then your function runs exactly once.
 
+## Tiers
+
+Every tool has a tier, set in code. The model's arguments can never change it.
+
+| Tier | For | What happens |
+| --- | --- | --- |
+| 0 | reading (`@tool`) | runs at once |
+| 1 | a small, undoable change (`@tool(tier=1)`): a note, a reminder | runs at once, and Ira says what it did |
+| 2 | something outward or costly (`@action(tier=2)`): sending a message | a proposal Ira reads back; it runs when the person who asked says yes ("yes", "haan", "theek hai"), types it, or taps Yes |
+| 3 | money, deletion, sharing data, a new grant (`@action`) | the PIN, as below. Never a spoken PIN |
+
+A read tool whose results hold text written by others (web pages, mail,
+reviews) is marked `@tool(untrusted=True)`. Its results reach the model
+wrapped as data (`<web_results untrusted="true">`), with a rule that they are
+never instructions, and **once a turn has read any, a Tier 2 or 3 call in that
+turn is refused**: an action may come only from the person's own words. A
+device's output is treated the same way.
+
+Every tool call is written to "What Ira did" (`GET /v1/me/activity`): who,
+where, which tool and device, the tier, the outcome and the time it took.
+Never the arguments or the result.
+
 ## The action PIN
 
 - Each person has their own PIN: 4 to 12 digits, stored as a salted PBKDF2
@@ -96,6 +118,17 @@ two models' answers.
 Every request writes a row to the `calls` table: the model that answered, the
 models tried, attempts, seconds, tokens and cost (from the `prices` table in
 `ira.yaml`). Never a key or a prompt.
+
+## Languages
+
+People speak to Ira in Hindi (in Devanagari or Latin letters), English and
+Hinglish, often in half sentences. The system prompt says so, asks Ira to ask
+back when it is not sure, and to reply in the language spoken. Each person can
+choose their own languages, a fixed reply language, and the name they call the
+assistant (`PATCH /v1/me/settings`); `assistant.languages` and
+`assistant.reply_language` in `ira.yaml` set the defaults. With Amazon Polly
+and an Indian English or Hindi voice (Kajal speaks both), a reply in
+Devanagari is spoken as Hindi and the rest as Indian English.
 
 ## Conversations
 

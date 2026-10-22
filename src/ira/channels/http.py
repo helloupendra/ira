@@ -22,7 +22,7 @@ from starlette.types import Scope
 
 from ira import __version__, web
 from ira.accounts import Principal
-from ira.channels import account, admin, admin_write
+from ira.channels import account, admin, admin_write, me
 from ira.channels.account import claim_setup
 from ira.channels.deps import (
     SESSION_COOKIE,
@@ -78,6 +78,7 @@ OUTCOME_STATUS = {
     "expired": 410,
     "locked": 423,
     "not_allowed": 403,
+    "needs_pin": 403,
 }
 
 CSP = (
@@ -94,10 +95,13 @@ def _conversation_key(principal: Principal, client_id: str) -> str:
 def action_view(runtime: Runtime, principal: Principal, action: dict[str, Any]) -> ActionView:
     """An action as the caller sees it: who may confirm it, and whether the caller can."""
     roles = runtime.guard.confirm_roles_for(action["tool"])
+    pending = runtime.guard.get(action["id"])
+    tier = action.get("tier", 3)
     return ActionView(
         **action,
         confirm_roles=list(roles),
         can_confirm=principal.can("actions") and principal.user.role in roles,
+        can_approve=tier == 2 and pending is not None and pending.user_id == principal.user.id,
     )
 
 
@@ -187,7 +191,7 @@ def info(
     principal: Principal = Depends(get_principal), runtime: Runtime = Depends(get_runtime)
 ) -> InfoResponse:
     return InfoResponse(
-        name=runtime.assistant.name,
+        name=runtime.assistant.name_for(principal.user.id),
         version=__version__,
         stt=getattr(runtime.stt, "name", None),
         tts=getattr(runtime.tts, "name", None),
@@ -439,6 +443,24 @@ async def confirm_action(
 
 
 @api.post(
+    "/actions/{action_id}/approve",
+    response_model=ActionOutcome,
+    tags=["actions"],
+    summary="Say yes to a Tier 2 action you asked for (no PIN)",
+)
+async def approve_action(
+    action_id: str,
+    response: Response,
+    principal: Principal = Depends(require("ask")),
+    runtime: Runtime = Depends(get_runtime),
+) -> ActionOutcome:
+    outcome = await runtime.guard.approve(
+        action_id, user_id=principal.user.id, actor=principal.actor, channel=principal.channel
+    )
+    return _outcome_response(response, outcome, runtime, principal)
+
+
+@api.post(
     "/actions/{action_id}/cancel",
     response_model=ActionOutcome,
     tags=["actions"],
@@ -538,6 +560,7 @@ def create_app(runtime: Runtime, *, start_channels: bool = True) -> FastAPI:
     app.include_router(api)
     app.include_router(admin.router)
     app.include_router(admin_write.router)
+    app.include_router(me.router)
 
     if (web.ADMIN_DIR / "index.html").is_file():
         # The mount below only matches "/admin/...", and the catch-all "/" mount would

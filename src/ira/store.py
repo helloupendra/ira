@@ -55,7 +55,10 @@ CREATE TABLE IF NOT EXISTS pending_actions (
     expires_at      REAL NOT NULL,
     status          TEXT NOT NULL,
     result          TEXT,
-    finished_at     REAL
+    finished_at     REAL,
+    tier            INTEGER, -- 2: a "yes" from the person who asked; 3 (or NULL): a PIN
+    user_id         INTEGER, -- who asked
+    device_id       INTEGER  -- a device's tool: runs on that device once confirmed
 );
 CREATE INDEX IF NOT EXISTS pending_actions_conversation
     ON pending_actions (conversation_id, created_at);
@@ -160,7 +163,8 @@ CREATE TABLE IF NOT EXISTS messages (
     tool_call_id    TEXT,
     name            TEXT,
     action_id       TEXT, -- a tool result that proposed an action: that action
-    model           TEXT  -- an assistant message: the provider:model that wrote it
+    model           TEXT, -- an assistant message: the provider:model that wrote it
+    private         INTEGER NOT NULL DEFAULT 0 -- a device's output: only its user sees it
 );
 CREATE INDEX IF NOT EXISTS messages_conversation ON messages (conversation_id, id);
 
@@ -169,6 +173,72 @@ CREATE TABLE IF NOT EXISTS telegram_chats (
     user_id   INTEGER NOT NULL REFERENCES users (id),
     paired_at REAL NOT NULL,
     name      TEXT  -- the chat's name as Telegram gives it, for the console
+);
+
+-- A person's own devices (a Mac, an Android phone). Only the token's hash is kept.
+CREATE TABLE IF NOT EXISTS devices (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id      INTEGER NOT NULL REFERENCES users (id),
+    kind         TEXT NOT NULL CHECK (kind IN ('mac', 'android')),
+    label        TEXT NOT NULL,
+    token_hash   TEXT NOT NULL UNIQUE,
+    created_at   REAL NOT NULL,
+    last_seen_at REAL,
+    revoked_at   REAL,
+    version      TEXT,
+    tools        TEXT NOT NULL DEFAULT '[]', -- JSON: the tools of its last hello
+    skills       TEXT NOT NULL DEFAULT '[]'  -- JSON: the skills its user switched on
+);
+CREATE INDEX IF NOT EXISTS devices_user ON devices (user_id);
+
+-- One-time codes a device exchanges for its token. Only the code's hash is kept.
+CREATE TABLE IF NOT EXISTS device_pairings (
+    id         TEXT PRIMARY KEY,
+    code_hash  TEXT NOT NULL UNIQUE,
+    user_id    INTEGER NOT NULL REFERENCES users (id),
+    kind       TEXT NOT NULL,
+    label      TEXT NOT NULL,
+    skills     TEXT NOT NULL DEFAULT '[]',
+    created_at REAL NOT NULL,
+    expires_at REAL NOT NULL,
+    used_at    REAL,
+    device_id  INTEGER
+);
+
+-- What a device announced (a watched tab finished): title and text, no markup.
+CREATE TABLE IF NOT EXISTS device_events (
+    id        INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id   INTEGER NOT NULL REFERENCES users (id),
+    device_id INTEGER,
+    at        REAL NOT NULL,
+    event     TEXT NOT NULL,
+    title     TEXT NOT NULL,
+    text      TEXT NOT NULL,
+    data      TEXT
+);
+CREATE INDEX IF NOT EXISTS device_events_user ON device_events (user_id, id);
+
+-- "What Ira did": every tool call, without its arguments or results.
+CREATE TABLE IF NOT EXISTS tool_log (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    at              REAL NOT NULL,
+    user_id         INTEGER,
+    channel         TEXT,
+    conversation_id TEXT,
+    tool            TEXT NOT NULL,
+    device_id       INTEGER,
+    tier            INTEGER NOT NULL,
+    outcome         TEXT NOT NULL,
+    seconds         REAL
+);
+CREATE INDEX IF NOT EXISTS tool_log_user ON tool_log (user_id, id);
+
+-- Each person's own preferences: the assistant's name, languages, skills.
+CREATE TABLE IF NOT EXISTS user_settings (
+    user_id INTEGER NOT NULL REFERENCES users (id),
+    key     TEXT NOT NULL,
+    value   TEXT NOT NULL,
+    PRIMARY KEY (user_id, key)
 );
 
 CREATE TABLE IF NOT EXISTS pairing_codes (
@@ -210,6 +280,10 @@ class Store:
         ("change_log", "channel", "TEXT"),
         ("messages", "model", "TEXT"),
         ("telegram_chats", "name", "TEXT"),
+        ("messages", "private", "INTEGER NOT NULL DEFAULT 0"),
+        ("pending_actions", "tier", "INTEGER"),
+        ("pending_actions", "user_id", "INTEGER"),
+        ("pending_actions", "device_id", "INTEGER"),
     )
 
     def _add_missing_columns(self) -> None:

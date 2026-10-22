@@ -15,6 +15,17 @@
 Arguments come from the function signature (use ``Annotated[..., Field(...)]``
 for descriptions), or from a single pydantic model parameter. Either way the
 JSON schema the model sees and the validation Ira applies are the same object.
+
+Every tool has a **tier**, set here in code and never by the model:
+
+* 0 - reads inside a grant: runs at once (``@tool``'s default);
+* 1 - small and undoable: runs at once, and Ira says what it did;
+* 2 - outward or costly: a proposal the person approves with a "yes";
+* 3 - money, deletion, sharing, a new grant: the PIN (``@action``'s default).
+
+``untrusted=True`` marks a read tool whose results hold text written by others
+(web pages, mail): they reach the model wrapped as data, and a turn that has
+read them cannot propose a Tier 2 or 3 action.
 """
 
 from __future__ import annotations
@@ -30,6 +41,16 @@ from pydantic import BaseModel, ConfigDict, ValidationError, create_model
 
 ToolKind = Literal["read", "action"]
 NAME_PATTERN = re.compile(r"[A-Za-z0-9_-]{1,64}")
+
+# Tiers a read tool may have (it runs at once) and an action tool may have (it waits).
+READ_TIERS = (0, 1)
+ACTION_TIERS = (2, 3)
+TIER_NAMES = {
+    0: "read",
+    1: "small and undoable",
+    2: "needs a yes",
+    3: "needs the PIN",
+}
 
 
 class ToolError(Exception):
@@ -57,6 +78,8 @@ class Tool:
     kind: ToolKind
     summary: str | Callable[..., str] | None = None
     takes_model: bool = False  # fn(args) instead of fn(**args)
+    tier: int = 0
+    untrusted: bool = False  # results carry text written by others
 
     def schema(self) -> dict[str, Any]:
         """Provider-neutral spec: name, description, JSON schema of the arguments."""
@@ -145,6 +168,8 @@ class ToolRegistry:
         name: str | None = None,
         description: str | None = None,
         summary: str | Callable[..., str] | None = None,
+        tier: int | None = None,
+        untrusted: bool = False,
     ) -> Tool:
         tool_name = name or fn.__name__
         if not NAME_PATTERN.fullmatch(tool_name):
@@ -154,6 +179,15 @@ class ToolRegistry:
         text = description or _first_paragraph(fn.__doc__)
         if not text:
             raise ValueError(f"tool '{tool_name}' needs a description or a docstring")
+        allowed = READ_TIERS if kind == "read" else ACTION_TIERS
+        if tier is None:
+            tier = 0 if kind == "read" else 3
+        if tier not in allowed:
+            raise ValueError(
+                f"tool '{tool_name}': a {kind} tool's tier is one of {', '.join(map(str, allowed))}"
+            )
+        if untrusted and kind != "read":
+            raise ValueError(f"tool '{tool_name}': only a read tool returns untrusted text")
         args_model, takes_model = _args_model(fn, tool_name)
         registered = Tool(
             name=tool_name,
@@ -163,6 +197,8 @@ class ToolRegistry:
             kind=kind,
             summary=summary,
             takes_model=takes_model,
+            tier=tier,
+            untrusted=untrusted,
         )
         self._tools[tool_name] = registered
         return registered
@@ -173,11 +209,25 @@ class ToolRegistry:
         *,
         name: str | None = None,
         description: str | None = None,
+        tier: int = 0,
+        untrusted: bool = False,
     ) -> Any:
-        """Register a read tool: Ira may call it freely to look things up."""
+        """Register a read tool: Ira may call it freely to look things up.
+
+        ``tier=1`` marks a small, undoable change that may run at once (a note,
+        a reminder); Ira says what it did. ``untrusted=True`` marks results
+        that hold text written by others.
+        """
 
         def decorate(func: Callable[..., Any]) -> Callable[..., Any]:
-            self.register(func, kind="read", name=name, description=description)
+            self.register(
+                func,
+                kind="read",
+                name=name,
+                description=description,
+                tier=tier,
+                untrusted=untrusted,
+            )
             return func
 
         return decorate(fn) if fn is not None else decorate
@@ -189,16 +239,21 @@ class ToolRegistry:
         name: str | None = None,
         description: str | None = None,
         summary: str | Callable[..., str] | None = None,
+        tier: int = 3,
     ) -> Any:
-        """Register an action tool: calling it only proposes; the owner confirms with a PIN.
+        """Register an action tool: calling it only proposes; a person confirms it.
 
         ``summary`` is a format string over the arguments, or a function taking
         the same arguments as the tool. A summary function may look things up
         and raise ``ToolError`` to refuse the proposal (e.g. unknown record).
+        ``tier=3`` (the default) needs the confirming person's PIN; ``tier=2``
+        needs only a "yes" from the person who asked.
         """
 
         def decorate(func: Callable[..., Any]) -> Callable[..., Any]:
-            self.register(func, kind="action", name=name, description=description, summary=summary)
+            self.register(
+                func, kind="action", name=name, description=description, summary=summary, tier=tier
+            )
             return func
 
         return decorate(fn) if fn is not None else decorate

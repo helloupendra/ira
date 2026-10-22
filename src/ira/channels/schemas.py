@@ -35,6 +35,16 @@ class ActionView(BaseModel):
         "permission and their role is in confirm_roles. A missing PIN is not counted here; "
         "GET /v1/me/pin says that."
     )
+    tier: int = Field(
+        default=3,
+        description='2: runs on a "yes" from the person who asked (POST /v1/actions/{id}/approve, '
+        "or yes typed or spoken in the same conversation). 3: needs a PIN "
+        "(POST /v1/actions/{id}/confirm).",
+    )
+    can_approve: bool = Field(
+        default=False,
+        description="Tier 2 only: whether the caller is the person who asked, and so may say yes.",
+    )
 
 
 CALL_ID = (
@@ -386,6 +396,7 @@ class MessageAction(BaseModel):
         "past expires_at reads expired, never pending."
     )
     expires_at: float = Field(description="When it stops waiting for a PIN (epoch seconds).")
+    tier: int = Field(default=3, description='2: waits for a "yes"; 3: waits for a PIN.')
 
 
 class MessageRow(BaseModel):
@@ -410,6 +421,11 @@ class MessageRow(BaseModel):
         description="For a tool result that proposed an action: that action now, with its "
         "current status. null for every other message, and for a proposal stored before "
         "this field whose action could not be matched.",
+    )
+    private: bool = Field(
+        default=False,
+        description="For role tool: a device's output. Only the conversation's own user sees "
+        "its content; anyone else's transcript shows a placeholder instead.",
     )
 
 
@@ -440,6 +456,16 @@ class ActionRow(BaseModel):
         default=None, description="Where it was confirmed or cancelled: web, api or telegram."
     )
     decided_at: float | None = None
+    tier: int | None = Field(
+        default=None,
+        description='2: needed a "yes" from the person who asked; 3: a PIN. null for '
+        "actions stored before tiers (they needed a PIN).",
+    )
+    device_id: int | None = Field(
+        default=None,
+        description="An action on someone's own device. Unless it is yours, its params, "
+        "summary and result are hidden.",
+    )
 
 
 class ActionCounts(BaseModel):
@@ -912,3 +938,54 @@ class RoleView(BaseModel):
     role: str
     permissions: list[str]
     description: str
+
+
+# The signed-in person's own assistant: preferences and "What Ira did".
+
+
+class MySettings(BaseModel):
+    """Your own assistant. Each value is yours, or the installation's default."""
+
+    assistant_name: SettingValue = Field(
+        description="What you call the assistant; the default is the installation's name."
+    )
+    wake_phrase: SettingValue = Field(
+        description='What your phone listens for (default "Hey Ira"). A phrase of your own needs '
+        "a wake-word model trained for it."
+    )
+    languages: list[str] = Field(
+        description="The languages you speak to Ira in: en (English), hi (Hindi, in "
+        "Devanagari or Latin letters) and hinglish."
+    )
+    reply_language: str = Field(
+        description="auto: reply in the language you spoke; or always en, hi or hinglish."
+    )
+    language_options: list[str]
+    reply_language_options: list[str]
+
+
+class MySettingsUpdate(BaseModel):
+    """Send only what changes; null goes back to the default."""
+
+    assistant_name: str | None = Field(default=None, max_length=64)
+    wake_phrase: str | None = Field(default=None, max_length=64)
+    languages: list[str] | None = Field(default=None, max_length=10)
+    reply_language: str | None = Field(default=None, max_length=16)
+
+
+class ActivityRow(BaseModel):
+    """One thing Ira did for you: a tool it used or an action that ran. Never its content."""
+
+    id: int
+    at: float
+    channel: str | None = Field(description="Where you asked: web, api, telegram.")
+    tool: str
+    device_id: int | None = None
+    device: str | None = Field(default=None, description="The device's name, for a device tool.")
+    tier: int = Field(description="0 read, 1 small and undoable, 2 needed a yes, 3 needed a PIN.")
+    outcome: str = Field(
+        description="ok or error (it ran); proposed (it waited for a yes or a PIN); refused "
+        "(content from a device or the web asked for it); executed or failed (it ran after "
+        "the confirmation)."
+    )
+    seconds: float | None = None

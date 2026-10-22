@@ -23,6 +23,7 @@ from ira.store import Store
 from ira.tools.actions import ActionGuard
 from ira.tools.loader import load_tool_modules
 from ira.tools.registry import ToolContext, ToolRegistry, default_registry
+from ira.usersettings import UserSettings
 from ira.voice.providers import (
     ChatAudioSTT,
     FakeSTT,
@@ -216,6 +217,11 @@ def build_runtime(
         tier=settings.assistant.tier,
         max_tool_rounds=settings.assistant.max_tool_rounds,
         history_messages=settings.assistant.history_messages,
+        user_settings=UserSettings(
+            store,
+            languages=list(settings.assistant.languages),
+            reply_language=settings.assistant.reply_language,
+        ),
     )
     runtime = Runtime(
         settings=settings,

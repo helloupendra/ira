@@ -379,6 +379,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/actions/{action_id}/approve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Say yes to a Tier 2 action you asked for (no PIN) */
+        post: operations["approve_action"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/actions/{action_id}/cancel": {
         parameters: {
             query?: never;
@@ -961,6 +978,41 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/me/settings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Your own assistant's settings */
+        get: operations["get_my_settings"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Name your assistant, set your wake phrase and languages (null resets) */
+        patch: operations["update_my_settings"];
+        trace?: never;
+    };
+    "/v1/me/activity": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** What Ira did for you: each tool it used and each action that ran, no contents */
+        get: operations["my_activity"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -1097,6 +1149,16 @@ export interface components {
             decided_channel?: string | null;
             /** Decided At */
             decided_at?: number | null;
+            /**
+             * Tier
+             * @description 2: needed a "yes" from the person who asked; 3: a PIN. null for actions stored before tiers (they needed a PIN).
+             */
+            tier?: number | null;
+            /**
+             * Device Id
+             * @description An action on someone's own device. Unless it is yours, its params, summary and result are hidden.
+             */
+            device_id?: number | null;
         };
         /** ActionRule */
         ActionRule: {
@@ -1133,6 +1195,54 @@ export interface components {
              * @description Whether the caller may confirm it: their credential has the actions permission and their role is in confirm_roles. A missing PIN is not counted here; GET /v1/me/pin says that.
              */
             can_confirm: boolean;
+            /**
+             * Tier
+             * @description 2: runs on a "yes" from the person who asked (POST /v1/actions/{id}/approve, or yes typed or spoken in the same conversation). 3: needs a PIN (POST /v1/actions/{id}/confirm).
+             * @default 3
+             */
+            tier: number;
+            /**
+             * Can Approve
+             * @description Tier 2 only: whether the caller is the person who asked, and so may say yes.
+             * @default false
+             */
+            can_approve: boolean;
+        };
+        /**
+         * ActivityRow
+         * @description One thing Ira did for you: a tool it used or an action that ran. Never its content.
+         */
+        ActivityRow: {
+            /** Id */
+            id: number;
+            /** At */
+            at: number;
+            /**
+             * Channel
+             * @description Where you asked: web, api, telegram.
+             */
+            channel: string | null;
+            /** Tool */
+            tool: string;
+            /** Device Id */
+            device_id?: number | null;
+            /**
+             * Device
+             * @description The device's name, for a device tool.
+             */
+            device?: string | null;
+            /**
+             * Tier
+             * @description 0 read, 1 small and undoable, 2 needed a yes, 3 needed a PIN.
+             */
+            tier: number;
+            /**
+             * Outcome
+             * @description ok or error (it ran); proposed (it waited for a yes or a PIN); refused (content from a device or the web asked for it); executed or failed (it ran after the confirmation).
+             */
+            outcome: string;
+            /** Seconds */
+            seconds?: number | null;
         };
         /** AdminSessionRow */
         AdminSessionRow: {
@@ -1637,6 +1747,12 @@ export interface components {
              * @description When it stops waiting for a PIN (epoch seconds).
              */
             expires_at: number;
+            /**
+             * Tier
+             * @description 2: waits for a "yes"; 3: waits for a PIN.
+             * @default 3
+             */
+            tier: number;
         };
         /** MessageRow */
         MessageRow: {
@@ -1676,6 +1792,12 @@ export interface components {
             model?: string | null;
             /** @description For a tool result that proposed an action: that action now, with its current status. null for every other message, and for a proposal stored before this field whose action could not be matched. */
             action?: components["schemas"]["MessageAction"] | null;
+            /**
+             * Private
+             * @description For role tool: a device's output. Only the conversation's own user sees its content; anyone else's transcript shows a placeholder instead.
+             * @default false
+             */
+            private: boolean;
         };
         /** ModelTestRequest */
         ModelTestRequest: {
@@ -1768,6 +1890,44 @@ export interface components {
              * @description The first thing you said, cut to 120 characters.
              */
             preview?: string | null;
+        };
+        /**
+         * MySettings
+         * @description Your own assistant. Each value is yours, or the installation's default.
+         */
+        MySettings: {
+            /** @description What you call the assistant; the default is the installation's name. */
+            assistant_name: components["schemas"]["SettingValue"];
+            /** @description What your phone listens for (default "Hey Ira"). A phrase of your own needs a wake-word model trained for it. */
+            wake_phrase: components["schemas"]["SettingValue"];
+            /**
+             * Languages
+             * @description The languages you speak to Ira in: en (English), hi (Hindi, in Devanagari or Latin letters) and hinglish.
+             */
+            languages: string[];
+            /**
+             * Reply Language
+             * @description auto: reply in the language you spoke; or always en, hi or hinglish.
+             */
+            reply_language: string;
+            /** Language Options */
+            language_options: string[];
+            /** Reply Language Options */
+            reply_language_options: string[];
+        };
+        /**
+         * MySettingsUpdate
+         * @description Send only what changes; null goes back to the default.
+         */
+        MySettingsUpdate: {
+            /** Assistant Name */
+            assistant_name?: string | null;
+            /** Wake Phrase */
+            wake_phrase?: string | null;
+            /** Languages */
+            languages?: string[] | null;
+            /** Reply Language */
+            reply_language?: string | null;
         };
         /** OkResponse */
         OkResponse: {
@@ -3438,6 +3598,37 @@ export interface operations {
                 "application/json": components["schemas"]["ConfirmRequest"];
             };
         };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ActionOutcome"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    approve_action: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                action_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
         responses: {
             /** @description Successful Response */
             200: {
@@ -5833,6 +6024,175 @@ export interface operations {
             };
             /** @description The last owner cannot go, or an action tool cannot be tested */
             409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorDetail"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_my_settings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MySettings"];
+                };
+            };
+            /** @description Bad input */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorDetail"];
+                };
+            };
+            /** @description No credential, or an invalid one */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorDetail"];
+                };
+            };
+            /** @description Not allowed: role, token, or a missing CSRF header */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorDetail"];
+                };
+            };
+        };
+    };
+    update_my_settings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MySettingsUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MySettings"];
+                };
+            };
+            /** @description Bad input */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorDetail"];
+                };
+            };
+            /** @description No credential, or an invalid one */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorDetail"];
+                };
+            };
+            /** @description Not allowed: role, token, or a missing CSRF header */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorDetail"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    my_activity: {
+        parameters: {
+            query?: {
+                limit?: number;
+                /** @description Page: only rows older than this id. */
+                before_id?: number | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description One page, newest first */
+            200: {
+                headers: {
+                    /** @description true when more rows follow this page (ask again with the cursor from the last row), false when this page is the last. */
+                    "X-Has-More"?: "true" | "false";
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ActivityRow"][];
+                };
+            };
+            /** @description Bad input */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorDetail"];
+                };
+            };
+            /** @description No credential, or an invalid one */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorDetail"];
+                };
+            };
+            /** @description Not allowed: role, token, or a missing CSRF header */
+            403: {
                 headers: {
                     [name: string]: unknown;
                 };

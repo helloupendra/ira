@@ -141,6 +141,9 @@ class ActionsConfig(_Strict):
     tools: dict[str, ActionRuleConfig] = Field(default_factory=dict)
 
 
+LanguageCode = Literal["en", "hi", "hinglish"]
+
+
 class AssistantConfig(_Strict):
     name: str = "Ira"
     business: str = "your business"
@@ -148,6 +151,10 @@ class AssistantConfig(_Strict):
     tier: str = "default"
     max_tool_rounds: int = 6
     history_messages: int = 30
+    # The languages people speak to Ira in, and the language it replies in ("auto": the
+    # one they spoke). Each person can change both for themselves.
+    languages: list[LanguageCode] = Field(default_factory=lambda: ["hinglish", "en", "hi"])
+    reply_language: Literal["auto", "en", "hi", "hinglish"] = "auto"
 
 
 class Settings(_Strict):

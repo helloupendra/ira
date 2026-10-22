@@ -246,12 +246,31 @@ def conversation_info(
     responses=NO_CONVERSATION,
 )
 def conversation(
-    conversation_id: str, _: Principal = Depends(reader), runtime: Runtime = Depends(get_runtime)
+    conversation_id: str,
+    principal: Principal = Depends(reader),
+    runtime: Runtime = Depends(get_runtime),
 ) -> list[MessageRow]:
     if not runtime.conversations.exists(conversation_id):
         raise HTTPException(404, detail="no such conversation")
     runtime.guard.expire_overdue()
-    return [MessageRow(**m) for m in runtime.conversations.transcript(conversation_id)]
+    messages = runtime.conversations.transcript(conversation_id)
+    if runtime.conversations.owner(conversation_id) != principal.user.id:
+        messages = [hide_private(m) for m in messages]
+    return [MessageRow(**m) for m in messages]
+
+
+PRIVATE_OUTPUT = "(private: what this person's device returned is shown only to them)"
+PRIVATE_ACTION = "(private: an action on this person's own device)"
+
+
+def hide_private(message: dict[str, Any]) -> dict[str, Any]:
+    """Someone else's message as an admin sees it: no device output, no device action."""
+    if message.get("private"):
+        message = {**message, "content": PRIVATE_OUTPUT}
+    action = message.get("action")
+    if action and action.get("device_id") is not None:
+        message = {**message, "action": {**action, "summary": PRIVATE_ACTION}}
+    return message
 
 
 @router.get(
@@ -272,7 +291,7 @@ def actions(
         description="With before: the last row's id, so actions proposed at the same moment "
         "are neither skipped nor repeated. Ignored without before.",
     ),
-    _: Principal = Depends(reader),
+    principal: Principal = Depends(reader),
     runtime: Runtime = Depends(get_runtime),
 ) -> list[ActionRow]:
     runtime.guard.expire_overdue()
@@ -303,6 +322,9 @@ def actions(
         item["actor"], item["channel"] = split_actor(row["actor"], row["channel"])
         item["params"] = json.loads(row["params"])
         item["result"] = json.loads(row["result"]) if row["result"] else None
+        if row["device_id"] is not None and row["user_id"] != principal.user.id:
+            # What someone asked their own device to do is theirs alone.
+            item.update(params={}, result=None, summary=PRIVATE_ACTION)
         decided = decisions.get(row["id"])
         if decided:
             item["decided_by"], item["decided_channel"], item["decided_at"] = decided

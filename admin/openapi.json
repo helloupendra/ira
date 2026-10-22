@@ -1229,6 +1229,53 @@
                 }
             }
         },
+        "/v1/actions/{action_id}/approve": {
+            "post": {
+                "tags": [
+                    "actions"
+                ],
+                "summary": "Say yes to a Tier 2 action you asked for (no PIN)",
+                "operationId": "approve_action",
+                "security": [
+                    {
+                        "HTTPBearer": []
+                    }
+                ],
+                "parameters": [
+                    {
+                        "name": "action_id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "title": "Action Id"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ActionOutcome"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
         "/v1/actions/{action_id}/cancel": {
             "post": {
                 "tags": [
@@ -4568,6 +4615,250 @@
                     }
                 }
             }
+        },
+        "/v1/me/settings": {
+            "get": {
+                "tags": [
+                    "your assistant"
+                ],
+                "summary": "Your own assistant's settings",
+                "operationId": "get_my_settings",
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/MySettings"
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Bad input",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ErrorDetail"
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "No credential, or an invalid one",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ErrorDetail"
+                                }
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "Not allowed: role, token, or a missing CSRF header",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ErrorDetail"
+                                }
+                            }
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "HTTPBearer": []
+                    }
+                ]
+            },
+            "patch": {
+                "tags": [
+                    "your assistant"
+                ],
+                "summary": "Name your assistant, set your wake phrase and languages (null resets)",
+                "operationId": "update_my_settings",
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/MySettingsUpdate"
+                            }
+                        }
+                    },
+                    "required": true
+                },
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/MySettings"
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Bad input",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ErrorDetail"
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "No credential, or an invalid one",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ErrorDetail"
+                                }
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "Not allowed: role, token, or a missing CSRF header",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ErrorDetail"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "HTTPBearer": []
+                    }
+                ]
+            }
+        },
+        "/v1/me/activity": {
+            "get": {
+                "tags": [
+                    "your assistant"
+                ],
+                "summary": "What Ira did for you: each tool it used and each action that ran, no contents",
+                "operationId": "my_activity",
+                "security": [
+                    {
+                        "HTTPBearer": []
+                    }
+                ],
+                "parameters": [
+                    {
+                        "name": "limit",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "type": "integer",
+                            "maximum": 500,
+                            "minimum": 1,
+                            "default": 100,
+                            "title": "Limit"
+                        }
+                    },
+                    {
+                        "name": "before_id",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "anyOf": [
+                                {
+                                    "type": "integer"
+                                },
+                                {
+                                    "type": "null"
+                                }
+                            ],
+                            "description": "Page: only rows older than this id.",
+                            "title": "Before Id"
+                        },
+                        "description": "Page: only rows older than this id."
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "One page, newest first",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "array",
+                                    "items": {
+                                        "$ref": "#/components/schemas/ActivityRow"
+                                    },
+                                    "title": "Response My Activity"
+                                }
+                            }
+                        },
+                        "headers": {
+                            "X-Has-More": {
+                                "description": "true when more rows follow this page (ask again with the cursor from the last row), false when this page is the last.",
+                                "schema": {
+                                    "type": "string",
+                                    "enum": [
+                                        "true",
+                                        "false"
+                                    ]
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Bad input",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ErrorDetail"
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "No credential, or an invalid one",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ErrorDetail"
+                                }
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "Not allowed: role, token, or a missing CSRF header",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ErrorDetail"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
         }
     },
     "components": {
@@ -4834,6 +5125,30 @@
                             }
                         ],
                         "title": "Decided At"
+                    },
+                    "tier": {
+                        "anyOf": [
+                            {
+                                "type": "integer"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Tier",
+                        "description": "2: needed a \"yes\" from the person who asked; 3: a PIN. null for actions stored before tiers (they needed a PIN)."
+                    },
+                    "device_id": {
+                        "anyOf": [
+                            {
+                                "type": "integer"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Device Id",
+                        "description": "An action on someone's own device. Unless it is yours, its params, summary and result are hidden."
                     }
                 },
                 "type": "object",
@@ -4909,6 +5224,18 @@
                         "type": "boolean",
                         "title": "Can Confirm",
                         "description": "Whether the caller may confirm it: their credential has the actions permission and their role is in confirm_roles. A missing PIN is not counted here; GET /v1/me/pin says that."
+                    },
+                    "tier": {
+                        "type": "integer",
+                        "title": "Tier",
+                        "description": "2: runs on a \"yes\" from the person who asked (POST /v1/actions/{id}/approve, or yes typed or spoken in the same conversation). 3: needs a PIN (POST /v1/actions/{id}/confirm).",
+                        "default": 3
+                    },
+                    "can_approve": {
+                        "type": "boolean",
+                        "title": "Can Approve",
+                        "description": "Tier 2 only: whether the caller is the person who asked, and so may say yes.",
+                        "default": false
                     }
                 },
                 "type": "object",
@@ -4922,6 +5249,89 @@
                     "can_confirm"
                 ],
                 "title": "ActionView"
+            },
+            "ActivityRow": {
+                "properties": {
+                    "id": {
+                        "type": "integer",
+                        "title": "Id"
+                    },
+                    "at": {
+                        "type": "number",
+                        "title": "At"
+                    },
+                    "channel": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Channel",
+                        "description": "Where you asked: web, api, telegram."
+                    },
+                    "tool": {
+                        "type": "string",
+                        "title": "Tool"
+                    },
+                    "device_id": {
+                        "anyOf": [
+                            {
+                                "type": "integer"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Device Id"
+                    },
+                    "device": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Device",
+                        "description": "The device's name, for a device tool."
+                    },
+                    "tier": {
+                        "type": "integer",
+                        "title": "Tier",
+                        "description": "0 read, 1 small and undoable, 2 needed a yes, 3 needed a PIN."
+                    },
+                    "outcome": {
+                        "type": "string",
+                        "title": "Outcome",
+                        "description": "ok or error (it ran); proposed (it waited for a yes or a PIN); refused (content from a device or the web asked for it); executed or failed (it ran after the confirmation)."
+                    },
+                    "seconds": {
+                        "anyOf": [
+                            {
+                                "type": "number"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Seconds"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "id",
+                    "at",
+                    "channel",
+                    "tool",
+                    "tier",
+                    "outcome"
+                ],
+                "title": "ActivityRow",
+                "description": "One thing Ira did for you: a tool it used or an action that ran. Never its content."
             },
             "AdminSessionRow": {
                 "properties": {
@@ -6015,6 +6425,12 @@
                         "type": "number",
                         "title": "Expires At",
                         "description": "When it stops waiting for a PIN (epoch seconds)."
+                    },
+                    "tier": {
+                        "type": "integer",
+                        "title": "Tier",
+                        "description": "2: waits for a \"yes\"; 3: waits for a PIN.",
+                        "default": 3
                     }
                 },
                 "type": "object",
@@ -6109,6 +6525,12 @@
                             }
                         ],
                         "description": "For a tool result that proposed an action: that action now, with its current status. null for every other message, and for a proposal stored before this field whose action could not be matched."
+                    },
+                    "private": {
+                        "type": "boolean",
+                        "title": "Private",
+                        "description": "For role tool: a device's output. Only the conversation's own user sees its content; anyone else's transcript shows a placeholder instead.",
+                        "default": false
                     }
                 },
                 "type": "object",
@@ -6331,6 +6753,114 @@
                 ],
                 "title": "MyConversationRow",
                 "description": "One of the caller's own conversations from the web chat or the API."
+            },
+            "MySettings": {
+                "properties": {
+                    "assistant_name": {
+                        "$ref": "#/components/schemas/SettingValue",
+                        "description": "What you call the assistant; the default is the installation's name."
+                    },
+                    "wake_phrase": {
+                        "$ref": "#/components/schemas/SettingValue",
+                        "description": "What your phone listens for (default \"Hey Ira\"). A phrase of your own needs a wake-word model trained for it."
+                    },
+                    "languages": {
+                        "items": {
+                            "type": "string"
+                        },
+                        "type": "array",
+                        "title": "Languages",
+                        "description": "The languages you speak to Ira in: en (English), hi (Hindi, in Devanagari or Latin letters) and hinglish."
+                    },
+                    "reply_language": {
+                        "type": "string",
+                        "title": "Reply Language",
+                        "description": "auto: reply in the language you spoke; or always en, hi or hinglish."
+                    },
+                    "language_options": {
+                        "items": {
+                            "type": "string"
+                        },
+                        "type": "array",
+                        "title": "Language Options"
+                    },
+                    "reply_language_options": {
+                        "items": {
+                            "type": "string"
+                        },
+                        "type": "array",
+                        "title": "Reply Language Options"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "assistant_name",
+                    "wake_phrase",
+                    "languages",
+                    "reply_language",
+                    "language_options",
+                    "reply_language_options"
+                ],
+                "title": "MySettings",
+                "description": "Your own assistant. Each value is yours, or the installation's default."
+            },
+            "MySettingsUpdate": {
+                "properties": {
+                    "assistant_name": {
+                        "anyOf": [
+                            {
+                                "type": "string",
+                                "maxLength": 64
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Assistant Name"
+                    },
+                    "wake_phrase": {
+                        "anyOf": [
+                            {
+                                "type": "string",
+                                "maxLength": 64
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Wake Phrase"
+                    },
+                    "languages": {
+                        "anyOf": [
+                            {
+                                "items": {
+                                    "type": "string"
+                                },
+                                "type": "array",
+                                "maxItems": 10
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Languages"
+                    },
+                    "reply_language": {
+                        "anyOf": [
+                            {
+                                "type": "string",
+                                "maxLength": 16
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Reply Language"
+                    }
+                },
+                "type": "object",
+                "title": "MySettingsUpdate",
+                "description": "Send only what changes; null goes back to the default."
             },
             "OkResponse": {
                 "properties": {

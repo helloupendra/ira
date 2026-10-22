@@ -29,6 +29,9 @@ field errors on `422`).
 | `POST /v1/ask`, `POST /v1/ask/stream`, `GET /v1/conversations`, `GET /v1/conversations/{id}` | `ask` |
 | `POST /v1/voice/transcribe`, `POST /v1/voice/speak` | `voice` |
 | `POST /v1/actions/{id}/confirm`, `POST /v1/actions/{id}/cancel` | `actions` (and your own PIN to confirm) |
+| `POST /v1/actions/{id}/approve` | `ask`, and being the person who asked (Tier 2 only) |
+| `GET /v1/me/settings`, `GET /v1/me/activity` | `ask` |
+| `PATCH /v1/me/settings` | a session with `ask` |
 | `GET /v1/admin/*` | `admin.read` (`GET /v1/admin/users/invites` and `GET /v1/admin/sessions`: `users`) |
 | `POST`, `PUT`, `PATCH`, `DELETE` under `/v1/admin` | a session with `admin.write`, or `users` for users, invitations and sessions |
 
@@ -94,6 +97,12 @@ When the turn proposed an action, `action` is an `ActionView`:
  "status": "pending", "expires_in": 120,
  "confirm_roles": ["owner", "admin"], "can_confirm": false}
 ```
+
+`tier` is 2 when a "yes" from the person who asked is enough, and 3 when it
+needs a PIN; `can_approve` says whether the caller may say that yes (Tier 2
+only). The yes can be `POST /v1/actions/{id}/approve`, or a short "yes",
+"haan" or "theek hai" sent as the next message of the same conversation; "no"
+or "nahi" cancels. Neither reaches a model.
 
 `confirm_roles` are the roles that may confirm this action:
 `actions.tools.<name>.confirm_roles` in `ira.yaml`, or else
@@ -188,6 +197,21 @@ The PIN is the confirming user's own (set with `PUT /v1/me/pin` or
 `POST /v1/actions/{id}/cancel` drops a pending action. Cancelling one past
 its expiry answers `expired` (410) too; nothing changes.
 
+`POST /v1/actions/{id}/approve` runs a Tier 2 action for the person who asked
+it, with no PIN: `executed`, `failed`, `not_allowed` (403, someone else's),
+`needs_pin` (403, a Tier 3 action), `expired`, `already_done` or `not_found`.
+
+## Your own assistant
+
+| Route | Returns |
+| --- | --- |
+| `GET /v1/me/settings` | `MySettings`: the name you call the assistant, your wake phrase, your languages (`en`, `hi`, `hinglish`) and reply language (`auto` or one of them), each with its default |
+| `PATCH /v1/me/settings` | `MySettingsUpdate`: send only what changes; `null` goes back to the default |
+| `GET /v1/me/activity?limit=&before_id=` | `ActivityRow[]`: "What Ira did" for you, newest first, paged by id: each tool call and each action that ran, with channel, tool, device, tier, outcome and seconds. Never arguments or results |
+
+`GET /v1/info` returns the name you chose. Nobody reads another person's
+settings or activity through these routes.
+
 **Expiry is the same everywhere.** A proposal past its `expires_at` is
 marked `expired` before any list, count or transcript is read (its
 `finished_at` is then its `expires_at`), so it never reads as `pending`:
@@ -204,7 +228,7 @@ All need `admin.read` (owner, admin, viewer), from a session or a token.
 | `GET /v1/admin/overview` | `Overview`: today's `questions` (user turns stored since the start of today, every channel), model `calls` (one question can make several), failures, cost, tokens, latency p50/p95, per model, actions by status, active conversations, users. "Today" starts at `since`, the server's local midnight (epoch seconds); `since_iso` is the same moment with the server's offset (`2026-10-12T00:00:00+05:30`) and `timezone` the server's zone: an IANA name (`Asia/Kolkata`) when the system names one, else its offset (`+05:30`) |
 | `GET /v1/admin/calls?limit=&before_id=` | `CallRow[]`: model calls, newest first, paged by id. `tried` is the models tried in order, joined by commas with no spaces; `tried_list` has them as a list |
 | `GET /v1/admin/conversations?limit=&before=&before_id=` | `ConversationRow[]`: by last activity, with a `preview` of the first question |
-| `GET /v1/admin/conversations/{id}` | `MessageRow[]`: messages, with typed `tool_calls` and tool results; `404` if unknown |
+| `GET /v1/admin/conversations/{id}` | `MessageRow[]`: messages, with typed `tool_calls` and tool results; `404` if unknown. In someone else's conversation, a tool result with `private: true` (a device's output) reads as a placeholder, and so does the summary of an action on their device |
 | `GET /v1/admin/conversations/{id}/info` | `ConversationRow`: one conversation's header (`channel`, `user_id`, `email`, `started_at`, `last_at`, `turns`, `preview`), as in the list; `404` if unknown |
 | `GET /v1/admin/actions?status=&limit=&before=&before_id=` | `ActionRow[]`: proposals with parameters, status, result, `actor` (who proposed) and `decided_by` / `decided_at` (who confirmed or cancelled) |
 | `GET /v1/admin/actions/counts?since=` | `ActionCounts`: how many actions stand at each status (`pending`, `executing`, `executed`, `failed`, `cancelled`, `expired`) and `total`, over all time, or proposed at or after `since` (epoch seconds) |

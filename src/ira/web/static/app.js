@@ -778,6 +778,7 @@ const KICKER = {
   already_done: "Already done",
   not_allowed: "Not allowed for your role",
   no_pin: "No PIN set yet",
+  needs_pin: "Needs a PIN",
 };
 
 function actionCard(action) {
@@ -789,11 +790,24 @@ function actionCard(action) {
   const form = $(".action-form", card);
   const pin = $(".pin", card);
   $(".action-summary", card).textContent = action.summary;
-  if (Array.isArray(action.confirm_roles) && action.confirm_roles.length) {
+  // Tier 2: the person who asked says yes; no PIN. Saying "haan" in the chat works too.
+  const byYes = action.tier === 2;
+  if (byYes) {
+    kicker.textContent = "Needs your yes";
+    pin.hidden = true;
+    pin.required = false;
+    $("button[type=submit]", form).textContent = "Yes, do it";
+    $(".cancel", form).textContent = "No";
+    if (action.can_approve === false) {
+      $("button[type=submit]", form).hidden = true;
+      who.textContent = "Only the person who asked can say yes.";
+      who.hidden = false;
+    }
+  } else if (Array.isArray(action.confirm_roles) && action.confirm_roles.length) {
     who.textContent = `${listWords(action.confirm_roles)} can confirm.`;
     who.hidden = false;
   }
-  if (action.can_confirm === false) {
+  if (!byYes && action.can_confirm === false) {
     // This person may still cancel the proposal, but not release it.
     pin.hidden = true;
     $("button[type=submit]", form).hidden = true;
@@ -808,6 +822,7 @@ function actionCard(action) {
     const left = Math.max(0, Math.round((deadline - Date.now()) / 1000));
     expiry.textContent = left > 0 ? `Expires in ${mmss(left)}` : "";
     if (left <= 20 && card.dataset.status === "pending") card.dataset.status = "expiring";
+    if (byYes && card.dataset.status === "expiring") kicker.textContent = "Needs your yes";
     if (left <= 0) settle("expired", "This action expired. Ask again to re-propose it.");
   };
   const settle = (outcome, message, result) => {
@@ -845,10 +860,8 @@ function actionCard(action) {
     waiting(true);
     let response;
     try {
-      response = await api(`/v1/actions/${encodeURIComponent(action.id)}/confirm`, {
-        method: "POST",
-        json: { pin: value },
-      });
+      const path = `/v1/actions/${encodeURIComponent(action.id)}/${byYes ? "approve" : "confirm"}`;
+      response = await api(path, byYes ? { method: "POST" } : { method: "POST", json: { pin: value } });
     } catch (error) {
       status.textContent = error.message;
       waiting(false);
@@ -889,7 +902,7 @@ function actionCard(action) {
       case "executed":
         settle(
           "executed",
-          `Done. Confirmed by ${state.info.user.email} at ${clockTime(new Date())}.`,
+          `Done. ${byYes ? "Approved" : "Confirmed"} by ${state.info.user.email} at ${clockTime(new Date())}.`,
           outcome.result,
         );
         break;
@@ -900,6 +913,7 @@ function actionCard(action) {
       case "cancelled":
       case "already_done":
       case "not_allowed":
+      case "needs_pin":
         settle(outcome.status, outcome.message);
         break;
       case "not_found":
@@ -927,7 +941,7 @@ function actionCard(action) {
   $("#messages").append(card);
   $("#hero").hidden = true;
   scrollDown();
-  pin.focus({ preventScroll: true });
+  if (!byYes) pin.focus({ preventScroll: true });
 }
 
 // --- voice out --------------------------------------------------------------------

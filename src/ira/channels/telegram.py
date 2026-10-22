@@ -348,10 +348,14 @@ class TelegramBot:
         await self._send(chat_id, body or "(no answer)")
         if reply.action is not None:
             seconds = max(0, round(reply.action.expires_at - time.time()))
+            how = (
+                "Reply yes to go ahead, or no."
+                if reply.action.tier == 2
+                else "Type your PIN to confirm, or /cancel."
+            )
             await self._send(
                 chat_id,
-                f"Proposed: {reply.action.summary}\n"
-                f"Type your PIN to confirm, or /cancel. It expires in {seconds} seconds.",
+                f"Proposed: {reply.action.summary}\n{how} It expires in {seconds} seconds.",
             )
         if self.runtime.tts is not None and (
             self.voice_replies == "always" or (self.voice_replies == "voice" and heard)

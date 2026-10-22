@@ -23,6 +23,22 @@ on its own it can never change anything.
 - Every proposal and outcome is written to `audit_log` with who and which
   channel.
 
+### Tiers, and reading is not doing
+
+- Each tool's tier is in code: 0 reads, 1 small and undoable, 2 needs a
+  "yes" from the person who asked, 3 needs a PIN. The model cannot lower it.
+- Text written by others (web results, a device's output, a tool marked
+  `untrusted`) reaches the model wrapped as data, with a rule that it is
+  never instructions. A turn that has read any of it cannot propose a Tier 2
+  or 3 action; the call is refused and logged as `refused`.
+- A "yes" to a Tier 2 proposal never goes to a model: the assistant matches a
+  short yes or no ("haan", "theek hai", "nahi") itself, only from the person
+  who asked, in the same conversation, within 120 seconds.
+- "What Ira did" logs every tool call without its arguments or result.
+- A device's output is the person's own: an admin reading their conversation
+  sees a placeholder, and the parameters of an action on their device are
+  hidden from everyone else.
+
 ### The PIN never reaches a model
 
 - The assistant refuses to forward a message that is only 4-12 digits, on

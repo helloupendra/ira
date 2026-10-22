@@ -65,7 +65,8 @@ class Conversations:
             content, calls = _encode(message)
             self.store.execute(
                 "INSERT INTO messages (conversation_id, at, role, content, tool_calls, "
-                "tool_call_id, name, action_id, model) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                "tool_call_id, name, action_id, model, private) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 (
                     conversation_id,
                     now,
@@ -76,6 +77,7 @@ class Conversations:
                     message.name,
                     message.action_id,
                     message.model,
+                    int(message.private),
                 ),
             )
         turns = sum(1 for m in messages if m.role == "user")
@@ -158,8 +160,10 @@ class Conversations:
         that action as it stands now (expire overdue actions before calling this)."""
         rows = self.store.query(
             "SELECT m.id, m.at, m.role, m.content, m.tool_calls, m.tool_call_id, m.name, m.model, "
+            "m.private, "
             "a.id AS action_id, a.tool AS action_tool, a.summary AS action_summary, "
-            "a.status AS action_status, a.expires_at AS action_expires_at "
+            "a.status AS action_status, a.expires_at AS action_expires_at, "
+            "a.device_id AS action_device_id, a.tier AS action_tier "
             "FROM messages m LEFT JOIN pending_actions a ON a.id = m.action_id "
             "WHERE m.conversation_id = ? ORDER BY m.id",
             (conversation_id,),
@@ -168,6 +172,7 @@ class Conversations:
         for row in rows:
             keep = ("id", "at", "role", "content", "tool_call_id", "name", "model")
             item = {k: row[k] for k in keep}
+            item["private"] = bool(row["private"])
             item["tool_calls"] = json.loads(row["tool_calls"]) if row["tool_calls"] else []
             item["action"] = (
                 {
@@ -176,6 +181,8 @@ class Conversations:
                     "summary": row["action_summary"],
                     "status": row["action_status"],
                     "expires_at": row["action_expires_at"],
+                    "device_id": row["action_device_id"],
+                    "tier": 3 if row["action_tier"] is None else row["action_tier"],
                 }
                 if row["action_id"]
                 else None

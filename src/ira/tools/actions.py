@@ -8,6 +8,8 @@ it later, once, after the owner confirms with a PIN:
   with it (a guard used without accounts has one installation PIN);
 * an action can be limited to the roles that may confirm it;
 * three wrong PINs in a row lock every action for 15 minutes;
+* a Tier 2 action needs only a "yes" from the person who asked
+  (``approve``); a Tier 3 action, the default, needs a PIN (``confirm``);
 * a pending action expires after 120 seconds. Reads mark overdue ones
   ``expired`` first (``expire_overdue``), so a list, a count and a confirm
   never disagree about one;
@@ -23,12 +25,13 @@ import inspect
 import json
 import logging
 import time
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Awaitable, Callable, Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any, Literal
 
 from pydantic import BaseModel
 
+from ira import toollog
 from ira.security import PIN_ITERATIONS, hash_pin, new_id, verify_pin
 from ira.store import CONFIRMING_ROLES, SHARED_PIN_SETTING, Store
 from ira.tools.registry import Tool, ToolError, ToolRegistry
@@ -52,6 +55,8 @@ OutcomeStatus = Literal[
     "cancelled",
     "no_pin",
     "not_allowed",
+    "needs_pin",
+    "confirmed",
 ]
 
 
@@ -67,6 +72,9 @@ class PendingAction:
     created_at: float
     expires_at: float
     status: str
+    tier: int = 3
+    user_id: int | None = None  # who asked
+    device_id: int | None = None  # a device's tool, run there once confirmed
 
     def public(self, now: float | None = None) -> dict[str, Any]:
         """What a client may see: no parameters beyond the summary."""
@@ -77,6 +85,7 @@ class PendingAction:
             "summary": self.summary,
             "status": self.status,
             "expires_in": max(0, round(self.expires_at - now)) if self.status == "pending" else 0,
+            "tier": self.tier,
         }
 
 
@@ -119,6 +128,9 @@ def _row_to_action(row: Any) -> PendingAction:
         created_at=row["created_at"],
         expires_at=row["expires_at"],
         status=row["status"],
+        tier=3 if row["tier"] is None else int(row["tier"]),
+        user_id=row["user_id"],
+        device_id=row["device_id"],
     )
 
 
@@ -145,6 +157,8 @@ class ActionGuard:
         self.confirm_roles = tuple(confirm_roles)
         self.tool_confirm_roles = {k: tuple(v) for k, v in (tool_confirm_roles or {}).items()}
         self.clock = clock
+        # Runs a confirmed action that belongs to a device rather than the registry.
+        self.device_runner: Callable[[PendingAction], Awaitable[Any]] | None = None
 
     def confirm_roles_for(self, tool: str) -> tuple[str, ...]:
         """The roles allowed to confirm this action (they also need the actions permission)."""
@@ -230,16 +244,69 @@ class ActionGuard:
         conversation_id: str | None = None,
         channel: str | None = None,
         actor: str | None = None,
+        user_id: int | None = None,
     ) -> PendingAction:
         """Store a pending action. Raises ToolError if the summary refuses it."""
         if tool.kind != "action":
             raise ValueError(f"'{tool.name}' is a read tool, not an action")
         summary = tool.describe(args)  # may raise ToolError
+        return self._store_proposal(
+            tool.name,
+            args.model_dump(mode="json"),
+            summary,
+            tool.tier,
+            conversation_id=conversation_id,
+            channel=channel,
+            actor=actor,
+            user_id=user_id,
+        )
+
+    def propose_on_device(
+        self,
+        tool: str,
+        params: dict[str, Any],
+        summary: str,
+        tier: int,
+        *,
+        device_id: int,
+        user_id: int,
+        conversation_id: str | None = None,
+        channel: str | None = None,
+        actor: str | None = None,
+    ) -> PendingAction:
+        """Store a pending action that a device runs once it is confirmed."""
+        if tier not in (2, 3):
+            raise ValueError("only Tier 2 and 3 tools wait for a confirmation")
+        return self._store_proposal(
+            tool,
+            params,
+            summary,
+            tier,
+            conversation_id=conversation_id,
+            channel=channel,
+            actor=actor,
+            user_id=user_id,
+            device_id=device_id,
+        )
+
+    def _store_proposal(
+        self,
+        tool: str,
+        params: dict[str, Any],
+        summary: str,
+        tier: int,
+        *,
+        conversation_id: str | None,
+        channel: str | None,
+        actor: str | None,
+        user_id: int | None,
+        device_id: int | None = None,
+    ) -> PendingAction:
         now = self.clock()
         pending = PendingAction(
             id=new_id("act_"),
-            tool=tool.name,
-            params=args.model_dump(mode="json"),
+            tool=tool,
+            params=params,
             summary=summary,
             conversation_id=conversation_id,
             channel=channel,
@@ -247,10 +314,14 @@ class ActionGuard:
             created_at=now,
             expires_at=now + self.expiry_seconds,
             status="pending",
+            tier=tier,
+            user_id=user_id,
+            device_id=device_id,
         )
         self.store.execute(
             "INSERT INTO pending_actions (id, tool, params, summary, conversation_id, channel, "
-            "actor, created_at, expires_at, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "actor, created_at, expires_at, status, tier, user_id, device_id) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (
                 pending.id,
                 pending.tool,
@@ -262,9 +333,12 @@ class ActionGuard:
                 pending.created_at,
                 pending.expires_at,
                 pending.status,
+                tier,
+                user_id,
+                device_id,
             ),
         )
-        self._audit(pending.id, tool.name, "proposed", actor, channel, summary)
+        self._audit(pending.id, tool, "proposed", actor, channel, summary)
         return pending
 
     def get(self, action_id: str) -> PendingAction | None:
@@ -299,6 +373,42 @@ class ActionGuard:
             (conversation_id, self.clock()),
         )
         return _row_to_action(row) if row else None
+
+    def awaiting_yes(self, conversation_id: str, user_id: int | None) -> PendingAction | None:
+        """The newest Tier 2 proposal in a conversation that this person may say yes to."""
+        pending = self.latest_pending(conversation_id)
+        if pending is None or pending.tier != 2 or pending.user_id != user_id:
+            return None
+        return pending
+
+    # Confirming new grants (pairing a device, switching a skill on) with a PIN.
+
+    async def check_pin(
+        self, pin: str, *, user_id: int, what: str, actor: str | None, channel: str | None
+    ) -> Outcome:
+        """Check a person's own PIN for something that is not a pending action.
+
+        Wrong PINs count towards the same lock as actions, and the outcome is
+        audited with ``what`` as its detail: "confirmed", or why not.
+        """
+        locked = self.locked_until()
+        if locked is not None:
+            return self._finish(
+                None,
+                "locked",
+                "Actions are locked after too many wrong PINs. Try again later.",
+                actor,
+                channel,
+                locked_until=locked,
+            )
+        stored = self._stored_pin(user_id)
+        if stored is None:
+            message = "You have no action PIN yet. Set your PIN in the Ira app's menu first."
+            return self._finish(None, "no_pin", message, actor, channel)
+        if not await asyncio.to_thread(verify_pin, pin, stored):
+            return self._wrong_pin(None, actor, channel)
+        self.store.execute("UPDATE pin_state SET failures = 0 WHERE id = 1")
+        return self._finish(None, "confirmed", what, actor, channel)
 
     # Confirming and cancelling.
 
@@ -381,6 +491,53 @@ class ActionGuard:
         pending.status = "executing"
         return await self._execute(pending, actor, channel)
 
+    async def approve(
+        self,
+        action_id: str,
+        *,
+        user_id: int | None,
+        actor: str | None = None,
+        channel: str | None = None,
+    ) -> Outcome:
+        """Run a Tier 2 action on a "yes" from the person who asked. No PIN.
+
+        A Tier 3 action answers ``needs_pin``; someone else's answers ``not_allowed``.
+        """
+        pending = self.get(action_id)
+        if pending is None:
+            return self._finish(None, "not_found", "No such action.", actor, channel)
+        if self._expired(pending):
+            return self._finish(
+                pending,
+                "expired",
+                "This action expired. Ask again to re-propose it.",
+                actor,
+                channel,
+            )
+        if pending.status != "pending":
+            return self._finish(
+                pending, "already_done", f"This action is already {pending.status}.", actor, channel
+            )
+        if pending.tier != 2:
+            return self._finish(
+                pending, "needs_pin", "This action needs your PIN, not just a yes.", actor, channel
+            )
+        if pending.user_id is None or pending.user_id != user_id:
+            return self._finish(
+                pending,
+                "not_allowed",
+                "Only the person who asked for this can say yes to it.",
+                actor,
+                channel,
+            )
+        if not self._set_status(pending.id, "executing", "pending"):
+            current = self.get(pending.id) or pending
+            return self._finish(
+                current, "already_done", f"This action is already {current.status}.", actor, channel
+            )
+        pending.status = "executing"
+        return await self._execute(pending, actor, channel)
+
     def cancel(
         self, action_id: str, *, actor: str | None = None, channel: str | None = None
     ) -> Outcome:
@@ -400,7 +557,9 @@ class ActionGuard:
 
     # Internals.
 
-    def _wrong_pin(self, pending: PendingAction, actor: str | None, channel: str | None) -> Outcome:
+    def _wrong_pin(
+        self, pending: PendingAction | None, actor: str | None, channel: str | None
+    ) -> Outcome:
         self.store.execute("UPDATE pin_state SET failures = failures + 1 WHERE id = 1")
         row = self.store.one("SELECT failures FROM pin_state WHERE id = 1")
         failures = int(row["failures"]) if row else 1
@@ -431,23 +590,21 @@ class ActionGuard:
     async def _execute(
         self, pending: PendingAction, actor: str | None, channel: str | None
     ) -> Outcome:
-        tool = self.registry.get(pending.tool)
+        started = time.monotonic()
         try:
-            if tool is None:
-                raise ToolError(f"the tool '{pending.tool}' is no longer registered")
-            if not self.registry.is_enabled(tool.name):
-                raise ToolError(f"the tool '{tool.name}' is switched off")
-            args = tool.validate(pending.params)
-            positional, keywords = tool.call_args(args)
-            if inspect.iscoroutinefunction(tool.fn):
-                result = await tool.fn(*positional, **keywords)
-            else:
-                result = await asyncio.to_thread(tool.fn, *positional, **keywords)
+            result = await self._run(pending)
         except ToolError as exc:
-            return self._failed(pending, str(exc), actor, channel)
+            outcome = self._failed(pending, str(exc), actor, channel)
+            self._finished(pending, "failed", started)
+            return outcome
         except Exception as exc:
             log.exception("action %s (%s) raised", pending.id, pending.tool)
-            return self._failed(pending, f"the action raised {type(exc).__name__}", actor, channel)
+            outcome = self._failed(
+                pending, f"the action raised {type(exc).__name__}", actor, channel
+            )
+            self._finished(pending, "failed", started)
+            return outcome
+        self._finished(pending, "executed", started)
 
         self.store.execute(
             "UPDATE pending_actions SET status = 'executed', result = ?, finished_at = ? "
@@ -457,6 +614,37 @@ class ActionGuard:
         pending.status = "executed"
         return self._finish(
             pending, "executed", f"Done: {pending.summary}.", actor, channel, result=result
+        )
+
+    async def _run(self, pending: PendingAction) -> Any:
+        if pending.device_id is not None:
+            if self.device_runner is None:
+                raise ToolError("devices are not available on this server")
+            return await self.device_runner(pending)
+        tool = self.registry.get(pending.tool)
+        if tool is None:
+            raise ToolError(f"the tool '{pending.tool}' is no longer registered")
+        if not self.registry.is_enabled(tool.name):
+            raise ToolError(f"the tool '{tool.name}' is switched off")
+        args = tool.validate(pending.params)
+        positional, keywords = tool.call_args(args)
+        if inspect.iscoroutinefunction(tool.fn):
+            return await tool.fn(*positional, **keywords)
+        return await asyncio.to_thread(tool.fn, *positional, **keywords)
+
+    def _finished(self, pending: PendingAction, outcome: str, started: float) -> None:
+        """Write the run to "What Ira did", for the person who asked."""
+        toollog.record(
+            self.store,
+            tool=pending.tool,
+            tier=pending.tier,
+            outcome=outcome,
+            user_id=pending.user_id,
+            channel=pending.channel,
+            conversation_id=pending.conversation_id,
+            device_id=pending.device_id,
+            seconds=time.monotonic() - started,
+            clock=self.clock,
         )
 
     def _failed(
