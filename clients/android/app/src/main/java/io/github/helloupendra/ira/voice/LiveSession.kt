@@ -34,7 +34,8 @@ data class CallUi(
     /** The microphone is on. */
     val listening: Boolean = false,
 ) {
-    data class Line(val turn: Int, val fromIra: Boolean, val text: String, val stopped: Boolean = false)
+    /** [messageId]: the server's id of one of Ira's answers, once it is complete (for Report). */
+    data class Line(val turn: Int, val fromIra: Boolean, val text: String, val stopped: Boolean = false, val messageId: Long? = null)
 }
 
 enum class CallStatus { Off, Connecting, Listening, Hearing, Thinking, Speaking, Reconnecting, Ended }
@@ -234,7 +235,12 @@ class LiveSession(
                 }
             is Live.Delta -> state.update { it.copy(lines = upsertIra(it.lines, message.turn) { old -> old + message.text }) }
             is Live.Done -> {
-                state.update { it.copy(lines = upsertIra(it.lines, message.turn) { old -> message.text.ifBlank { old } }) }
+                state.update { s ->
+                    val lines = upsertIra(s.lines, message.turn) { old -> message.text.ifBlank { old } }
+                    // Turns restart at 1 after a reconnect: only this answer, the latest of its turn.
+                    val index = lines.indexOfLast { it.fromIra && it.turn == message.turn }
+                    s.copy(lines = lines.mapIndexed { i, line -> if (i == index) line.copy(messageId = message.messageId) else line })
+                }
                 quietTimer()
             }
             is Live.Interrupted ->

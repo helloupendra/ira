@@ -21,6 +21,11 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.background
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.material3.RadioButton
+import androidx.compose.ui.semantics.Role
+import io.github.helloupendra.ira.core.Reports
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -92,6 +97,7 @@ fun TalkScreen(app: IraApp, talkRequests: Int, onSkills: () -> Unit, onSettings:
     var confirming by remember { mutableStateOf(false) }
     var outcome by remember { mutableStateOf<String?>(null) }
     var refresh by remember { mutableIntStateOf(0) }
+    var reporting by remember { mutableStateOf<CallUi.Line?>(null) }
     val server = app.settings.server.orEmpty().removePrefix("https://").removePrefix("http://")
     LifecycleResumeEffect(Unit) {
         refresh++
@@ -177,7 +183,7 @@ fun TalkScreen(app: IraApp, talkRequests: Int, onSkills: () -> Unit, onSettings:
                 },
             )
         }
-        Transcript(ui, Modifier.weight(1f))
+        Transcript(ui, Modifier.weight(1f), onReport = { reporting = it })
         ui.action?.let { card ->
             ActionCardView(
                 card = card,
@@ -247,6 +253,22 @@ fun TalkScreen(app: IraApp, talkRequests: Int, onSkills: () -> Unit, onSettings:
                 },
             ) { Text("Send") }
         }
+    }
+
+    reporting?.let { line ->
+        ReportDialog(
+            line = line,
+            onSend = { reason, note, done ->
+                scope.launch {
+                    val result =
+                        withContext(Dispatchers.IO) {
+                            Reports.send(app.settings.server.orEmpty(), app.secrets.token().orEmpty(), line.messageId ?: 0, reason, note, Net.post)
+                        }
+                    done(result)
+                }
+            },
+            onClose = { reporting = null },
+        )
     }
 
     disclose?.let { thenCall ->
@@ -331,7 +353,7 @@ private fun StatusLine(ui: CallUi, link: LinkState) {
 }
 
 @Composable
-private fun Transcript(ui: CallUi, modifier: Modifier) {
+private fun Transcript(ui: CallUi, modifier: Modifier, onReport: (CallUi.Line) -> Unit) {
     val list = rememberLazyListState()
     val count = ui.lines.size + if (ui.caption.isNotBlank()) 1 else 0
     LaunchedEffect(count, ui.lines.lastOrNull()?.text?.length) { if (count > 0) list.animateScrollToItem(count - 1) }
@@ -341,7 +363,7 @@ private fun Transcript(ui: CallUi, modifier: Modifier) {
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         item { Spacer(Modifier.height(8.dp)) }
-        items(ui.lines) { line -> Bubble(line) }
+        items(ui.lines) { line -> Bubble(line, onReport) }
         if (ui.caption.isNotBlank()) {
             item {
                 Text(
@@ -356,14 +378,26 @@ private fun Transcript(ui: CallUi, modifier: Modifier) {
 }
 
 @Composable
-private fun Bubble(line: CallUi.Line) {
+private fun Bubble(line: CallUi.Line, onReport: (CallUi.Line) -> Unit) {
     val mine = !line.fromIra
-    Row(Modifier.fillMaxWidth(), horizontalArrangement = if (mine) Arrangement.End else Arrangement.Start) {
+    val reportable = line.fromIra && line.messageId != null
+    Row(
+        Modifier.fillMaxWidth(),
+        horizontalArrangement = if (mine) Arrangement.End else Arrangement.Start,
+        verticalAlignment = Alignment.Top,
+    ) {
         Box(
             Modifier
-                .widthIn(max = 320.dp)
+                .widthIn(max = 300.dp)
                 .clip(RoundedCornerShape(16.dp))
                 .background(if (mine) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant)
+                .then(
+                    if (reportable) {
+                        Modifier.combinedClickable(onClick = {}, onLongClick = { onReport(line) }, onLongClickLabel = "Report this answer")
+                    } else {
+                        Modifier
+                    },
+                )
                 .padding(horizontal = 14.dp, vertical = 10.dp),
         ) {
             Text(
@@ -372,7 +406,87 @@ private fun Bubble(line: CallUi.Line) {
                 color = if (mine) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface,
             )
         }
+        if (reportable) {
+            Text(
+                "⋮",
+                style = MaterialTheme.typography.titleMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier =
+                    Modifier
+                        .clip(CircleShape)
+                        .clickable(onClickLabel = "Report this answer") { onReport(line) }
+                        .padding(horizontal = 10.dp, vertical = 6.dp)
+                        .semantics { contentDescription = "Report this answer" },
+            )
+        }
     }
+}
+
+/** Report one of Ira's answers: a reason, an optional note, then send. */
+@Composable
+private fun ReportDialog(line: CallUi.Line, onSend: (reason: String, note: String, done: (Reports.Result) -> Unit) -> Unit, onClose: () -> Unit) {
+    var reason by remember(line.messageId) { mutableStateOf<String?>(null) }
+    var note by remember(line.messageId) { mutableStateOf("") }
+    var busy by remember(line.messageId) { mutableStateOf(false) }
+    var result by remember(line.messageId) { mutableStateOf<Reports.Result?>(null) }
+    AlertDialog(
+        onDismissRequest = { if (!busy) onClose() },
+        title = { Text("Report this answer") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Text(
+                    "\"${line.text.take(140)}${if (line.text.length > 140) "…" else ""}\"",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                val done = result
+                if (done?.ok == true) {
+                    Text(done.message, color = MaterialTheme.colorScheme.primary)
+                } else {
+                    Text("What is wrong with it?", fontWeight = FontWeight.SemiBold)
+                    for ((value, label) in Reports.REASONS) {
+                        Row(
+                            Modifier.fillMaxWidth().selectable(selected = reason == value, onClick = { reason = value }, role = Role.RadioButton),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            RadioButton(selected = reason == value, onClick = null)
+                            Text(label, modifier = Modifier.padding(start = 8.dp))
+                        }
+                    }
+                    OutlinedTextField(
+                        value = note,
+                        onValueChange = { note = it.take(Reports.MAX_NOTE) },
+                        label = { Text("A note (optional)") },
+                        maxLines = 4,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                    Text(
+                        "The report goes to your Ira's owner with this answer. Nothing else is sent.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    done?.let { Text(it.message, color = MaterialTheme.colorScheme.error) }
+                }
+            }
+        },
+        confirmButton = {
+            if (result?.ok == true) {
+                TextButton(onClick = onClose) { Text("Close") }
+            } else {
+                TextButton(
+                    enabled = reason != null && !busy,
+                    onClick = {
+                        busy = true
+                        onSend(reason!!, note) {
+                            busy = false
+                            result = it
+                        }
+                    },
+                ) { Text(if (busy) "Sending..." else "Send") }
+            }
+        },
+        dismissButton = { if (result?.ok != true) TextButton(onClick = onClose, enabled = !busy) { Text("Cancel") } },
+    )
 }
 
 @Composable

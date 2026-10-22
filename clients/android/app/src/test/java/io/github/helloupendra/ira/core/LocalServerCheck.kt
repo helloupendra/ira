@@ -173,6 +173,14 @@ class LocalServerCheck {
         println("typed turn: ${typed.map { it::class.simpleName }}")
         assertNotNull(typed.firstOrNull { it is Live.Heard })
 
+        // Report that answer, as the app's Report button does; someone else's id is refused.
+        val answer = typed.filterIsInstance<Live.Done>().single().messageId
+        assertNotNull("the done event carries the answer's message_id", answer)
+        val reported = Reports.send(server, paired.token, answer!!, "wrong", "a check from the Android tests", post)
+        println("report: $reported")
+        assertTrue(reported.ok)
+        assertTrue(Reports.send(server, paired.token, 999_999, "wrong", null, post).message.contains("no longer"))
+
         // A spoken turn: speech_start, a second of synthetic voice, speech_end.
         machine.onSpeechStart(1_000.0).forEach { if (it is CallMachine.Effect.Send) live.send(it.json) }
         val tone = ShortArray(16_000) { (sin(2 * PI * 220 * it / 16_000) * 8_000).toInt().toShort() }
