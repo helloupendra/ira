@@ -17,6 +17,9 @@ final class AppModel: ObservableObject {
     let conversation: Conversation
     private var device: DeviceClient?
     private var toolbox: Toolbox?
+    private var routineTimer: Timer?
+    private var routine: Routine?
+    private var routineOn = false
     /// The app that was in front before Ira's window, for "what is on my screen".
     private var lastOtherApp: (pid: pid_t, name: String)?
     private var observers: [NSObjectProtocol] = []
@@ -124,6 +127,7 @@ final class AppModel: ObservableObject {
                 Task { @MainActor in self?.deviceState = state }
             })
         device = client
+        startRoutine(client)
         // A coding task's "done" or "failed" reaches the person through the server.
         toolbox.tasks.announce = { [weak client] event, title, text, data in
             client?.announce(event: event, title: title, text: text, data: data)
@@ -132,9 +136,31 @@ final class AppModel: ObservableObject {
     }
 
     func stopDevice() {
+        routineTimer?.invalidate()
+        routineTimer = nil
+        routine = nil
         device?.stop()
         device = nil
         toolbox = nil
+    }
+
+    /// The routine skill: read every 30 seconds, only while the skill is on.
+    private func startRoutine(_ client: DeviceClient) {
+        let routine = Routine(salt: settings.networkSalt) { [weak client] frame in client?.observe(frame) }
+        self.routine = routine
+        routineOn = false
+        routineTimer = Timer.scheduledTimer(withTimeInterval: Routine.interval, repeats: true) { [weak self, weak client] _ in
+            MainActor.assumeIsolated {
+                guard let self, let client else { return }
+                let on = client.skills.contains("routine")
+                if on {
+                    DispatchQueue.global(qos: .utility).async { routine.tick() }
+                } else if self.routineOn {
+                    routine.reset()
+                }
+                self.routineOn = on
+            }
+        }
     }
 
     func reconnect() {

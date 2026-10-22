@@ -231,3 +231,96 @@ struct DeviceEventTests {
         _ = await run.value
     }
 }
+
+/// The routine skill, as the Python companion did it: the same frames and the same
+/// network codes, so named networks keep their names.
+@Suite("Routine")
+struct RoutineTests {
+    final class Probe: Routine.Probe, @unchecked Sendable {
+        var lock: Bool? = false
+        var idleSeconds: Double? = 500
+        var net: (gateway: String, hardware: String)? = ("192.0.2.1", "02:00:5e:0a:0b:0c")
+        func locked() -> Bool? { lock }
+        func idle() -> Double? { idleSeconds }
+        func network() -> (gateway: String, hardware: String)? { net }
+    }
+
+    final class Clocks: @unchecked Sendable {
+        var wall = 1_792_040_000.0  // 22 Oct 2026, morning in India
+        var mono = 100.0
+        func step(_ seconds: Double, asleep: Bool = false) {
+            wall += seconds
+            if !asleep { mono += seconds }
+        }
+    }
+
+    @Test func parsingTheToolsOutput() {
+        let route = "   route to: default\ndestination: default\n       mask: default\n    gateway: 192.0.2.1\n  interface: en0\n"
+        #expect(Routine.parseGateway(route) == "192.0.2.1")
+        #expect(Routine.parseHardware("? (192.0.2.1) at 2:0:5e:a:b:c on en0 ifscope [ethernet]\n") == "02:00:5e:0a:0b:0c")
+        #expect(Routine.parseHardware("? (192.0.2.1) at (incomplete) on en0") == nil)
+    }
+
+    @Test func theFingerprintIsTheCompanions() {
+        let one = Routine.fingerprint(salt: "salt-a", gateway: "192.0.2.1", hardware: "02:00:5e:0a:0b:0c")
+        // sha256("salt-a|192.0.2.1|02:00:5e:0a:0b:0c")[:24], as the companion's hashlib gave it.
+        #expect(one == "9d6089677f4930586828a6f3")  // pragma: allowlist secret
+        #expect(one != Routine.fingerprint(salt: "salt-b", gateway: "192.0.2.1", hardware: "02:00:5e:0a:0b:0c"))
+        #expect(!one.contains("192"))
+    }
+
+    @Test func lockUnlockSleepWakeNetworkAndFirstActivity() {
+        let probe = Probe(), clocks = Clocks()
+        let sent = EventLog<JSONValue>()
+        let routine = Routine(salt: "salt", probe: probe, clock: { clocks.wall }, mono: { clocks.mono }) { sent.add($0) }
+        func kinds(_ frames: [JSONValue]) -> [String] { frames.compactMap { $0["kind"]?.stringValue } }
+        #expect(kinds(routine.tick()) == ["network"])
+        clocks.step(30)
+        probe.lock = true
+        #expect(kinds(routine.tick()) == ["lock"])
+        clocks.step(3600, asleep: true)
+        probe.lock = false
+        probe.idleSeconds = 3
+        let frames = routine.tick()
+        #expect(kinds(frames) == ["sleep", "wake", "unlock", "first_activity"])
+        #expect(frames[0]["at"]?.doubleValue == clocks.wall - 3600)
+        #expect(frames[1]["at"]?.doubleValue == clocks.wall)
+        #expect(frames[3]["at"]?.doubleValue == clocks.wall - 3)
+        clocks.step(30)
+        #expect(routine.tick().isEmpty)  // the first activity is once a day
+        probe.net = ("192.0.2.254", "02:00:5e:0a:0b:0d")
+        clocks.step(30)
+        let moved = routine.tick()
+        #expect(kinds(moved) == ["network"])
+        #expect(moved[0]["network"] != sent.all[0]["network"])
+        probe.net = nil
+        clocks.step(30)
+        #expect(routine.tick().isEmpty)
+        #expect(sent.all.allSatisfy { $0["type"] == "observe" })
+    }
+
+    @Test func observationsGoOutAfterTheWelcome() async throws {
+        let channel = FakeChannel()
+        let client = DeviceClient(
+            url: URL(string: "wss://ira.example.com/v1/devices/ws")!, token: { "irad_test" }, tools: ScriptedTools(),
+            label: "Mac", connector: FakeConnector(channel: channel), log: IraLog(directory: nil))
+        client.observe(["type": "observe", "kind": "wake", "at": 1, "network": .null])
+        let run = Task { await client.runOnce(token: "irad_test") }
+        #expect(await channel.waitFor { $0.count == 1 })
+        channel.push(["type": "welcome", "deviceId": 1, "skills": ["routine"]])
+        #expect(await channel.waitFor { $0.contains(["type": "observe", "kind": "wake", "at": 1, "network": .null]) })
+        #expect(client.skills == ["routine"])
+        channel.push(["type": "skills", "skills": []])
+        #expect(await waitUntil { client.skills.isEmpty })
+        channel.close(code: 1000)
+        _ = await run.value
+    }
+}
+
+func waitUntil(_ condition: @escaping () -> Bool) async -> Bool {
+    for _ in 0..<200 {
+        if condition() { return true }
+        try? await Task.sleep(nanoseconds: 10_000_000)
+    }
+    return condition()
+}

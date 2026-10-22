@@ -1,4 +1,5 @@
 import Foundation
+import Security
 
 /// What the app remembers between launches, in UserDefaults. Never a token.
 public final class AppSettings: @unchecked Sendable {
@@ -22,6 +23,28 @@ public final class AppSettings: @unchecked Sendable {
         static let conversationID = "conversationID"
         static let conversationAt = "conversationAt"
         static let signedInEmail = "signedInEmail"
+        static let networkSalt = "networkSalt"
+        static let wakeWord = "wakeWord"
+    }
+
+    /// Salts this Mac's network codes (the routine skill), so the server can only
+    /// tell networks apart. Made once; taken over from the old companion if it had one.
+    public var networkSalt: String {
+        get {
+            if let salt = defaults.string(forKey: Key.networkSalt), !salt.isEmpty { return salt }
+            var bytes = [UInt8](repeating: 0, count: 16)
+            _ = SecRandomCopyBytes(kSecRandomDefault, bytes.count, &bytes)
+            let salt = bytes.map { String(format: "%02x", $0) }.joined()
+            defaults.set(salt, forKey: Key.networkSalt)
+            return salt
+        }
+        set { defaults.set(newValue, forKey: Key.networkSalt) }
+    }
+
+    /// "Hey Ira": off until the person switches it on.
+    public var wakeWord: Bool {
+        get { defaults.bool(forKey: Key.wakeWord) }
+        set { defaults.set(newValue, forKey: Key.wakeWord) }
     }
 
     /// The paired server, e.g. `https://ira.example.com`. Empty until paired.

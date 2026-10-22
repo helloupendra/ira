@@ -65,8 +65,10 @@ public final class DeviceClient: @unchecked Sendable {
     private var stopped = false
     private var current: WebSocketChannel?
     private var outbox: [JSONValue] = []
+    private var observations: [JSONValue] = []
     private var lastEvent: Date?
     private var outboxWake: CheckedContinuation<Void, Never>?
+    private var currentSkills: [String] = []
 
     public init(
         url: URL,
@@ -113,10 +115,30 @@ public final class DeviceClient: @unchecked Sendable {
         wake?.resume()
     }
 
-    private func waitForEvent() async {
+    /// Queue an observation (the routine skill); it goes out as soon as this Mac
+    /// is connected, with no spacing. At most 500 wait while offline.
+    public func observe(_ frame: JSONValue) {
+        let wake: CheckedContinuation<Void, Never>? = lock.locked {
+            observations.append(frame)
+            if observations.count > 500 { observations.removeFirst(observations.count - 500) }
+            let wake = outboxWake
+            outboxWake = nil
+            return wake
+        }
+        wake?.resume()
+    }
+
+    /// The skills the person switched on for this Mac, as the server last said.
+    public var skills: [String] { lock.locked { currentSkills } }
+
+    /// Whether this Mac is connected now.
+    public var isConnected: Bool { lock.locked { current != nil && !currentSkillsUnknown } }
+    private var currentSkillsUnknown = true
+
+    private func waitForOutbox() async {
         await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
             let ready: Bool = lock.locked {
-                if !outbox.isEmpty { return true }
+                if !outbox.isEmpty || !observations.isEmpty { return true }
                 outboxWake = continuation
                 return false
             }
@@ -126,8 +148,18 @@ public final class DeviceClient: @unchecked Sendable {
 
     private func eventSender(_ sender: FrameSender) async {
         while !Task.isCancelled {
-            await waitForEvent()
+            await waitForOutbox()
             if Task.isCancelled { return }
+            // Observations first, all of them: they carry their own times.
+            while let frame = lock.locked({ observations.first }) {
+                do {
+                    try await sender.send(frame.encoded())
+                } catch {
+                    return  // kept for the next connection
+                }
+                lock.locked { if !observations.isEmpty { observations.removeFirst() } }
+            }
+            guard lock.locked({ !outbox.isEmpty }) else { continue }
             if let last = lock.locked({ lastEvent }) {
                 let wait = timing.eventSpacing - Date().timeIntervalSince(last)
                 if wait > 0 { try? await Task.sleep(nanoseconds: UInt64(wait * 1_000_000_000)) }
@@ -295,6 +327,11 @@ public final class DeviceClient: @unchecked Sendable {
                 return WebSocketClosed(reason: "the server did not welcome this Mac")
             }
             log.info("connected as device \(deviceID.map(String.init) ?? "?") with skills \(skills)")
+            lock.locked {
+                currentSkills = skills
+                currentSkillsUnknown = false
+            }
+            defer { lock.locked { currentSkillsUnknown = true } }
             onState(.connected(deviceID: deviceID, skills: skills))
             return await session(channel: channel, sender: sender, deviceID: deviceID, skills: skills)
         } catch {
@@ -360,6 +397,7 @@ public final class DeviceClient: @unchecked Sendable {
                 try? await sender.send(DeviceProtocol.pong.encoded())
             case .skills(let now):
                 skills = now
+                lock.locked { currentSkills = now }
                 log.info("skills now \(now)")
                 onState(.connected(deviceID: deviceID, skills: skills))
             case .error(let reason):
