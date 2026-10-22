@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Ira as the phone's digital assistant: a long press of the power button opens it. -->
+<voice-interaction-service xmlns:android="http://schemas.android.com/apk/res/android"
+    android:recognitionService="io.github.helloupendra.ira.assist.IraRecognitionService"
+    android:sessionService="io.github.helloupendra.ira.assist.IraSessionService"
+    android:settingsActivity="io.github.helloupendra.ira.ui.MainActivity"
+    android:supportsAssist="true"
+    android:supportsLaunchVoiceAssistFromKeyguard="false"
+    android:supportsLocalInteraction="false" />

@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- IRA's mark (docs/assets/icon.svg): four bars of a voice, inside the adaptive icon's safe zone. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <group
+        android:scaleX="2.2"
+        android:scaleY="2.2"
+        android:translateX="18.8"
+        android:translateY="18.8">
+        <path
+            android:fillColor="#FFFFFF"
+            android:pathData="M8.5,13a1.5,1.5 0,0 1,1.5 1.5V17.5a1.5,1.5 0,0 1,-3 0V14.5a1.5,1.5 0,0 1,1.5 -1.5z M13.5,9a1.5,1.5 0,0 1,1.5 1.5V21.5a1.5,1.5 0,0 1,-3 0V10.5a1.5,1.5 0,0 1,1.5 -1.5z M18.5,6a1.5,1.5 0,0 1,1.5 1.5V24.5a1.5,1.5 0,0 1,-3 0V7.5a1.5,1.5 0,0 1,1.5 -1.5z M23.5,11a1.5,1.5 0,0 1,1.5 1.5V19.5a1.5,1.5 0,0 1,-3 0V12.5a1.5,1.5 0,0 1,1.5 -1.5z" />
+    </group>
+</vector>

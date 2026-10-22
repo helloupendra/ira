@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- A digital assistant must name a recognizer; Ira's offers nothing to other apps, so it
+     asks Android never to make it the phone's default (honoured from Android 13). -->
+<recognition-service xmlns:android="http://schemas.android.com/apk/res/android"
+    android:selectableAsDefault="false"
+    android:settingsActivity="io.github.helloupendra.ira.ui.MainActivity" />

@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Ira (personal)</string>
+    <string name="accessibility_description">Lets Ira read the screen and tap or type for you when you ask, for what no other tool can do. It reads nothing on its own, never reads or types into password fields, and every use needs your PIN on your Ira server. Switch it off here at any time.</string>
+</resources>

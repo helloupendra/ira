@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Ira</string>
+    <string name="assistant_label">Ira</string>
+    <string name="notification_listener_label">Ira: read and answer notifications</string>
+</resources>

@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="ira_green">#1F6F5C</color>
+    <color name="ira_surface">#F6F8F7</color>
+    <color name="ira_surface_dark">#121615</color>
+</resources>
