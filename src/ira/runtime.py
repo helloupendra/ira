@@ -13,6 +13,7 @@ from ira.assistant import Assistant
 from ira.config import ConfigError, ProviderConfig, Settings, secret
 from ira.conversations import Conversations
 from ira.devices import DeviceHub, Devices
+from ira.learning.service import LearningService
 from ira.models.anthropic import AnthropicProvider
 from ira.models.base import ChatProvider
 from ira.models.fake import RouterProvider
@@ -71,12 +72,22 @@ class Runtime:
     hub: DeviceHub | None = None
     # Web and news search, for the people who switched them on.
     search: Search | None = None
+    # What each person let Ira notice about their day, and what it learned.
+    learning: LearningService | None = None
 
     def __post_init__(self) -> None:
         if self.hub is None:
             self.hub = DeviceHub(Devices(self.store))
         if self.search is None:
             self.search = Search(self.settings.search)
+        if self.learning is None:
+            hub = self.hub
+            self.learning = LearningService(
+                self.store,
+                self.assistant.user_settings,
+                notify=lambda user_id, event: hub.publish(user_id, None, event),
+            )
+        self.hub.observer = self.learning.from_device
         if self.assistant.personal_tools is None:
             self.assistant.personal_tools = self.personal_tools
         if self.guard.device_runner is None:

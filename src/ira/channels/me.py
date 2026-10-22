@@ -219,6 +219,7 @@ def revoke_grant(runtime: Runtime, who: Principal, grant_id: str, user_id: int |
         device = runtime.hub.devices.get(grant.device_id)
         assert device is not None
         runtime.hub.devices.set_skills(device.id, [s for s in device.skills if s != grant.skill])
+        runtime.hub.push_skills_soon(device.id)
     changes.record(
         runtime.store,
         who.actor,
@@ -344,6 +345,19 @@ def export_data(runtime: Runtime, principal: Principal) -> dict[str, Any]:
             {k: s[k] for k in ("id", "created_at", "last_used_at", "expires_at", "user_agent")}
             for s in runtime.accounts.sessions(user_id)
         ],
+        **_learning_export(runtime, user_id),
+    }
+
+
+def _learning_export(runtime: Runtime, user_id: int) -> dict[str, Any]:
+    if runtime.learning is None:
+        return {}
+    data = runtime.learning.data
+    return {
+        "observations": data.observations(user_id),
+        "networks": data.networks(user_id),
+        "learnings": [item.public() for item in data.learnings(user_id)],
+        "reminders": data.reminders(user_id, open_only=False),
     }
 
 
@@ -411,6 +425,7 @@ async def delete_my_data(
         store.execute("DELETE FROM device_pairings WHERE user_id = ?", (user_id,))
         devices = store.execute("DELETE FROM devices WHERE user_id = ?", (user_id,)).rowcount
         settings = store.execute("DELETE FROM user_settings WHERE user_id = ?", (user_id,)).rowcount
+        learned = runtime.learning.data.delete_user(user_id) if runtime.learning else {}
     deleted = DataDeleted(
         conversations=conversations,
         messages=messages,
@@ -418,6 +433,9 @@ async def delete_my_data(
         events=events,
         activity=activity,
         settings=settings,
+        observations=learned.get("observations", 0),
+        learnings=learned.get("learnings", 0),
+        reminders=learned.get("reminders", 0),
     )
     changes.record(
         store,

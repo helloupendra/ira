@@ -66,6 +66,8 @@ class Socket(Protocol):
 
 # Told about each event, for a channel such as Telegram: (user id, the stored event).
 Notifier = Callable[[int, dict[str, Any]], Awaitable[None]]
+# Takes a device's observe frame for learning: (user id, device id, frame).
+Observer = Callable[[int, int, dict[str, Any]], Awaitable[Any]]
 
 
 @dataclass(eq=False)
@@ -125,6 +127,8 @@ class DeviceHub:
         self._tasks: set[asyncio.Task[Any]] = set()
         # The welcome frame's extra fields for a user: their assistant's name, wake phrase.
         self.welcome_extra: Callable[[int], dict[str, Any]] = lambda user_id: {}
+        # Where a device's observations go (learning), while its "routine" skill is on.
+        self.observer: Observer | None = None
 
     # Connections.
 
@@ -235,6 +239,8 @@ class DeviceHub:
             self._result(connection, frame)
         elif kind == "event":
             await self._event(connection, frame)
+        elif kind == "observe":
+            await self._observe(connection, frame)
         elif kind == "hello":
             raise ProtocolError("already said hello; reconnect to change the tools")
         else:
@@ -247,6 +253,34 @@ class DeviceHub:
                 await connection.send({"type": "ping"})
             except Exception:
                 return
+
+    async def _observe(self, connection: Connection, frame: dict[str, Any]) -> None:
+        device = self.devices.get(connection.device.id)
+        if device is None or "routine" not in device.skills or self.observer is None:
+            raise ProtocolError("the routine skill is off for this device; nothing was kept")
+        try:
+            await self.observer(device.user_id, device.id, frame)
+        except ValueError as exc:  # LearningError: a frame learning refuses
+            raise ProtocolError(str(exc)) from None
+
+    async def push_skills(self, device_id: int, skills: list[str]) -> None:
+        """Tell a connected device which skills are on now, so it starts or stops observing."""
+        connection = self.connections.get(device_id)
+        if connection is not None and not connection.closed:
+            with contextlib.suppress(Exception):
+                await connection.send({"type": "skills", "skills": skills})
+
+    def push_skills_soon(self, device_id: int) -> None:
+        """push_skills from code that cannot wait for it (a plain route)."""
+        device = self.devices.get(device_id)
+        if device is None:
+            return
+        with contextlib.suppress(RuntimeError):  # no running loop: nobody is connected
+            task = asyncio.get_running_loop().create_task(
+                self.push_skills(device_id, device.skills)
+            )
+            self._tasks.add(task)
+            task.add_done_callback(self._tasks.discard)
 
     # Calls.
 

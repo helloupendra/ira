@@ -25,6 +25,11 @@ LANGUAGES: dict[str, str] = {
 REPLY_LANGUAGES = ("auto", *LANGUAGES)
 DEFAULT_LANGUAGES = ("hinglish", "en", "hi")
 DEFAULT_WAKE_PHRASE = "Hey Ira"
+# Where learning may come from; each is switched on by the person. A Mac is switched
+# on per device, with its "routine" skill.
+LEARNING_SOURCES = ("phone", "conversation", "feedback")
+MIN_LEARNING_DAYS = 14
+MAX_LEARNING_DAYS = 365
 MAX_NAME = 32
 MAX_WAKE_PHRASE = 40
 
@@ -40,6 +45,11 @@ class Prefs:
     languages: list[str] = field(default_factory=lambda: list(DEFAULT_LANGUAGES))
     reply_language: str = "auto"
     web_search: bool = False
+    # Learning: off until switched on; each source on its own; kept learning_days.
+    learning: bool = False
+    learning_sources: list[str] = field(default_factory=list)
+    learning_days: int = 90
+    nudges: bool = False
 
 
 def clean_name(value: str, limit: int) -> str:
@@ -109,6 +119,14 @@ class UserSettings:
         if raw.get("reply_language") in REPLY_LANGUAGES:
             prefs.reply_language = raw["reply_language"]
         prefs.web_search = raw.get("web_search") is True
+        prefs.learning = raw.get("learning") is True
+        sources = raw.get("learning_sources")
+        if isinstance(sources, list):
+            prefs.learning_sources = [s for s in sources if s in LEARNING_SOURCES]
+        days = raw.get("learning_days")
+        if isinstance(days, int) and MIN_LEARNING_DAYS <= days <= MAX_LEARNING_DAYS:
+            prefs.learning_days = days
+        prefs.nudges = raw.get("nudges") is True
         return prefs
 
     def overridden(self, user_id: int) -> set[str]:

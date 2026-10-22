@@ -36,6 +36,8 @@ SKILLS: dict[str, str] = {
     "chrome": "Chrome: list your open tabs, read the one you ask about, and watch it "
     "until it finishes. Only when you ask.",
     "tasks": "Tasks: coding and research jobs in folders you allow. Never a push.",
+    "routine": "Routine: when this Mac locks, sleeps and wakes, and which of your named "
+    "networks it is on, so Ira can learn your day. Never what you do on it.",
 }
 DEFAULT_LABELS = {"mac": "My Mac", "android": "My Android phone"}
 

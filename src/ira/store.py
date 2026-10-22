@@ -241,6 +241,59 @@ CREATE TABLE IF NOT EXISTS user_settings (
     PRIMARY KEY (user_id, key)
 );
 
+-- Learning (opt-in, per person): what was noticed, the networks they named, what
+-- Ira learned from it, and their reminders. Place labels only, never coordinates.
+CREATE TABLE IF NOT EXISTS observations (
+    id        INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id   INTEGER NOT NULL REFERENCES users (id),
+    at        REAL NOT NULL,
+    kind      TEXT NOT NULL,
+    label     TEXT,
+    source    TEXT NOT NULL,
+    device_id INTEGER,
+    detail    TEXT
+);
+CREATE INDEX IF NOT EXISTS observations_user ON observations (user_id, at);
+
+CREATE TABLE IF NOT EXISTS networks (
+    user_id     INTEGER NOT NULL REFERENCES users (id),
+    fingerprint TEXT NOT NULL, -- a salted hash made on the device; never a network's name
+    device_id   INTEGER,
+    label       TEXT,
+    first_seen  REAL NOT NULL,
+    last_seen   REAL NOT NULL,
+    PRIMARY KEY (user_id, fingerprint)
+);
+
+CREATE TABLE IF NOT EXISTS learnings (
+    id         TEXT PRIMARY KEY,
+    user_id    INTEGER NOT NULL REFERENCES users (id),
+    kind       TEXT NOT NULL,
+    key        TEXT NOT NULL,
+    text       TEXT NOT NULL,
+    evidence   TEXT NOT NULL,
+    confidence REAL NOT NULL,
+    status     TEXT NOT NULL,
+    created_at REAL NOT NULL,
+    updated_at REAL NOT NULL,
+    asked_at   REAL,
+    decided_at REAL,
+    UNIQUE (user_id, key)
+);
+
+CREATE TABLE IF NOT EXISTS reminders (
+    id              TEXT PRIMARY KEY,
+    user_id         INTEGER NOT NULL REFERENCES users (id),
+    text            TEXT NOT NULL,
+    due_at          REAL,
+    trigger         TEXT NOT NULL, -- time, arrive or leave
+    place           TEXT,
+    created_at      REAL NOT NULL,
+    done_at         REAL,
+    conversation_id TEXT
+);
+CREATE INDEX IF NOT EXISTS reminders_user ON reminders (user_id, done_at);
+
 CREATE TABLE IF NOT EXISTS pairing_codes (
     code_hash  TEXT PRIMARY KEY,
     user_id    INTEGER NOT NULL REFERENCES users (id),

@@ -6397,6 +6397,764 @@
                     }
                 }
             }
+        },
+        "/v1/me/learning": {
+            "get": {
+                "tags": [
+                    "learning"
+                ],
+                "summary": "What Ira may notice, and knows",
+                "operationId": "my_learning",
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/LearningView"
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Bad input",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ErrorDetail"
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "No credential, or an invalid one",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ErrorDetail"
+                                }
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "Not allowed: role, token, or a missing CSRF header",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ErrorDetail"
+                                }
+                            }
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "HTTPBearer": []
+                    }
+                ]
+            },
+            "patch": {
+                "tags": [
+                    "learning"
+                ],
+                "summary": "Switch learning, its sources or nudges (on needs your PIN), and how long to keep",
+                "operationId": "update_my_learning",
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/LearningUpdate"
+                            }
+                        }
+                    },
+                    "required": true
+                },
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/LearningView"
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Bad input",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ErrorDetail"
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "No credential, or an invalid one",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ErrorDetail"
+                                }
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "Not allowed: role, token, or a missing CSRF header",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ErrorDetail"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "HTTPBearer": []
+                    }
+                ]
+            }
+        },
+        "/v1/me/networks/{fingerprint}": {
+            "put": {
+                "tags": [
+                    "learning"
+                ],
+                "summary": "Name a network your Mac reported (by its hash): Office, Home",
+                "operationId": "name_my_network",
+                "security": [
+                    {
+                        "HTTPBearer": []
+                    }
+                ],
+                "parameters": [
+                    {
+                        "name": "fingerprint",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "title": "Fingerprint"
+                        }
+                    }
+                ],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/NetworkName"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/NetworkView"
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Bad input",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ErrorDetail"
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "No credential, or an invalid one",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ErrorDetail"
+                                }
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "Not allowed: role, token, or a missing CSRF header",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ErrorDetail"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            "delete": {
+                "tags": [
+                    "learning"
+                ],
+                "summary": "Forget a network",
+                "operationId": "forget_my_network",
+                "security": [
+                    {
+                        "HTTPBearer": []
+                    }
+                ],
+                "parameters": [
+                    {
+                        "name": "fingerprint",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "title": "Fingerprint"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/OkResponse"
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Bad input",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ErrorDetail"
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "No credential, or an invalid one",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ErrorDetail"
+                                }
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "Not allowed: role, token, or a missing CSRF header",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ErrorDetail"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/v1/me/learning/phone-token": {
+            "post": {
+                "tags": [
+                    "learning"
+                ],
+                "summary": "A token for your phone's Shortcuts: it can only report places (needs your PIN)",
+                "operationId": "create_phone_token",
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/PinOnly"
+                            }
+                        }
+                    },
+                    "required": true
+                },
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/PhoneTokenCreated"
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Bad input",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ErrorDetail"
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "No credential, or an invalid one",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ErrorDetail"
+                                }
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "Not allowed: role, token, or a missing CSRF header",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ErrorDetail"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "HTTPBearer": []
+                    }
+                ]
+            }
+        },
+        "/v1/me/learning/phone-token/{token_id}": {
+            "delete": {
+                "tags": [
+                    "learning"
+                ],
+                "summary": "Revoke your phone's token",
+                "operationId": "revoke_phone_token",
+                "security": [
+                    {
+                        "HTTPBearer": []
+                    }
+                ],
+                "parameters": [
+                    {
+                        "name": "token_id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "title": "Token Id"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/OkResponse"
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Bad input",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ErrorDetail"
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "No credential, or an invalid one",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ErrorDetail"
+                                }
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "Not allowed: role, token, or a missing CSRF header",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ErrorDetail"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/v1/observations": {
+            "post": {
+                "tags": [
+                    "learning"
+                ],
+                "summary": "A phone reports reaching or leaving a named place (a token with scope observe)",
+                "operationId": "observe",
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/ObservationIn"
+                            }
+                        }
+                    },
+                    "required": true
+                },
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ObservationOut"
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Bad input",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ErrorDetail"
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "No credential, or an invalid one",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ErrorDetail"
+                                }
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "Not allowed: role, token, or a missing CSRF header",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ErrorDetail"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "HTTPBearer": []
+                    }
+                ]
+            }
+        },
+        "/v1/me/observations": {
+            "get": {
+                "tags": [
+                    "learning"
+                ],
+                "summary": "Your own observations, oldest first (for the evidence plots)",
+                "operationId": "my_observations",
+                "security": [
+                    {
+                        "HTTPBearer": []
+                    }
+                ],
+                "parameters": [
+                    {
+                        "name": "days",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "type": "integer",
+                            "maximum": 365,
+                            "minimum": 1,
+                            "default": 30,
+                            "title": "Days"
+                        }
+                    },
+                    {
+                        "name": "kind",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "anyOf": [
+                                {
+                                    "type": "string"
+                                },
+                                {
+                                    "type": "null"
+                                }
+                            ],
+                            "title": "Kind"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "array",
+                                    "items": {
+                                        "$ref": "#/components/schemas/ObservationRow"
+                                    },
+                                    "title": "Response My Observations"
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Bad input",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ErrorDetail"
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "No credential, or an invalid one",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ErrorDetail"
+                                }
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "Not allowed: role, token, or a missing CSRF header",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ErrorDetail"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/v1/me/reminders": {
+            "get": {
+                "tags": [
+                    "learning"
+                ],
+                "summary": "Your open reminders",
+                "operationId": "my_reminders",
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "items": {
+                                        "$ref": "#/components/schemas/ReminderView"
+                                    },
+                                    "type": "array",
+                                    "title": "Response My Reminders"
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Bad input",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ErrorDetail"
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "No credential, or an invalid one",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ErrorDetail"
+                                }
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "Not allowed: role, token, or a missing CSRF header",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ErrorDetail"
+                                }
+                            }
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "HTTPBearer": []
+                    }
+                ]
+            }
+        },
+        "/v1/me/reminders/{reminder_id}": {
+            "delete": {
+                "tags": [
+                    "learning"
+                ],
+                "summary": "Cancel a reminder",
+                "operationId": "cancel_my_reminder",
+                "security": [
+                    {
+                        "HTTPBearer": []
+                    }
+                ],
+                "parameters": [
+                    {
+                        "name": "reminder_id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "title": "Reminder Id"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/OkResponse"
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Bad input",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ErrorDetail"
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "No credential, or an invalid one",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ErrorDetail"
+                                }
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "Not allowed: role, token, or a missing CSRF header",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ErrorDetail"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
         }
     },
     "components": {
@@ -7612,6 +8370,21 @@
                     "settings": {
                         "type": "integer",
                         "title": "Settings"
+                    },
+                    "observations": {
+                        "type": "integer",
+                        "title": "Observations",
+                        "default": 0
+                    },
+                    "learnings": {
+                        "type": "integer",
+                        "title": "Learnings",
+                        "default": 0
+                    },
+                    "reminders": {
+                        "type": "integer",
+                        "title": "Reminders",
+                        "default": 0
                     }
                 },
                 "type": "object",
@@ -8371,6 +9144,262 @@
                 ],
                 "title": "KeyView"
             },
+            "LearningItem": {
+                "properties": {
+                    "id": {
+                        "type": "string",
+                        "title": "Id"
+                    },
+                    "kind": {
+                        "type": "string",
+                        "title": "Kind",
+                        "description": "time (a routine time), duration, or preference."
+                    },
+                    "key": {
+                        "type": "string",
+                        "title": "Key"
+                    },
+                    "text": {
+                        "type": "string",
+                        "title": "Text",
+                        "description": "The sentence, written from the evidence: every number is in it."
+                    },
+                    "evidence": {
+                        "additionalProperties": true,
+                        "type": "object",
+                        "title": "Evidence"
+                    },
+                    "confidence": {
+                        "type": "number",
+                        "title": "Confidence"
+                    },
+                    "status": {
+                        "type": "string",
+                        "title": "Status",
+                        "description": "proposed (not enough evidence yet), ready, asked, active (you said yes), rejected, faded (not seen lately) or changed (the numbers moved)."
+                    },
+                    "created_at": {
+                        "type": "number",
+                        "title": "Created At"
+                    },
+                    "updated_at": {
+                        "type": "number",
+                        "title": "Updated At"
+                    },
+                    "asked_at": {
+                        "anyOf": [
+                            {
+                                "type": "number"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Asked At"
+                    },
+                    "decided_at": {
+                        "anyOf": [
+                            {
+                                "type": "number"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Decided At"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "id",
+                    "kind",
+                    "key",
+                    "text",
+                    "evidence",
+                    "confidence",
+                    "status",
+                    "created_at",
+                    "updated_at"
+                ],
+                "title": "LearningItem"
+            },
+            "LearningSource": {
+                "properties": {
+                    "name": {
+                        "type": "string",
+                        "title": "Name",
+                        "description": "phone, conversation or feedback."
+                    },
+                    "on": {
+                        "type": "boolean",
+                        "title": "On"
+                    },
+                    "description": {
+                        "type": "string",
+                        "title": "Description"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "name",
+                    "on",
+                    "description"
+                ],
+                "title": "LearningSource"
+            },
+            "LearningUpdate": {
+                "properties": {
+                    "on": {
+                        "anyOf": [
+                            {
+                                "type": "boolean"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "On"
+                    },
+                    "sources": {
+                        "anyOf": [
+                            {
+                                "items": {
+                                    "type": "string"
+                                },
+                                "type": "array",
+                                "maxItems": 10
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Sources"
+                    },
+                    "days": {
+                        "anyOf": [
+                            {
+                                "type": "integer",
+                                "maximum": 365.0,
+                                "minimum": 14.0
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Days"
+                    },
+                    "nudges": {
+                        "anyOf": [
+                            {
+                                "type": "boolean"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Nudges"
+                    },
+                    "pin": {
+                        "anyOf": [
+                            {
+                                "type": "string",
+                                "maxLength": 12,
+                                "minLength": 4
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Pin",
+                        "description": "Your action PIN: needed to switch learning or a source on."
+                    }
+                },
+                "type": "object",
+                "title": "LearningUpdate"
+            },
+            "LearningView": {
+                "properties": {
+                    "on": {
+                        "type": "boolean",
+                        "title": "On",
+                        "description": "Learning is on for you. Off: nothing new is noticed."
+                    },
+                    "sources": {
+                        "items": {
+                            "$ref": "#/components/schemas/LearningSource"
+                        },
+                        "type": "array",
+                        "title": "Sources"
+                    },
+                    "macs": {
+                        "items": {
+                            "$ref": "#/components/schemas/MacRoutine"
+                        },
+                        "type": "array",
+                        "title": "Macs",
+                        "description": "Your Macs and whether each one's routine is on."
+                    },
+                    "days": {
+                        "type": "integer",
+                        "title": "Days",
+                        "description": "How long observations are kept, in days."
+                    },
+                    "nudges": {
+                        "type": "boolean",
+                        "title": "Nudges"
+                    },
+                    "networks": {
+                        "items": {
+                            "$ref": "#/components/schemas/NetworkView"
+                        },
+                        "type": "array",
+                        "title": "Networks"
+                    },
+                    "phone_tokens": {
+                        "items": {
+                            "$ref": "#/components/schemas/PhoneToken"
+                        },
+                        "type": "array",
+                        "title": "Phone Tokens"
+                    },
+                    "observations": {
+                        "additionalProperties": {
+                            "type": "integer"
+                        },
+                        "type": "object",
+                        "title": "Observations",
+                        "description": "How many of each kind are kept."
+                    },
+                    "learnings": {
+                        "items": {
+                            "$ref": "#/components/schemas/LearningItem"
+                        },
+                        "type": "array",
+                        "title": "Learnings"
+                    },
+                    "reminders": {
+                        "items": {
+                            "$ref": "#/components/schemas/ReminderView"
+                        },
+                        "type": "array",
+                        "title": "Reminders"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "on",
+                    "sources",
+                    "macs",
+                    "days",
+                    "nudges",
+                    "networks",
+                    "phone_tokens",
+                    "observations",
+                    "learnings",
+                    "reminders"
+                ],
+                "title": "LearningView"
+            },
             "LoginRequest": {
                 "properties": {
                     "email": {
@@ -8396,6 +9425,30 @@
                     "password"
                 ],
                 "title": "LoginRequest"
+            },
+            "MacRoutine": {
+                "properties": {
+                    "device_id": {
+                        "type": "integer",
+                        "title": "Device Id"
+                    },
+                    "label": {
+                        "type": "string",
+                        "title": "Label"
+                    },
+                    "on": {
+                        "type": "boolean",
+                        "title": "On",
+                        "description": "Its routine skill: lock, sleep, wake and network."
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "device_id",
+                    "label",
+                    "on"
+                ],
+                "title": "MacRoutine"
             },
             "MessageAction": {
                 "properties": {
@@ -8890,6 +9943,171 @@
                 "title": "MySettingsUpdate",
                 "description": "Send only what changes; null goes back to the default."
             },
+            "NetworkName": {
+                "properties": {
+                    "label": {
+                        "type": "string",
+                        "maxLength": 40,
+                        "minLength": 1,
+                        "title": "Label",
+                        "description": "Office, Home: a name, never an address."
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "label"
+                ],
+                "title": "NetworkName"
+            },
+            "NetworkView": {
+                "properties": {
+                    "fingerprint": {
+                        "type": "string",
+                        "title": "Fingerprint",
+                        "description": "A salted hash made on the Mac; never the network's name."
+                    },
+                    "label": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Label",
+                        "description": "The name you gave it, such as Office; null until named."
+                    },
+                    "device_id": {
+                        "anyOf": [
+                            {
+                                "type": "integer"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Device Id"
+                    },
+                    "device": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Device"
+                    },
+                    "first_seen": {
+                        "type": "number",
+                        "title": "First Seen"
+                    },
+                    "last_seen": {
+                        "type": "number",
+                        "title": "Last Seen"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "fingerprint",
+                    "label",
+                    "first_seen",
+                    "last_seen"
+                ],
+                "title": "NetworkView"
+            },
+            "ObservationIn": {
+                "properties": {
+                    "event": {
+                        "type": "string",
+                        "enum": [
+                            "arrive",
+                            "leave"
+                        ],
+                        "title": "Event"
+                    },
+                    "place": {
+                        "type": "string",
+                        "maxLength": 40,
+                        "minLength": 1,
+                        "title": "Place"
+                    }
+                },
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                    "event",
+                    "place"
+                ],
+                "title": "ObservationIn",
+                "description": "A phone's place event. A place's name only: anything else in the body is refused."
+            },
+            "ObservationOut": {
+                "properties": {
+                    "recorded": {
+                        "type": "boolean",
+                        "title": "Recorded",
+                        "description": "False when learning or the phone source is off."
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "recorded"
+                ],
+                "title": "ObservationOut"
+            },
+            "ObservationRow": {
+                "properties": {
+                    "id": {
+                        "type": "integer",
+                        "title": "Id"
+                    },
+                    "at": {
+                        "type": "number",
+                        "title": "At"
+                    },
+                    "kind": {
+                        "type": "string",
+                        "title": "Kind"
+                    },
+                    "label": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Label"
+                    },
+                    "source": {
+                        "type": "string",
+                        "title": "Source"
+                    },
+                    "device_id": {
+                        "anyOf": [
+                            {
+                                "type": "integer"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Device Id"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "id",
+                    "at",
+                    "kind",
+                    "source"
+                ],
+                "title": "ObservationRow"
+            },
             "OkResponse": {
                 "properties": {
                     "ok": {
@@ -9194,6 +10412,80 @@
                 "title": "PairingView",
                 "description": "A one-time pairing code. Shown once; it works for 10 minutes."
             },
+            "PhoneToken": {
+                "properties": {
+                    "id": {
+                        "type": "string",
+                        "title": "Id"
+                    },
+                    "label": {
+                        "type": "string",
+                        "title": "Label"
+                    },
+                    "created_at": {
+                        "type": "number",
+                        "title": "Created At"
+                    },
+                    "last_used_at": {
+                        "anyOf": [
+                            {
+                                "type": "number"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Last Used At"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "id",
+                    "label",
+                    "created_at"
+                ],
+                "title": "PhoneToken"
+            },
+            "PhoneTokenCreated": {
+                "properties": {
+                    "id": {
+                        "type": "string",
+                        "title": "Id"
+                    },
+                    "token": {
+                        "type": "string",
+                        "title": "Token"
+                    },
+                    "url": {
+                        "type": "string",
+                        "title": "Url",
+                        "description": "Where the Shortcut posts: <server>/v1/observations."
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "id",
+                    "token",
+                    "url"
+                ],
+                "title": "PhoneTokenCreated",
+                "description": "Shown once. Its only scope is observe: it can report where you are, nothing else."
+            },
+            "PinOnly": {
+                "properties": {
+                    "pin": {
+                        "type": "string",
+                        "maxLength": 12,
+                        "minLength": 4,
+                        "title": "Pin"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "pin"
+                ],
+                "title": "PinOnly"
+            },
             "PinSetRequest": {
                 "properties": {
                     "password": {
@@ -9391,6 +10683,68 @@
                     "expires_at"
                 ],
                 "title": "PublicInvite"
+            },
+            "ReminderView": {
+                "properties": {
+                    "id": {
+                        "type": "string",
+                        "title": "Id"
+                    },
+                    "text": {
+                        "type": "string",
+                        "title": "Text"
+                    },
+                    "trigger": {
+                        "type": "string",
+                        "title": "Trigger",
+                        "description": "time, arrive or leave."
+                    },
+                    "due_at": {
+                        "anyOf": [
+                            {
+                                "type": "number"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Due At"
+                    },
+                    "place": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Place"
+                    },
+                    "created_at": {
+                        "type": "number",
+                        "title": "Created At"
+                    },
+                    "done_at": {
+                        "anyOf": [
+                            {
+                                "type": "number"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Done At"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "id",
+                    "text",
+                    "trigger",
+                    "created_at"
+                ],
+                "title": "ReminderView"
             },
             "RoleChange": {
                 "properties": {

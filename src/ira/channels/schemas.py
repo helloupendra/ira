@@ -1170,3 +1170,130 @@ class DataDeleted(BaseModel):
     events: int
     activity: int
     settings: int
+    observations: int = 0
+    learnings: int = 0
+    reminders: int = 0
+
+
+# Learning: what a person let Ira notice about their day, and what it learned.
+
+
+class LearningSource(BaseModel):
+    name: str = Field(description="phone, conversation or feedback.")
+    on: bool
+    description: str
+
+
+class MacRoutine(BaseModel):
+    device_id: int
+    label: str
+    on: bool = Field(description="Its routine skill: lock, sleep, wake and network.")
+
+
+class NetworkView(BaseModel):
+    fingerprint: str = Field(description="A salted hash made on the Mac; never the network's name.")
+    label: str | None = Field(description="The name you gave it, such as Office; null until named.")
+    device_id: int | None = None
+    device: str | None = None
+    first_seen: float
+    last_seen: float
+
+
+class PhoneToken(BaseModel):
+    id: str
+    label: str
+    created_at: float
+    last_used_at: float | None = None
+
+
+class ReminderView(BaseModel):
+    id: str
+    text: str
+    trigger: str = Field(description="time, arrive or leave.")
+    due_at: float | None = None
+    place: str | None = None
+    created_at: float
+    done_at: float | None = None
+
+
+class LearningItem(BaseModel):
+    id: str
+    kind: str = Field(description="time (a routine time), duration, or preference.")
+    key: str
+    text: str = Field(description="The sentence, written from the evidence: every number is in it.")
+    evidence: dict[str, Any]
+    confidence: float
+    status: str = Field(
+        description="proposed (not enough evidence yet), ready, asked, active (you said yes), "
+        "rejected, faded (not seen lately) or changed (the numbers moved)."
+    )
+    created_at: float
+    updated_at: float
+    asked_at: float | None = None
+    decided_at: float | None = None
+
+
+class LearningView(BaseModel):
+    on: bool = Field(description="Learning is on for you. Off: nothing new is noticed.")
+    sources: list[LearningSource]
+    macs: list[MacRoutine] = Field(description="Your Macs and whether each one's routine is on.")
+    days: int = Field(description="How long observations are kept, in days.")
+    nudges: bool
+    networks: list[NetworkView]
+    phone_tokens: list[PhoneToken]
+    observations: dict[str, int] = Field(description="How many of each kind are kept.")
+    learnings: list[LearningItem]
+    reminders: list[ReminderView]
+
+
+class LearningUpdate(BaseModel):
+    on: bool | None = None
+    sources: list[str] | None = Field(default=None, max_length=10)
+    days: int | None = Field(default=None, ge=14, le=365)
+    nudges: bool | None = None
+    pin: str | None = Field(
+        default=None,
+        min_length=PIN_MIN_LENGTH,
+        max_length=PIN_MAX_LENGTH,
+        description="Your action PIN: needed to switch learning or a source on.",
+    )
+
+
+class NetworkName(BaseModel):
+    label: str = Field(
+        min_length=1, max_length=40, description="Office, Home: a name, never an address."
+    )
+
+
+class PinOnly(BaseModel):
+    pin: str = Field(min_length=PIN_MIN_LENGTH, max_length=PIN_MAX_LENGTH)
+
+
+class PhoneTokenCreated(BaseModel):
+    """Shown once. Its only scope is observe: it can report where you are, nothing else."""
+
+    id: str
+    token: str
+    url: str = Field(description="Where the Shortcut posts: <server>/v1/observations.")
+
+
+class ObservationIn(BaseModel):
+    """A phone's place event. A place's name only: anything else in the body is refused."""
+
+    model_config = {"extra": "forbid"}
+
+    event: Literal["arrive", "leave"]
+    place: str = Field(min_length=1, max_length=40)
+
+
+class ObservationOut(BaseModel):
+    recorded: bool = Field(description="False when learning or the phone source is off.")
+
+
+class ObservationRow(BaseModel):
+    id: int
+    at: float
+    kind: str
+    label: str | None = None
+    source: str
+    device_id: int | None = None

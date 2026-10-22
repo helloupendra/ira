@@ -74,6 +74,9 @@ def test_export_has_my_data_only_and_delete_removes_it(runtime):
             "events": 1,
             "activity": 0,
             "settings": 1,
+            "observations": 0,
+            "learnings": 0,
+            "reminders": 0,
         }
         after = client.get("/v1/me/export", headers=mine).json()
         assert after["conversations"] == [] and after["devices"] == [] and after["events"] == []

@@ -1323,6 +1323,144 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/me/learning": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** What Ira may notice, and knows */
+        get: operations["my_learning"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Switch learning, its sources or nudges (on needs your PIN), and how long to keep */
+        patch: operations["update_my_learning"];
+        trace?: never;
+    };
+    "/v1/me/networks/{fingerprint}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Name a network your Mac reported (by its hash): Office, Home */
+        put: operations["name_my_network"];
+        post?: never;
+        /** Forget a network */
+        delete: operations["forget_my_network"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/me/learning/phone-token": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** A token for your phone's Shortcuts: it can only report places (needs your PIN) */
+        post: operations["create_phone_token"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/me/learning/phone-token/{token_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Revoke your phone's token */
+        delete: operations["revoke_phone_token"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/observations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** A phone reports reaching or leaving a named place (a token with scope observe) */
+        post: operations["observe"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/me/observations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Your own observations, oldest first (for the evidence plots) */
+        get: operations["my_observations"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/me/reminders": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Your open reminders */
+        get: operations["my_reminders"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/me/reminders/{reminder_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Cancel a reminder */
+        delete: operations["cancel_my_reminder"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -1888,6 +2026,21 @@ export interface components {
             activity: number;
             /** Settings */
             settings: number;
+            /**
+             * Observations
+             * @default 0
+             */
+            observations: number;
+            /**
+             * Learnings
+             * @default 0
+             */
+            learnings: number;
+            /**
+             * Reminders
+             * @default 0
+             */
+            reminders: number;
         };
         /**
          * DeltaEvent
@@ -2235,6 +2388,107 @@ export interface components {
             /** Present */
             present: boolean;
         };
+        /** LearningItem */
+        LearningItem: {
+            /** Id */
+            id: string;
+            /**
+             * Kind
+             * @description time (a routine time), duration, or preference.
+             */
+            kind: string;
+            /** Key */
+            key: string;
+            /**
+             * Text
+             * @description The sentence, written from the evidence: every number is in it.
+             */
+            text: string;
+            /** Evidence */
+            evidence: {
+                [key: string]: unknown;
+            };
+            /** Confidence */
+            confidence: number;
+            /**
+             * Status
+             * @description proposed (not enough evidence yet), ready, asked, active (you said yes), rejected, faded (not seen lately) or changed (the numbers moved).
+             */
+            status: string;
+            /** Created At */
+            created_at: number;
+            /** Updated At */
+            updated_at: number;
+            /** Asked At */
+            asked_at?: number | null;
+            /** Decided At */
+            decided_at?: number | null;
+        };
+        /** LearningSource */
+        LearningSource: {
+            /**
+             * Name
+             * @description phone, conversation or feedback.
+             */
+            name: string;
+            /** On */
+            on: boolean;
+            /** Description */
+            description: string;
+        };
+        /** LearningUpdate */
+        LearningUpdate: {
+            /** On */
+            on?: boolean | null;
+            /** Sources */
+            sources?: string[] | null;
+            /** Days */
+            days?: number | null;
+            /** Nudges */
+            nudges?: boolean | null;
+            /**
+             * Pin
+             * @description Your action PIN: needed to switch learning or a source on.
+             */
+            pin?: string | null;
+        };
+        /** LearningView */
+        LearningView: {
+            /**
+             * On
+             * @description Learning is on for you. Off: nothing new is noticed.
+             */
+            on: boolean;
+            /** Sources */
+            sources: components["schemas"]["LearningSource"][];
+            /**
+             * Macs
+             * @description Your Macs and whether each one's routine is on.
+             */
+            macs: components["schemas"]["MacRoutine"][];
+            /**
+             * Days
+             * @description How long observations are kept, in days.
+             */
+            days: number;
+            /** Nudges */
+            nudges: boolean;
+            /** Networks */
+            networks: components["schemas"]["NetworkView"][];
+            /** Phone Tokens */
+            phone_tokens: components["schemas"]["PhoneToken"][];
+            /**
+             * Observations
+             * @description How many of each kind are kept.
+             */
+            observations: {
+                [key: string]: number;
+            };
+            /** Learnings */
+            learnings: components["schemas"]["LearningItem"][];
+            /** Reminders */
+            reminders: components["schemas"]["ReminderView"][];
+        };
         /** LoginRequest */
         LoginRequest: {
             /** Email */
@@ -2247,6 +2501,18 @@ export interface components {
              * @default true
              */
             use_cookie: boolean;
+        };
+        /** MacRoutine */
+        MacRoutine: {
+            /** Device Id */
+            device_id: number;
+            /** Label */
+            label: string;
+            /**
+             * On
+             * @description Its routine skill: lock, sleep, wake and network.
+             */
+            on: boolean;
         };
         /**
          * MessageAction
@@ -2471,6 +2737,71 @@ export interface components {
              */
             pin?: string | null;
         };
+        /** NetworkName */
+        NetworkName: {
+            /**
+             * Label
+             * @description Office, Home: a name, never an address.
+             */
+            label: string;
+        };
+        /** NetworkView */
+        NetworkView: {
+            /**
+             * Fingerprint
+             * @description A salted hash made on the Mac; never the network's name.
+             */
+            fingerprint: string;
+            /**
+             * Label
+             * @description The name you gave it, such as Office; null until named.
+             */
+            label: string | null;
+            /** Device Id */
+            device_id?: number | null;
+            /** Device */
+            device?: string | null;
+            /** First Seen */
+            first_seen: number;
+            /** Last Seen */
+            last_seen: number;
+        };
+        /**
+         * ObservationIn
+         * @description A phone's place event. A place's name only: anything else in the body is refused.
+         */
+        ObservationIn: {
+            /**
+             * Event
+             * @enum {string}
+             */
+            event: "arrive" | "leave";
+            /** Place */
+            place: string;
+        };
+        /** ObservationOut */
+        ObservationOut: {
+            /**
+             * Recorded
+             * @description False when learning or the phone source is off.
+             */
+            recorded: boolean;
+        };
+        /** ObservationRow */
+        ObservationRow: {
+            /** Id */
+            id: number;
+            /** At */
+            at: number;
+            /** Kind */
+            kind: string;
+            /** Label */
+            label?: string | null;
+            /** Source */
+            source: string;
+            /** Device Id */
+            device_id?: number | null;
+        };
         /** OkResponse */
         OkResponse: {
             /**
@@ -2624,6 +2955,37 @@ export interface components {
              */
             qr_svg: string;
         };
+        /** PhoneToken */
+        PhoneToken: {
+            /** Id */
+            id: string;
+            /** Label */
+            label: string;
+            /** Created At */
+            created_at: number;
+            /** Last Used At */
+            last_used_at?: number | null;
+        };
+        /**
+         * PhoneTokenCreated
+         * @description Shown once. Its only scope is observe: it can report where you are, nothing else.
+         */
+        PhoneTokenCreated: {
+            /** Id */
+            id: string;
+            /** Token */
+            token: string;
+            /**
+             * Url
+             * @description Where the Shortcut posts: <server>/v1/observations.
+             */
+            url: string;
+        };
+        /** PinOnly */
+        PinOnly: {
+            /** Pin */
+            pin: string;
+        };
         /** PinSetRequest */
         PinSetRequest: {
             /**
@@ -2706,6 +3068,26 @@ export interface components {
             role: string;
             /** Expires At */
             expires_at: number;
+        };
+        /** ReminderView */
+        ReminderView: {
+            /** Id */
+            id: string;
+            /** Text */
+            text: string;
+            /**
+             * Trigger
+             * @description time, arrive or leave.
+             */
+            trigger: string;
+            /** Due At */
+            due_at?: number | null;
+            /** Place */
+            place?: string | null;
+            /** Created At */
+            created_at: number;
+            /** Done At */
+            done_at?: number | null;
         };
         /** RoleChange */
         RoleChange: {
@@ -8091,6 +8473,575 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    my_learning: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LearningView"];
+                };
+            };
+            /** @description Bad input */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorDetail"];
+                };
+            };
+            /** @description No credential, or an invalid one */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorDetail"];
+                };
+            };
+            /** @description Not allowed: role, token, or a missing CSRF header */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorDetail"];
+                };
+            };
+        };
+    };
+    update_my_learning: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LearningUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LearningView"];
+                };
+            };
+            /** @description Bad input */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorDetail"];
+                };
+            };
+            /** @description No credential, or an invalid one */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorDetail"];
+                };
+            };
+            /** @description Not allowed: role, token, or a missing CSRF header */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorDetail"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    name_my_network: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                fingerprint: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NetworkName"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NetworkView"];
+                };
+            };
+            /** @description Bad input */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorDetail"];
+                };
+            };
+            /** @description No credential, or an invalid one */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorDetail"];
+                };
+            };
+            /** @description Not allowed: role, token, or a missing CSRF header */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorDetail"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    forget_my_network: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                fingerprint: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OkResponse"];
+                };
+            };
+            /** @description Bad input */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorDetail"];
+                };
+            };
+            /** @description No credential, or an invalid one */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorDetail"];
+                };
+            };
+            /** @description Not allowed: role, token, or a missing CSRF header */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorDetail"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_phone_token: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PinOnly"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PhoneTokenCreated"];
+                };
+            };
+            /** @description Bad input */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorDetail"];
+                };
+            };
+            /** @description No credential, or an invalid one */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorDetail"];
+                };
+            };
+            /** @description Not allowed: role, token, or a missing CSRF header */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorDetail"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    revoke_phone_token: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                token_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OkResponse"];
+                };
+            };
+            /** @description Bad input */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorDetail"];
+                };
+            };
+            /** @description No credential, or an invalid one */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorDetail"];
+                };
+            };
+            /** @description Not allowed: role, token, or a missing CSRF header */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorDetail"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    observe: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ObservationIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ObservationOut"];
+                };
+            };
+            /** @description Bad input */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorDetail"];
+                };
+            };
+            /** @description No credential, or an invalid one */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorDetail"];
+                };
+            };
+            /** @description Not allowed: role, token, or a missing CSRF header */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorDetail"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    my_observations: {
+        parameters: {
+            query?: {
+                days?: number;
+                kind?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ObservationRow"][];
+                };
+            };
+            /** @description Bad input */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorDetail"];
+                };
+            };
+            /** @description No credential, or an invalid one */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorDetail"];
+                };
+            };
+            /** @description Not allowed: role, token, or a missing CSRF header */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorDetail"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    my_reminders: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReminderView"][];
+                };
+            };
+            /** @description Bad input */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorDetail"];
+                };
+            };
+            /** @description No credential, or an invalid one */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorDetail"];
+                };
+            };
+            /** @description Not allowed: role, token, or a missing CSRF header */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorDetail"];
+                };
+            };
+        };
+    };
+    cancel_my_reminder: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                reminder_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OkResponse"];
+                };
+            };
+            /** @description Bad input */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorDetail"];
+                };
+            };
+            /** @description No credential, or an invalid one */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorDetail"];
+                };
+            };
+            /** @description Not allowed: role, token, or a missing CSRF header */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorDetail"];
+                };
             };
             /** @description Validation Error */
             422: {
