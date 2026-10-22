@@ -214,6 +214,8 @@ final class AppModel: ObservableObject {
                     self.assistant = assistant
                 }
                 if let phrase, !phrase.isEmpty { self.wake.phrase = phrase }
+                // The server is reachable again: a turn after this may use live voice.
+                self.conversation.retryLive("the device connection is back")
             }
         }
         device = client

@@ -25,6 +25,8 @@ final class AudioIO: NSObject {
     private var pendingStart: Double = 0
     private(set) var listening = false
     private(set) var echoCancelling = false
+    /// macOS said no to echo cancellation once in this run.
+    private static var echoUnavailable = false
 
     private enum Item {
         case mp3(Data, turn: Int)
@@ -57,11 +59,13 @@ final class AudioIO: NSObject {
     func startListening() throws {
         guard !listening else { return }
         let input = engine.inputNode
-        if !echoCancelling {
+        if !echoCancelling && !AudioIO.echoUnavailable {
             do {
                 try input.setVoiceProcessingEnabled(true)
                 echoCancelling = true
             } catch {
+                // Said once: this Mac's input cannot do it, and asking again changes nothing.
+                AudioIO.echoUnavailable = true
                 IraLog.shared.info("echo cancellation is not available on this Mac")
             }
         }

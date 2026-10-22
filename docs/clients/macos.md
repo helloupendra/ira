@@ -142,7 +142,9 @@ You can change any of these in **System Settings → Privacy & Security**.
 
 Ira talks over a live connection when your Ira server offers live voice, and
 over its ordinary voice and chat when it does not, with this Mac's own key
-either way: no email or password.
+either way: no email or password. When live voice fails to start, Ira carries
+on over the ordinary voice and tries live again the next time you press the
+mic, and when this Mac reconnects to your Ira.
 
 **Settings…** (in the menu-bar menu, or the **⋯** button) changes the
 shortcut, "Hey Ira", whether typed answers are spoken too, starting at
@@ -377,7 +379,7 @@ SDKs make a macro whose plugin ships with Xcode only.
 | --- | --- |
 | `Sources/IraKit/Device/` | pairing (`POST /v1/devices/pair`, as the Python companion's `exchange()`), the device WebSocket's frames, and the client that holds it: hello, calls, ping and pong, 90-second silence, reconnect with backoff, `bye` when removed |
 | `Sources/IraKit/Tools/` | `ToolCatalog` (every tool's JSON Schema, skill and tier) and `Toolbox` (calls and "What I read"); the path policy and its deny list; Spotlight; PDF, Word, RTF and text reading; ScreenCaptureKit and Vision; Contacts; EventKit; Mail, Notes and Messages through fixed AppleScripts that take the model's words only as arguments; apps, the clipboard and Shortcuts; coding tasks and the push guard |
-| `Sources/IraKit/Voice/`, `Talk/` | `VoiceTransport`: live voice over `/v1/voice/live` ([Real-time voice](../realtime.md), protocol 1) with the device token, or the HTTP API with a signed-in session; the energy voice detector; sentence splitting |
+| `Sources/IraKit/Voice/`, `Talk/` | `VoiceTransport`: live voice over `/v1/voice/live` ([Real-time voice](../realtime.md), protocol 1) with the device token, or the HTTP API with the same token (tried again on the next mic press); the energy voice detector; sentence splitting |
 | `Sources/Ira/` | the app: menu bar, the global hotkey (Carbon, so no Accessibility permission), the floating window, microphone and speaker on one `AVAudioEngine` with echo cancellation |
 | `Tests/IraKitTests/` | pairing against a URLProtocol stub, device and live-voice frames against a fake WebSocket, the deny list, a tiny `.docx` fixture, a PDF drawn in the test, tool schemas and deadlines, the browser scripts, the routine readings, taking over the companion, the wake phrase, and the voice detector on synthetic audio. No test opens a network connection |
 | `Tests/IraAppTests/` | the window: Cmd-V pastes into the Ask field (with the pasteboard put back after), the editing keys, and letting go of the keyboard. They need a desktop session |

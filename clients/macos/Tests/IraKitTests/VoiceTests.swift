@@ -206,6 +206,15 @@ struct LiveVoiceTests {
         await #expect(throws: LiveUnavailable.self) { try await live.start(conversationID: nil) { _ in } }
     }
 
+    @Test func aBadUpgradeSaysWhatTheServerAnswered() async {
+        let channel = FakeChannel()
+        let (live, _) = connect(channel)
+        channel.fail(WebSocketClosed(httpStatus: 502, reason: "There was a bad response from the server."))
+        await #expect(throws: LiveUnavailable("live voice did not start: There was a bad response from the server. (HTTP 502)")) {
+            try await live.start(conversationID: nil) { _ in }
+        }
+    }
+
     @Test func aFatalErrorBeforeReady() async {
         let channel = FakeChannel()
         let (live, _) = connect(channel)

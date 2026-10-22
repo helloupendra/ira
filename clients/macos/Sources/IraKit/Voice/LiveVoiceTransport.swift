@@ -151,7 +151,8 @@ public final class LiveVoiceTransport: VoiceTransport, @unchecked Sendable {
             channel.close(code: 1000)
             if closedError.httpStatus == 404 { throw LiveUnavailable("this Ira server has no live voice yet") }
             if closedError.unauthorized { throw LiveUnavailable("the server refused this Mac's key for live voice") }
-            throw LiveUnavailable("live voice did not start: \(closedError.reason)")
+            let status = closedError.httpStatus.map { " (HTTP \($0))" } ?? ""
+            throw LiveUnavailable("live voice did not start: \(closedError.reason)\(status)")
         } catch {
             channel.close(code: 1000)
             throw LiveUnavailable("live voice did not start")

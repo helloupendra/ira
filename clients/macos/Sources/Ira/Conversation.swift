@@ -60,6 +60,10 @@ final class Conversation: ObservableObject {
     private var vad = EnergyVAD()
     private var transport: VoiceTransport?
     private var connecting: Task<VoiceTransport?, Never>?
+    /// Why live voice last failed to start, while the HTTP API carries the
+    /// conversation; live is tried again on the next mic press, and when the
+    /// device connection comes back.
+    private(set) var liveProblem: String?
     private var lastInputWasVoice = false
     /// A typed turn waiting for its turn number, so a "heard" for it is not shown twice.
     private var typed: (id: UUID, text: String)?
@@ -123,14 +127,15 @@ final class Conversation: ObservableObject {
                 return nil
             }
         }
-        var liveProblem = ""
         do {
             let live = try LiveVoiceTransport(server: settings.server, token: token)
             try await live.start(conversationID: conversationID, events: events)
+            if liveProblem != nil { IraLog.shared.info("live voice is back") }
+            liveProblem = nil
             return use(live)
         } catch {
             liveProblem = error.localizedDescription
-            IraLog.shared.info("live voice unavailable: \(liveProblem)")
+            IraLog.shared.info("live voice unavailable, using the HTTP API: \(error.localizedDescription)")
         }
         let http = HTTPVoiceTransport(client: client, speakReplies: { [settings] in settings.speakReplies })
         do {
@@ -152,6 +157,16 @@ final class Conversation: ObservableObject {
         transportKind = transport.kind
         notice = nil
         return transport
+    }
+
+    /// Leave the HTTP fallback, so the next turn tries live voice first again.
+    /// Only between turns: nothing under way is cut off.
+    func retryLive(_ why: String) {
+        guard liveProblem != nil, transport?.kind == "http", connecting == nil, !busy, !listening else { return }
+        IraLog.shared.info("trying live voice again (\(why))")
+        transport?.close()
+        transport = nil
+        transportKind = nil
     }
 
     /// Close the connection (the window closed, or the person signed out).
@@ -266,6 +281,7 @@ final class Conversation: ObservableObject {
                 notice = "Ira cannot hear you: allow Ira in System Settings → Privacy & Security → Microphone."
                 return
             }
+            retryLive("the mic was pressed")
             guard await connect() != nil else { return }
             do {
                 try audio.startListening()
