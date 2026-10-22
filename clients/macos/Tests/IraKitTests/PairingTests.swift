@@ -213,13 +213,15 @@ struct PairingRecordTests {
     @Test func onlyRemovingOnPurposeForgets() throws {
         let (record, store, settings) = record()
         #expect(record.status == .paired)
-        // Pairing again replaces the key; it never deletes it first.
+        // Pairing again replaces the key; it never deletes it first. Only a Touch ID
+        // key enrolled for the old pairing goes: it would count as a wrong PIN.
         try record.adopt(server: "https://ira.example.com", token: "irad_" + String(repeating: "n", count: 43), deviceID: 9, label: "Mac")
-        #expect(store.deletions.isEmpty)
+        #expect(store.deletions == [SecretAccount.approvalKey])
         #expect(store.load(SecretAccount.device)?.hasPrefix("irad_nnn") == true)
         #expect(settings.deviceID == 9)
         record.removeOnPurpose()
         #expect(store.deletions.contains(SecretAccount.device))
+        #expect(store.deletions.contains(SecretAccount.approvalKey))
         #expect(settings.server == "")
         #expect(!settings.firstRunDone)
         #expect(record.status == .unpaired)

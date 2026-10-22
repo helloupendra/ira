@@ -231,6 +231,7 @@ struct ChatView: View {
         VStack(spacing: 0) {
             topBar
             Divider()
+            ApprovalBanner(approvals: model.approvals)
             transcript
             if conversation.needsRestart {
                 restartBanner
@@ -554,6 +555,15 @@ struct ActionCard: View {
                             .onSubmit(confirm)
                         Button(state.working ? "Checking…" : "Confirm", action: confirm)
                             .disabled(state.working || state.pin.count < 4)
+                        if conversation.touchIDReady(for: action) {
+                            Button {
+                                touchID()
+                            } label: {
+                                Label("Touch ID", systemImage: "touchid")
+                            }
+                            .disabled(state.working)
+                            .help("Approve with your fingerprint instead of the PIN.")
+                        }
                         Button("No") { conversation.answer(action, yes: false) }
                     }
                     Text("Typed here, your PIN goes only to your Ira's confirm step, never to the assistant. Never say it aloud.")
@@ -586,6 +596,14 @@ struct ActionCard: View {
         }
     }
 
+    private func touchID() {
+        state.working = true
+        Task {
+            state.answer = await conversation.confirmWithTouchID(action)
+            state.working = false
+        }
+    }
+
     private func confirm() {
         let pin = state.pin
         state.pin = ""
@@ -593,6 +611,45 @@ struct ActionCard: View {
         Task {
             state.answer = await conversation.confirm(action, pin: pin)
             state.working = false
+        }
+    }
+}
+
+/// While an approval window is open: how long Ira may still control this Mac
+/// without asking, and Stop.
+struct ApprovalBanner: View {
+    @ObservedObject var approvals: ApprovalMonitor
+
+    var body: some View {
+        if let banner = approvals.banner {
+            VStack(alignment: .leading, spacing: 4) {
+                HStack(spacing: 8) {
+                    Image(systemName: "hand.point.up.left.fill")
+                        .foregroundStyle(.orange)
+                    Text(banner)
+                        .font(.callout.weight(.medium))
+                    if let steps = approvals.window?.steps, steps > 0 {
+                        Text("· \(steps) step\(steps == 1 ? "" : "s")")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    Spacer()
+                    Button("Stop") { Task { await approvals.stop() } }
+                        .controlSize(.small)
+                        .help("End it now: the next step asks for your PIN again.")
+                }
+                if !approvals.trustedApps.isEmpty {
+                    Text("Trusted apps: " + approvals.trustedApps.map(ApprovalMonitor.name(of:)).joined(separator: ", "))
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                if let problem = approvals.problem {
+                    Text(problem).font(.caption).foregroundStyle(.orange)
+                }
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
+            .background(Color.orange.opacity(0.12))
         }
     }
 }

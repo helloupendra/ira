@@ -29,6 +29,9 @@ extension SecretStore {
 public enum SecretAccount {
     /// This Mac's device token (`irad_...`), from pairing.
     public static let device = "device"
+    /// The handle of this Mac's Touch ID approval key (base64); the key itself
+    /// never leaves the Secure Enclave.
+    public static let approvalKey = "approval-key"
 }
 
 public struct SecretError: LocalizedError {
@@ -177,6 +180,8 @@ public struct PairingRecord: Sendable {
     /// A new pairing: the key is replaced (never deleted first), with its server.
     public func adopt(server: String, token: String, deviceID: Int?, label: String) throws {
         try secrets.save(token, account: SecretAccount.device)
+        // A Touch ID key was enrolled for the old pairing: it would only count as a wrong PIN now.
+        if deviceID != settings.deviceID || server != settings.server { secrets.delete(SecretAccount.approvalKey) }
         settings.server = server
         settings.deviceID = deviceID
         settings.deviceLabel = label
@@ -186,6 +191,7 @@ public struct PairingRecord: Sendable {
     public func removeOnPurpose() {
         secrets.delete(SecretAccount.device)
         secrets.delete("session")  // left by 0.1.0's sign-in, if any
+        secrets.delete(SecretAccount.approvalKey)
         settings.forgetPairing()
         settings.firstRunDone = false
     }

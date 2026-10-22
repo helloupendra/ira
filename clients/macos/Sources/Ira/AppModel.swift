@@ -29,6 +29,8 @@ final class AppModel: ObservableObject {
     let secrets: SecretStore
     let conversation: Conversation
     let permissions = PermissionCenter()
+    /// An approval window open for this Mac, after a PIN on a control step.
+    let approvals: ApprovalMonitor
     let wake = WakeListener()
     /// Called when "Hey Ira" is heard: the window opens and listens.
     var onWake: (() -> Void)?
@@ -48,6 +50,8 @@ final class AppModel: ObservableObject {
         self.assistant = settings.assistantName
         self.pinned = settings.panelPinned
         self.conversation = Conversation(settings: settings, secrets: secrets)
+        self.approvals = ApprovalMonitor(settings: settings, secrets: secrets)
+        conversation.onConfirmed = { [weak self] in Task { await self?.approvals.refresh() } }
         trackFrontApp()
         lookForCompanion()
         route()
@@ -216,6 +220,7 @@ final class AppModel: ObservableObject {
                 if let phrase, !phrase.isEmpty { self.wake.phrase = phrase }
                 // The server is reachable again: a turn after this may use live voice.
                 self.conversation.retryLive("the device connection is back")
+                await self.approvals.refresh()
             }
         }
         device = client
@@ -267,7 +272,44 @@ final class AppModel: ObservableObject {
         }
     }
 
+    // MARK: Touch ID approvals
+
+    var touchIDEnrolled: Bool { secrets.load(SecretAccount.approvalKey) != nil }
+
+    /// Make this Mac's approval key and enrol it with the person's PIN.
+    func enrolTouchID(pin: String) async -> String {
+        guard let token = secrets.load(SecretAccount.device), !settings.server.isEmpty else { return "This Mac is not paired." }
+        let key: EnclaveApprovalKey
+        do {
+            key = try EnclaveApprovalKey.create()
+        } catch {
+            return "This Mac could not make a Touch ID key: \(error.localizedDescription)"
+        }
+        let client = AskClient(server: settings.server, token: { token })
+        do {
+            _ = try await client.enrolApprovalKey(publicKey: key.publicKey, pin: pin)
+            try secrets.save(key.handle.base64EncodedString(), account: SecretAccount.approvalKey)
+            IraLog.shared.info("Touch ID approval key enrolled")
+            return "Set up. A Touch ID button now shows next to the PIN box."
+        } catch let failure as AskClient.Failure where failure.status == 404 || failure.status == 405 {
+            return "Your Ira does not take Touch ID approvals yet. Keep using your PIN."
+        } catch {
+            return "Not set up: \(error.localizedDescription)"
+        }
+    }
+
+    func removeTouchID() async -> String {
+        if let token = secrets.load(SecretAccount.device), let deviceID = settings.deviceID {
+            try? await AskClient(server: settings.server, token: { token }).removeApprovalKey(deviceID: deviceID)
+        }
+        secrets.delete(SecretAccount.approvalKey)
+        IraLog.shared.info("Touch ID approval key removed")
+        return "Off. Confirm with your PIN."
+    }
+
     private func remember(_ entry: Activity) {
+        // A control step ran without a PIN here: a window may have opened elsewhere.
+        if Approvals.covers(entry.tool) { approvals.refreshIfStale() }
         activity.insert(entry, at: 0)
         if activity.count > 50 { activity.removeLast(activity.count - 50) }
     }

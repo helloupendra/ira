@@ -215,7 +215,13 @@ switch it on.
   Settings' private pages or the Apple menu. To stay within 30 tools, a few
   merged: `mail_search` and `notes_search` read one item by id,
   `reminders_set` adds or completes, `file_open` opens in VS Code, and
-  `code_task_status` lists tasks without an id.
+  `code_task_status` lists tasks without an id. While an approval window
+  is open, the window shows how long with **Stop** and the menu-bar mark
+  is orange; Touch ID can confirm instead of the PIN (a Secure Enclave key
+  enrolled once with the PIN); trusted apps are listed with a link to the
+  web page that changes them (`/#panel=assistant` now opens that page);
+  and every `screen_read` and control result names the app in front by
+  its bundle id.
 - **Ira for Android** (`clients/android/`, [guide](docs/clients/android.md)):
   Kotlin and Compose, Android 10 and later. Pairs with a link or a code and
   keeps its key encrypted with an Android Keystore key. Live voice over

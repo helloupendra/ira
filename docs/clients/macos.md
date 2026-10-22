@@ -222,12 +222,27 @@ and mouse:
   direct tool.
 - **Your PIN, then an approval.** Each step is Tier 3. Confirming one with
   your PIN opens an **approval** for this Mac (15 minutes unless you chose
-  otherwise): the next steps of the task run without asking. Sending,
-  paying, deleting, pushing and new grants still ask
-  every time ([Security](../security.md#approvals-fewer-pins-for-one-task)).
+  otherwise on **Your assistant**): the next steps of the task run without
+  asking. Meanwhile Ira's window shows "Ira can control this Mac for 12 more
+  minutes" with **Stop**, the menu-bar mark turns orange, and its menu has
+  **Stop It Now**. Sending, paying, deleting, pushing and new grants still
+  ask every time ([Security](../security.md#approvals-fewer-pins-for-one-task)).
+- **Touch ID instead of the PIN.** In **Settings → Using this Mac for you**,
+  type your PIN once and press **Set Up Touch ID**: Ira makes a key in this
+  Mac's Secure Enclave that signs only after your fingerprint (a fingerprint
+  added later voids it), and a **Touch ID** button then shows next to the
+  PIN box. What it signs is the action's id, what you were shown and when it
+  expires. Pairing again or removing Ira removes the key.
+- **Trusted apps.** Apps you trust on this Mac (for example Music or
+  Chrome) let Ira act without asking, outside an approval too, as long as
+  the app is in front. Settings lists them; **Change on the Web…** opens
+  **Your assistant → Trusted apps** in your Ira, where adding one needs
+  your PIN. Each step's answer names the app in front by its bundle id
+  (`"app": "com.google.Chrome"`), and the trust holds only while it is a
+  trusted one.
 - **It says what it did, never what it saw**: "Clicked the Subscribe button
-  in Safari. Safari is in front now." Ira looks with `screen_read` before
-  the next step.
+  in Safari. Safari is in front now.", with the app in front's bundle id.
+  Ira looks with `screen_read` before the next step.
 - **Never**: in a password field (or while macOS's secure typing is on),
   in a password manager or Keychain Access, in System Settings except
   everyday pages (Appearance, Displays, Sound, Notifications, Focus and the

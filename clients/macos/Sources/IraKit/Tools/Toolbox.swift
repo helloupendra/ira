@@ -517,7 +517,9 @@ public final class Toolbox: ToolRunner, @unchecked Sendable {
         log.info("screen_read \(read.text.count) chars")
         let lines = read.text.isEmpty ? 0 : read.text.split(separator: "\n").count
         let content: JSONValue = [
-            "app": .string(app),
+            // The bundle id: an approval for trusted apps checks it; the name is for people.
+            "app": .string(bundleID ?? ""),
+            "appName": .string(app),
             "window": .string(window.title),
             "text": .string(read.text),
             "chars": .number(Double(read.text.count)),

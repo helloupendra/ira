@@ -220,11 +220,13 @@ struct DeviceEventTests {
         client.announce(event: "task_failed", title: "Task t2 failed", text: "tests failed.")
         let run = Task { await client.runOnce(token: "irad_test") }
         #expect(await channel.waitFor { $0.count == 1 })
+        // Measured from the welcome, not from when the first event was noticed: a
+        // busy machine may notice both at once, but never send the second sooner.
+        let welcomed = Date()
         channel.push(["type": "welcome", "deviceId": 1, "skills": ["tasks"]])
         #expect(await channel.waitFor { sent in sent.contains { $0["event"] == "task_done" } })
-        let first = Date()
         #expect(await channel.waitFor { sent in sent.contains { $0["event"] == "task_failed" } })
-        #expect(Date().timeIntervalSince(first) >= 0.2)
+        #expect(Date().timeIntervalSince(welcomed) >= 0.25)
         let done = try #require(channel.sentJSON.first { $0["event"] == "task_done" })
         #expect(done == ["type": "event", "event": "task_done", "title": "Task t1 is done", "text": "2 files changed.", "data": ["id": "t1"]])
         channel.close(code: 1000)

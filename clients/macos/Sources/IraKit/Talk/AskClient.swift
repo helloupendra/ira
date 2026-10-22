@@ -89,8 +89,19 @@ public final class AskClient: @unchecked Sendable {
     /// Confirm a Tier 3 action with the person's PIN, typed in the app (never spoken).
     /// Returns the outcome: `executed`, `failed`, `wrong_pin`, `locked`...
     public func confirm(actionID: String, pin: String) async throws -> JSONValue {
+        try await confirm(actionID: actionID, body: ["pin": .string(pin)])
+    }
+
+    /// Confirm with this device's signature after Touch ID, instead of the PIN.
+    public func confirm(actionID: String, deviceID: Int, signature: Data) async throws -> JSONValue {
+        try await confirm(actionID: actionID, body: [
+            "device_id": .number(Double(deviceID)), "signature": .string(ApprovalSignature.base64url(signature)),
+        ])
+    }
+
+    private func confirm(actionID: String, body: JSONValue) async throws -> JSONValue {
         let id = actionID.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? actionID
-        let request = try request("/v1/actions/\(id)/confirm", method: "POST", json: ["pin": .string(pin)])
+        let request = try request("/v1/actions/\(id)/confirm", method: "POST", json: body)
         let data: Data
         let response: URLResponse
         do {
@@ -103,6 +114,29 @@ public final class AskClient: @unchecked Sendable {
             throw Failure(AskClient.detail(data, status: status), status: status)
         }
         return outcome
+    }
+
+    // MARK: Approvals
+
+    /// `GET /v1/me/approvals`: open approval windows (of every device of this person).
+    public func approvals() async throws -> JSONValue {
+        JSONValue.parse(try await send(try request("/v1/me/approvals", timeout: 15))) ?? .null
+    }
+
+    /// Stop one approval window, or all of them: a device may stop one, never open one.
+    public func stopApproval(_ id: String?) async throws {
+        let path = id.map { "/v1/me/approvals/" + ($0.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? $0) }
+        _ = try await send(try request(path ?? "/v1/me/approvals", method: "DELETE", timeout: 15))
+    }
+
+    /// Enrol this device's approval key (SubjectPublicKeyInfo, DER), with the person's PIN.
+    public func enrolApprovalKey(publicKey: Data, pin: String) async throws -> JSONValue {
+        let body: JSONValue = ["public_key": .string(publicKey.base64EncodedString()), "algorithm": "ES256", "pin": .string(pin)]
+        return JSONValue.parse(try await send(try request("/v1/me/approval-keys", method: "POST", json: body, timeout: 30))) ?? .null
+    }
+
+    public func removeApprovalKey(deviceID: Int) async throws {
+        _ = try await send(try request("/v1/me/approval-keys/\(deviceID)", method: "DELETE", timeout: 15))
     }
 
     /// `POST /v1/ask/stream`: each server-sent event as JSON, in order.

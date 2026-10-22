@@ -1,4 +1,5 @@
 import AppKit
+import CryptoKit
 import Foundation
 import Testing
 @testable import IraKit
@@ -564,6 +565,97 @@ struct ConfirmTests {
         let wrong = try await client.confirm(actionID: "act_1", pin: "1111")
         #expect(wrong["status"] == "wrong_pin")
         #expect(wrong["attempts_left"]?.intValue == 2)
+    }
+
+    /// The bytes signed are the server's: id, the summary's SHA-256 in hex, the expiry.
+    @Test func aSignatureCoversWhatThePersonWasShown() throws {
+        let message = ApprovalSignature.message(actionID: "act_7", summary: "Type “lofi” in Safari", expiresAt: 1_792_000_123)
+        let digest = SHA256.hash(data: Data("Type “lofi” in Safari".utf8)).map { String(format: "%02x", $0) }.joined()
+        #expect(String(decoding: message, as: UTF8.self) == "ira-approve:1\nact_7\n\(digest)\n1792000123")
+        #expect(ApprovalSignature.base64url(Data([0xfb, 0xff, 0xfe])) == "-__-")
+        // A P-256 key signs it as the server checks it: ECDSA with SHA-256, DER.
+        let key = P256.Signing.PrivateKey()
+        let signature = try key.signature(for: message).derRepresentation
+        let checker = try P256.Signing.PublicKey(derRepresentation: key.publicKey.derRepresentation)
+        #expect(checker.isValidSignature(try P256.Signing.ECDSASignature(derRepresentation: signature), for: message))
+        #expect(key.publicKey.derRepresentation.count == 91)  // SubjectPublicKeyInfo
+    }
+
+    @Test func aSignedConfirmCarriesTheDeviceNotAPin() async throws {
+        let host = "signed.example.com"
+        let session = StubProtocol.session(host: host) { request, body in
+            let json = body.flatMap(JSONValue.parse)
+            #expect(json?["pin"] == nil)
+            #expect(json?["device_id"]?.intValue == 4)
+            #expect(json?["signature"]?.stringValue == "AQID")
+            return .init(status: 200, body: Data(#"{"status": "executed"}"#.utf8))
+        }
+        let client = AskClient(server: "https://\(host)", session: session, token: { "irad_test" })
+        #expect(try await client.confirm(actionID: "act_2", deviceID: 4, signature: Data([1, 2, 3]))["status"] == "executed")
+    }
+}
+
+@Suite("Approval windows", .serialized)
+struct ApprovalTests {
+    @Test func windowsAndTheBanner() {
+        let state = Approvals.parse([
+            "minutes": 15,
+            "windows": [["id": "w1", "device_id": 4, "device": "Studio Mac", "opened_at": 1000, "expires_at": 1900, "steps": 3]],
+        ])
+        #expect(state.minutes == 15)
+        #expect(state.windows == [ApprovalWindow(
+            id: "w1", deviceID: 4, device: "Studio Mac", openedAt: Date(timeIntervalSince1970: 1000),
+            expiresAt: Date(timeIntervalSince1970: 1900), steps: 3)])
+        #expect(Approvals.parse(["windows": [["id": "broken"]]]).windows.isEmpty)
+        let trusted = Approvals.parse(["minutes": 0, "windows": [], "trusted_apps": [
+            ["device_id": 4, "device": "Studio Mac", "apps": ["com.google.Chrome", "com.apple.Music"]],
+            ["device_id": 7, "device": "Phone", "apps": ["com.google.android.youtube"]],
+        ]])
+        #expect(trusted.trustedApps[4] == ["com.google.Chrome", "com.apple.Music"])
+        #expect(trusted.trustedApps[9] == nil)
+        #expect(Approvals.manageLink(server: "https://ira.example.com/")?.absoluteString == "https://ira.example.com/#panel=assistant")
+        #expect(Approvals.banner(remaining: 12 * 60) == "Ira can control this Mac for 12 more minutes")
+        #expect(Approvals.banner(remaining: 11 * 60 + 5) == "Ira can control this Mac for 12 more minutes")
+        #expect(Approvals.banner(remaining: 61) == "Ira can control this Mac for 2 more minutes")
+        #expect(Approvals.banner(remaining: 60) == "Ira can control this Mac for 1 more minute")
+        #expect(Approvals.banner(remaining: 20) == "Ira can control this Mac for less than a minute more")
+        #expect(Approvals.covers("mac_click") && Approvals.covers("screen_read") && Approvals.covers("url_open"))
+        #expect(!Approvals.covers("messages_send") && !Approvals.covers("files_find"))
+    }
+
+    @Test func aDeviceStopsAWindowButNeverOpensOne() async throws {
+        let host = "approvals.example.com"
+        let session = StubProtocol.session(host: host) { request, _ in
+            switch (request.httpMethod ?? "", request.url?.path ?? "") {
+            case ("GET", "/v1/me/approvals"):
+                return .init(status: 200, body: Data(#"{"minutes": 15, "windows": []}"#.utf8))
+            case ("DELETE", "/v1/me/approvals/w1"), ("DELETE", "/v1/me/approvals"):
+                return .init(status: 200, body: Data(#"{"ok": true}"#.utf8))
+            default:
+                return .init(status: 404, body: Data(#"{"detail": "not here"}"#.utf8))
+            }
+        }
+        let client = AskClient(server: "https://\(host)", session: session, token: { "irad_test" })
+        #expect(Approvals.parse(try await client.approvals()).minutes == 15)
+        try await client.stopApproval("w1")
+        try await client.stopApproval(nil)
+        let methods = StubProtocol.requests(host).map { "\($0.0.httpMethod ?? "") \($0.0.url?.path ?? "")" }
+        #expect(methods == ["GET /v1/me/approvals", "DELETE /v1/me/approvals/w1", "DELETE /v1/me/approvals"])
+    }
+
+    @Test func enrollingSendsThePublicKeyAndThePin() async throws {
+        let host = "enrol.example.com"
+        let key = P256.Signing.PrivateKey().publicKey.derRepresentation
+        let session = StubProtocol.session(host: host) { request, body in
+            #expect(request.url?.path == "/v1/me/approval-keys")
+            let json = body.flatMap(JSONValue.parse)
+            #expect(json?["algorithm"] == "ES256")
+            #expect(json?["pin"] == "4321")
+            #expect(json?["public_key"]?.stringValue.flatMap { Data(base64Encoded: $0) } == key)
+            return .init(status: 200, body: Data(#"{"device_id": 4, "device": "Studio Mac", "algorithm": "ES256", "created_at": 1}"#.utf8))
+        }
+        let client = AskClient(server: "https://\(host)", session: session, token: { "irad_test" })
+        #expect(try await client.enrolApprovalKey(publicKey: key, pin: "4321")["device_id"]?.intValue == 4)
     }
 }
 

@@ -99,6 +99,15 @@ struct SettingsView: View {
                 }
                 Button("Check again") { permissions.refresh() }
             }
+            Section("Using this Mac for you") {
+                Text("With the Control skill on, a PIN on one step lets Ira do the next steps of that task without asking, for a while (you choose how long in your Ira's Your assistant page). Sending, paying, deleting and pushing still ask every time.")
+                    .font(.caption).foregroundStyle(.secondary)
+                ApprovalBanner(approvals: model.approvals)
+                TrustedAppsRow(approvals: model.approvals)
+                if EnclaveApprovalKey.available {
+                    TouchIDSetup(model: model)
+                }
+            }
             Section("Folders") {
                 Text("Ira finds and reads files in your home folder, never in ~/Library, keychains or hidden folders. Choose folders below to narrow it, or to add a drive.")
                     .font(.caption).foregroundStyle(.secondary)
@@ -228,5 +237,81 @@ struct FolderList: View {
                 }
             }
         }
+    }
+}
+
+final class TouchIDState: ObservableObject {
+    @Published var pin = ""
+    @Published var working = false
+    @Published var answer: String?
+    @Published var enrolled = false
+}
+
+/// Approving with Touch ID instead of typing the PIN: set up once, with the PIN.
+struct TouchIDSetup: View {
+    @ObservedObject var model: AppModel
+    @StateObject private var state = TouchIDState()
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            if state.enrolled {
+                HStack {
+                    Label("Touch ID approves for this Mac", systemImage: "touchid")
+                    Spacer()
+                    Button("Turn Off") { run { await model.removeTouchID() } }
+                        .disabled(state.working)
+                }
+            } else {
+                Text("Approve with Touch ID instead of your PIN: type your PIN once to set it up. The key stays in this Mac's Secure Enclave and works only after your fingerprint.")
+                    .font(.caption).foregroundStyle(.secondary)
+                HStack {
+                    SecureField("Your PIN", text: $state.pin)
+                        .textFieldStyle(.roundedBorder)
+                        .frame(maxWidth: 140)
+                    Button(state.working ? "Setting up…" : "Set Up Touch ID") {
+                        let pin = state.pin
+                        state.pin = ""
+                        run { await model.enrolTouchID(pin: pin) }
+                    }
+                    .disabled(state.working || state.pin.count < 4)
+                }
+            }
+            if let answer = state.answer {
+                Text(answer).font(.caption)
+            }
+        }
+        .onAppear { state.enrolled = model.touchIDEnrolled }
+    }
+
+    private func run(_ work: @escaping () async -> String) {
+        state.working = true
+        Task {
+            state.answer = await work()
+            state.enrolled = model.touchIDEnrolled
+            state.working = false
+        }
+    }
+}
+
+/// The apps on this Mac where Ira may tap and type without asking. Adding one
+/// needs the PIN in a signed-in session, so the list is changed on the web.
+struct TrustedAppsRow: View {
+    @ObservedObject var approvals: ApprovalMonitor
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack {
+                Text("Trusted apps").font(.headline)
+                Spacer()
+                Button("Change on the Web…") { approvals.openTrustedAppsPage() }
+                    .help("Your assistant → Trusted apps in your Ira's web app. Adding an app needs your PIN.")
+            }
+            Text(approvals.trustedApps.isEmpty
+                 ? "None. In a trusted app, Ira acts without asking even outside an approval; the never-list still asks."
+                 : approvals.trustedApps.map(ApprovalMonitor.name(of:)).joined(separator: ", "))
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+        .onAppear { Task { await approvals.refresh() } }
     }
 }

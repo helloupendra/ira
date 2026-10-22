@@ -70,10 +70,19 @@ struct ControlTools: Sendable {
         return apps.first { $0.localizedName == best }
     }
 
-    /// The app in front now, for the answer.
-    func inFront() async -> String {
+    /// The app in front after a step: its name, and its bundle id, which an
+    /// approval for trusted apps checks (`"app"` in every result).
+    struct Front {
+        let name: String
+        let bundleID: String
+    }
+
+    func inFront() async -> Front {
         try? await Task.sleep(nanoseconds: 250_000_000)
-        return await MainActor.run { NSWorkspace.shared.frontmostApplication?.localizedName } ?? "no app"
+        return await MainActor.run {
+            let app = NSWorkspace.shared.frontmostApplication
+            return Front(name: app?.localizedName ?? "no app", bundleID: app?.bundleIdentifier ?? "")
+        }
     }
 
     /// Act with Ira's own window out of the keyboard's way.
@@ -120,10 +129,11 @@ struct ControlTools: Sendable {
         var summary = "Typed \(text.count) character\(text.count == 1 ? "" : "s") into the \(field) in \(target.name)"
         summary += pressReturn ? ", then pressed Return." : "."
         if landed == false && !pressReturn { summary += " The field does not show them: look with screen_read." }
-        summary += " \(front) is in front now."
+        summary += " \(front.name) is in front now."
         return [
-            "typed": .number(Double(text.count)), "app": .string(target.name), "field": .string(field),
-            "pressedReturn": .bool(pressReturn), "front": .string(front), "summary": .string(summary),
+            "typed": .number(Double(text.count)), "actedIn": .string(target.name), "field": .string(field),
+            "pressedReturn": .bool(pressReturn), "app": .string(front.bundleID), "appName": .string(front.name),
+            "summary": .string(summary),
         ]
     }
 
@@ -144,8 +154,8 @@ struct ControlTools: Sendable {
         let said = presses.map(\.spoken).joined(separator: ", then ")
         log.info("mac_keys \(presses.count) presses in \(target.name)")
         return [
-            "pressed": .array(presses.map { .string($0.spoken) }), "app": .string(target.name), "front": .string(front),
-            "summary": .string("Pressed \(said) in \(target.name). \(front) is in front now."),
+            "pressed": .array(presses.map { .string($0.spoken) }), "actedIn": .string(target.name), "app": .string(front.bundleID), "appName": .string(front.name),
+            "summary": .string("Pressed \(said) in \(target.name). \(front.name) is in front now."),
         ]
     }
 
@@ -211,8 +221,8 @@ struct ControlTools: Sendable {
         let front = await inFront()
         log.info("mac_click a \(kind) in \(target.name)")
         return [
-            "clicked": .string(match.label), "kind": .string(kind), "app": .string(target.name), "front": .string(front),
-            "summary": .string("\(did) \(front) is in front now. Look with screen_read before the next step."),
+            "clicked": .string(match.label), "kind": .string(kind), "actedIn": .string(target.name), "app": .string(front.bundleID), "appName": .string(front.name),
+            "summary": .string("\(did) \(front.name) is in front now. Look with screen_read before the next step."),
         ]
     }
 
@@ -234,8 +244,8 @@ struct ControlTools: Sendable {
         let front = await inFront()
         log.info("mac_click words in \(target.name)")
         return [
-            "clicked": .string(label), "kind": .string("words"), "app": .string(target.name), "front": .string(front),
-            "summary": .string("No control is called “\(label)”, so I clicked where those words are written in \(target.name)'s window. \(front) is in front now. Look with screen_read before the next step."),
+            "clicked": .string(label), "kind": .string("words"), "actedIn": .string(target.name), "app": .string(front.bundleID), "appName": .string(front.name),
+            "summary": .string("No control is called “\(label)”, so I clicked where those words are written in \(target.name)'s window. \(front.name) is in front now. Look with screen_read before the next step."),
         ]
     }
 
@@ -259,8 +269,8 @@ struct ControlTools: Sendable {
         let front = await inFront()
         log.info("mac_scroll \(direction) \(amount) in \(target.name)")
         return [
-            "scrolled": .string(direction), "steps": .number(Double(amount)), "app": .string(target.name), "front": .string(front),
-            "summary": .string("Scrolled \(direction) \(amount) step\(amount == 1 ? "" : "s") in \(target.name)'s window. \(front) is in front now."),
+            "scrolled": .string(direction), "steps": .number(Double(amount)), "actedIn": .string(target.name), "app": .string(front.bundleID), "appName": .string(front.name),
+            "summary": .string("Scrolled \(direction) \(amount) step\(amount == 1 ? "" : "s") in \(target.name)'s window. \(front.name) is in front now."),
         ]
     }
 
@@ -305,8 +315,8 @@ struct ControlTools: Sendable {
         let front = await inFront()
         log.info("mac_menu \(path.count) steps in \(target.name)")
         return [
-            "chose": .string(said), "app": .string(target.name), "front": .string(front),
-            "summary": .string("Chose \(said) in \(target.name). \(front) is in front now."),
+            "chose": .string(said), "actedIn": .string(target.name), "app": .string(front.bundleID), "appName": .string(front.name),
+            "summary": .string("Chose \(said) in \(target.name). \(front.name) is in front now."),
         ]
     }
 

@@ -17,6 +17,8 @@ struct PendingAction: Equatable {
     let summary: String
     let tier: Int
     var status: String
+    /// When it expires, epoch seconds: part of what Touch ID signs.
+    var expiresAt: Int? = nil
 }
 
 /// The conversation in the window: typing, the live microphone, and Ira's voice.
@@ -72,6 +74,8 @@ final class Conversation: ObservableObject {
     private var idleTimer: Timer?
     /// Called when listening stops, so "Hey Ira" can listen again.
     var onListeningEnded: (() -> Void)?
+    /// Called after an action was confirmed here: it may have opened an approval window.
+    var onConfirmed: (() -> Void)?
     /// This window's conversation.
     private(set) var conversationID: String
 
@@ -411,7 +415,8 @@ final class Conversation: ObservableObject {
                 id: action["id"]?.stringValue ?? "",
                 summary: action["summary"]?.stringValue ?? "Ira proposed an action",
                 tier: action["tier"]?.intValue ?? 3,
-                status: action["status"]?.stringValue ?? "pending")
+                status: action["status"]?.stringValue ?? "pending",
+                expiresAt: action["expires_at"]?.doubleValue.map { Int($0) })
             entries.append(Entry(role: .note, text: pending.summary, turn: turn, action: pending))
         case .done(let turn, let text):
             if let index = entryIndex(turn: turn) {
@@ -496,25 +501,59 @@ final class Conversation: ObservableObject {
     func confirm(_ action: PendingAction, pin: String) async -> String {
         guard let token = secrets.load(SecretAccount.device) else { return "This Mac is not paired." }
         let client = AskClient(server: settings.server, token: { token })
-        let outcome: JSONValue
         do {
-            outcome = try await client.confirm(actionID: action.id, pin: pin)
+            return settle(action, try await client.confirm(actionID: action.id, pin: pin), signed: false)
         } catch {
             return "Ira could not be reached: \(error.localizedDescription). Try again."
         }
+    }
+
+    /// Whether this action can be confirmed with Touch ID here: a key is set up,
+    /// and the server said when the action expires (part of what is signed).
+    func touchIDReady(for action: PendingAction) -> Bool {
+        action.tier >= 3 && action.expiresAt != nil && settings.deviceID != nil
+            && secrets.load(SecretAccount.approvalKey) != nil
+    }
+
+    /// Confirm with Touch ID: the Secure Enclave signs the action's id, the
+    /// summary shown and its expiry, and the signature goes in place of the PIN.
+    func confirmWithTouchID(_ action: PendingAction) async -> String {
+        guard let token = secrets.load(SecretAccount.device), let deviceID = settings.deviceID,
+            let expiresAt = action.expiresAt,
+            let handle = secrets.load(SecretAccount.approvalKey).flatMap({ Data(base64Encoded: $0) })
+        else { return "Touch ID is not set up for this Mac. Use your PIN." }
+        let message = ApprovalSignature.message(actionID: action.id, summary: action.summary, expiresAt: expiresAt)
+        let signature: Data
+        do {
+            signature = try await EnclaveApprovalKey(handle: handle).sign(message, reason: "approve: \(action.summary.prefix(120))")
+        } catch {
+            return "Touch ID did not approve it. Try again, or use your PIN."
+        }
+        let client = AskClient(server: settings.server, token: { token })
+        do {
+            return settle(action, try await client.confirm(actionID: action.id, deviceID: deviceID, signature: signature), signed: true)
+        } catch {
+            return "Ira could not be reached: \(error.localizedDescription). Try again."
+        }
+    }
+
+    private func settle(_ action: PendingAction, _ outcome: JSONValue, signed: Bool) -> String {
         let status = outcome["status"]?.stringValue ?? ""
         if let index = entries.firstIndex(where: { $0.action?.id == action.id }), status != "wrong_pin" {
             entries[index].action?.status = status
         }
+        if ["executed", "failed"].contains(status) { onConfirmed?() }
         switch status {
         case "executed": return "Done."
         case "wrong_pin":
             let left = outcome["attempts_left"]?.intValue.map { " \($0) tries left." } ?? ""
-            return "That PIN is not right.\(left)"
+            return signed
+                ? "Your Ira did not accept this Mac's Touch ID key.\(left) Set it up again in Settings, or use your PIN."
+                : "That PIN is not right.\(left)"
         case "locked": return "Too many wrong PINs: actions are locked for a while. Try again later."
         case "expired": return "This proposal expired. Ask Ira again."
         case "no_pin": return "You have no PIN yet. Set one in the Ira app's menu, then ask again."
-        case "not_allowed": return "Your role may not confirm this action."
+        case "not_allowed": return outcome["message"]?.stringValue ?? "Your role may not confirm this action."
         case "failed": return "It ran but failed: \(outcome["message"]?.stringValue ?? "no reason given")."
         default: return outcome["message"]?.stringValue ?? "Ira answered: \(status)."
         }

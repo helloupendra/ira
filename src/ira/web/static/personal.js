@@ -1543,7 +1543,20 @@ const IraPersonal = (() => {
   });
   $("#panel").addEventListener("close", () => clearInterval(pairingTimer));
 
-  if (state.info) startEvents(); // app.js may have entered the chat already
+  // A link such as /#panel=assistant (from Ira for Mac) opens that page once signed in.
+  function openFromLink() {
+    const name = new URLSearchParams(location.hash.slice(1)).get("panel");
+    if (!name || !PANELS[name]) return;
+    history.replaceState(null, "", location.pathname + location.search);
+    open(name);
+  }
 
-  return { entered: startEvents, left: stopEvents, open, answered };
+  function entered() {
+    startEvents();
+    openFromLink();
+  }
+
+  if (state.info) entered(); // app.js may have entered the chat already
+
+  return { entered, left: stopEvents, open, answered };
 })();

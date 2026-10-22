@@ -64,6 +64,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var hotKey: HotKey?
     private var wakeWatch: Any?
     private var workWatch: Any?
+    private var approvalWatch: Any?
     private var markTimer: Timer?
     private var markFrame = 0
     private var hasSavedFrame = false
@@ -114,6 +115,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         workWatch = model.conversation.$busy.sink { [weak self] _ in
             DispatchQueue.main.async { self?.updateMark() }
         }
+        // Orange while an approval lets Ira control this Mac without asking.
+        approvalWatch = model.approvals.$now.sink { [weak self] _ in
+            DispatchQueue.main.async { self?.updateApprovalMark() }
+        }
         model.conversation.onAnswer = { [weak self] text in self?.answered(text) }
         // First launch, or not paired yet: show the window so pairing is the first thing seen.
         if model.screen != .chat {
@@ -142,6 +147,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let state = NSMenuItem(title: AppDelegate.describe(model.deviceState, paired: model.paired), action: nil, keyEquivalent: "")
         state.isEnabled = false
         menu.addItem(state)
+        if let banner = model.approvals.banner {
+            let line = NSMenuItem(title: banner, action: nil, keyEquivalent: "")
+            line.isEnabled = false
+            menu.addItem(line)
+            let stop = NSMenuItem(title: "Stop It Now", action: #selector(stopApproval), keyEquivalent: "")
+            stop.target = self
+            menu.addItem(stop)
+        }
         menu.addItem(.separator())
         if !model.activity.isEmpty {
             let header = NSMenuItem(title: "What I read", action: nil, keyEquivalent: "")
@@ -231,6 +244,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
         // Back on top, after stepping below a prompt or an app Ira worked in.
         panel.level = .floating
+        model.approvals.refreshIfStale(60)
         panel.makeKeyAndOrderFront(nil)
         NotificationCenter.default.post(name: .iraFocusInput, object: nil)
     }
@@ -388,6 +402,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         return "a quit request from macOS (for example after a permission change)"
     }
 
+    @objc func stopApproval() {
+        Task { await model.approvals.stop() }
+    }
+
+    private func updateApprovalMark() {
+        let banner = model.approvals.banner
+        statusItem.button?.contentTintColor = banner == nil ? nil : .systemOrange
+        if !model.conversation.busy {
+            statusItem.button?.toolTip = banner ?? "Ira"
+        }
+    }
+
     @objc func quitFromMenu() {
         QuitReason.set("Quit in Ira's menu")
         NSApp.terminate(nil)
@@ -414,7 +440,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             markFrame = 0
             statusItem.button?.image = AppDelegate.menuBarImage(listening: model.wakeListening)
         }
-        statusItem.button?.toolTip = working ? "Ira is working on your question" : "Ira"
+        statusItem.button?.toolTip = working ? "Ira is working on your question" : (model.approvals.banner ?? "Ira")
     }
 
     private func settingsClosed() {
