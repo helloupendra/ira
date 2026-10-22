@@ -7,6 +7,7 @@ process list; reading prints the token to a pipe this process reads.
 
 from __future__ import annotations
 
+import os
 import re
 import subprocess
 from collections.abc import Callable, Sequence
@@ -34,7 +35,8 @@ class Keychain:
     ) -> None:
         self.service = service
         self.account = account
-        self.keychain = keychain  # a keychain file; None: the login keychain
+        # A keychain file; None: the login keychain. IRA_MAC_KEYCHAIN points tests elsewhere.
+        self.keychain = keychain or os.environ.get("IRA_MAC_KEYCHAIN") or None
         self.run = run
 
     def _where(self) -> list[str]:
