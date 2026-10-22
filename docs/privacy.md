@@ -96,7 +96,10 @@ and nothing else:
   contact, some text messages, the notifications showing at that moment, a
   calendar event, or the phone's location once. Nothing is read in the
   background, and none of it is copied anywhere but your conversation;
-- **what you type**, and your taps on Yes, No and the PIN card.
+- **what you type**, and your taps on Yes, No and the PIN card;
+- **a report, when you make one** with **Report this answer**: the
+  answer's id, the reason you picked and your note, if any. The server's
+  owners and admins read it.
 
 On the phone, it keeps its own device key (encrypted, in the Android
 Keystore), your server's address, which skills are on, and reminders that
@@ -104,9 +107,10 @@ have not gone off. No audio, transcript, message, contact or location stays
 on the phone. Every phone tool and its permission is listed in
 [the Android app](clients/android.md#what-ira-can-do-on-your-phone).
 
-**To delete your data**: **Delete my data** in the app's menu (or the web
-app's **Your data**) removes your conversations and what Ira did; removing
-the phone under **Your devices** stops its key at once; uninstalling the app
+**To delete your data**: **Delete my data**, in the Ira web app's **Your
+data** (the Android app's **Export or delete your data** opens it; it asks
+your password), removes your conversations and what Ira did; removing the
+phone under **Your devices** stops its key at once; uninstalling the app
 removes everything it kept on the phone.
 
 ## On a shared server
