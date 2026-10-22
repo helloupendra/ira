@@ -309,6 +309,12 @@ refused with "isn't supported on this route", it is served under
 `/openai/v1` on Mantle: give it a second provider with
 `base_url: https://bedrock-mantle.us-east-1.api.aws/openai/v1`.
 
+**Speech-to-text does not work this way today.** On 22 Oct 2026 Mantle
+refused audio for Voxtral ("Model does not support audio modality"), and
+`ira doctor` shows that as a failed speech-to-text check. Typing works;
+voice notes and the microphone do not, until another speech-to-text is
+configured. See [Hindi, English and Hinglish](language.md).
+
 Each instance runs as `ira` in a hardened unit:
 
 - the file system is read-only except its own folder, and the other

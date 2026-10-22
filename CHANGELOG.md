@@ -52,8 +52,12 @@ switch it on.
   [Devices](docs/devices.md), and a design note.
 - **`ira eval language [--spoken]`**: a small fictional set of Hindi, English
   and Hinglish requests, scored for intent, reply language and (spoken by a
-  macOS voice) transcription. Results so far, with the demo router only, are
-  in [Hindi, English and Hinglish](docs/language.md).
+  macOS voice) transcription. Four runs with Bedrock models, typed, scored
+  92-100% on both intent and reply language; the numbers and the misses are
+  in [Hindi, English and Hinglish](docs/language.md). Speech is not measured
+  yet: Bedrock's Mantle endpoint refuses audio for Voxtral.
+- **Half sentences**: when a tool that only reads can settle what was meant,
+  Ira looks first and asks only when looking would not help.
 - `GET /admin` without a trailing slash redirects to the console.
 
 - **`ira init <folder>`** makes a new business folder from templates in the

@@ -199,6 +199,7 @@ def language_rule(prefs: Prefs) -> str:
         spoken = words[0] if words else "English"
     return (
         f"- People may speak to you in {spoken}, often in half sentences. Work out what they "
-        "mean; when you are not sure, ask one short question back instead of guessing.\n"
+        'mean. If a tool that only reads can settle it ("upload kitna hua": look at their '
+        "tabs), look first; ask one short question back only when looking would not help.\n"
         f"- {REPLY_RULES.get(prefs.reply_language, REPLY_RULES['auto'])}"
     )

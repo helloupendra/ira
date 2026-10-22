@@ -9,14 +9,17 @@ jaaye, batana".
 
 - **Understanding.** The system prompt says which languages the person
   speaks (each person chooses, in **Your assistant**; Hindi, English and
-  Hinglish by default), that half sentences are normal, and that Ira should
-  ask one short question back rather than guess.
+  Hinglish by default) and that half sentences are normal. When a tool that
+  only reads can settle what they meant ("upload kitna hua": look at the
+  tabs), Ira looks first, and asks one short question back only when looking
+  would not help.
 - **Transcription keeps the words.** The speech-to-text prompt says to
   transcribe in the language spoken and never to translate, answer or tidy
   up. A vocabulary list (`voice.stt.vocabulary`) helps with names.
-- **Replies in kind.** Ira answers in the language and script it was spoken
-  to in, or always in the language the person chose (`reply_language`:
-  `auto`, `en`, `hi`, `hinglish`).
+- **Replies in kind.** Ira answers in the language and script of the latest
+  message (English gets English, Devanagari gets Devanagari, Hindi in Latin
+  letters gets Hinglish in Latin letters), or always in the language the
+  person chose (`reply_language`: `auto`, `en`, `hi`, `hinglish`).
 - **A bilingual Indian voice.** With Amazon Polly and an Indian English or
   Hindi voice (Kajal speaks both), a reply in Devanagari is spoken as `hi-IN`
   and everything else as `en-IN`, which reads Hinglish in Latin letters
@@ -29,9 +32,12 @@ jaaye, batana".
 of the models configured in `ira.yaml`, with stand-in devices and search, and
 reports:
 
-- **intent**: the share of requests where Ira's first tool was the right one
-  (or no tool, when none fits);
-- **reply**: the share of answers in the language of the request;
+- **intent**: the share of requests where Ira called the right tool, first
+  or after another (listing the tabs to find one, then reading it, is
+  right), or called none when none fits;
+- **reply**: the share of answers in the language of the request, counted
+  in words, with addresses and "quoted" or **bold** titles left out (a Hindi
+  answer that lists English tab titles is a Hindi answer);
 - **heard** (with `--spoken`): each request is spoken by a macOS voice
   (Lekha for Hindi, Rishi for English and Hinglish), transcribed by the
   configured speech-to-text, and scored by word accuracy (1 minus the word
@@ -48,17 +54,43 @@ Nothing is written to the business folder: the run uses a database in memory.
 
 ### Results so far
 
-| Date | Models | Speech-to-text | Intent (hi / hinglish / en) | Reply language (hi / hinglish / en) | Heard |
-| --- | --- | --- | --- | --- | --- |
-| 22 Oct 2026 | `demo:router` (the keyword router, no model) | none | 29% / 100% / 57% | 0% / 0% / 100% | not measured |
+On 22 Oct 2026, typed requests, on an EC2 server in Mumbai with the
+`default` tier of `ira init --provider bedrock`: `moonshotai.kimi-k2.5`, then
+`zai.glm-5`, then `deepseek.v3.2` on Bedrock (us-east-1). Each run is the 24
+requests once; models are not deterministic, so runs differ.
+
+| Run | Prompt | Intent (hi / hinglish / en) | Reply language (hi / hinglish / en) | Median answer |
+| --- | --- | --- | --- | --- |
+| `demo:router` | (the keyword router, no model) | 29% / 100% / 57% | 0% / 0% / 100% | instant |
+| 1 | ask when unsure | 100% / 100% / 100% | 100% / 100% / 100% | 2.0 s |
+| 2 | ask when unsure | 86% / 90% / 100% | 100% / 80% / 100% | 1.8 s |
+| 3 | look first, then ask | 100% / 100% / 100% | 100% / 100% / 100% | 2.2 s |
+| 4 | look first, then ask | 100% / 100% / 100% | 100% / 100% / 86% | 2.8 s |
+
+What the misses were:
+
+- **Half sentences** (run 2): "upload kitna hua" and "जब अपलोड पूरा हो जाए
+  तो बताना" got a question back ("which upload?") instead of a look at the
+  tabs. The prompt then changed to "look first, then ask"; both passed in
+  runs 3 and 4.
+- **Script drift**, in every kind of prompt: an answer about the news in
+  English to "aaj ki khabar batao", and in Hinglish to "What's in the news
+  today?"; "theek hai, thanks" answered in Devanagari. About one answer in
+  25 drifts. Keeping names and titles as they are is fine; the drift is in
+  the sentence around them.
+- An earlier run, scored the old way, counted a Hindi answer that listed
+  English tab titles as English, and "list the tabs, then read one" as the
+  wrong tool. Both were scoring faults, fixed before the runs above.
 
 The demo router is not a language model. It knows a few Hinglish words for
 the quick start's phrases, so it routes those, and it always answers in
-English. These numbers are a floor, not a measure of Ira with a model.
+English. Its numbers are a floor.
 
-**Not measured yet:** Ira with a real language model and real speech-to-text.
-No model or speech key was available where these docs were written. Once a
-server with models is running (for example Bedrock with Voxtral and Polly,
-as `ira init --provider bedrock` sets up), run `ira eval language --spoken`
-there and add the row above. Until then, IRA makes no claim about how well it
-understands Hindi or Hinglish beyond what this table shows.
+**Not measured yet: speech.** On 22 Oct 2026 Bedrock's OpenAI-compatible
+endpoint (Mantle) refused audio for Voxtral ("Model does not support audio
+modality"), with the audio part first or second, and AWS's model card now
+lists Voxtral's speech input under the Converse API only. So `chat_audio`
+with Voxtral on Mantle does not transcribe today, and the **heard** column
+has no real number yet. When a speech-to-text that works is configured, run
+`ira eval language --spoken` and add its row. Until then, IRA makes no claim
+about how well it hears Hindi or Hinglish.
