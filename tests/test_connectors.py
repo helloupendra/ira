@@ -330,6 +330,7 @@ async def test_signing_in_to_a_service_with_oauth(store):
         auth=AuthSettings(
             issuer_url=base,
             resource_server_url=f"{base}/mcp",
+            validate_token_resource=True,  # tokens only for this server, as the spec wants
             client_registration_options=ClientRegistrationOptions(enabled=True),
         ),
     )
