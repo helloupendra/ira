@@ -304,6 +304,23 @@ personal build's own source folder and manifest
 (`clients/android/app/src/personal/`), and a unit test checks that no Play
 tool needs it.
 
+## Fewer PINs: the approval window
+
+Opening YouTube, tapping Search and typing is several steps, and a PIN for
+each would make the phone unusable. When you confirm a screen or app action
+on this phone with your PIN, your Ira opens an **approval window** for this
+phone: for the next 15 minutes (your setting on your Ira: off, or 5 to 60),
+opening apps and links, playing, and tapping and typing here run without
+asking ([Approvals](../security.md#approvals-fewer-pins-for-one-task)).
+Sending, replying, calling, paying, deleting and new permissions always ask.
+
+While a window is open, the talk screen shows **Ira can use this phone for
+12 more minutes** with **Stop**. **Settings → Approvals** shows how long
+windows last (change it on your Ira, under **Your assistant**) and every
+open window, each with **Stop**. The phone can stop a window, never open or
+lengthen one: only a PIN does. Approving with a fingerprint instead of the
+PIN is built in the app and waits for your Ira to support it.
+
 ## Move to another Ira
 
 In Ira, **Settings → Pair with another Ira…**: paste the other Ira's pairing
