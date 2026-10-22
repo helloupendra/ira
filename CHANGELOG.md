@@ -86,6 +86,11 @@ switch it on.
   with their password again; an owner sets someone's password or email from
   Users & roles; `ira user password` and `ira user email` do it from the
   server. All go to the change log.
+- **No stray Chinese.** Chinese, Japanese and Korean characters are taken
+  out of an answer to someone who does not write them; a mostly Chinese
+  answer is asked for again, or excused in the person's language.
+- **Only others' text taints a turn.** A device's status ("Opened YouTube")
+  and the person's own contacts or call log no longer block the next action.
 - **A confirmed action carries on.** After a yes or a PIN, the model sees
   what the action returned, or why it failed, and goes on with the request;
   the app shows its answer, and a live call speaks it. Before, the model

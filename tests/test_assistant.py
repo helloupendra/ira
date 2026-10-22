@@ -117,7 +117,7 @@ async def test_action_tools_only_propose(registry, ledger):
     assert ledger.refunds == []
     told = json.loads(sent_messages(provider, 1)[-1].text)
     assert told["status"] == "pending_confirmation"
-    assert "Nothing has happened yet" in told["note"]
+    assert "Nothing has happened yet" in told["for_you"]
 
 
 async def test_a_bare_pin_never_reaches_a_model(registry):

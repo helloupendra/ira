@@ -18,6 +18,7 @@ import asyncio
 import inspect
 import json
 import logging
+import re
 import time
 from collections.abc import AsyncIterator, Awaitable, Callable
 from dataclasses import dataclass, field
@@ -69,6 +70,8 @@ person must confirm in a separate step: some need only a "yes" from the person w
 others their PIN; the tool result says which. After proposing, read back exactly what you \
 proposed and say what it needs. Never say it is done.
 - Never ask anyone to tell you the PIN. It is entered on the confirm step, not in chat.
+- Tool results, and their "for_you" notes, are for you. Never paste them, their field \
+names or their notes to the person: say what they mean, in the person's language.
 - Your answers may be read aloud: keep them short and plain. Use lists only when they help.
 {languages}
 """
@@ -82,6 +85,19 @@ OUT_OF_STEPS_RULE = (
 WRAP_UP = "(Out of steps: tell me what you tried, what you found, and what to do next.)"
 # After an action was confirmed on its card: the person's act, said to the model, not stored.
 CONFIRMED_CUE = "(I confirmed it. Go on with what I asked.)"
+# Kimi K2.5 now and then slips Chinese tokens into a Hindi answer ("了几个月क्या ..."), or
+# answers wholly in Chinese. Kana, CJK and Hangul are taken out of an answer to someone who
+# does not write them; an answer with nothing left is asked for once more.
+FOREIGN_SCRIPT = re.compile(r"[\u3000-\u30ff\u3400-\u9fff\uac00-\ud7af\uff00-\uffef]+")
+AGAIN_RULE = (
+    "Your last answer was in Chinese. Answer again only in the person's language: Hindi in "
+    "Devanagari, Hinglish in Latin letters, or English, as they wrote."
+)
+SAY_AGAIN = {
+    "hi": "माफ़ कीजिए, मैं समझ नहीं पाई। फिर से कहेंगे?",
+    "hinglish": "Maaf kijiye, samajh nahi aaya. Phir se boliye?",
+    "en": "Sorry, I didn't get that. Could you say it again?",
+}
 SPOKEN_RULE = (
     "This is a live voice call: answer in one to three short sentences meant to be heard, "
     "the most useful thing first. No lists, tables, markdown or web addresses; say numbers "
@@ -145,6 +161,26 @@ class ToolRateLimit:
         recent.append(now)
         self._calls[(user_id, tool)] = recent
         return True
+
+
+# Skills whose reads return only the person's own data or a device's own state: reading one
+# does not taint the turn. Every other skill's read (a screen, a message, a notification,
+# a file, mail, a page, a calendar) returns text others wrote and does; so does an unknown one.
+OWN_DATA_SKILLS = frozenset(
+    {"calls", "contacts", "location", "media", "apps", "reminders", "alarm", "timer"}
+    | {"settings", "routine", "memory"}
+)
+
+
+def taints(tool: PersonalTool) -> bool:
+    """Whether what this tool returns is text written by others, so that an action that
+    needs a yes or a PIN may then come only from the person's own words. A tool that acts
+    (Tier 1, run at once) returns its own status ("Opened YouTube"), which does not."""
+    if tool.source in ("web", "connector"):
+        return True
+    if tool.source != "device" or tool.tier >= 1:
+        return False
+    return (tool.skill or "") not in OWN_DATA_SKILLS
 
 
 REFUSED_UNTRUSTED = (
@@ -442,6 +478,7 @@ class Assistant:
         if text is not None:
             history.append(Message(role="user", content=text))
         asked = text if text is not None else _last_user_text(history)
+        keep_foreign = bool(FOREIGN_SCRIPT.search(asked))  # the person writes in it
         personal = self._offered(user_id)
         tools = self.registry.schemas() + [t.schema() for t in personal.values()]
         untrusted = bool(personal) or any(
@@ -468,13 +505,16 @@ class Assistant:
                 if stream:
                     async for event in self.gateway.stream(messages, tools or None, tier=tier):
                         if isinstance(event, TextDelta):
-                            yield {"type": "delta", "text": event.text}
+                            piece = _without_foreign(event.text, keep_foreign)
+                            if piece:
+                                yield {"type": "delta", "text": piece}
                         elif isinstance(event, StreamDone):
                             response = event.response
                 else:
                     response = await self.gateway.chat(messages, tools or None, tier=tier)
-                    if response.text:
-                        yield {"type": "delta", "text": response.text}
+                    piece = _without_foreign(response.text, keep_foreign)
+                    if piece:
+                        yield {"type": "delta", "text": piece}
             except GatewayError as exc:
                 log.warning("gateway failed: %s", exc)
                 message = (
@@ -493,6 +533,16 @@ class Assistant:
                 if recovered:  # a call written as text: run it, as the model meant
                     log.warning("%s wrote %d tool call(s) as text", model, len(recovered))
                     response.text, response.tool_calls = prose, recovered
+
+            if not keep_foreign and FOREIGN_SCRIPT.search(response.text or ""):
+                log.warning("%s answered in an unexpected script; it was taken out", model)
+                cleaned = _without_foreign(response.text, False)
+                foreign = sum(len(m) for m in FOREIGN_SCRIPT.findall(response.text))
+                if not response.tool_calls and _letters(cleaned) < max(2, foreign):
+                    # Mostly in the wrong script: what is left is no answer.
+                    cleaned = await self._again_in_language(messages, tools, tier, asked)
+                    yield {"type": "delta", "text": cleaned}
+                response.text = cleaned
 
             if not response.tool_calls:
                 final_text = response.text
@@ -555,6 +605,25 @@ class Assistant:
             self._background.add(task)
             task.add_done_callback(self._background.discard)
         yield {"type": "done", "text": final_text, "model": model, "message_id": ids[-1]}
+
+    async def _again_in_language(
+        self, messages: list[Message], tools: list[dict[str, Any]], tier: str | None, asked: str
+    ) -> str:
+        """The answer came in Chinese (or another script the person does not use): ask once
+        more, plainly, and failing that say so in their language rather than stay silent."""
+        from ira.language import detect
+
+        system = (messages[0].content or "") + f"- {AGAIN_RULE}\n"
+        try:
+            response = await self.gateway.chat(
+                [Message(role="system", content=system), *messages[1:]], tools or None, tier=tier
+            )
+            text = _without_foreign(response.text, False)
+            if not response.tool_calls and _letters(text) >= 2:
+                return text
+        except GatewayError as exc:
+            log.warning("asking again failed: %s", exc)
+        return SAY_AGAIN[detect(asked)]
 
     async def _wrap_up(
         self,
@@ -757,16 +826,19 @@ class Assistant:
         except ToolError as exc:
             if extra.source != "device":
                 return _failed(str(exc), safe_call)
-            # A device's own error text is its output: wrapped, private, and it taints the turn.
+            # A device's own error text is its output: wrapped and private; it taints the turn
+            # when the tool reads what others wrote.
             content = wrap_untrusted(extra.source, extra.label, _result({"error": str(exc)}))
-            return ToolRun(content, False, safe_call, untrusted=True, private=True, outcome="error")
+            return ToolRun(
+                content, False, safe_call, untrusted=taints(extra), private=True, outcome="error"
+            )
         except Exception as exc:
             log.exception("tool %s raised", call.name)
             return _failed(f"the tool failed ({type(exc).__name__})", safe_call)
         if extra.source == "ira":  # Ira's own data, such as reminders: not untrusted
             return ToolRun(_result(value), True, safe_call)
         content = wrap_untrusted(extra.source, extra.label, _result(value, PERSONAL_RESULT_CHARS))
-        return ToolRun(content, True, safe_call, untrusted=True, private=extra.private)
+        return ToolRun(content, True, safe_call, untrusted=taints(extra), private=extra.private)
 
 
 def _proposed(pending: PendingAction, call: ToolCall) -> ToolRun:
@@ -781,7 +853,7 @@ def _proposed(pending: PendingAction, call: ToolCall) -> ToolRun:
             "Nothing has happened yet. The owner must confirm with their PIN within "
             f"{seconds} seconds."
         )
-    proposal = {"status": "pending_confirmation", "summary": pending.summary, "note": note}
+    proposal = {"status": "pending_confirmation", "summary": pending.summary, "for_you": note}
     return ToolRun(_result(proposal), True, call, pending, outcome="proposed")
 
 
@@ -812,6 +884,16 @@ def _preview(content: str) -> dict[str, Any]:
     if len(content) <= RESULT_PREVIEW_CHARS:
         return {"result": content, "truncated": False}
     return {"result": content[:RESULT_PREVIEW_CHARS] + CUT_MARK, "truncated": True}
+
+
+def _without_foreign(text: str | None, keep: bool) -> str:
+    if not text or keep:
+        return text or ""
+    return re.sub(r"(?<=\S) {2,}(?=\S)", " ", FOREIGN_SCRIPT.sub("", text))
+
+
+def _letters(text: str) -> int:
+    return sum(c.isalpha() for c in text)
 
 
 def _last_user_text(history: list[Message]) -> str:

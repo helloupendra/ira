@@ -20,6 +20,12 @@ on its own it can never change anything.
   with the right PIN during the lock.
 - A compare-and-set on the action's status means it **runs at most once**,
   even when two confirmations race.
+- **What taints a turn.** After Ira reads text that others wrote (a
+  screen, a message, a notification, a file, mail, a web page, a calendar,
+  a connection's output), an action that needs a yes or a PIN may come only
+  from the person's own words in a new message. A device's own status ("Opened
+  YouTube", an alarm set) and the person's own data (their contacts, call
+  log, location) do not taint it. A skill the server does not know does.
 - Once it has run, the model sees what became of it (its result, its
   error, a no, or its expiry), never "waiting for confirmation" again, and
   carries on from there. The yes or the PIN itself never passes through a

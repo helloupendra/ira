@@ -139,3 +139,8 @@ def test_hinglish_heard_in_devanagari_is_not_a_mishearing():
     cases = {case.id: case for case in load_cases()}
     hinglish = [case for case in cases.values() if case.language == "hinglish"]
     assert hinglish and all(devanagari(case.devanagari or "") for case in hinglish)
+
+
+def test_stray_chinese_in_a_reply_is_never_the_right_language():
+    assert reply_language("了几个月क्या मैं सर्च बटन दबा दूं?") == "other"
+    assert reply_language("क्या मैं सर्च बटन दबा दूं?") == "hi"

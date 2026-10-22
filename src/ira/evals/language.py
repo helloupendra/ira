@@ -42,8 +42,11 @@ CASES = Path(__file__).resolve().parent / "language.yaml"
 
 
 def reply_language(text: str) -> str:
-    """hi (mostly Devanagari), hinglish (Latin with Hindi words), or en."""
-    return detect(text)
+    """hi (mostly Devanagari), hinglish (Latin with Hindi words), or en; "other" for any
+    Chinese, Japanese or Korean in it (a model's stray tokens), which is never right here."""
+    from ira.assistant import FOREIGN_SCRIPT
+
+    return "other" if FOREIGN_SCRIPT.search(text) else detect(text)
 
 
 def intent_matches(expected: str, tools: list[str]) -> bool:

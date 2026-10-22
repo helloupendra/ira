@@ -54,7 +54,7 @@ def settled(row: Any, now: float, personal: Callable[[str], bool] | None = None)
         body["result"] = result
     elif state == "failed":
         body["error"] = (result or {}).get("error") if isinstance(result, dict) else result
-    body["note"] = SETTLED_NOTES[state]
+    body["for_you"] = SETTLED_NOTES[state]
     text = json.dumps(body, default=str, ensure_ascii=False)
     if len(text) > MAX_SETTLED_CHARS:
         text = text[:MAX_SETTLED_CHARS] + "... [truncated]"

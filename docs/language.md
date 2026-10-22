@@ -43,7 +43,8 @@ reports:
   or after another (bringing a tab to the front, then reading the screen,
   is right), or called none when none fits. The devices are stand-ins for
   Ira for Mac's `browser_tabs`, `browser_show_tab` and `screen_read`;
-- **reply**: the share of answers in the language of the request, counted
+- **reply**: the share of answers in the language of the request (any
+  Chinese, Japanese or Korean character in it is a miss), counted
   in words, with addresses and "quoted" or **bold** titles left out (a Hindi
   answer that lists English tab titles is a Hindi answer);
 - **heard** (with `--spoken`): each request is spoken by a macOS voice
@@ -89,6 +90,13 @@ that set on the server as deployed that day (fda306a), with
 its tool call as text ("<invoke name=\"screen_read\">") instead of making
 it, and "woh wala" made it list the tabs four times instead of asking
 which one. Ira now runs a call written as text.
+
+Some models slip other scripts in. Kimi K2.5 has answered "了几个月क्या मैं
+सर्च बटन दबा दूं?" (four Chinese characters before a Hindi question) and,
+once, wholly in Chinese. Ira now takes Chinese, Japanese and Korean out of
+an answer to someone who does not write them; an answer that was mostly in
+them is asked for once more, and if that fails Ira says, in the person's
+language, that it did not understand. It is never silent and never Chinese.
 
 ### Heard: spoken by Polly, transcribed by Amazon Transcribe
 
