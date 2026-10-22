@@ -39,6 +39,23 @@ on its own it can never change anything.
   sees a placeholder, and the parameters of an action on their device are
   hidden from everyone else.
 
+### Devices
+
+- A device pairs with a one-time code (8 characters, 10 minutes, hashed)
+  and the person's PIN, and gets its own `irad_` token, hashed on the
+  server and valid only on the device WebSocket. Revoking it closes the
+  connection at once; removing an account revokes its devices.
+- A device's tools reach only its owner's conversations, and only while the
+  skill is on. Switching one on needs the owner's PIN; an admin can only
+  switch skills off.
+- Frames are capped at 1 MB, calls at 25 seconds and 4 in flight, tools at
+  30, events at one per 30 seconds; event text is stripped of markup.
+- A `?token=` in a WebSocket address is masked in every log line IRA writes.
+- The Mac companion keeps its token in the Keychain (never in a file, a log
+  or a command line), runs from `~/Library/Application Support`, and logs no
+  page text or full addresses. The Chrome extension has no network access
+  and reads no form fields.
+
 ### The PIN never reaches a model
 
 - The assistant refuses to forward a message that is only 4-12 digits, on

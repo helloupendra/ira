@@ -1,0 +1,84 @@
+# Privacy
+
+Ira is software you run yourself. Your conversations, your devices and what
+they read stay on the computer or server that runs it, and you decide which
+outside services, if any, it talks to. This page says, in plain words, what
+Ira keeps, who can see it, and how to take it away.
+
+## What Ira keeps
+
+| What | Where | For how long |
+| --- | --- | --- |
+| Your conversations, including what tools and devices returned | the server's database | until you delete them |
+| Your devices: name, kind, the tools they offer, the skills you switched on, when they were last seen | the server's database | until you remove the device |
+| Your devices' events ("the upload finished") | the server's database | 7 days, at most 200 |
+| **What Ira did**: which tool, which device, when, how long, and whether it worked | the server's database | until you delete your data |
+| Your settings: the assistant's name, wake phrase, languages, web search on or off | the server's database | until you change or delete them |
+| A device's own key | the Mac's Keychain (later, the phone's Keystore) | until you remove the device |
+
+Ira never keeps:
+
+- **page text outside your conversation.** What a tab said is part of the
+  answer you asked for, and nothing else;
+- **the contents of "What Ira did"**: not what was asked of a tool, not what
+  it returned;
+- **form fields or passwords** from Chrome: the reader skips them all;
+- **your password, PIN or keys in readable form**: only salted hashes or
+  one-way fingerprints;
+- **your IP address** with your account, sessions or logs.
+
+The Mac companion's own logs hold tool names, tab numbers and timings, never
+page text, never a full address and never its key.
+
+## Who can see what
+
+- **You** see your own conversations, devices, events, settings and "What
+  Ira did".
+- **An owner or admin** of a shared server manages accounts. They can see
+  that your devices exist and which skills are on, switch a skill off,
+  revoke a device, and read conversations for support. They **cannot** see
+  what your devices returned: in your conversations, that text shows as
+  "private". They cannot see your settings or "What Ira did", and they can
+  never switch a skill on for you.
+- **Nobody else.** Ira has no telemetry and sends nothing to its authors.
+
+## What leaves your server, and only if you set it up
+
+Ira talks to an outside service only when its owner configures one, and
+each person switches web search on for themselves.
+
+| Service | What it receives | Their terms |
+| --- | --- | --- |
+| A language model (OpenAI, Anthropic, Amazon Bedrock, or one you run yourself) | each conversation turn, with tool results | [OpenAI: business data](https://openai.com/business-data/) (API data is not used for training by default); [Anthropic: commercial terms](https://www.anthropic.com/legal/commercial-terms) (no training on customer content); [Amazon Bedrock: data protection](https://docs.aws.amazon.com/bedrock/latest/userguide/data-protection.html) (prompts are not stored, used for training or shared with model providers) |
+| Speech-to-text and text-to-speech (Bedrock, Polly, OpenAI) | your voice clips, and the text Ira speaks | as above, and the [AWS data privacy FAQ](https://aws.amazon.com/compliance/data-privacy-faq/) |
+| Brave Search (web search, if you switched it on) | your search words only | [Brave Search API privacy notice](https://api-dashboard.search.brave.com/privacy-policy) (queries kept up to 90 days for billing, not linked to a person) |
+| News feeds listed by the owner | nothing about you: Ira fetches the feeds and searches them on the server | the feeds' own sites |
+| Telegram, if you paired a chat | the messages of that chat, and your device's event notes | [Telegram privacy policy](https://telegram.org/privacy) |
+
+With the demo provider and no keys, nothing leaves your computer at all.
+The providers above were chosen because their business terms say they do
+not train on what you send. Check their pages yourself: terms change.
+
+## What you control
+
+- **Grants.** Ira uses a device's skill, or web search, only after you switch
+  it on with your PIN. **Your assistant** lists everything you allowed, each
+  with **Turn off**.
+- **Reading is on request.** No part of the Chrome extension runs in a page
+  until you ask about that page.
+- **Actions need you.** Anything that sends, spends or deletes waits for your
+  "yes" or your PIN. A page, an email or a device's output can never start
+  one on its own.
+- **Remove a device** on **Your devices**: its key stops working at once.
+- **Export my data** (**Your data** in the menu): a file with your
+  conversations, devices, events, settings and "What Ira did".
+- **Delete my data**: removes your conversations, devices, events, "What Ira
+  did" and settings, after your password. Your account remains, and so do
+  the records a business keeps (the actions you asked its tools to take, and
+  its audit log); the owner can remove the account.
+
+## On a shared server
+
+The person who runs the server can read its database and its backups, as
+with any self-hosted software. Use a server run by someone you trust, or run
+your own: the [quick start](personal-assistant.md) does it in 15 minutes.

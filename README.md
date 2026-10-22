@@ -155,6 +155,38 @@ through Amazon Polly or OpenAI. Answers are shortened before they are spoken:
 markdown, tables and links are stripped, and a long answer is cut at a
 sentence with "Full details are in the text above."
 
+## Your own Ira
+
+IRA is also a personal assistant, for anyone who runs it or has an account
+on a shared server. Pair your Mac and Ira reads a Chrome tab when you ask,
+watches it, and tells you when it finishes:
+
+```text
+You:  Chrome mein kaunse tabs khule hain?
+Ira:  3 tabs open: Inbox, Upload - Example Drive, Build #812. In front: Upload.
+You:  us upload tab mein kitna hua?
+Ira:  Upload - Example Drive: 63%, about 4 min left.
+You:  jab khatam ho jaaye, batana
+Ira:  Watching it. I'll tell you when it reaches 100%.
+      ...  Upload - Example Drive is done. It reached 100%.
+```
+
+- **Devices** pair with a one-time code or QR code, hold one WebSocket each,
+  and offer tools only to their own person, only with the skills they
+  switched on (with their PIN). See [Devices](docs/devices.md).
+- **The Mac companion** and **Ira for Chrome** read one tab on request, never
+  form fields or passwords, and keep their key in the Keychain. See [the Mac
+  companion](docs/clients/mac.md).
+- **Web and news search** through the Brave Search API and RSS feeds, with
+  sources named by site and date.
+- **Tiers**: reading runs at once, small changes are reported, outward ones
+  wait for your "yes", and money, deletion or a new grant wait for your PIN.
+  What a page or a device says is data, never an order.
+- **Privacy**: what Ira did, without contents; export and delete your data.
+  See [Privacy](docs/privacy.md).
+
+Start with [Your own Ira in 15 minutes](docs/personal-assistant.md).
+
 ## The admin console
 
 ![The Today screen of the admin console: questions, model calls, cost and latency for the day, a by-model table, actions by status and channel health](docs/images/console-overview-desktop-light.png)
@@ -252,10 +284,11 @@ over a private operations system. Some lessons from running it are built in:
 
 ## Roadmap
 
-- **v0.3**: a hands-free wake word; proactive spoken alerts and briefings; a
-  Siri Shortcut endpoint; WhatsApp; a Docker image; an evaluation harness:
-  scripted conversations scored for tool choice, refusals and answer quality,
-  run against every provider in a tier.
+- **v0.3**: devices (done: the Mac companion, Chrome, search); coding and
+  research tasks run on your Mac with no push; the Android "ear" with an
+  on-device "Hey Ira" wake word; learning your routines with your consent;
+  then voice ID. Also a Siri Shortcut endpoint, WhatsApp, a Docker image, and
+  an evaluation harness run against every provider in a tier.
 
 ## Project
 

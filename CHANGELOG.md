@@ -2,6 +2,56 @@
 
 ## [Unreleased]
 
+### Your own Ira: devices, Chrome and search
+
+Anyone can now run Ira as their own assistant, on their own server or as one
+person on a shared one. Everything below is per person and off until they
+switch it on.
+
+- **Devices.** A person pairs a Mac (later, an Android phone) with a one-time
+  code or QR code and their PIN. The device trades the code for its own
+  `irad_` token, kept only as a hash and valid only on the device WebSocket
+  (`/v1/devices/ws`). Its tools are offered only in its owner's
+  conversations, only while the skill they belong to is switched on, and its
+  events ("the upload finished") reach only its owner: the web app, their
+  Telegram chats and their Android devices. Limits: 1 MB frames, 25-second
+  calls, 4 in flight, 30 tools, one event per 30 seconds, one connection per
+  device. Revoking a device disconnects it at once.
+- **The Mac companion** (`clients/mac/`): a LaunchAgent that holds the
+  WebSocket and keeps its token in the Keychain, a thin Chrome native
+  messaging host, and three tools: list Chrome's tabs, read one tab (title,
+  address without its query, visible text, progress), and watch a tab until
+  it finishes. `install.sh` and `uninstall.sh` are safe to run again.
+- **Ira for Chrome** (`clients/chrome-extension/`): a Manifest V3 extension
+  with no network of its own and no resident script. Its reader is injected
+  into one tab on request and never reads form fields or passwords.
+- **Downloads**: `/v1/downloads` serves the Mac installer and the extension,
+  and a workflow attaches them to each `v*` release. Nothing is signed yet.
+- **Web and news search**: `web_search` through the Brave Search API
+  (`BRAVE_SEARCH_API_KEY`, 30 an hour per server) and `news_search` over RSS
+  and Atom feeds in `ira.yaml`, both switched on per person with the PIN.
+- **Tiers.** Every tool declares a tier in code: 0 reads, 1 small and
+  undoable, 2 needs a "yes" from the person who asked (typed, spoken or
+  tapped), 3 needs a PIN. Untrusted results (web pages, device output) reach
+  the model wrapped as data, and a turn that read them cannot propose a Tier
+  2 or 3 action. Pairing a device, switching a skill on and turning web
+  search on need the PIN.
+- **What Ira did**: every tool call and action, with device, tier, outcome
+  and time, never contents (`GET /v1/me/activity`).
+- **Your assistant**: each person names it, sets a wake phrase, and picks the
+  languages they speak (Hindi, English, Hinglish) and the reply language.
+  Polly speaks a Devanagari reply as Hindi.
+- **Privacy**: an admin reading someone's conversation sees "private" instead
+  of their device's output; "Export my data" and "Delete my data"; grants
+  listed with "turn off" for each person and for owners and admins.
+- The Ira app gains **Your devices**, **Your assistant**, **What Ira did**
+  and **Your data**, and speaks device events as they arrive. The console
+  gains a **Devices** screen.
+- New docs: [Your own Ira in 15 minutes](docs/personal-assistant.md), [the Mac
+  companion](docs/clients/mac.md), [Privacy](docs/privacy.md),
+  [Devices](docs/devices.md), and a design note.
+- `GET /admin` without a trailing slash redirects to the console.
+
 - **`ira init <folder>`** makes a new business folder from templates in the
   package: a commented `ira.yaml`, a placeholder `tools.py` (one read tool,
   one action tool), a README and a `.gitignore`. `--provider bedrock` fills

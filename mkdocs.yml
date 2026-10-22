@@ -69,6 +69,10 @@ validation:
 
 nav:
   - Home: index.md
+  - Your own Ira:
+      - "Start in 15 minutes": personal-assistant.md
+      - The Mac companion: clients/mac.md
+      - Privacy: privacy.md
   - Guide:
       - Getting started: getting-started.md
       - Concepts: concepts.md

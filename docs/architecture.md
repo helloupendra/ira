@@ -27,11 +27,21 @@ src/ira/
     admin_write.py   /v1/admin writes: users, tokens, tools, model chains, settings
     deps.py          bearer/cookie auth, CSRF checks, permission and session-only checks
     schemas.py       request/response models (the OpenAPI document)
-    telegram.py      Bot API client, pairing, the bot loop
+    telegram.py      Bot API client, pairing, the bot loop, device events to chats
+    devices.py       pairing, the device WebSocket, your devices and events, downloads
+    me.py            your settings, grants, what Ira did, export and delete
+  devices/
+    protocol.py      device frames and their limits
+    store.py         devices, pairing codes, events (SQLite)
+    hub.py           live connections, calls, events, each person's device tools
   web/static/      the Ira app: page, script, styles, tokens.css, AudioWorklet recorder,
                    service worker, manifest and icons
   web/admin/       the admin console's build (committed; source in admin/ at the repo root)
-  assistant.py     the conversation loop
+  assistant.py     the conversation loop: tiers, yes-confirmations, untrusted results
+  search.py        web_search (Brave) and news_search (RSS), per person
+  toollog.py       "What Ira did": every tool call, without contents
+  usersettings.py  each person's assistant name, wake phrase, languages, web search
+  clients.py       the Mac installer and the Chrome extension as zips
   conversations.py history in SQLite
   accounts.py      users, roles, sessions, API tokens, invitations, sign-in throttling
   changes.py       the change log of console writes
@@ -110,9 +120,29 @@ One SQLite file (`<data_dir>/ira.db`) holds Ira's own state:
 | `audit_log` | every action outcome, with actor and channel |
 | `pin_state`, `settings` | wrong-PIN count and lock; console overrides (assistant name, voice, tool switches, chain order) |
 | `telegram_chats`, `pairing_codes` | paired chats and one-time codes (hashed) |
+| `devices`, `device_pairings` | each person's devices (token hashed), their tools and skills; one-time pairing codes (hashed) |
+| `device_events` | what devices announced, 7 days |
+| `tool_log` | "What Ira did": tool, device, tier, outcome, seconds; never contents |
+| `user_settings` | each person's preferences |
 
 Your tools keep their own data wherever they like; the clinic example uses a
 second SQLite file.
+
+## Devices
+
+```text
+Chrome ── Ira extension ──native messaging──> in.ira.mac host ──unix socket──> ira-mac daemon
+                                                                                    │
+                                              WebSocket /v1/devices/ws, irad_ token │
+                                                                                    ▼
+             web app, Telegram, Android <──events── IRA server: hub, assistant, search
+```
+
+Each turn, the assistant offers the registry's tools plus the person's own:
+their connected devices' tools whose skill is on, and web search if they
+switched it on. What those return reaches the model wrapped as untrusted data.
+The full picture is in [Devices](devices.md) and the [phase 1 design
+note](design/phase-1-devices.md).
 
 ## Design choices
 
