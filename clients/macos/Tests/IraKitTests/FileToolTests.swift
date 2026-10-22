@@ -321,6 +321,22 @@ struct FileSearchTests {
         #expect(format.contains("kMDItemDateAdded >= CAST("))
     }
 
+    /// Spotlight refuses an AND or OR with one part (the app crashed on it once).
+    @Test(arguments: [
+        FileSearch.Query(text: "irae2emarker", kind: nil, modifiedWithinDays: nil, folder: nil),
+        FileSearch.Query(text: nil, kind: "pdf", modifiedWithinDays: nil, folder: nil),
+        FileSearch.Query(text: "a b", kind: "image", modifiedWithinDays: 3, folder: nil),
+        FileSearch.Query(text: nil, kind: nil, modifiedWithinDays: nil, folder: nil),
+    ])
+    func noCompoundHasASinglePart(query: FileSearch.Query) {
+        func check(_ predicate: NSPredicate) {
+            guard let compound = predicate as? NSCompoundPredicate else { return }
+            #expect(compound.subpredicates.count >= 2, "\(compound.predicateFormat)")
+            for case let part as NSPredicate in compound.subpredicates { check(part) }
+        }
+        check(FileSearch.predicate(for: query))
+    }
+
     @Test func anEmptyQueryMeansRecentFiles() {
         let format = FileSearch.predicate(for: FileSearch.Query(text: "", kind: nil, modifiedWithinDays: nil, folder: nil)).predicateFormat
         #expect(format.contains("kMDItemFSContentChangeDate >= "))

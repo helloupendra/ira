@@ -45,19 +45,17 @@ public enum FileSearch {
     public static func predicate(for query: Query, now: Date = Date()) -> NSPredicate {
         var parts: [NSPredicate] = []
         for word in query.words {
-            parts.append(NSCompoundPredicate(orPredicateWithSubpredicates: [
+            parts.append(any([
                 NSPredicate(format: "%K LIKE[cd] %@", "kMDItemFSName", "*\(word)*"),
                 NSPredicate(format: "%K CONTAINS[cd] %@", "kMDItemTextContent", word),
             ]))
         }
         if let kind = query.kind, let types = kinds[kind] {
-            parts.append(NSCompoundPredicate(orPredicateWithSubpredicates: types.map {
-                NSPredicate(format: "%K == %@", "kMDItemContentTypeTree", $0)
-            }))
+            parts.append(any(types.map { NSPredicate(format: "%K == %@", "kMDItemContentTypeTree", $0) }))
         }
         if let days = query.modifiedWithinDays {
             let since = now.addingTimeInterval(-Double(days) * 86_400) as NSDate
-            parts.append(NSCompoundPredicate(orPredicateWithSubpredicates: [
+            parts.append(any([
                 NSPredicate(format: "%K >= %@", "kMDItemFSContentChangeDate", since),
                 NSPredicate(format: "%K >= %@", "kMDItemDateAdded", since),
             ]))
@@ -67,7 +65,16 @@ public enum FileSearch {
             let since = now.addingTimeInterval(-7 * 86_400) as NSDate
             parts.append(NSPredicate(format: "%K >= %@", "kMDItemFSContentChangeDate", since))
         }
-        return NSCompoundPredicate(andPredicateWithSubpredicates: parts)
+        return all(parts)
+    }
+
+    // NSMetadataQuery throws on an AND or OR of a single predicate: use the predicate itself.
+    static func all(_ parts: [NSPredicate]) -> NSPredicate {
+        parts.count == 1 ? parts[0] : NSCompoundPredicate(andPredicateWithSubpredicates: parts)
+    }
+
+    static func any(_ parts: [NSPredicate]) -> NSPredicate {
+        parts.count == 1 ? parts[0] : NSCompoundPredicate(orPredicateWithSubpredicates: parts)
     }
 
     /// The folder a person named ("Downloads", "~/Projects", "/Volumes/Work") as a path.
