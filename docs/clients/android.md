@@ -216,17 +216,31 @@ protocol 1, the same as the web app and the Mac app.
 | `reminder_set` | reminders | 1 | a reminder notification at a time |
 | `calendar_read` | calendar | 0 | events in the calendars synced to the phone |
 | `calendar_add` | calendar | 2 | adds an event, read back first |
-| `app_open` | apps | 1 | opens an app by name |
+| `app_open` | apps | 1 | opens an app by name or package |
+| `url_open` | apps | 1 | opens a web address, in the app that handles it (a YouTube link in YouTube) |
 | `maps_navigate` | apps | 1 | directions in the maps app |
 | `media_control` | media | 1 | play, pause, next, previous, volume |
+| `media_play` | media | 1 | plays music by name in the music app, or videos as a YouTube search |
 | `location_now` | location | 0 | where the phone is, once, while Ira is on screen |
 | `settings_toggle` | settings | 1 | flashlight, ringer, media volume, Do Not Disturb; Wi-Fi, Bluetooth, mobile data and NFC open their switch for you to tap |
-| `screen_read` | screen | 3 | reads the screen (personal build) |
-| `screen_act` | screen | 3 | taps, types, scrolls, back, home (personal build) |
+| `screen_read` | screen | 3 | reads the screen of the app it names (personal build; last resort) |
+| `screen_act` | screen | 3 | taps, types, scrolls, back, home in the app it names (personal build; last resort) |
 
 Tiers are the server's ([Security](../security.md)): 0 reads, 1 is small and
 undoable, 2 needs your "yes", 3 needs your PIN. The tier is set by the app's
 code; the model cannot lower it.
+
+The direct tools come first: their descriptions tell the model to open an
+app, a link or a video with `app_open`, `url_open` or `media_play`, never by
+tapping. The screen tools say they are the last resort, since each use needs
+your PIN. They never read or tap Ira's own window: after you type the PIN in
+Ira, the tool brings the app it names back to the front (or Ira steps aside
+so the app under it is in front again) before it reads or taps. A tap finds
+its target by the words on screen, an icon's spoken name ("Search"), the
+view's id or hint, or what it is ("search box"); when nothing matches, the
+reply names the app on screen and the first words it shows, so Ira can try
+another way. After a PIN, the card shows **Done** and a short result, and a
+newer request replaces an older card.
 
 ## What Ira can and cannot see
 
