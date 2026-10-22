@@ -99,6 +99,22 @@ fun ApprovalsScreen(app: IraApp, onBack: () -> Unit) {
                     if (open.size > 1) OutlinedButton(onClick = { app.stopApproval(null) { message = it } }) { Text("Stop them all") }
                 }
             }
+            Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)) {
+                Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("Trusted apps on this phone", fontWeight = FontWeight.SemiBold)
+                    Text(
+                        "In these apps Ira may tap and type without asking, once it has seen the app in front. " +
+                            "Sending, calling, paying and deleting still ask.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    val apps = status?.trustedOn(app.settings.deviceId).orEmpty()
+                    if (apps.isEmpty()) Text("None.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    for (pkg in apps) Text(io.github.helloupendra.ira.tools.Apps.label(context, pkg) ?: pkg)
+                    // Changing them needs a sign-in (and the PIN to add one): the Ira app on the web.
+                    TextButton(onClick = { open(context, app.settings.server.orEmpty()) }) { Text("Add or remove them on your Ira (Your assistant, Trusted apps)") }
+                }
+            }
             if (Approvals.FINGERPRINT) FingerprintCard(app) { message = it }
         }
     }

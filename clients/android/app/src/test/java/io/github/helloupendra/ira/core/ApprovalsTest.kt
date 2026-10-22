@@ -42,6 +42,21 @@ class ApprovalsTest {
     }
 
     @Test
+    fun `trusted apps are read per device`() {
+        val status =
+            Approvals.Status.parse(
+                """{"minutes": 15, "windows": [], "trusted_apps": [
+                    {"device_id": 3, "device": "Pixel 7", "apps": ["com.google.android.youtube"]},
+                    {"device_id": 5, "device": "Office Mac", "apps": ["com.apple.Safari"]}
+                ]}""",
+            )!!
+        assertEquals(listOf("com.google.android.youtube"), status.trustedOn(3))
+        assertEquals(emptyList<String>(), status.trustedOn(9))
+        // An older server sends no trusted_apps.
+        assertEquals(emptyList<String>(), Approvals.Status.parse("""{"minutes": 15, "windows": []}""")!!.trustedOn(3))
+    }
+
+    @Test
     fun `the banner counts down, in the server's words`() {
         assertEquals("Ira can use this phone for 12 more minutes", Approvals.banner(11 * 60 + 1))
         assertEquals("Ira can use this phone for 1 more minute", Approvals.banner(60))

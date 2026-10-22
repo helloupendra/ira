@@ -45,7 +45,13 @@ object Approvals {
         fun secondsLeft(now: Double): Long = maxOf(0L, kotlin.math.ceil(expiresAt - now).toLong())
     }
 
-    data class Status(val minutes: Int, val windows: List<Window>) {
+    /** Apps where Ira may tap and type without asking, per device (packages). */
+    data class Trusted(val deviceId: Int, val device: String, val apps: List<String>)
+
+    data class Status(val minutes: Int, val windows: List<Window>, val trusted: List<Trusted> = emptyList()) {
+        /** This device's trusted apps. */
+        fun trustedOn(deviceId: Int): List<String> = trusted.firstOrNull { it.deviceId == deviceId }?.apps.orEmpty()
+
         /** This device's open window, the one lasting longest. */
         fun forDevice(deviceId: Int, now: Double): Window? =
             windows.filter { it.deviceId == deviceId && it.expiresAt > now }.maxByOrNull { it.expiresAt }
@@ -67,7 +73,12 @@ object Approvals {
                             steps = w.int("steps") ?: 0,
                         )
                     }
-                return Status(minutes, windows)
+                val trusted =
+                    m.array("trusted_apps").orEmpty().mapNotNull { item ->
+                        val t = item as? JsonObject ?: return@mapNotNull null
+                        Trusted(t.int("device_id") ?: return@mapNotNull null, t.string("device").orEmpty(), t.strings("apps"))
+                    }
+                return Status(minutes, windows, trusted)
             }
         }
     }
