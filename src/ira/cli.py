@@ -11,6 +11,7 @@ ira token create --label phone    create an API token (shown once)
 ira token list | revoke ID|LABEL
 ira telegram pair                 print a one-time pairing code
 ira demo seed                     create demo data for the configured tools
+ira eval language [--spoken]      measure Hindi, English and Hinglish understanding
 """
 
 from __future__ import annotations
@@ -280,6 +281,12 @@ def cmd_doctor(args: argparse.Namespace) -> int:
     return doctor(args.folder, args.config, options)
 
 
+def cmd_eval_language(args: argparse.Namespace) -> int:
+    from ira.evals.language import main as evaluate
+
+    return evaluate(_settings(args), spoken=args.spoken, only=args.only, as_json=args.json)
+
+
 def cmd_version(args: argparse.Namespace) -> int:
     print(f"ira {__version__}")
     return 0
@@ -376,6 +383,16 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--email", required=True)
     p.add_argument("--role", required=True, choices=[r for r in ROLES if r != "owner"])
     add("list", cmd_user_list, "list accounts", user)
+
+    evals = sub.add_parser("eval", help="evaluations against the configured models").add_subparsers(
+        dest="eval_command", required=True
+    )
+    p = add("language", cmd_eval_language, "Hindi, English and Hinglish: intent, reply", evals)
+    p.add_argument(
+        "--spoken", action="store_true", help="speak each request (macOS) and transcribe it"
+    )
+    p.add_argument("--only", choices=["hi", "hinglish", "en"], help="one language only")
+    p.add_argument("--json", action="store_true", help="every result as JSON")
 
     add("version", cmd_version, "print the version")
     return parser

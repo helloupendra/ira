@@ -1,0 +1,35 @@
+# A small fictional evaluation set: what people ask their own Ira, in Hindi
+# (Devanagari), Hinglish (Hindi in Latin letters, often mixed with English) and
+# English. Every name, page and number in it is made up.
+#
+#   intent: the tool a good answer starts with, or "none" when no tool fits
+#           (Ira should answer or ask back instead of guessing)
+#   reply:  the language a reply should be in when reply_language is "auto"
+cases:
+  # Chrome tabs
+  - {id: tabs-hinglish, language: hinglish, intent: chrome_list_tabs, reply: hinglish, text: "Chrome mein kaunse tabs khule hain?"}
+  - {id: tabs-hindi, language: hi, intent: chrome_list_tabs, reply: hi, text: "क्रोम में कौन से टैब खुले हैं?"}
+  - {id: tabs-english, language: en, intent: chrome_list_tabs, reply: en, text: "Which tabs are open in Chrome?"}
+  - {id: tabs-hinglish-short, language: hinglish, intent: chrome_list_tabs, reply: hinglish, text: "Hey Ira, Chrome mein kya chal raha hai?"}
+  - {id: upload-hinglish, language: hinglish, intent: chrome_read_tab, reply: hinglish, text: "Chrome ke us upload tab mein kitna kaam hua?"}
+  - {id: upload-hinglish-half, language: hinglish, intent: chrome_read_tab, reply: hinglish, text: "upload kitna hua"}
+  - {id: upload-hindi, language: hi, intent: chrome_read_tab, reply: hi, text: "अपलोड वाले टैब में कितना हुआ?"}
+  - {id: upload-english, language: en, intent: chrome_read_tab, reply: en, text: "How far along is the upload tab?"}
+  - {id: build-english, language: en, intent: chrome_read_tab, reply: en, text: "What step is the build on?"}
+  - {id: watch-hinglish, language: hinglish, intent: chrome_watch_tab, reply: hinglish, text: "upload tab khatam ho jaaye to batana"}
+  - {id: watch-hindi, language: hi, intent: chrome_watch_tab, reply: hi, text: "जब अपलोड पूरा हो जाए तो बताना"}
+  - {id: watch-english, language: en, intent: chrome_watch_tab, reply: en, text: "Tell me when the upload finishes."}
+  # News and the web
+  - {id: news-hinglish, language: hinglish, intent: news_search, reply: hinglish, text: "aaj ki khabar batao"}
+  - {id: news-hindi, language: hi, intent: news_search, reply: hi, text: "आज की ताज़ा ख़बरें क्या हैं?"}
+  - {id: news-english, language: en, intent: news_search, reply: en, text: "Any news about the monsoon today?"}
+  - {id: web-hinglish, language: hinglish, intent: web_search, reply: hinglish, text: "Python 3.13 mein kya naya hai, web pe dhundo"}
+  - {id: web-english, language: en, intent: web_search, reply: en, text: "Search the web for the Python 3.13 release notes."}
+  - {id: web-hindi, language: hi, intent: web_search, reply: hi, text: "इंटरनेट पर पाइथन 3.13 के बारे में खोजो"}
+  # Nothing to look up, or not enough to go on: answer or ask back, no tool
+  - {id: remind-hinglish, language: hinglish, intent: none, reply: hinglish, text: "kal subah 9 baje yaad dilana"}
+  - {id: remind-hindi, language: hi, intent: none, reply: hi, text: "कल सुबह 9 बजे याद दिलाना"}
+  - {id: vague-hinglish, language: hinglish, intent: none, reply: hinglish, text: "woh wala"}
+  - {id: hello-english, language: en, intent: none, reply: en, text: "Thanks, that's all for now."}
+  - {id: hello-hinglish, language: hinglish, intent: none, reply: hinglish, text: "theek hai, shukriya"}
+  - {id: hello-hindi, language: hi, intent: none, reply: hi, text: "ठीक है, धन्यवाद"}

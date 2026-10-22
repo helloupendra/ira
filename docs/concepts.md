@@ -128,7 +128,8 @@ choose their own languages, a fixed reply language, and the name they call the
 assistant (`PATCH /v1/me/settings`); `assistant.languages` and
 `assistant.reply_language` in `ira.yaml` set the defaults. With Amazon Polly
 and an Indian English or Hindi voice (Kajal speaks both), a reply in
-Devanagari is spoken as Hindi and the rest as Indian English.
+Devanagari is spoken as Hindi and the rest as Indian English. How well this
+works is measured, not assumed: see [Hindi, English and Hinglish](language.md).
 
 ## Conversations
 

@@ -73,6 +73,7 @@ nav:
       - "Start in 15 minutes": personal-assistant.md
       - The Mac companion: clients/mac.md
       - Privacy: privacy.md
+      - "Hindi, English and Hinglish": language.md
   - Guide:
       - Getting started: getting-started.md
       - Concepts: concepts.md

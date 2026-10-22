@@ -50,6 +50,10 @@ switch it on.
 - New docs: [Your own Ira in 15 minutes](docs/personal-assistant.md), [the Mac
   companion](docs/clients/mac.md), [Privacy](docs/privacy.md),
   [Devices](docs/devices.md), and a design note.
+- **`ira eval language [--spoken]`**: a small fictional set of Hindi, English
+  and Hinglish requests, scored for intent, reply language and (spoken by a
+  macOS voice) transcription. Results so far, with the demo router only, are
+  in [Hindi, English and Hinglish](docs/language.md).
 - `GET /admin` without a trailing slash redirects to the console.
 
 - **`ira init <folder>`** makes a new business folder from templates in the
