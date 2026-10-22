@@ -97,6 +97,12 @@ const SHAPES: Record<string, ReactNode> = {
     </>
   ),
   external: <path d="M14 5h5v5M19 5l-8 8M18 14v5H5V6h5" />,
+  devices: (
+    <>
+      <rect x="5" y="5" width="14" height="10" rx="1.5" />
+      <path d="M3 19h18M10 15v4M14 15v4" />
+    </>
+  ),
 };
 
 export type IconName =
@@ -127,7 +133,8 @@ export type IconName =
   | 'reset'
   | 'key'
   | 'phone'
-  | 'external';
+  | 'external'
+  | 'devices';
 
 export function Icon({ name, size = 20 }: { name: IconName; size?: number }) {
   return (

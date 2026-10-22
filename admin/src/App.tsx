@@ -19,6 +19,7 @@ const Actions = lazy(() => import('./pages/Actions'));
 const Tools = lazy(() => import('./pages/Tools'));
 const Models = lazy(() => import('./pages/Models'));
 const Channels = lazy(() => import('./pages/Channels'));
+const Devices = lazy(() => import('./pages/Devices'));
 const Users = lazy(() => import('./pages/Users'));
 const Tokens = lazy(() => import('./pages/Tokens'));
 const Audit = lazy(() => import('./pages/Audit'));
@@ -127,6 +128,11 @@ function Console() {
           <Route path="/tools" component={Tools} />
           <Route path="/models" component={Models} />
           <Route path="/channels" component={Channels} />
+          <Route path="/devices">
+            <Guard needs="ask" title="Devices">
+              <Devices />
+            </Guard>
+          </Route>
           <Route path="/users">
             <Guard needs="users" title="Users & roles">
               <Users />

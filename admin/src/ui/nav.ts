@@ -15,6 +15,7 @@ export const NAV: readonly NavItem[] = [
   { href: '/tools', label: 'Tools', icon: 'tools', needs: 'admin.read' },
   { href: '/models', label: 'Models & voice', icon: 'models', needs: 'admin.read' },
   { href: '/channels', label: 'Channels', icon: 'channels', needs: 'admin.read' },
+  { href: '/devices', label: 'Devices', icon: 'devices', needs: 'ask' },
   { href: '/users', label: 'Users & roles', icon: 'users', needs: 'users' },
   { href: '/tokens', label: 'Tokens & security', icon: 'tokens', needs: 'admin.read' },
   { href: '/audit', label: 'Audit & cost', icon: 'audit', needs: 'admin.read' },

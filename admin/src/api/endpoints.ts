@@ -52,6 +52,13 @@ export type VoiceOption = Schemas['VoiceOption'];
 export type CoolingReason = Schemas['CoolingReason'];
 export type ServerAddress = Schemas['ServerAddress'];
 export type MyConversationRow = Schemas['MyConversationRow'];
+export type DeviceView = Schemas['DeviceView'];
+export type DeviceToolView = Schemas['DeviceToolView'];
+export type SkillState = Schemas['SkillState'];
+export type PairingView = Schemas['PairingView'];
+export type PairingState = Schemas['PairingState'];
+export type GrantView = Schemas['GrantView'];
+export type DownloadView = Schemas['DownloadView'];
 export type { Page };
 
 type QueryOf<Op extends keyof operations> = NonNullable<operations[Op]['parameters']['query']>;
@@ -101,6 +108,22 @@ export const me = {
   endSession: (id: string) => request<OkResponse>(`/v1/me/sessions/${enc(id)}`, { method: 'DELETE' }),
   endOtherSessions: () =>
     request<SessionsEnded>('/v1/me/sessions/revoke-others', { method: 'POST' }),
+
+  // Your own devices and grants: pairing and switching a skill on need your PIN.
+  devices: (signal?: AbortSignal) => request<DeviceView[]>('/v1/me/devices', { signal }),
+  pairDevice: (kind: string, label: string | null, skills: string[], pin: string) =>
+    request<PairingView>('/v1/me/devices/pairing', { method: 'POST', json: { kind, label, skills, pin } }),
+  pairing: (id: string, signal?: AbortSignal) =>
+    request<PairingState>(`/v1/me/devices/pairings/${enc(id)}`, { signal }),
+  updateDevice: (id: number, update: { skills?: string[]; label?: string; pin?: string }) =>
+    request<DeviceView>(`/v1/me/devices/${id}`, { method: 'PATCH', json: update }),
+  revokeDevice: (id: number) => request<OkResponse>(`/v1/me/devices/${id}`, { method: 'DELETE' }),
+  grants: (signal?: AbortSignal) => request<GrantView[]>('/v1/me/grants', { signal }),
+  revokeGrant: (id: string) => request<OkResponse>(`/v1/me/grants/${enc(id)}`, { method: 'DELETE' }),
+};
+
+export const downloads = {
+  list: (signal?: AbortSignal) => request<DownloadView[]>('/v1/downloads', { signal }),
 };
 
 export const admin = {
@@ -150,6 +173,8 @@ export const admin = {
   sessionsPage: (query: AdminSessionsQuery = {}, signal?: AbortSignal) =>
     requestPage<AdminSessionRow[]>('/v1/admin/sessions', { query, signal }),
   telegram: (signal?: AbortSignal) => request<TelegramView>('/v1/admin/telegram', { signal }),
+  devices: (signal?: AbortSignal) => request<DeviceView[]>('/v1/admin/devices', { signal }),
+  grants: (signal?: AbortSignal) => request<GrantView[]>('/v1/admin/grants', { signal }),
 
   // Writes: a session with admin.write, or users for accounts and invitations.
   startPairing: (userId?: number) =>
@@ -183,4 +208,9 @@ export const admin = {
     request<TierView>(`/v1/admin/models/tiers/${enc(tier)}`, { method: 'PUT', json: { order } }),
   updateSettings: (update: SettingsUpdate) =>
     request<SettingsView>('/v1/admin/settings', { method: 'PATCH', json: update }),
+  // Anyone's devices and grants: switch off or revoke, never switch on.
+  switchDeviceSkills: (id: number, skills: string[]) =>
+    request<DeviceView>(`/v1/admin/devices/${id}`, { method: 'PATCH', json: { skills } }),
+  revokeDevice: (id: number) => request<OkResponse>(`/v1/admin/devices/${id}`, { method: 'DELETE' }),
+  revokeGrant: (id: string) => request<OkResponse>(`/v1/admin/grants/${enc(id)}`, { method: 'DELETE' }),
 };
