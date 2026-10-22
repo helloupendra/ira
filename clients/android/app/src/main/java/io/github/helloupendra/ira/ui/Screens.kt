@@ -46,6 +46,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import io.github.helloupendra.ira.BuildConfig
 import io.github.helloupendra.ira.IraApp
+import io.github.helloupendra.ira.core.Approvals
 import io.github.helloupendra.ira.core.PairError
 import io.github.helloupendra.ira.core.Pairing
 import io.github.helloupendra.ira.core.Plain
@@ -55,7 +56,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
-enum class Screen { Talk, Skills, Settings }
+enum class Screen { Talk, Skills, Settings, Approvals }
 
 /** The privacy policy: the project's own privacy page. */
 const val PRIVACY_URL = "https://helloupendra.github.io/ira/docs/privacy/"
@@ -78,10 +79,11 @@ fun IraScreens(app: IraApp, talkRequests: Int) {
                 Screen.Talk -> TalkScreen(app, talkRequests, onSkills = { screen = Screen.Skills }, onSettings = { screen = Screen.Settings })
                 Screen.Skills -> SkillsScreen(app, onBack = { screen = Screen.Talk })
                 Screen.Settings ->
-                    SettingsScreen(app, onBack = { screen = Screen.Talk }, onUnpaired = {
+                    SettingsScreen(app, onBack = { screen = Screen.Talk }, onApprovals = { screen = Screen.Approvals }, onUnpaired = {
                         paired = false
                         screen = Screen.Talk
                     })
+                Screen.Approvals -> ApprovalsScreen(app, onBack = { screen = Screen.Settings })
             }
         }
     }
@@ -196,7 +198,7 @@ fun PairScreen(app: IraApp, onPaired: () -> Unit) {
 }
 
 @Composable
-fun SettingsScreen(app: IraApp, onBack: () -> Unit, onUnpaired: () -> Unit) {
+fun SettingsScreen(app: IraApp, onBack: () -> Unit, onApprovals: () -> Unit, onUnpaired: () -> Unit) {
     val context = LocalContext.current
     val link by app.deviceStatus.collectAsState()
     var confirm by remember { mutableStateOf(false) }
@@ -216,6 +218,7 @@ fun SettingsScreen(app: IraApp, onBack: () -> Unit, onUnpaired: () -> Unit) {
             Fact("Connection for the phone's tools", linkText(link))
             Fact("App", "${BuildConfig.VERSION_NAME} (${if (app.tools.flavor.name == "PLAY") "Google Play build" else "personal build"})")
             HorizontalDivider()
+            if (Approvals.ENABLED) TextButton(onClick = onApprovals) { Text("Approvals: fingerprint, trust window, trusted apps") }
             TextButton(onClick = { app.settings.checklistHidden = false; onBack() }) { Text("Show the setup checklist") }
             TextButton(onClick = { openAppSettings(context) }) { Text("Android's settings for Ira (permissions, notifications)") }
             TextButton(onClick = { open(context, app.settings.server.orEmpty()) }) { Text("Export or delete your data (on your Ira, Your data)") }

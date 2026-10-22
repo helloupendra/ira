@@ -37,6 +37,16 @@ class Settings(context: Context) {
         get() = prefs.getBoolean("screen_warning", false)
         set(value) = prefs.edit().putBoolean("screen_warning", value).apply()
 
+    /** This phone's approval key is enrolled with the person's Ira (Approvals). */
+    var approvalsEnrolled: Boolean
+        get() = prefs.getBoolean("approvals_enrolled", false)
+        set(value) = prefs.edit().putBoolean("approvals_enrolled", value).apply()
+
+    /** Apps the person trusted on their Ira, as the phone last knew them (packages). */
+    var trustedApps: Set<String>
+        get() = prefs.getStringSet("trusted_apps", emptySet()) ?: emptySet()
+        set(value) = prefs.edit().putStringSet("trusted_apps", value).apply()
+
     /** The person hid the first-run checklist (Settings can show it again). */
     var checklistHidden: Boolean
         get() = prefs.getBoolean("checklist_hidden", false)

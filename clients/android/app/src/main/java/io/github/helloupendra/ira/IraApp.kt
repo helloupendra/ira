@@ -11,6 +11,7 @@ import androidx.core.app.NotificationCompat
 import androidx.lifecycle.DefaultLifecycleObserver
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.ProcessLifecycleOwner
+import io.github.helloupendra.ira.core.Approvals
 import io.github.helloupendra.ira.core.DeviceFrame
 import io.github.helloupendra.ira.core.Paired
 import io.github.helloupendra.ira.core.Repair
@@ -57,6 +58,21 @@ class IraApp : Application() {
 
     private val skills = MutableStateFlow<Set<String>>(emptySet())
     val skillsOn: StateFlow<Set<String>> = skills
+
+    /** The person's Ira, for approvals: the stand-in until the server publishes its API. */
+    val approvals: Approvals.Server = Approvals.NotYet
+
+    /** When the open trust window closes (epoch seconds), or 0. */
+    private val trust = MutableStateFlow(0L)
+    val trustUntil: StateFlow<Long> = trust
+
+    fun trustOpened(minutes: Int) {
+        trust.value = System.currentTimeMillis() / 1000 + minutes * 60L
+    }
+
+    fun trustClosed() {
+        trust.value = 0
+    }
 
     /** What was said, kept across a live call and the phone's own speech. */
     val transcript = Transcript()

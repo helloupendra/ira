@@ -9,6 +9,8 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!-- Approving an action with a fingerprint (Settings, Approvals). -->
+    <uses-permission android:name="android.permission.USE_BIOMETRIC" />
 
     <!-- The phone's tools. Each is asked for only when you switch its skill on, after a
          plain explanation; none is used until Ira's server calls the tool for you.
