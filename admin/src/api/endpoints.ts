@@ -56,6 +56,7 @@ export type MyConversationRow = Schemas['MyConversationRow'];
 export type DeviceView = Schemas['DeviceView'];
 export type DeviceToolView = Schemas['DeviceToolView'];
 export type SkillState = Schemas['SkillState'];
+export type SkillView = Schemas['SkillView'];
 export type PairingView = Schemas['PairingView'];
 export type PairingState = Schemas['PairingState'];
 export type GrantView = Schemas['GrantView'];
@@ -116,6 +117,7 @@ export const me = {
 
   // Your own devices and grants: pairing and switching a skill on need your PIN.
   devices: (signal?: AbortSignal) => request<DeviceView[]>('/v1/me/devices', { signal }),
+  skills: (signal?: AbortSignal) => request<SkillView[]>('/v1/me/skills', { signal }),
   pairDevice: (kind: string, label: string | null, skills: string[], pin: string) =>
     request<PairingView>('/v1/me/devices/pairing', { method: 'POST', json: { kind, label, skills, pin } }),
   pairing: (id: string, signal?: AbortSignal) =>

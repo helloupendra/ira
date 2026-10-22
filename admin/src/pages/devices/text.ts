@@ -40,22 +40,24 @@ export function remaining(expiresAt: number, now: number = Date.now() / 1000): s
   return `${m}:${String(s).padStart(2, '0')}`;
 }
 
-// What a grant allows, as a heading: "chrome on Studio Mac", "Web and news search".
+// What a grant allows, as a heading: "Browser on Studio Mac", "Web and news search".
 export function grantTitle(grant: Pick<GrantView, 'kind' | 'skill' | 'device'>): string {
   if (grant.kind === 'web_search') return 'Web and news search';
   const skill = grant.skill.charAt(0).toUpperCase() + grant.skill.slice(1);
   return `${skill} on ${grant.device ?? 'a device'}`;
 }
 
+// Switched on at pairing unless unticked: the asks people start with.
+export const FIRST_SKILLS = ['files', 'screen', 'browser'];
+
 // How to set up each kind of device, in order.
 export function setupSteps(kind: string): string[] {
   if (kind === 'mac') {
     return [
-      'Download the Ira companion for Mac and open the zip.',
-      'In Terminal, run: cd ~/Downloads/ira-mac && ./install.sh',
-      'When it asks, paste the pairing link (or type the code).',
-      'In Chrome, open chrome://extensions, switch on Developer mode, click Load unpacked, and choose the folder the installer names.',
-      'Ask Ira: "Chrome mein kaunse tabs khule hain?"',
+      'Download Ira for Mac, open it, and drag Ira to Applications.',
+      'Open Ira. The first time, right-click it and choose Open (on macOS 15 and later: Open Anyway in System Settings, Privacy & Security).',
+      'Ira opens on its pairing page and finds the link you copied: press Pair. Or type the code.',
+      'Allow what it asks for, then ask Ira: "Chrome mein kya chal raha hai?"',
     ];
   }
   return ['Open the Ira app on the phone and scan the QR code.'];

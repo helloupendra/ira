@@ -53,13 +53,36 @@ const IraPersonal = (() => {
   }
 
   const TOOL_WORDS = {
-    chrome_list_tabs: "Listed your Chrome tabs",
-    chrome_read_tab: "Read a Chrome tab",
-    chrome_watch_tab: "Watched a Chrome tab",
     files_find: "Looked for files",
     file_read: "Read a file",
     file_open: "Opened a file",
     screen_read: "Read your screen",
+    browser_tabs: "Listed your browser tabs",
+    browser_show_tab: "Switched to a tab",
+    contacts_lookup: "Looked up a contact",
+    calendar_read: "Read your calendar",
+    calendar_add: "Added an event",
+    reminders_list: "Read your reminders",
+    reminders_add: "Added a reminder",
+    reminders_done: "Completed a reminder",
+    mail_search: "Searched your mail",
+    mail_read: "Read an email",
+    mail_draft: "Drafted an email",
+    messages_send: "Sent a message",
+    notes_search: "Searched your notes",
+    notes_read: "Read a note",
+    notes_add: "Added a note",
+    app_open: "Opened an app",
+    url_open: "Opened a web page",
+    vscode_open: "Opened VS Code",
+    clipboard_read: "Read the clipboard",
+    shortcuts_list: "Listed your shortcuts",
+    shortcuts_run: "Ran a shortcut",
+    code_task_start: "Started a coding task",
+    code_task_status: "Checked a coding task",
+    code_task_list: "Listed coding tasks",
+    code_task_stop: "Stopped a coding task",
+    code_task_push: "Pushed a task's branch",
     remember_person: "Remembered someone",
     forget_person: "Forgot someone",
     remind_me: "Set a reminder",
@@ -131,19 +154,20 @@ const IraPersonal = (() => {
   // --- devices ----------------------------------------------------------------------
 
   async function renderDevices(body) {
-    const [devices, downloads] = await Promise.all([
+    const [devices, downloads, skills] = await Promise.all([
       call("/v1/me/devices"),
       call("/v1/downloads").catch(() => []),
+      call("/v1/me/skills").catch(() => []),
     ]);
     const list = el("ul", { className: "cards", "aria-label": "Your devices" });
     if (!devices.length) {
-      list.append(el("li", { className: "muted", text: "No devices yet. Add your Mac to let Ira read and watch Chrome tabs when you ask." }));
+      list.append(el("li", { className: "muted", text: "No devices yet. Add your Mac to let Ira find your files and read your screen and browser tabs when you ask." }));
     }
     for (const device of devices) list.append(deviceCard(device, body));
     body.replaceChildren(
       el("p", { className: "muted", text: "A device works for you alone. Ira uses only the skills you switch on, and only when you ask." }),
       list,
-      addDeviceForm(body, downloads),
+      addDeviceForm(body, downloads, skills),
     );
   }
 
@@ -220,11 +244,23 @@ const IraPersonal = (() => {
     return card;
   }
 
-  function addDeviceForm(body, downloads) {
-    const kind = el("select", { name: "kind" }, el("option", { value: "mac", text: "Mac (reads Chrome tabs)" }), el("option", { value: "android", text: "Android phone" }));
-    const chrome = el("input", { type: "checkbox", name: "skill-chrome", checked: true });
-    const chromeRow = el("label", { className: "switch" }, chrome, el("span", { text: "Chrome: list your tabs, read the one you ask about, and tell you when it finishes" }));
-    kind.addEventListener("change", () => (chromeRow.hidden = kind.value !== "mac"));
+  // Switched on at pairing unless the person unticks them: the asks people start with.
+  const FIRST_SKILLS = ["files", "screen", "browser"];
+
+  function addDeviceForm(body, downloads, skills) {
+    const kind = el("select", { name: "kind" }, el("option", { value: "mac", text: "Mac (Ira for Mac)" }), el("option", { value: "android", text: "Android phone" }));
+    const boxes = el("fieldset", { className: "stack skills" }, el("legend", { text: "What it may do (you can change this later)" }));
+    const showSkills = () => {
+      const offered = skills.filter((skill) => (skill.kinds || []).includes(kind.value));
+      boxes.replaceChildren(boxes.firstChild);
+      for (const skill of offered) {
+        const box = el("input", { type: "checkbox", name: "skill", value: skill.name, checked: FIRST_SKILLS.includes(skill.name) });
+        boxes.append(el("label", { className: "switch" }, box, el("span", { text: skill.description })));
+      }
+      boxes.hidden = !offered.length;
+    };
+    kind.addEventListener("change", showSkills);
+    showSkills();
     const error = el("p", { className: "error", role: "alert" });
     const form = el(
       "form",
@@ -232,7 +268,7 @@ const IraPersonal = (() => {
       el("h3", { text: "Add a device" }),
       el("label", {}, "Kind", kind),
       el("label", {}, "Name", el("input", { name: "label", maxlength: "60", placeholder: "My Mac" })),
-      chromeRow,
+      boxes,
       pinField("Your action PIN (a new device is a new permission)"),
       el("button", { type: "submit", className: "btn btn-primary", text: "Make a pairing code" }),
       error,
@@ -242,11 +278,11 @@ const IraPersonal = (() => {
       error.textContent = "";
       const data = new FormData(form);
       $("input[name=pin]", form).value = "";
-      const skills = data.get("kind") === "mac" && chrome.checked ? ["chrome"] : [];
+      const chosen = data.getAll("skill");
       try {
         const pairing = await call("/v1/me/devices/pairing", {
           method: "POST",
-          json: { kind: data.get("kind"), label: data.get("label") || null, skills, pin: data.get("pin") },
+          json: { kind: data.get("kind"), label: data.get("label") || null, skills: chosen, pin: data.get("pin") },
         });
         form.replaceWith(pairingCard(pairing, body, downloads));
       } catch (problem) {
@@ -271,17 +307,17 @@ const IraPersonal = (() => {
 
   function pairingCard(pairing, body, downloads) {
     const left = el("p", { className: "muted small", role: "status" });
-    const mac = downloads.find((d) => d.name === "ira-mac.zip");
+    const mac = downloads.find((d) => d.name === "Ira.dmg");
     const steps =
       pairing.kind === "mac"
         ? el(
             "ol",
             { className: "steps" },
-            el("li", {}, "Download ", mac ? el("a", { href: mac.url, text: "the Ira companion for Mac" }) : "the Ira companion for Mac", " and open the zip."),
-            el("li", {}, "In Terminal, run: ", el("code", { text: "cd ~/Downloads/ira-mac && ./install.sh" })),
-            el("li", { text: "When it asks, paste the pairing link you copied above." }),
-            el("li", {}, "In Chrome, open ", el("code", { text: "chrome://extensions" }), ", switch on Developer mode, click Load unpacked, and choose the folder the installer names."),
-            el("li", {}, "Ask Ira: ", el("q", { text: "Chrome mein kaunse tabs khule hain?" })),
+            el("li", {}, "Download ", mac ? el("a", { href: mac.url, text: "Ira for Mac" }) : "Ira for Mac", ", open it, and drag Ira to Applications."),
+            el("li", { text: "Open Ira. The first time, right-click it and choose Open (on macOS 15 and later: Open Anyway in System Settings, Privacy & Security)." }),
+            el("li", { text: "Ira opens on its pairing page and finds the link you copied; press Pair. Or type the code." }),
+            el("li", { text: "Allow what it asks for, then try it:" }),
+            el("li", {}, "Ask Ira: ", el("q", { text: "Chrome mein kya chal raha hai?" })),
           )
         : el("p", { className: "muted", text: "Open the Ira app on your phone and scan this code." });
     const card = el(
@@ -289,7 +325,7 @@ const IraPersonal = (() => {
       { className: "card pairing" },
       el("h3", { text: `Pair ${pairing.label}` }),
       el("div", { className: "row" }, copyButton(pairing.pair_url, "Copy the pairing link", "btn btn-primary")),
-      el("p", { className: "muted", text: "Paste the link when the installer asks. Or type this code:" }),
+      el("p", { className: pairing.kind === "mac" ? "muted" : "muted", text: pairing.kind === "mac" ? "Ira for Mac finds the copied link by itself. Or type this code:" : "Or type this code:" }),
       el("p", { className: "pair-code", text: pairing.code }),
       el("img", { className: "qr", src: pairing.qr_svg, alt: `QR code for pairing ${pairing.label}`, width: "180", height: "180" }),
       left,

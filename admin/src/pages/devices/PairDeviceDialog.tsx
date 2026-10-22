@@ -1,9 +1,9 @@
 import { useEffect, useState, type FormEvent } from 'react';
-import { downloads, me, type DownloadView, type PairingView } from '../../api/endpoints';
+import { downloads, me, type DownloadView, type PairingView, type SkillView } from '../../api/endpoints';
 import { CopyField } from '../../ui/CopyField';
 import { Dialog } from '../../ui/Dialog';
 import { failure } from '../tokens/text';
-import { remaining, setupSteps } from './text';
+import { FIRST_SKILLS, remaining, setupSteps } from './text';
 
 // Add a device: kind, name, the skills it may use, and your PIN (a new device is a new
 // grant). The answer is a one-time pairing code with its QR code, good for 10 minutes;
@@ -38,10 +38,23 @@ export function PairDeviceDialog({
 function PairForm({ onMade, onCancel }: { onMade: (p: PairingView) => void; onCancel: () => void }) {
   const [kind, setKind] = useState('mac');
   const [label, setLabel] = useState('');
-  const [chrome, setChrome] = useState(true);
+  const [offered, setOffered] = useState<SkillView[]>([]);
+  const [chosen, setChosen] = useState<string[]>(FIRST_SKILLS);
   const [pin, setPin] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    me.skills(controller.signal).then(setOffered, () => undefined);
+    return () => controller.abort();
+  }, []);
+
+  const forKind = offered.filter((skill) => skill.kinds.includes(kind));
+
+  function toggle(name: string, on: boolean) {
+    setChosen((list) => (on ? [...list.filter((s) => s !== name), name] : list.filter((s) => s !== name)));
+  }
 
   async function onSubmit(event: FormEvent) {
     event.preventDefault();
@@ -50,7 +63,7 @@ function PairForm({ onMade, onCancel }: { onMade: (p: PairingView) => void; onCa
     const typed = pin;
     setPin(''); // the PIN is never kept
     try {
-      const skills = kind === 'mac' && chrome ? ['chrome'] : [];
+      const skills = chosen.filter((name) => forKind.some((skill) => skill.name === name));
       onMade(await me.pairDevice(kind, label.trim() || null, skills, typed));
     } catch (err) {
       setError(failure(err));
@@ -63,7 +76,7 @@ function PairForm({ onMade, onCancel }: { onMade: (p: PairingView) => void; onCa
       <div className="field">
         <label htmlFor="device-kind">Kind</label>
         <select id="device-kind" value={kind} onChange={(e) => setKind(e.target.value)}>
-          <option value="mac">Mac: reads and watches Chrome tabs</option>
+          <option value="mac">Mac: Ira for Mac</option>
           <option value="android">Android phone: the always-on ear (its app comes later)</option>
         </select>
       </div>
@@ -79,14 +92,20 @@ function PairForm({ onMade, onCancel }: { onMade: (p: PairingView) => void; onCa
           onChange={(e) => setLabel(e.target.value)}
         />
       </div>
-      {kind === 'mac' && (
+      {forKind.length > 0 && (
         <fieldset className="devices-skills">
           <legend>What Ira may use on it</legend>
-          <label className="check">
-            <input type="checkbox" checked={chrome} onChange={(e) => setChrome(e.target.checked)} />
-            <span>Chrome: list your tabs, read the one you ask about, and tell you when it finishes</span>
-          </label>
-          <p className="field-hint">Nothing else is on. You can switch skills on or off later.</p>
+          {forKind.map((skill) => (
+            <label className="check" key={skill.name}>
+              <input
+                type="checkbox"
+                checked={chosen.includes(skill.name)}
+                onChange={(e) => toggle(skill.name, e.target.checked)}
+              />
+              <span>{skill.description}</span>
+            </label>
+          ))}
+          <p className="field-hint">Only what you tick is on. You can switch skills on or off later.</p>
         </fieldset>
       )}
       <div className="field">
@@ -138,7 +157,7 @@ function PairingCode({
   useEffect(() => {
     const controller = new AbortController();
     downloads.list(controller.signal).then(
-      (list) => setMac(list.find((d) => d.name === 'ira-mac.zip') ?? null),
+      (list) => setMac(list.find((d) => d.name === 'Ira.dmg') ?? null),
       () => undefined,
     );
     return () => controller.abort();
@@ -181,7 +200,10 @@ function PairingCode({
       <div className="devices-code-row">
         <img className="devices-qr" src={pairing.qr_svg} alt={`QR code for pairing ${pairing.label}`} width={168} height={168} />
         <div className="stack">
-          <CopyField label="Pairing link: paste it when the installer asks" value={pairing.pair_url} />
+          <CopyField
+            label={pairing.kind === 'mac' ? 'Pairing link: Ira for Mac finds it when you copy it' : 'Pairing link'}
+            value={pairing.pair_url}
+          />
           <p className="muted">Or type this code:</p>
           <p className="devices-code mono">{pairing.code}</p>
         </div>
@@ -193,9 +215,9 @@ function PairingCode({
               <>
                 Download{' '}
                 <a href={mac.url} download>
-                  the Ira companion for Mac
-                </a>{' '}
-                and open the zip.
+                  Ira for Mac
+                </a>
+                , open it, and drag Ira to Applications.
               </>
             ) : (
               step

@@ -14,14 +14,14 @@ describe('statusOf', () => {
 describe('skillsAfter', () => {
   const device = {
     skills: [
-      { name: 'chrome', description: '', on: true, offered: true },
+      { name: 'browser', description: '', on: true, offered: true },
       { name: 'tasks', description: '', on: false, offered: false },
     ],
   };
   it('adds or drops one skill and keeps the rest', () => {
-    expect(skillsAfter(device, 'tasks', true)).toEqual(['chrome', 'tasks']);
-    expect(skillsAfter(device, 'chrome', false)).toEqual([]);
-    expect(skillsAfter(device, 'chrome', true)).toEqual(['chrome']);
+    expect(skillsAfter(device, 'tasks', true)).toEqual(['browser', 'tasks']);
+    expect(skillsAfter(device, 'browser', false)).toEqual([]);
+    expect(skillsAfter(device, 'browser', true)).toEqual(['browser']);
   });
 });
 
@@ -31,10 +31,11 @@ describe('words', () => {
     expect(tierWord(3)).toBe('needs your PIN');
     expect(tierWord(9)).toBe('tier 9');
     expect(kindWord('android')).toBe('Android phone');
-    expect(grantTitle({ kind: 'device_skill', skill: 'chrome', device: 'Studio Mac' })).toBe('Chrome on Studio Mac');
+    expect(grantTitle({ kind: 'device_skill', skill: 'browser', device: 'Studio Mac' })).toBe('Browser on Studio Mac');
     expect(grantTitle({ kind: 'web_search', skill: 'web', device: null })).toBe('Web and news search');
     expect(remaining(NOW + 598, NOW)).toBe('9:58');
     expect(remaining(NOW - 1, NOW)).toBe('expired');
-    expect(setupSteps('mac')[1]).toContain('./install.sh');
+    expect(setupSteps('mac')[0]).toContain('Ira for Mac');
+    expect(setupSteps('mac').join(' ')).not.toContain('install.sh');
   });
 });

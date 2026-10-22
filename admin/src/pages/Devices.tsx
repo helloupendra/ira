@@ -164,7 +164,7 @@ function MyDevices({ state }: { state: ApiState<DeviceView[]> }) {
           rows.length === 0 ? (
             <Empty
               title="No devices yet"
-              text="Pair your Mac to let Ira read and watch a Chrome tab when you ask, and tell you when it finishes."
+              text="Pair your Mac with Ira for Mac to let Ira find your files and read your screen and browser tabs when you ask."
             />
           ) : (
             <ul className="cards">
