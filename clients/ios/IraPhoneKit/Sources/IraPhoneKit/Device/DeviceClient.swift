@@ -63,8 +63,8 @@ public final class DeviceClient: @unchecked Sendable {
 
     let lock = NSLock()
     var runner: Task<Void, Never>?
-    var wake: CheckedContinuation<Void, Never>?
-    var pauses = 0
+    /// The wait before the next try; cancelling it ends the wait early.
+    var sleeper: Task<Void, Never>?
     var stopped = false
     var current: WebSocketChannel?
 
@@ -111,28 +111,26 @@ public final class DeviceClient: @unchecked Sendable {
 
     /// Stop: close the connection now and do not reconnect until `start`.
     public func stop() {
-        let (channel, runner, wake): (WebSocketChannel?, Task<Void, Never>?, CheckedContinuation<Void, Never>?) =
-            lock.withLock {
-                stopped = true
-                let taken = (current, self.runner, self.wake)
-                self.runner = nil
-                self.wake = nil
-                return taken
-            }
+        lock.lock()
+        stopped = true
+        let channel = current
+        let runner = self.runner
+        let sleeper = self.sleeper
+        self.runner = nil
+        self.sleeper = nil
+        lock.unlock()
         channel?.close(code: 1000)
         runner?.cancel()
-        wake?.resume()
+        sleeper?.cancel()
         onState(.stopped)
     }
 
     /// Skip the current wait and try again now (the app came back, the network returned).
     public func reconnectNow() {
-        let wake = lock.withLock {
-            let wake = self.wake
-            self.wake = nil
-            return wake
-        }
-        wake?.resume()
+        lock.lock()
+        let sleeper = self.sleeper
+        lock.unlock()
+        sleeper?.cancel()
     }
 
     var isStopped: Bool {
