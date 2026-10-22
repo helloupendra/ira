@@ -78,6 +78,8 @@ nav:
       - API: api.md
       - Architecture: architecture.md
       - Security: security.md
+  - Design notes:
+      - "Phase 1: devices, Chrome and search": design/phase-1-devices.md
   - Examples:
       - Sunrise Dental Clinic: examples/clinic.md
 
