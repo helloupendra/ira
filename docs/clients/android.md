@@ -108,6 +108,16 @@ device key (`irad_...`), which it keeps encrypted with a key in the Android
 Keystore, never in a file or a log. It is not backed up and does not move to
 a new phone: pair the new phone instead.
 
+## The setup checklist
+
+After pairing, the talk screen shows **Get Ira ready**: the steps left, each
+with one button. Let Ira hear you (the microphone), let it show
+notifications, make it your digital assistant, choose what it may do on
+your Ira, and allow those skills on the phone. If you once said No to a
+permission, Android stops asking; the button then reads **Open settings**
+and takes you to Ira's page in Android's settings. **Hide** puts the list
+away; **Settings → Show the setup checklist** brings it back.
+
 ## Switch on skills
 
 Ira uses a phone tool only when two things are true:
@@ -163,9 +173,9 @@ keeps working as before.
 - **A yes**: when Ira proposes something that acts for you (a call, an SMS,
   a reply, a calendar event), she reads it back with its exact target and
   waits. Say "haan" or "yes", or tap **Yes**. Anything that needs your PIN
-  (money, deleting, a new grant) shows a card: confirm it with your PIN in
-  the Ira app on your Ira's web page. A PIN is never spoken and never typed
-  in the phone app.
+  (money, deleting, the screen tools) shows a card: type your action PIN
+  there and press **Confirm**. A PIN is never spoken; three wrong PINs lock
+  actions for 15 minutes, as everywhere in Ira.
 - **End** the call with the button, or the notification's **End**. Two
   quiet minutes end it too.
 
