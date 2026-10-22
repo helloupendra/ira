@@ -108,7 +108,8 @@ out, and helps a model too.
  "text": "The Upload tab reached 100%.", "data": {"tabId": 812}}
 ```
 
-`event` is `watch_done`, `task_done` or `task_failed`.
+`event` is `watch_done`, `task_progress` (a long task saying how it is
+going), `task_done` or `task_failed`.
 
 **Keepalive.** Either side sends `{"type": "ping"}` every 30 seconds and the
 other answers `{"type": "pong"}`.

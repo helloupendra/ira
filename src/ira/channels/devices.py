@@ -89,7 +89,22 @@ def mask_tokens_in_logs() -> None:
 WEBSOCKET_PATH = "/v1/devices/ws"
 # The skills each kind of device is offered on its page, before it says what it has.
 KIND_SKILLS: dict[str, tuple[str, ...]] = {
-    "mac": ("files", "screen", "chrome", "routine", "tasks"),
+    "mac": (
+        "files",
+        "screen",
+        "browser",
+        "contacts",
+        "calendar",
+        "reminders",
+        "mail",
+        "notes",
+        "messages",
+        "apps",
+        "clipboard",
+        "shortcuts",
+        "routine",
+        "tasks",
+    ),
     "android": (),
 }
 STREAM_KEEPALIVE = 20.0

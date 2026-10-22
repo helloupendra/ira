@@ -1183,7 +1183,8 @@ class EventView(BaseModel):
     id: int
     at: float
     event: str = Field(
-        description="From a device: watch_done, task_done or task_failed. From Ira: reminder, "
+        description="From a device: watch_done, task_progress, task_done or task_failed. "
+        "From Ira: reminder, "
         "nudge, or learning_question (data.learning_id: answer it with approve or reject)."
     )
     title: str

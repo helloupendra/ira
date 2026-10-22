@@ -4,7 +4,7 @@
   kept only as a SHA-256 hash. A device exchanges it for its own token.
 * A **device token** is ``irad_`` and 32 random bytes, shown once to the
   device. Only its hash is kept. It works on the device WebSocket only.
-* A device's **skills** are the grants its user switched on ("chrome"); its
+* A device's **skills** are the grants its user switched on ("files"); its
   tools are offered only while their skill is on.
 * **Events** a device announced are kept seven days, 200 per person at most.
 """
@@ -33,8 +33,6 @@ MAX_EVENTS = 200
 # The skills IRA's own clients offer, in words for the pairing and devices pages.
 # A device may offer others; they show by name.
 SKILLS: dict[str, str] = {
-    "chrome": "Chrome: list your open tabs, read the one you ask about, and watch it "
-    "until it finishes. Only when you ask.",
     "tasks": "Tasks: a coding agent at work in repositories you allowed on this Mac. "
     "Pushing needs your PIN.",
     "routine": "Routine: when this Mac locks, sleeps and wakes, and which of your named "
@@ -43,6 +41,11 @@ SKILLS: dict[str, str] = {
     "about (PDF, Word, text) and open it. Only in folders you allow, only when you ask.",
     "screen": "Screen: read the text of the window in front of you, only when you ask. Only "
     "the text leaves the Mac, never a picture.",
+    "browser": "Browser: the tabs open in Chrome, Safari, Arc, Edge or Brave (titles and "
+    "addresses only), and bringing one to the front so Ira can read it from the screen.",
+    "clipboard": "Clipboard: read what you copied, when you ask. Never what a password "
+    "manager marked as private.",
+    "shortcuts": "Shortcuts: list your Shortcuts, and run one you name after your yes.",
     # Skills the phone and Mac apps offer; Ira reads and acts only when you ask.
     "calls": "Calls: who called, and placing a call after you say yes to the exact number.",
     "contacts": "Contacts: find a person's number or email in your contacts.",
@@ -52,9 +55,10 @@ SKILLS: dict[str, str] = {
     "it, after your yes.",
     "calendar": "Calendar: your events, and adding or changing one after your yes.",
     "reminders": "Reminders: your device's reminders and alarms.",
-    "mail": "Mail: read your recent mail, and send after your yes.",
-    "notes": "Notes: find and read your notes.",
-    "apps": "Apps: open an app or a shortcut you name.",
+    "mail": "Mail: search and read your recent mail, and write one after your yes (on a "
+    "Mac, a draft you send yourself).",
+    "notes": "Notes: find and read your notes, and add one.",
+    "apps": "Apps: open an app, a web page (after your yes) or, on a Mac, a folder in VS Code.",
     "location": "Location: where this device is, when you ask. Never tracked.",
     "media": "Media: play, pause and skip what is playing.",
 }
