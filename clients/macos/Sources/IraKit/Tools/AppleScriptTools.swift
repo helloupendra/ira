@@ -1,3 +1,4 @@
+import CoreServices
 import Foundation
 
 /// Mail, Notes and Messages, through AppleScript (`osascript`).
@@ -39,10 +40,30 @@ public enum AppleScriptTools {
         return ToolFailure("\(app) said: \(line.prefix(200))")
     }
 
+    /// Bundle ids of the apps the scripts drive, to tell a pending consent from a slow app.
+    static let bundleIDs = [
+        "Mail": "com.apple.mail", "Notes": "com.apple.Notes", "Messages": "com.apple.MobileSMS",
+        "Google Chrome": "com.google.Chrome", "Safari": "com.apple.Safari", "Arc": "company.thebrowser.Browser",
+        "Microsoft Edge": "com.microsoft.edgemac", "Brave Browser": "com.brave.Browser",
+    ]
+
+    /// Whether macOS is waiting for the person to say if Ira may drive `bundleID`.
+    static func consentPending(_ bundleID: String) -> Bool {
+        let target = NSAppleEventDescriptor(bundleIdentifier: bundleID)
+        guard let desc = target.aeDesc else { return false }
+        return AEDeterminePermissionToAutomateTarget(desc, typeWildCard, typeWildCard, false)
+            == OSStatus(errAEEventWouldRequireUserConsent)
+    }
+
     /// Run a fixed script with `argv`, at most `timeout` seconds.
     static func run(_ script: String, args: [String], app: String, timeout: Double = 20) async throws -> String {
         let result = try await Command.run(["/usr/bin/osascript", "-", ] + args, input: script, timeout: timeout)
-        if result.timedOut { throw ToolFailure("\(app) did not answer in time") }
+        if result.timedOut {
+            if let id = bundleIDs[app], consentPending(id) {
+                throw ToolFailure("macOS is asking whether Ira may use \(app). Answer that prompt (Allow), then ask again")
+            }
+            throw ToolFailure("\(app) did not answer in time")
+        }
         guard result.status == 0 else { throw failure(app, result.stderr) }
         return result.stdout.trimmingCharacters(in: .newlines)
     }

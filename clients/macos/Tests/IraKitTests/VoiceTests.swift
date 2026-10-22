@@ -310,6 +310,8 @@ struct ScreenTextTests {
         #expect(ScreenText.refusal(bundleID: "com.1password.1password", name: "1Password")?.contains("passwords") == true)
         #expect(ScreenText.refusal(bundleID: "com.google.Chrome", name: "Google Chrome") == nil)
         #expect(ScreenText.refusal(bundleID: nil, name: "Unknown") == nil)
+        #expect(ScreenText.refusal(bundleID: "com.apple.UserNotificationCenter", name: "UserNotificationCenter")?
+            .hasPrefix("a macOS prompt is in front") == true)
     }
 
     @Test func aStuckToolAnswersBeforeTheServerGivesUp() {

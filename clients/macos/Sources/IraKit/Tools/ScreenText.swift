@@ -42,8 +42,19 @@ public enum ScreenText {
         "com.dashlane.Dashlane": "Dashlane",
     ]
 
+    /// macOS's own prompts and system parts: in front, they are a question for
+    /// the person, not the window they mean.
+    public static let systemUI: Set<String> = [
+        "com.apple.UserNotificationCenter", "com.apple.coreservices.uiagent", "com.apple.CoreServicesUIAgent",
+        "com.apple.tccd", "com.apple.controlcenter", "com.apple.notificationcenterui", "com.apple.dock",
+        "com.apple.systemuiserver", "com.apple.WindowManager",
+    ]
+
     /// Why the front app's window is not read, or nil.
     public static func refusal(bundleID: String?, name: String) -> String? {
+        if let bundleID, systemUI.contains(bundleID) {
+            return "a macOS prompt is in front (\(name)). Answer it, then ask again"
+        }
         guard let bundleID, let known = neverRead[bundleID] else { return nil }
         if bundleID == "com.apple.systempreferences" {
             return "I can't read System Settings' window: macOS keeps it private. Bring the window you mean to the front and ask again"
