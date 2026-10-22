@@ -41,19 +41,20 @@ object ScreenAccess {
 
     suspend fun read(context: Context, args: Args): JsonElement {
         val service = IraAccessibilityService.current() ?: throw ToolFailure("Ira's Accessibility service is off")
-        val front = prepare(context, service, args.string("app", 120))
+        val (pkg, front) = prepare(context, service, args.string("app", 120))
         val root = service.rootInActiveWindow ?: throw ToolFailure("the screen cannot be read just now")
         val tree = tree(root, IdentityHashMap())
         val lines = Screen.labels(tree, limit = 300, maxEach = 500)
         val text = lines.joinToString("\n").take(4_000)
-        return Results.of("app" to front, "text" to text, "summary" to "On screen in ${front ?: "the app in front"}: ${text.take(300)}")
+        // "app": the package in front (com.google.android.youtube), which the server's trusted apps use.
+        return Results.of("app" to pkg, "app_name" to front, "text" to text, "summary" to "On screen in ${front ?: "the app in front"}: ${text.take(300)}")
     }
 
     suspend fun act(context: Context, args: Args): JsonElement {
         val service = IraAccessibilityService.current() ?: throw ToolFailure("Ira's Accessibility service is off")
         val action = args.choice("action", listOf("tap", "type", "scroll_up", "scroll_down", "back", "home", "recents"))
             ?: throw ToolFailure("say what to do")
-        val front = if (action == "home" || action == "recents") null else prepare(context, service, args.string("app", 120))
+        val (pkg, front) = if (action == "home" || action == "recents") null to null else prepare(context, service, args.string("app", 120))
         val done =
             withContext(Dispatchers.Main) {
                 when (action) {
@@ -66,19 +67,25 @@ object ScreenAccess {
                 }
             }
         if (!done) throw ToolFailure("that did not work on ${front ?: "the screen"}")
-        return Results.of("action" to action, "app" to front, "summary" to "Done in ${front ?: "the phone"}: ${action.replace('_', ' ')}.")
+        val after = service.rootInActiveWindow?.packageName?.toString() ?: pkg
+        return Results.of(
+            "action" to action,
+            "app" to after,
+            "app_name" to (Apps.label(context, after) ?: front),
+            "summary" to "Done in ${front ?: "the phone"}: ${action.replace('_', ' ')}.",
+        )
     }
 
     /**
-     * Make sure the right app is in front, never Ira (Screen.plan); returns its name.
+     * Make sure the right app is in front, never Ira (Screen.plan); returns its package and name.
      * Brings the named app back, or asks Ira to step aside, and waits up to three seconds.
      */
-    private suspend fun prepare(context: Context, service: AccessibilityService, target: String?): String? {
+    private suspend fun prepare(context: Context, service: AccessibilityService, target: String?): Pair<String?, String?> {
         val own = context.packageName
         repeat(2) {
             val front = service.rootInActiveWindow?.packageName?.toString()
             when (val plan = Screen.plan(front, own, target, Apps.label(context, front))) {
-                Screen.Plan.Proceed -> return Apps.label(context, front) ?: front
+                Screen.Plan.Proceed -> return front to (Apps.label(context, front) ?: front)
                 is Screen.Plan.Bring -> {
                     val app = Apps.find(context, plan.app) ?: throw ToolFailure("no app called '${plan.app}' is on the phone")
                     val launch = context.packageManager.getLaunchIntentForPackage(app.pkg) ?: throw ToolFailure("${app.label} cannot be opened")
@@ -96,7 +103,8 @@ object ScreenAccess {
                 }
             }
         }
-        return Apps.label(context, service.rootInActiveWindow?.packageName?.toString())
+        val front = service.rootInActiveWindow?.packageName?.toString()
+        return front to Apps.label(context, front)
     }
 
     private suspend fun waitFor(service: AccessibilityService, ok: (String?) -> Boolean): Boolean {
