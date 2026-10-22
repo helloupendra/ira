@@ -266,6 +266,7 @@ def test_without_the_connectors_extra_everything_else_works(registry, monkeypatc
             "available": False,
             "connections": [],
             "servers": [],
+            "builtins": [],
         }
         made = client.post(
             "/v1/me/connections", json={"name": "x", "url": "https://a.example"}, headers=headers
