@@ -34,7 +34,7 @@ final class AppModel {
     /// A Siri request to start a call, waiting for the app to be on screen.
     var callRequested = false
 
-    private var device: DeviceClient?
+    @ObservationIgnored private var device: DeviceClient?
     private(set) var foreground = true
 
     var record: PairingRecord { PairingRecord(settings: settings, secrets: secrets) }

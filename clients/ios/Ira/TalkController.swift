@@ -21,7 +21,7 @@ final class TalkController {
         case listening(hearing: Bool)
     }
 
-    weak var model: AppModel?
+    @ObservationIgnored weak var model: AppModel?
     private let settings: AppSettings
 
     private(set) var transcript = Transcript()
@@ -43,19 +43,19 @@ final class TalkController {
     private(set) var deciding: Set<String> = []
 
     private let audio = AudioEngine()
-    private var vad = EnergyVAD()
-    private var live: LiveVoiceTransport?
-    private var recognizer: PhoneRecognizer?
-    private var asking: AskSession?
-    private var askingServer = ""
+    @ObservationIgnored private var vad = EnergyVAD()
+    @ObservationIgnored private var live: LiveVoiceTransport?
+    @ObservationIgnored private var recognizer: PhoneRecognizer?
+    @ObservationIgnored private var asking: AskSession?
+    @ObservationIgnored private var askingServer = ""
     /// Each live call numbers its turns from 1; typing and phone mode share source 0.
-    private var source = 0
-    private var calls = 0
-    private var stoppedThrough = 0
-    private var lastTurn = 0
-    private var lastActivity = Date()
-    private var idleTimer: Timer?
-    private var phoneTurnBusy = false
+    @ObservationIgnored private var source = 0
+    @ObservationIgnored private var calls = 0
+    @ObservationIgnored private var stoppedThrough = 0
+    @ObservationIgnored private var lastTurn = 0
+    @ObservationIgnored private var lastActivity = Date()
+    @ObservationIgnored private var idleTimer: Timer?
+    @ObservationIgnored private var phoneTurnBusy = false
 
     var inCall: Bool { callState != .idle }
 
@@ -428,7 +428,12 @@ final class TalkController {
         Task {
             defer { deciding.remove(card.id) }
             do {
-                let outcome = yes ? try await client.approve(actionID: card.id) : try await client.cancel(actionID: card.id)
+                let outcome: ActionOutcome
+                if yes {
+                    outcome = try await client.approve(actionID: card.id)
+                } else {
+                    outcome = try await client.cancel(actionID: card.id)
+                }
                 settle(card, outcome)
             } catch {
                 outcomes[card.id] = (error as? AskClient.Failure)?.message ?? error.localizedDescription

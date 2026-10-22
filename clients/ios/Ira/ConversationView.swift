@@ -266,7 +266,7 @@ struct EntryView: View {
 struct ActionCardView: View {
     @Environment(AppModel.self) private var model
     let card: ActionCard
-    @State private var pin = ""
+    @State var pin = ""
 
     private var talk: TalkController { model.talk }
 
@@ -333,10 +333,10 @@ struct ReportSheet: View {
     @Environment(AppModel.self) private var model
     @Environment(\.dismiss) private var dismiss
     let entry: Entry
-    @State private var reason: ReportReason = .wrong
-    @State private var note = ""
-    @State private var problem: String?
-    @State private var sending = false
+    @State var reason: ReportReason = .wrong
+    @State var note = ""
+    @State var problem: String?
+    @State var sending = false
 
     var body: some View {
         NavigationStack {

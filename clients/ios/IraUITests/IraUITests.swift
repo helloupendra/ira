@@ -55,13 +55,23 @@ final class IraUITests: XCTestCase {
         entry.tap()
         entry.typeText(link)
         app.buttons["pair-button"].tap()
-        XCTAssertTrue(app.navigationBars["Get Ira ready"].waitForExistence(timeout: 20))
-        XCTAssertFalse(app.buttons["pair-action"].waitForExistence(timeout: 2), "still not paired")
+        let deadline = Date().addingTimeInterval(30)
+        while app.buttons["pair-button"].exists, Date() < deadline {
+            if app.staticTexts["pair-problem"].exists {
+                XCTFail("pairing failed: \(app.staticTexts["pair-problem"].label)")
+                return
+            }
+            _ = app.buttons["pair-button"].waitForExistence(timeout: 0.5)
+            RunLoop.current.run(until: Date().addingTimeInterval(0.5))
+        }
+        XCTAssertFalse(app.buttons["pair-button"].exists, "pairing did not finish in 30 s")
+        XCTAssertTrue(app.navigationBars["Get Ira ready"].waitForExistence(timeout: 5))
+        XCTAssertFalse(app.buttons["pair-action"].exists, "still not paired")
 
         // The microphone (CI grants it to the simulator beforehand), then start.
         if app.buttons["microphone-action"].exists {
             app.buttons["microphone-action"].tap()
-            app.tap()  // lets the interruption monitor answer iOS's prompt
+            app.navigationBars["Get Ira ready"].staticTexts.firstMatch.tap()  // lets the monitor answer iOS
         }
         let start = app.buttons["start"]
         XCTAssertTrue(start.waitForExistence(timeout: 5))
@@ -83,7 +93,7 @@ final class IraUITests: XCTestCase {
         field.tap()
         field.typeText("contacts lookup query=Kate")
         app.buttons["send"].tap()
-        app.tap()
+        app.navigationBars.firstMatch.staticTexts.firstMatch.tap()  // lets the monitor answer iOS, if it asks
         let kate = app.staticTexts.containing(NSPredicate(format: "label CONTAINS %@", "Kate Bell")).firstMatch
         XCTAssertTrue(kate.waitForExistence(timeout: 30), "Ira did not read the iPhone's contacts")
     }

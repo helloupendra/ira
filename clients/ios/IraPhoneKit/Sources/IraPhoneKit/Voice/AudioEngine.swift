@@ -300,6 +300,7 @@ final class Resampler: @unchecked Sendable {
         guard let target = AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: 16_000, channels: 1, interleaved: false),
             let converter = AVAudioConverter(from: format, to: target)
         else { return nil }
+        converter.downmix = true  // a stereo or multichannel microphone becomes one voice
         self.converter = converter
         self.target = target
     }
