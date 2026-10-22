@@ -382,6 +382,12 @@ code { font-family: var(--mono); font-size: 0.9em; background: var(--bg-sunken);
 .skill { display: grid; gap: var(--s-2); }
 .text-btn.danger { color: var(--danger); justify-self: start; }
 .btn-danger { background: var(--danger); color: var(--bg); }
+
+/* A live call: the call button, and the bar shown while a call is on. */
+.composer .call { color: var(--accent); }
+.composer .call[aria-pressed="true"] { background: var(--accent); color: var(--accent-text); border-radius: 50%; }
+.composer.in-call .mic { visibility: hidden; }
+.call-bar .listen-text { min-width: 0; overflow-wrap: anywhere; }
 .note.ok { color: var(--ok); background: var(--ok-soft); }
 .qr { width: 180px; height: 180px; background: #fff; border-radius: var(--radius-s); padding: var(--s-2); }
 .steps { margin: 0; padding-left: var(--s-5); display: grid; gap: var(--s-2); font-size: var(--text-m); }

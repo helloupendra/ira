@@ -9909,6 +9909,12 @@
                         "description": "May the web app recognise speech in the browser: when this server has no speech-to-text (fallback), always (prefer), or never (off).",
                         "default": "off"
                     },
+                    "live": {
+                        "type": "boolean",
+                        "title": "Live",
+                        "description": "A live call works here (/v1/voice/live): streaming speech-to-text and a voice, and your role may talk to Ira.",
+                        "default": false
+                    },
                     "mic_language": {
                         "type": "string",
                         "title": "Mic Language",

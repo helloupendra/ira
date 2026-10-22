@@ -159,6 +159,8 @@ function enterChat() {
   for (const button of document.querySelectorAll(".voice-mark")) {
     button.classList.toggle("off", !canAsk || voiceProblem() !== null);
   }
+  // A live call, when this server can take one (see live.js).
+  $("#call").hidden = !(canAsk && typeof IraLive !== "undefined" && IraLive.available());
   if (!canAsk) {
     $("#hero-hint").textContent = `Your role (${user.role}) can't ask Ira. The admin console is in the menu.`;
   } else if (voiceProblem()) {
@@ -312,6 +314,7 @@ $("#setup-form").addEventListener("submit", async (event) => {
 
 function sessionExpired(text) {
   stopSpeaking();
+  if (typeof IraLive !== "undefined") IraLive.stop();
   state.pendingText = text || null;
   state.info = null;
   const note = $("#login-note");
@@ -325,6 +328,7 @@ $("#logout").addEventListener("click", async () => {
   $("#menu").close();
   stopSpeaking();
   if (typeof IraPersonal !== "undefined") IraPersonal.left();
+  if (typeof IraLive !== "undefined") IraLive.stop();
   try {
     await api("/v1/auth/logout", { method: "POST" });
   } catch {
@@ -766,6 +770,10 @@ $("#composer").addEventListener("submit", (event) => {
   const input = $("#text");
   const text = input.value;
   input.value = "";
+  if (typeof IraLive !== "undefined" && IraLive.active()) {
+    IraLive.type(text); // typing during a call goes into the call
+    return;
+  }
   send(text);
 });
 
@@ -1262,6 +1270,7 @@ const bars = {
   hero: [...document.querySelectorAll("#hero-mic .bar")],
   mic: [...document.querySelectorAll("#mic .bar")],
   meter: [...document.querySelectorAll("#listen .bar")],
+  call: [...document.querySelectorAll("#call-bar .bar")],
 };
 
 function setBars(level) {

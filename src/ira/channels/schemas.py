@@ -262,6 +262,11 @@ class InfoResponse(BaseModel):
         description="May the web app recognise speech in the browser: when this server has "
         "no speech-to-text (fallback), always (prefer), or never (off).",
     )
+    live: bool = Field(
+        default=False,
+        description="A live call works here (/v1/voice/live): streaming speech-to-text and a "
+        "voice, and your role may talk to Ira.",
+    )
     mic_language: str = Field(
         default="en-IN",
         description="The language to recognise in the browser, from your languages: hi-IN "

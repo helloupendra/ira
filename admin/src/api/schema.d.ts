@@ -2528,6 +2528,12 @@ export interface components {
              */
             browser_stt: "off" | "fallback" | "prefer";
             /**
+             * Live
+             * @description A live call works here (/v1/voice/live): streaming speech-to-text and a voice, and your role may talk to Ira.
+             * @default false
+             */
+            live: boolean;
+            /**
              * Mic Language
              * @description The language to recognise in the browser, from your languages: hi-IN when you speak Hindi or Hinglish, else en-IN.
              * @default en-IN

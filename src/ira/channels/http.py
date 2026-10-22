@@ -198,6 +198,10 @@ def info(
         stt=getattr(runtime.stt, "name", None),
         tts=getattr(runtime.tts, "name", None),
         browser_stt=runtime.settings.voice.browser_stt,
+        live=callable(getattr(runtime.stt, "live", None))
+        and runtime.tts is not None
+        and principal.can("voice")
+        and principal.can("ask"),
         mic_language="hi-IN" if hindi else "en-IN",
         tools=[
             ToolView(name=t.name, kind=t.kind, description=t.description)

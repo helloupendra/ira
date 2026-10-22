@@ -2,11 +2,12 @@
 // available offline. It never touches /v1 (the API) or /admin: answers,
 // audio and actions must always come from the server, never from a cache.
 
-const CACHE = "ira-shell-v7";
+const CACHE = "ira-shell-v8";
 const SHELL = [
   "/",
   "/app.js",
   "/personal.js",
+  "/live.js",
   "/style.css",
   "/tokens.css",
   "/recorder-worklet.js",
