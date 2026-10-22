@@ -22,7 +22,7 @@ _BULLET = re.compile(r"^\s*(?:[-*+]|\d+[.)])\s+")
 _RULE = re.compile(r"^\s*([-*_])\s*(\1\s*){2,}$")
 # Word boundaries keep snake_case names intact.
 _EMPHASIS = re.compile(r"(?<!\w)(\*\*|__|\*|_|~~|`)(?=\S)(.+?)(?<=\S)\1(?!\w)")
-_SENTENCE_END = re.compile(r"[.!?](?=\s|$)")
+_SENTENCE_END = re.compile(r"[.!?\u0964\u0965](?=\s|$)")
 
 
 def strip_markdown(text: str) -> str:
@@ -43,7 +43,7 @@ def strip_markdown(text: str) -> str:
         if not line:
             continue
         # A list item or heading becomes its own sentence when spoken.
-        if not re.search(r"[.!?:;,]$", line):
+        if not re.search(r"[.!?:;,\u0964\u0965]$", line):
             line += "."
         lines.append(line)
     spoken = " ".join(lines)

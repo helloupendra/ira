@@ -13,9 +13,11 @@ it switch language inside one recording, which suits Hinglish. The role needs
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import io
 import json
 import struct
+import time
 import wave
 import zlib
 from collections.abc import Callable
@@ -142,7 +144,7 @@ class TranscribeSTT:
         region: str,
         languages: list[str],
         *,
-        identify: str = "many",
+        identify: str = "one",
         timeout: float = 60.0,
         connect: Callable[..., Any] | None = None,
         sign: Callable[[str, dict[str, str]], str] | None = None,
@@ -168,12 +170,31 @@ class TranscribeSTT:
             raise self._error(f"no answer in {self.timeout:.0f} s", kind="timeout") from None
 
     async def _stream(self, pcm: bytes) -> str:
+        live = LiveTranscription(self)
+        delay = CHUNK_BYTES / 32_000 / self.pace if self.pace else 0.0
+        for start in range(0, len(pcm), CHUNK_BYTES):
+            live.feed(pcm[start : start + CHUNK_BYTES])
+            if delay:
+                await asyncio.sleep(delay)
+        text, _ = await live.finish(timeout=self.timeout)
+        return text
+
+    def live(
+        self,
+        languages: list[str] | None = None,
+        on_partial: Callable[[str, str | None], None] | None = None,
+    ) -> LiveTranscription:
+        """A stream fed while someone speaks: for real-time voice."""
+        return LiveTranscription(self, languages, on_partial)
+
+    async def open(self, languages: list[str]) -> Any:
+        """A connected WebSocket for one stream."""
         import websockets
 
         connect = self._connect or websockets.connect
-        url = await asyncio.to_thread(self._sign, self.region, query(self.languages, self.identify))
+        url = await asyncio.to_thread(self._sign, self.region, query(languages, self.identify))
         try:
-            socket = await connect(url, max_size=2**20, open_timeout=15)
+            return await connect(url, max_size=2**20, open_timeout=15)
         except websockets.InvalidStatus as exc:
             status = exc.response.status_code
             hint = (
@@ -185,31 +206,92 @@ class TranscribeSTT:
             raise self._error(f"HTTP {status}{hint}", kind=kind, status=status) from None
         except OSError as exc:
             raise self._error(f"network error ({type(exc).__name__})", kind="network") from None
+
+
+class LiveTranscription:
+    """One utterance as it is spoken: ``feed`` audio, captions as they come, ``finish``.
+
+    The connection opens at once, while the first audio waits in a queue, so
+    its setup overlaps with the person speaking. Each result keeps its latest
+    text, final or not: with single-language identification Transcribe closes
+    the stream without marking the last result final.
+    """
+
+    def __init__(
+        self,
+        stt: TranscribeSTT,
+        languages: list[str] | None = None,
+        on_partial: Callable[[str, str | None], None] | None = None,
+    ) -> None:
+        self.stt = stt
+        self.languages = languages or stt.languages
+        self.on_partial = on_partial
+        self.queue: asyncio.Queue[bytes | None] = asyncio.Queue()
+        self.latest: dict[str, tuple[str, str | None]] = {}
+        self.updated: float | None = None  # monotonic: when the text last changed
+        self.error: ProviderError | None = None
+        self.task = asyncio.ensure_future(self._run())
+
+    @property
+    def text(self) -> str:
+        return " ".join(text for text, _ in self.latest.values() if text).strip()
+
+    @property
+    def language(self) -> str | None:
+        languages = [language for _, language in self.latest.values() if language]
+        return languages[-1] if languages else None
+
+    def feed(self, pcm: bytes) -> None:
+        if pcm:
+            self.queue.put_nowait(pcm)
+
+    async def finish(self, timeout: float = 5.0) -> tuple[str, str | None]:
+        """End the audio and wait for the last results: (text, language)."""
+        self.queue.put_nowait(None)
         try:
-            sender = asyncio.create_task(self._send(socket, pcm))
+            await asyncio.wait_for(asyncio.shield(self.task), timeout)
+        except TimeoutError:
+            self.task.cancel()
+            if not self.latest:
+                raise self.stt._error(f"no answer in {timeout:.0f} s", kind="timeout") from None
+        if self.error is not None:
+            raise self.error
+        return self.text, self.language
+
+    async def cancel(self) -> None:
+        self.task.cancel()
+        with contextlib.suppress(asyncio.CancelledError, Exception):
+            await self.task
+
+    async def _run(self) -> None:
+        try:
+            socket = await self.stt.open(self.languages)
+        except ProviderError as exc:
+            self.error = exc
+            return
+        try:
+            sender = asyncio.create_task(self._send(socket))
             try:
-                parts = await self._receive(socket, sender)
+                await self._receive(socket, sender)
             finally:
                 sender.cancel()
+        except ProviderError as exc:
+            self.error = exc
         finally:
             await socket.close()
-        return " ".join(p for p in parts if p).strip()
 
-    async def _send(self, socket: Any, pcm: bytes) -> None:
-        delay = CHUNK_BYTES / 32_000 / self.pace if self.pace else 0.0
-        for start in range(0, len(pcm), CHUNK_BYTES):
-            await socket.send(audio_event(pcm[start : start + CHUNK_BYTES]))
-            if delay:
-                await asyncio.sleep(delay)
-        await socket.send(audio_event(b""))  # the end of the stream
+    async def _send(self, socket: Any) -> None:
+        while True:
+            chunk = await self.queue.get()
+            if chunk is None:
+                await socket.send(audio_event(b""))  # the end of the stream
+                return
+            for start in range(0, len(chunk), CHUNK_BYTES * 4):
+                await socket.send(audio_event(chunk[start : start + CHUNK_BYTES * 4]))
 
-    async def _receive(self, socket: Any, sender: asyncio.Task[None]) -> list[str]:
-        """Each result's final text, in order. A result left partial when the stream
-        ends counts with its last text: with single-language identification,
-        Transcribe closes the stream without marking the last result final."""
+    async def _receive(self, socket: Any, sender: asyncio.Task[None]) -> None:
         import websockets
 
-        latest: dict[str, str] = {}  # result id -> its text so far, in first-seen order
         while True:
             try:
                 if sender.done():
@@ -218,25 +300,32 @@ class TranscribeSTT:
                 else:
                     message = await socket.recv()
             except TimeoutError:
-                return list(latest.values())  # all audio sent and nothing more came
+                return  # all audio sent and nothing more came
             except websockets.ConnectionClosedOK:
-                return list(latest.values())
+                return
             except websockets.ConnectionClosed as exc:
-                raise self._error(f"stream closed ({exc.code})", kind="network") from None
+                raise self.stt._error(f"stream closed ({exc.code})", kind="network") from None
             if isinstance(message, str):
                 continue
             try:
                 headers, payload = decode_event(message)
                 body = json.loads(payload or b"{}")
             except ValueError as exc:
-                raise self._error(f"unreadable reply ({exc})", kind="server") from None
+                raise self.stt._error(f"unreadable reply ({exc})", kind="server") from None
             if headers.get(":message-type") == "exception":
                 kind = headers.get(":exception-type") or headers.get(":event-type", "")
                 text = str(body.get("Message") or kind)[:200]
-                raise self._error(text, kind=_KINDS.get(kind, "server"))
+                raise self.stt._error(text, kind=_KINDS.get(kind, "server"))
             if headers.get(":event-type") != "TranscriptEvent":
                 continue
+            changed = False
             for result in body.get("Transcript", {}).get("Results", []):
                 alternatives = result.get("Alternatives") or [{}]
-                key = str(result.get("ResultId") or len(latest))
-                latest[key] = str(alternatives[0].get("Transcript") or "")
+                key = str(result.get("ResultId") or len(self.latest))
+                text = str(alternatives[0].get("Transcript") or "")
+                if self.latest.get(key, ("",))[0] != text:
+                    self.updated = time.monotonic()
+                self.latest[key] = (text, result.get("LanguageCode"))
+                changed = True
+            if changed and self.on_partial is not None:
+                self.on_partial(self.text, self.language)

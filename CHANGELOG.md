@@ -89,10 +89,16 @@ switch it on.
   with their password again; an owner sets someone's password or email from
   Users & roles; `ira user password` and `ira user email` do it from the
   server. All go to the change log.
-- **Real-time voice, protocol draft** ([Real-time voice](docs/realtime.md)):
-  the connection the Ira app, the Mac app and the Android app use for a
-  live call, with barge-in and measured latency. Macs can now be offered
-  the `files` and `screen` skills, for the native Mac app.
+- **Real-time voice** ([Real-time voice](docs/realtime.md)):
+  `/v1/voice/live`, a live call over a WebSocket for the Ira app, the Mac
+  app and the Android app. Audio only while you speak, Amazon Transcribe
+  streaming (Hindi preferred, English identified), the same assistant with
+  its tools and tiers, and each sentence spoken by Polly as soon as it is
+  written. Speaking while Ira talks stops it. Calls get short spoken
+  answers, and "Ek second" when a tool is needed first. `ira eval live`
+  measures end of speech to first word: p50 1.7 to 2.2 s, p95 5.1 to 5.6 s
+  on the first server. Macs can now be offered the `files` and `screen`
+  skills, for the native Mac app.
 - **Tasks on your Mac** (the `tasks` skill): Ira hands a job to a coding
   agent configured on the Mac, in a new git worktree and branch of a
   repository the person allowed there. It runs in macOS's sandbox, its git

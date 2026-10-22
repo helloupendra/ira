@@ -61,6 +61,11 @@ proposed and say what it needs. Never say it is done.
 - Your answers may be read aloud: keep them short and plain. Use lists only when they help.
 {languages}
 """
+SPOKEN_RULE = (
+    "This is a live voice call: answer in one to three short sentences meant to be heard, "
+    "the most useful thing first. No lists, tables, markdown or web addresses; say numbers "
+    "and times the way people say them. Offer more only if they ask."
+)
 
 
 @dataclass
@@ -157,6 +162,7 @@ class Assistant:
         self.business = business
         self.instructions = instructions.strip()
         self.tier = tier
+        self.voice_tier: str | None = None  # a live call's tier, when it should be faster
         self.max_tool_rounds = max_tool_rounds
         self.history_messages = history_messages
         self.conversations = conversations or Conversations(store)
@@ -188,7 +194,12 @@ class Assistant:
         return cleaned
 
     def system_prompt(
-        self, user_id: int | None = None, *, untrusted: bool = False, tier_one: list[str] = ()
+        self,
+        user_id: int | None = None,
+        *,
+        untrusted: bool = False,
+        tier_one: list[str] = (),
+        spoken: bool = False,
     ) -> str:
         """The system prompt for one person's turn.
 
@@ -204,6 +215,8 @@ class Assistant:
             today=f"{today:%A %d %B %Y} ({today})",
             languages=language_rule(prefs),
         )
+        if spoken:
+            prompt += f"- {SPOKEN_RULE}\n"
         if untrusted:
             prompt += f"- {UNTRUSTED_RULE}\n"
         if tier_one:
@@ -363,7 +376,9 @@ class Assistant:
             t.name for t in self.registry if t.tier == 1 and self.registry.is_enabled(t.name)
         ]
         tier_one += [t.name for t in personal.values() if t.tier == 1]
-        system = self.system_prompt(user_id, untrusted=untrusted, tier_one=tier_one)
+        spoken = channel == "voice"
+        system = self.system_prompt(user_id, untrusted=untrusted, tier_one=tier_one, spoken=spoken)
+        tier = self.voice_tier if spoken and self.voice_tier else self.tier
         model: str | None = None
         final_text = ""
         call_ids: set[str] = set()
@@ -374,13 +389,13 @@ class Assistant:
             try:
                 response: ChatResponse | None = None
                 if stream:
-                    async for event in self.gateway.stream(messages, tools or None, tier=self.tier):
+                    async for event in self.gateway.stream(messages, tools or None, tier=tier):
                         if isinstance(event, TextDelta):
                             yield {"type": "delta", "text": event.text}
                         elif isinstance(event, StreamDone):
                             response = event.response
                 else:
-                    response = await self.gateway.chat(messages, tools or None, tier=self.tier)
+                    response = await self.gateway.chat(messages, tools or None, tier=tier)
                     if response.text:
                         yield {"type": "delta", "text": response.text}
             except GatewayError as exc:

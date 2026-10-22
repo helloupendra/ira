@@ -5,8 +5,9 @@ speaking a moment after you stop, and stops the moment you speak. The Ira
 app (in the browser and on the phone), the Mac app and the Android app all
 use the same connection, described here.
 
-Status: **protocol version 1, draft** (22 Oct 2026). Fields may still be
-added; none will change meaning without a new version.
+Status: **protocol version 1** (22 Oct 2026). The server side answers; the
+Ira app's live mode is next. Fields may still be added; none will change
+meaning without a new version.
 
 ## How a turn flows
 
@@ -61,7 +62,7 @@ Messages are JSON text frames, except audio, which goes in binary frames.
 
 | Direction | Format |
 | --- | --- |
-| up (your voice) | binary frames of raw PCM: 16-bit signed little-endian, mono, 16,000 Hz, 20 to 100 ms each (640 to 3,200 bytes). Only while speaking, starting with about 300 ms from just before speech began |
+| up (your voice) | binary frames of raw PCM: 16-bit signed little-endian, mono, 16,000 Hz, 20 to 100 ms each (640 to 3,200 bytes). Only while speaking: from about 300 ms before speech began until `speech_end`, including the quiet of the hangover (it lets the transcript settle on the last word) |
 | down (Ira's voice) | an `audio` message, then one binary frame: a whole sentence as MP3 (24 kHz mono), ready for `decodeAudioData` or `AVAudioPlayer` |
 
 ## Client to server
@@ -106,6 +107,62 @@ speech synthesis, the network both ways and the start of playback. Each
 measures it against a server from the command line. The target is 1.5
 seconds or less; the measured p50 and p95 are published in
 [Hindi, English and Hinglish](language.md).
+
+## Measured
+
+On 22 Oct 2026, with `ira eval live` on the EC2 server in Mumbai: the 24
+requests of the language set, each spoken by Polly's Kajal in real time,
+Amazon Transcribe in `ap-south-1` (Hindi preferred, English identified),
+the `default` tier on Bedrock in `us-east-1` (`moonshotai.kimi-k2.5`, then
+`zai.glm-5`, then `deepseek.v3.2`) and Polly neural in `ap-south-1`. The
+app's 0.6 s end-of-speech wait is included; the network is the server's
+own, so a phone adds its round trip (about 50 to 150 ms in India).
+
+| Run | p50 | p95 | Fastest | Slowest |
+| --- | --- | --- | --- | --- |
+| 1 | 1.67 s | 5.58 s | 1.30 s | 7.16 s |
+| 2 | 2.18 s | 5.10 s | 1.21 s | 5.79 s |
+
+Where the time goes, as medians after `speech_end` arrives:
+
+| Step | Run 1 | Run 2 |
+| --- | --- | --- |
+| the final transcript | 0.18 s | 0.16 s |
+| the model's first words | 1.17 s | 1.97 s |
+| the first sentence's speech (Polly) | 0.08 s | 0.09 s |
+| the first audio sent | 1.05 s | 1.54 s |
+
+The model's first words decide it, and they vary from run to run and from
+request to request: a request that needs a tool waits for two model calls
+(Ira says "Ek second" or "One moment" at once, which counts as its first
+word). The fast tier (`openai.gpt-oss-120b` first) was slower at the median
+(2.20 s) because it reasons before it answers. Next, to bring p50 under
+1.5 s: start the model on the settled transcript during the end-of-speech
+wait, and try the next model in the chain when the first is slow to start.
+
+The words themselves: Polly's speech came back accurate in Hindi and
+English; Hinglish came back in Devanagari ("क्रोम में कौन से टैब्स खुले
+हैं"), which the model reads well. A first word was sometimes lost when an
+utterance began with long quiet. Real voices will differ from Polly's.
+
+## Setting it up
+
+```yaml
+voice:
+  stt:
+    type: transcribe
+    region: ap-south-1            # the role needs transcribe:StartStreamTranscriptionWebSocket
+    languages: [hi-IN, en-IN]     # Hindi preferred; English identified
+  tts:
+    type: polly
+    voice: Kajal
+    engine: neural
+    region: ap-south-1
+  tier: default                   # optional: a model tier for calls only
+```
+
+`ira eval live` measures a server's own latency; `--transcribe REGION`
+tries Transcribe without changing `ira.yaml`, and `--tier` another tier.
 
 ## Privacy
 

@@ -357,6 +357,20 @@ def cmd_eval_language(args: argparse.Namespace) -> int:
     )
 
 
+def cmd_eval_live(args: argparse.Namespace) -> int:
+    from ira.evals.live import main as evaluate
+
+    return evaluate(
+        _settings(args),
+        hangover=args.hangover,
+        only=args.only,
+        as_json=args.json,
+        transcribe_region=args.transcribe,
+        limit=args.limit,
+        tier=args.tier,
+    )
+
+
 def cmd_version(args: argparse.Namespace) -> int:
     print(f"ira {__version__}")
     return 0
@@ -478,6 +492,13 @@ def build_parser() -> argparse.ArgumentParser:
         help="who speaks for --spoken: macOS say, or Amazon Polly (default: say on macOS)",
     )
     p.add_argument("--only", choices=["hi", "hinglish", "en"], help="one language only")
+    p.add_argument("--json", action="store_true", help="every result as JSON")
+    p = add("live", cmd_eval_live, "real-time voice: end of speech to first word", evals)
+    p.add_argument("--hangover", type=float, default=0.6, help="the app's quiet wait, seconds")
+    p.add_argument("--only", choices=["hi", "hinglish", "en"], help="one language only")
+    p.add_argument("--limit", type=int, help="at most this many requests")
+    p.add_argument("--transcribe", metavar="REGION", help="use Transcribe in REGION for this run")
+    p.add_argument("--tier", help="the model tier for the calls (default: voice.tier)")
     p.add_argument("--json", action="store_true", help="every result as JSON")
 
     add("version", cmd_version, "print the version")

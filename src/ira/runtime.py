@@ -283,6 +283,8 @@ def build_runtime(
         if tool is None or tool.kind != "action":
             log.warning("actions.tools names '%s', which is not a registered action tool", name)
     conversations = Conversations(store)
+    if settings.voice.tier and settings.voice.tier not in settings.models.tiers:
+        raise ConfigError(f"voice.tier '{settings.voice.tier}' is not a tier in models.tiers")
     assistant = Assistant(
         gateway,
         registry,
@@ -302,6 +304,7 @@ def build_runtime(
         ),
         tool_calls_per_minute=settings.assistant.tool_calls_per_minute,
     )
+    assistant.voice_tier = settings.voice.tier
     runtime = Runtime(
         settings=settings,
         store=store,

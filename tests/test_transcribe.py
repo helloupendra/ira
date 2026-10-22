@@ -170,7 +170,8 @@ async def test_a_recording_is_streamed_and_the_final_results_joined():
     heard = await run_against(stand_in, ONE_SECOND)
     assert heard == "कल सुबह नौ बजे meeting hai"
     assert stand_in.audio == 32_000 and stand_in.frames == 11  # ten 100 ms frames, then the end
-    assert stand_in.params["identify-multiple-languages"] == ["true"]
+    assert stand_in.params["identify-language"] == ["true"]
+    assert stand_in.params["preferred-language"] == ["hi-IN"]
 
 
 async def test_stereo_44k_is_sent_as_16k_mono():

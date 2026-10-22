@@ -63,10 +63,11 @@ class STTConfig(_Strict):
     provider: str | None = None  # a name under models.providers (chat_audio, whisper)
     model: str | None = None
     # transcribe: Amazon Transcribe streaming. Two or more languages: it tells
-    # them apart; "many" also lets it switch inside one recording (Hinglish).
+    # them apart, preferring the first. "one" (one language per utterance) beat
+    # "many" on Hindi, Hinglish and English speech on 22 Oct 2026.
     region: str = "us-east-1"
     languages: list[str] = Field(default_factory=lambda: ["hi-IN", "en-IN"])
-    identify: Literal["one", "many"] = "many"
+    identify: Literal["one", "many"] = "one"
     prompt: str | None = None
     vocabulary: list[str] = Field(default_factory=list)
     fake_text: str = "what are your opening hours"
@@ -89,6 +90,8 @@ class VoiceConfig(_Strict):
     # when this server has no speech-to-text, "prefer" always, "off" never.
     # The browser's recognition may send the audio to its maker (Google, Apple).
     browser_stt: Literal["off", "fallback", "prefer"] = "fallback"
+    # The model tier for live calls (a faster one cuts the wait); none: the assistant's.
+    tier: str | None = None
     max_spoken_chars: int = 400
     max_audio_seconds: float = 60
 

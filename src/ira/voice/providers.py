@@ -221,6 +221,30 @@ class FakeSTT:
         self.received.append(wav)
         return self.text
 
+    def live(self, languages: list[str] | None = None, on_partial: Any = None) -> FakeLive:
+        """Real-time voice in the demo: whatever is said, it heard ``text``."""
+        return FakeLive(self, on_partial)
+
+
+class FakeLive:
+    def __init__(self, stt: FakeSTT, on_partial: Any = None) -> None:
+        self.stt = stt
+        self.on_partial = on_partial
+        self.audio = bytearray()
+
+    def feed(self, pcm: bytes) -> None:
+        first = not self.audio
+        self.audio += pcm
+        if first and self.on_partial is not None:
+            self.on_partial(self.stt.text.split(" ")[0], "en-IN")
+
+    async def finish(self, timeout: float = 5.0) -> tuple[str, str | None]:
+        self.stt.received.append(bytes(self.audio))
+        return (self.stt.text, "en-IN") if self.audio else ("", None)
+
+    async def cancel(self) -> None:
+        return None
+
 
 class FakeTTS:
     name = "fake"

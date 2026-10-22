@@ -96,7 +96,7 @@ class Principal:
     """Who is making a request, and what they may do in it."""
 
     user: User
-    via: Literal["session", "token", "telegram"]
+    via: Literal["session", "token", "telegram", "device"]
     permissions: frozenset[str]
     credential_id: str | None = None
 

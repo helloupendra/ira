@@ -219,6 +219,20 @@ CREATE TABLE IF NOT EXISTS device_events (
 CREATE INDEX IF NOT EXISTS device_events_user ON device_events (user_id, id);
 
 -- "What Ira did": every tool call, without its arguments or results.
+-- Real-time voice: each turn's timings, never its words. latency_ms is from the
+-- end of the person's speech to the first word they heard, on the app's clock.
+CREATE TABLE IF NOT EXISTS voice_turns (
+    id             INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id        INTEGER NOT NULL,
+    at             REAL NOT NULL,
+    client         TEXT,
+    latency_ms     REAL,
+    stt_ms         REAL,
+    model_first_ms REAL,
+    tts_first_ms   REAL
+);
+CREATE INDEX IF NOT EXISTS voice_turns_at ON voice_turns (at);
+
 CREATE TABLE IF NOT EXISTS tool_log (
     id              INTEGER PRIMARY KEY AUTOINCREMENT,
     at              REAL NOT NULL,
