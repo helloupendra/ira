@@ -28,17 +28,37 @@ public struct Activity: Equatable, Identifiable, Sendable {
         case "file_read": return "Read a file"
         case "file_open": return "Opened a file"
         case "screen_read": return "Read your screen"
+        case "contacts_lookup": return "Looked up a contact"
+        case "calendar_read": return "Read your calendar"
+        case "calendar_add": return "Added an event"
+        case "reminders_list": return "Read your reminders"
+        case "reminders_add": return "Added a reminder"
+        case "reminders_done": return "Completed a reminder"
+        case "mail_search": return "Searched your mail"
+        case "mail_read": return "Read an email"
+        case "mail_draft": return "Drafted an email"
+        case "messages_send": return "Sent a message"
+        case "notes_search": return "Searched your notes"
+        case "notes_read": return "Read a note"
+        case "notes_add": return "Added a note"
+        case "app_open": return "Opened an app"
+        case "url_open": return "Opened a web page"
+        case "vscode_open": return "Opened VS Code"
+        case "clipboard_read": return "Read the clipboard"
+        case "shortcuts_list": return "Listed your shortcuts"
+        case "shortcuts_run": return "Ran a shortcut"
+        case "code_task_start": return "Started a coding task"
+        case "code_task_status": return "Checked a coding task"
+        case "code_task_list": return "Listed coding tasks"
+        case "code_task_stop": return "Stopped a coding task"
+        case "code_task_push": return "Pushed a task's branch"
         default: return tool
         }
     }
 }
 
-/// The tools this Mac offers Ira, with their skills and tiers.
-///
-/// * `files` skill: `files_find` (Tier 0), `file_read` (Tier 0), `file_open` (Tier 1:
-///   small and undoable, Ira does it and says so);
-/// * `screen` skill: `screen_read` (Tier 0, only when asked; the skill itself is
-///   switched on with the PIN).
+/// The tools this Mac offers Ira (`ToolCatalog` lists them with their skills and
+/// tiers), and the "What I read" record of each call.
 ///
 /// Everything a tool returns reaches the model marked untrusted by the server:
 /// it is data, never instructions.
@@ -53,17 +73,22 @@ public final class Toolbox: ToolRunner, @unchecked Sendable {
     private let opener: Opener
     private let record: @Sendable (Activity) -> Void
     private let log: IraLog
+    private let eventKit = EventKitTools()
+    /// Coding tasks; their done and failed events go out through `announce`.
+    public let tasks: CodeTasks
 
     public init(
         policy: @escaping @Sendable () -> PathPolicy,
         frontApp: @escaping FrontApp,
         opener: @escaping Opener = Toolbox.workspaceOpen,
+        tasks: CodeTasks = CodeTasks(),
         log: IraLog = .shared,
         record: @escaping @Sendable (Activity) -> Void
     ) {
         self.policy = policy
         self.frontApp = frontApp
         self.opener = opener
+        self.tasks = tasks
         self.log = log
         self.record = record
     }
@@ -74,96 +99,54 @@ public final class Toolbox: ToolRunner, @unchecked Sendable {
 
     // MARK: The hello
 
-    public var definitions: [JSONValue] { Toolbox.definitions }
+    /// The tools for the hello: everything, and coding tasks when this Mac has them set up.
+    public var definitions: [JSONValue] { ToolCatalog.all(tasksConfigured: tasks.configured) }
 
-    public static let definitions: [JSONValue] = [
-        [
-            "name": "files_find",
-            "description": .string(
-                "Find files on this Mac with Spotlight, by words in the name or inside the file, by kind and by date. Returns up to 20: name, folder, path, kind, size and when it was last changed, newest first. Use it for 'where is that file', 'the PDF I downloaded yesterday'."),
-            "parameters": [
-                "type": "object",
-                "properties": [
-                    "query": ["type": "string", "description": "Words from the file's name or its text. Leave empty to list recent files of a kind."],
-                    "kind": [
-                        "type": "string",
-                        "enum": .array(FileSearch.kinds.keys.sorted().map { .string($0) }),
-                        "description": "The kind of file.",
-                    ],
-                    "modifiedWithinDays": [
-                        "type": "integer", "minimum": 1, "maximum": 3650,
-                        "description": "Only files changed or added in the last this many days (1 means the last 24 hours).",
-                    ],
-                    "folder": ["type": "string", "description": "Look only in this folder: Downloads, Desktop, Documents, or a path such as ~/Projects."],
-                ],
-                "additionalProperties": false,
-            ],
-            "skill": "files",
-            "tier": 0,
-        ],
-        [
-            "name": "file_read",
-            "description": .string(
-                "Read the text of one file on this Mac: PDF, Word (.docx), RTF, plain text or Markdown, up to 20,000 characters. Give the full path from files_find. Never keychains, ~/Library or hidden files."),
-            "parameters": [
-                "type": "object",
-                "properties": [
-                    "path": ["type": "string", "description": "The file's full path, e.g. ~/Downloads/invoice.pdf."],
-                    "maxChars": ["type": "integer", "minimum": 200, "maximum": .number(Double(maxText)), "description": "Read at most this many characters (default and most: 20,000)."],
-                ],
-                "required": ["path"],
-                "additionalProperties": false,
-            ],
-            "skill": "files",
-            "tier": 0,
-        ],
-        [
-            "name": "file_open",
-            "description": .string(
-                "Open a file on this Mac in its usual app, or open an app. Say that you opened it. Never runs scripts or installers."),
-            "parameters": [
-                "type": "object",
-                "properties": [
-                    "path": ["type": "string", "description": "The file's or the app's full path."],
-                ],
-                "required": ["path"],
-                "additionalProperties": false,
-            ],
-            "skill": "files",
-            "tier": 1,
-        ],
-        [
-            "name": "screen_read",
-            "description": .string(
-                "Read the text of the window in front on this Mac, in any app, only when the person asks what is on their screen. Returns the app's name, the window's title and the text, read on the Mac; no picture is sent."),
-            "parameters": ["type": "object", "properties": [:], "additionalProperties": false],
-            "skill": "screen",
-            "tier": 0,
-        ],
-    ]
+    /// The files and screen tools (the first four), as the original hello listed them.
+    public static var definitions: [JSONValue] { ToolCatalog.files }
 
     // MARK: Calls
 
     public func call(_ name: String, args: JSONValue) async throws -> JSONValue {
-        guard let args = args.objectValue else { throw ToolFailure("arguments must be an object") }
+        guard args.objectValue != nil else { throw ToolFailure("arguments must be an object") }
         let started = Date()
-        var target = ""
+        var target = Toolbox.target(name, args)
         do {
             let content: JSONValue
             switch name {
-            case "files_find":
-                target = Toolbox.describeSearch(args)
-                content = try await findFiles(args)
-            case "file_read":
-                target = Toolbox.shown(args["path"]?.stringValue)
-                content = try await readFile(args)
-            case "file_open":
-                target = Toolbox.shown(args["path"]?.stringValue)
-                content = try await openFile(args)
+            case "files_find": content = try await findFiles(args.objectValue!)
+            case "file_read": content = try await readFile(args.objectValue!)
+            case "file_open": content = try await openFile(args.objectValue!)
             case "screen_read":
-                let read = try await readScreen(args)
+                let read = try await readScreen(args.objectValue!)
                 target = read.target
                 content = read.content
+            case "contacts_lookup":
+                let query = try ToolArgs(args, allowed: ["query"]).required("query", limit: 200, what: "who: a name, number or email")
+                content = try await ContactsTool.lookup(query)
+            case "calendar_read": content = try await eventKit.calendarRead(args)
+            case "calendar_add": content = try await eventKit.calendarAdd(args)
+            case "reminders_list": content = try await eventKit.remindersList(args)
+            case "reminders_add": content = try await eventKit.remindersAdd(args)
+            case "reminders_done": content = try await eventKit.remindersDone(args)
+            case "mail_search": content = try await AppleScriptTools.mailSearch(args)
+            case "mail_read": content = try await AppleScriptTools.mailRead(args)
+            case "mail_draft": content = try await AppleScriptTools.mailDraft(args)
+            case "messages_send": content = try await AppleScriptTools.messagesSend(args)
+            case "notes_search": content = try await AppleScriptTools.notesSearch(args)
+            case "notes_read": content = try await AppleScriptTools.notesRead(args)
+            case "notes_add": content = try await AppleScriptTools.notesAdd(args)
+            case "app_open": content = try await AppTools.appOpen(args, home: policy().home)
+            case "url_open": content = try await AppTools.urlOpen(args)
+            case "vscode_open": content = try await AppTools.vscodeOpen(args, policy: policy(), promptTemplate: TaskSettings.load()?.promptURI)
+            case "clipboard_read": content = try await AppTools.clipboardRead(args)
+            case "shortcuts_list": content = try await AppTools.shortcutsList(args)
+            case "shortcuts_run": content = try await AppTools.shortcutsRun(args)
+            case "code_task_start": content = try await tasks.start(args)
+            case "code_task_status": content = try await tasks.status(args)
+            case "code_task_list": content = try await tasks.list(args)
+            case "code_task_stop": content = try await tasks.stop(args)
+            case "code_task_push": content = try await tasks.push(args)
             default:
                 throw ToolFailure("this Mac has no tool '\(name)'")
             }
@@ -172,6 +155,32 @@ public final class Toolbox: ToolRunner, @unchecked Sendable {
         } catch {
             record(Activity(at: started, tool: name, target: target, ok: false))
             throw error
+        }
+    }
+
+    /// What "What I read" shows for a call: a path, a name or a search, never contents.
+    static func target(_ name: String, _ args: JSONValue) -> String {
+        func text(_ key: String) -> String? {
+            args[key]?.stringValue.map { String($0.prefix(120)) }
+        }
+        switch name {
+        case "files_find": return describeSearch(args.objectValue ?? [:])
+        case "file_read", "file_open", "vscode_open": return shown(args["path"]?.stringValue.map { String($0.prefix(1000)) })
+        case "contacts_lookup": return text("query") ?? ""
+        case "calendar_read": return text("from") ?? "today"
+        case "calendar_add", "reminders_add", "notes_add": return text("title") ?? ""
+        case "reminders_done": return text("title") ?? text("id") ?? ""
+        case "mail_search", "notes_search": return text("query").map { "“\($0)”" } ?? "latest"
+        case "mail_read", "notes_read": return "one \(name.hasPrefix("mail") ? "email" : "note")"
+        case "mail_draft":
+            let to = (args["to"]?.arrayValue?.compactMap(\.stringValue) ?? [text("to")].compactMap { $0 }).joined(separator: ", ")
+            return "to \(to)"
+        case "messages_send": return "to \(text("name") ?? text("to") ?? "")"
+        case "app_open", "shortcuts_run": return text("name") ?? ""
+        case "url_open": return text("url").flatMap { AppTools.webURL($0)?.host } ?? ""
+        case "code_task_start": return text("repo") ?? ""
+        case "code_task_status", "code_task_stop", "code_task_push": return text("id") ?? ""
+        default: return ""
         }
     }
 

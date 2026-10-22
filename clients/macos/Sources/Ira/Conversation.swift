@@ -338,6 +338,16 @@ final class Conversation: ObservableObject {
         case "file_read": return "Reading the file…"
         case "file_open": return "Opening it…"
         case "screen_read": return "Reading your screen…"
+        case "contacts_lookup": return "Looking in your contacts…"
+        case "calendar_read", "calendar_add": return "Checking your calendar…"
+        case "reminders_list", "reminders_add", "reminders_done": return "Checking your reminders…"
+        case "mail_search", "mail_read", "mail_draft": return "Checking your mail…"
+        case "messages_send": return "Sending the message…"
+        case "notes_search", "notes_read", "notes_add": return "Checking your notes…"
+        case "app_open", "url_open", "vscode_open": return "Opening it…"
+        case "clipboard_read": return "Reading the clipboard…"
+        case "shortcuts_list", "shortcuts_run": return "Running the shortcut…"
+        case "code_task_start", "code_task_status", "code_task_list", "code_task_stop", "code_task_push": return "Working on the task…"
         default: return "Working…"
         }
     }

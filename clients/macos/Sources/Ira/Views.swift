@@ -1,5 +1,7 @@
 import AppKit
 import AVFoundation
+import Contacts
+import EventKit
 import IraKit
 import SwiftUI
 
@@ -136,6 +138,17 @@ struct Header: View {
 final class PermissionState: ObservableObject {
     @Published var mic = AudioIO.micPermission
     @Published var screen = ScreenText.permitted
+    @Published var contacts = CNContactStore.authorizationStatus(for: .contacts) == .authorized
+    @Published var calendar = EKEventStore.authorizationStatus(for: .event) == .fullAccess
+    @Published var reminders = EKEventStore.authorizationStatus(for: .reminder) == .fullAccess
+
+    func refresh() {
+        mic = AudioIO.micPermission
+        screen = ScreenText.permitted
+        contacts = CNContactStore.authorizationStatus(for: .contacts) == .authorized
+        calendar = EKEventStore.authorizationStatus(for: .event) == .fullAccess
+        reminders = EKEventStore.authorizationStatus(for: .reminder) == .fullAccess
+    }
 }
 
 struct PermissionsView: View {
@@ -164,7 +177,31 @@ struct PermissionsView: View {
                     granted: state.screen,
                     actionTitle: "Allow",
                     action: askScreen)
-                Text("On your Ira's **Your devices** page, switch on the skills you want this Mac to have, such as Files and Screen. Each needs your PIN.")
+                PermissionRow(
+                    icon: "person.crop.circle", title: "Contacts",
+                    text: "So Ira can put a name to a number, or find the number or email to write to. Only when you ask.",
+                    granted: state.contacts, actionTitle: "Allow",
+                    action: { request { _ = try? await CNContactStore().requestAccess(for: .contacts) } })
+                PermissionRow(
+                    icon: "calendar", title: "Calendars and Reminders",
+                    text: "So Ira can tell you what is on your day, and add an event or a reminder. A new event waits for your yes.",
+                    granted: state.calendar && state.reminders, actionTitle: "Allow",
+                    action: {
+                        request {
+                            let store = EKEventStore()
+                            _ = try? await store.requestFullAccessToEvents()
+                            _ = try? await store.requestFullAccessToReminders()
+                        }
+                    })
+                PermissionRow(
+                    icon: "envelope", title: "Mail, Notes and Messages",
+                    text: "So Ira can search your inbox and notes, draft an email, and send an iMessage. macOS asks the first time (“Ira wants to control Mail”). Ira never sends an email itself, and a message waits for your yes.",
+                    granted: false, actionTitle: nil, action: {})
+                PermissionRow(
+                    icon: "hammer", title: "Coding tasks (if you set them up)",
+                    text: "Ira works in your repositories, often in Documents, so macOS asks once for the Documents folder. Each task works on its own copy and branch, and never pushes without your PIN.",
+                    granted: false, actionTitle: nil, action: {})
+                Text("On your Ira's **Your devices** page, switch on the skills you want this Mac to have: Files, Screen, Contacts, Calendar, Mail and the others. Each needs your PIN.")
                     .font(.callout)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
@@ -186,6 +223,13 @@ struct PermissionsView: View {
             }
         } else {
             openPrivacy("Privacy_Microphone")
+        }
+    }
+
+    private func request(_ ask: @escaping () async -> Void) {
+        Task {
+            await ask()
+            state.refresh()
         }
     }
 

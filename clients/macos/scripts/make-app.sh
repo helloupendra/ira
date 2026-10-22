@@ -87,6 +87,12 @@ cat > "$app/Contents/Info.plist" <<PLIST
   <key>NSDownloadsFolderUsageDescription</key><string>Ira finds and reads a file in Downloads only when you ask about it.</string>
   <key>NSRemovableVolumesUsageDescription</key><string>Ira reads a file on a drive only when you ask, and only from folders you added.</string>
   <key>NSNetworkVolumesUsageDescription</key><string>Ira reads a file on a network drive only when you ask, and only from folders you added.</string>
+  <key>NSContactsUsageDescription</key><string>Ira looks up a person in your contacts only when you ask, to put a name to a number or find whom to write to.</string>
+  <key>NSCalendarsFullAccessUsageDescription</key><string>Ira reads your calendar when you ask what is on, and adds an event only after your yes.</string>
+  <key>NSCalendarsUsageDescription</key><string>Ira reads your calendar when you ask what is on, and adds an event only after your yes.</string>
+  <key>NSRemindersFullAccessUsageDescription</key><string>Ira reads and adds reminders when you ask.</string>
+  <key>NSRemindersUsageDescription</key><string>Ira reads and adds reminders when you ask.</string>
+  <key>NSAppleEventsUsageDescription</key><string>Ira uses Mail, Notes and Messages only when you ask: to search and read, to draft an email for you to send, or to send a message after your yes.</string>
 </dict>
 </plist>
 PLIST

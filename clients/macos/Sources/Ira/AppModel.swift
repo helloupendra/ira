@@ -124,6 +124,10 @@ final class AppModel: ObservableObject {
                 Task { @MainActor in self?.deviceState = state }
             })
         device = client
+        // A coding task's "done" or "failed" reaches the person through the server.
+        toolbox.tasks.announce = { [weak client] event, title, text, data in
+            client?.announce(event: event, title: title, text: text, data: data)
+        }
         client.start()
     }
 
@@ -136,6 +140,14 @@ final class AppModel: ObservableObject {
     func reconnect() {
         device?.reconnectNow()
     }
+
+    /// Say hello again, so the server learns a changed tool list (tasks set up or removed).
+    func reloadTools() {
+        stopDevice()
+        startDevice()
+    }
+
+    var tasksConfigured: Bool { TaskSettings.load() != nil }
 
     private func remember(_ entry: Activity) {
         activity.insert(entry, at: 0)

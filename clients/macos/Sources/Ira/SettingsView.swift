@@ -75,6 +75,21 @@ struct SettingsView: View {
                     model.settings.extraFolders = state.extraFolders
                 }
             }
+            Section("Coding tasks") {
+                Text(model.tasksConfigured
+                     ? "Set up: Ira can start coding tasks in the repositories listed in tasks.json."
+                     : "Not set up. To let Ira start coding tasks, list your repositories and the agent's command in tasks.json (see Ira for Mac's guide).")
+                    .font(.callout)
+                HStack {
+                    Button("Show tasks.json") {
+                        let folder = TaskSettings.defaultPath.deletingLastPathComponent()
+                        try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+                        NSWorkspace.shared.open(folder)
+                    }
+                    Button("Reload tools") { model.reloadTools() }
+                        .help("Tell Ira this Mac's tools again, after changing tasks.json")
+                }
+            }
             Section("Privacy") {
                 HStack {
                     Button("Microphone…") { openPrivacy("Privacy_Microphone") }
