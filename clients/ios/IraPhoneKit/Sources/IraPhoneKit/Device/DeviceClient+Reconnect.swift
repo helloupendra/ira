@@ -33,33 +33,4 @@ extension DeviceClient {
             await pause(delay)
         }
     }
-
-    /// Sleep, unless `reconnectNow` or `stop` comes first.
-    func pause(_ seconds: Double) async {
-        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
-            let id: Int? = lock.withLock {
-                if stopped { return nil }
-                pauses += 1
-                wake = continuation
-                return pauses
-            }
-            guard let id else {
-                continuation.resume()
-                return
-            }
-            Task { [weak self] in
-                try? await Task.sleep(nanoseconds: UInt64(seconds * 1_000_000_000))
-                self?.endPause(id)
-            }
-        }
-    }
-
-    func endPause(_ id: Int) {
-        let wake: CheckedContinuation<Void, Never>? = lock.withLock {
-            guard id == pauses, let wake else { return nil }
-            self.wake = nil
-            return wake
-        }
-        wake?.resume()
-    }
 }
