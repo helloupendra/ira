@@ -110,6 +110,7 @@ ln -sfn "$VENV/bin/ira" /usr/local/bin/ira
 say "systemd template ira@.service and ira-add-business"
 install -m 644 "$HERE/ira@.service" /etc/systemd/system/ira@.service
 install -m 755 "$HERE/add-business.sh" /usr/local/sbin/ira-add-business
+install -m 755 "$HERE/restart-when-quiet.sh" /usr/local/sbin/ira-restart-when-quiet
 systemctl daemon-reload
 
 mapfile -t running < <(systemctl list-units --type=service --state=running --no-legend \
@@ -119,7 +120,7 @@ say "Done: ira $installed (ref $IRA_REF)"
 if [ "${#running[@]}" -gt 0 ]; then
     echo "Running instances use the old code until they restart:"
     printf '    %s\n' "${running[@]}"
-    echo "Restart them with:  sudo systemctl restart 'ira@*'"
+    echo "Restart each when no live call is open:  sudo ira-restart-when-quiet <name>"
 else
     echo "Next: sudo ira-add-business [--personal] <name> <port> [hostname]"
 fi

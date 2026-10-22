@@ -177,9 +177,8 @@ class LiveCall:
         self.conversation_id = client_id
         self.client = str(message.get("client") or "")[:40]
         # While the call is open, an action confirmed on its card carries on here, spoken.
-        calls = getattr(self.runtime, "live_calls", None)
-        if isinstance(calls, dict):
-            calls[self.conversation_key(client_id)] = self
+        if hasattr(self.runtime, "call_opened"):
+            self.runtime.call_opened(self.conversation_key(client_id), self)
         tts = getattr(self.runtime.tts, "name", None)
         await self.send(
             {
@@ -488,11 +487,8 @@ class LiveCall:
             await self.send_audio(header, audio)
 
     async def close(self) -> None:
-        calls = getattr(self.runtime, "live_calls", None)
-        if isinstance(calls, dict) and self.conversation_id:
-            key = self.conversation_key(self.conversation_id)
-            if calls.get(key) is self:
-                calls.pop(key)
+        if hasattr(self.runtime, "call_closed") and self.conversation_id:
+            self.runtime.call_closed(self.conversation_key(self.conversation_id), self)
         if self.transcription is not None:
             await self.transcription.cancel()
             self.transcription = None

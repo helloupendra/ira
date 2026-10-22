@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import contextlib
 import logging
+import time
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -54,6 +55,7 @@ DEFAULT_BASE_URLS = {
 
 
 DEVICE_KINDS = {"mac": "Mac", "android": "Android", "ios": "iPhone"}
+LIVE_CALLS_FILE = "live-calls.json"
 MAX_DEVICES_IN_PROMPT = 6
 
 
@@ -196,6 +198,31 @@ class Runtime:
         if self.connectors is not None:
             tools += self.connectors.tools_for(user_id)
         return tools
+
+    def call_opened(self, key: str, call: Any) -> None:
+        self.live_calls[key] = call
+        self._write_live_calls()
+
+    def call_closed(self, key: str, call: Any) -> None:
+        if self.live_calls.get(key) is call:
+            del self.live_calls[key]
+        self._write_live_calls()
+
+    def _write_live_calls(self) -> None:
+        """How many live calls are open, in data/live-calls.json, so that a deploy can wait
+        for none (ira-restart-when-quiet) instead of cutting someone off."""
+        import json
+        import os
+
+        path = self.settings.data_dir / LIVE_CALLS_FILE
+        if not path.parent.is_dir():  # a server without its data folder (tests): nothing to tell
+            return
+        try:
+            partial = path.with_suffix(".tmp")
+            partial.write_text(json.dumps({"open": len(self.live_calls), "at": time.time()}))
+            os.replace(partial, path)
+        except OSError as exc:  # never fail a call over a status file
+            log.warning("could not write %s: %s", path, exc)
 
     def approval_minutes(self, user_id: int) -> int:
         chosen = self.assistant.user_settings.get(user_id).approval_minutes

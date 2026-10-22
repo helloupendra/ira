@@ -167,6 +167,7 @@ The files are in
 | `bootstrap.sh` | Prepares the server. Run it again to upgrade. |
 | `ira@.service` | The systemd template: `ira@clinic` runs `/srv/ira/clinic`. |
 | `add-business.sh` | Adds one business. Installed as `ira-add-business`. |
+| `restart-when-quiet.sh` | Restarts one business once no live call is open on it (10 minutes at most). Installed as `ira-restart-when-quiet`. |
 | `cloudflared-config.example.yml` | Tunnel ingress for two businesses. |
 | `iam-policy.example.json` | The instance role's permissions. |
 
@@ -470,12 +471,14 @@ sudo systemctl start ira@clinic
 ### 9. Upgrades
 
 Back up first. Then take the scripts of the new release, run the bootstrap
-with its ref, and restart every instance:
+with its ref, and restart each instance once nobody is on a live call with
+it (the server keeps the count in `data/live-calls.json`; a restart closes
+calls and devices with "going away", and the apps reconnect at once):
 
 ```bash
 rm -rf ira && git clone --depth 1 --branch v0.3.0 https://github.com/helloupendra/ira.git
 sudo IRA_REF=v0.3.0 ira/deploy/aws/bootstrap.sh
-sudo systemctl restart 'ira@*'
+sudo ira-restart-when-quiet clinic            # waits for open calls, 10 minutes at most
 sudo -u ira ira doctor /srv/ira/clinic
 ```
 

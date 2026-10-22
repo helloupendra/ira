@@ -146,3 +146,13 @@ def test_scripts_parse(script):
 @pytest.mark.skipif(shutil.which("shellcheck") is None, reason="shellcheck is not installed")
 def test_scripts_pass_shellcheck():
     subprocess.run(["shellcheck", *map(str, SCRIPTS)], check=True)
+
+
+def test_a_restart_waits_for_live_calls():
+    script = (AWS / "restart-when-quiet.sh").read_text(encoding="utf-8")
+    assert script.startswith("#!/usr/bin/env bash") and "set -euo pipefail" in script
+    assert "/srv/ira/$name/data/live-calls.json" in script
+    assert 'systemctl restart "ira@$name"' in script
+    assert "*[!a-z0-9-]*" in script  # a name cannot reach another path
+    bootstrap = (AWS / "bootstrap.sh").read_text(encoding="utf-8")
+    assert "/usr/local/sbin/ira-restart-when-quiet" in bootstrap

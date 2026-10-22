@@ -94,3 +94,20 @@ def test_a_hang_up_is_an_ending_not_a_failure():
     except RuntimeError as outer:
         assert hung_up(outer)
     assert not hung_up(ValueError("a real bug"))
+
+
+def test_the_open_calls_are_counted_for_a_deploy(tmp_path):
+    import json
+
+    from ira.config import Settings
+
+    (tmp_path / "data").mkdir()
+    runtime = make_runtime(settings=Settings(data_dir=tmp_path / "data"))
+    call = Call()
+    runtime.call_opened("http:1:c1", call)
+    status = tmp_path / "data" / "live-calls.json"
+    assert json.loads(status.read_text())["open"] == 1
+    runtime.call_closed("http:1:c1", Call())  # another call's close changes nothing
+    assert json.loads(status.read_text())["open"] == 1
+    runtime.call_closed("http:1:c1", call)
+    assert json.loads(status.read_text())["open"] == 0

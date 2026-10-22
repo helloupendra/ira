@@ -99,6 +99,9 @@ switch it on.
   chooses off or 5 to 60, under **Your assistant**, with **Stop**).
   Sending, calls, payments, deleting and new grants always ask. The
   fingerprint approval and trusted apps are designed in the security page.
+- **Deploys wait for calls.** `ira-restart-when-quiet <name>` restarts an
+  instance once no live call is open on it (the server keeps the count in
+  `data/live-calls.json`), or after 10 minutes.
 - **Restarts are quick.** As it stops, the server closes devices and live
   calls with 1001 (going away) and ends event streams, and waits 5 seconds
   at most for the rest; the service unit stops within 15. A restart no
