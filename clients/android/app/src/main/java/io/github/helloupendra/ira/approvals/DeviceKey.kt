@@ -86,7 +86,7 @@ object Fingerprint {
                 override fun onAuthenticationSucceeded(result: BiometricPrompt.AuthenticationResult) {
                     val unlocked = result.cryptoObject?.signature ?: return done(null, "The fingerprint did not unlock the key. Use the PIN.")
                     unlocked.update(payload)
-                    done(Approvals.base64(unlocked.sign()), null)
+                    done(Approvals.base64url(unlocked.sign()), null)
                 }
 
                 override fun onAuthenticationError(errorCode: Int, errString: CharSequence) {

@@ -156,6 +156,8 @@ data class ActionCard(
     val tier: Int,
     val canApprove: Boolean,
     val expiresIn: Int?,
+    /** The action's own expiry (epoch seconds) when the server sends it: what a fingerprint signs. */
+    val expiresAt: Long? = null,
 ) {
     val needsPin: Boolean
         get() = tier >= 3
@@ -169,6 +171,7 @@ data class ActionCard(
                 tier = m.int("tier") ?: 3,
                 canApprove = m.bool("can_approve") == true,
                 expiresIn = m.int("expires_in"),
+                expiresAt = m.long("expires_at") ?: m.double("expires_at")?.toLong(),
             )
     }
 }
