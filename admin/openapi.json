@@ -6662,7 +6662,7 @@
                     "devices",
                     "downloads"
                 ],
-                "summary": "Public: the Mac installer and the Chrome extension, and where to get them",
+                "summary": "Public: Ira for Mac, and where to get it",
                 "operationId": "downloads",
                 "responses": {
                     "200": {
@@ -6718,7 +6718,7 @@
                     "devices",
                     "downloads"
                 ],
-                "summary": "Public: download a client as a zip",
+                "summary": "Public: a client, from the project's latest release",
                 "operationId": "download",
                 "parameters": [
                     {
@@ -6732,11 +6732,8 @@
                     }
                 ],
                 "responses": {
-                    "200": {
-                        "description": "Successful Response",
-                        "content": {
-                            "application/zip": {}
-                        }
+                    "307": {
+                        "description": "To the file on the project's latest GitHub Release"
                     },
                     "400": {
                         "description": "Bad input",
@@ -6769,7 +6766,7 @@
                         }
                     },
                     "404": {
-                        "description": "No such file here"
+                        "description": "No such download"
                     },
                     "422": {
                         "description": "Validation Error",

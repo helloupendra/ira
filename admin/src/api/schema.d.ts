@@ -1364,7 +1364,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Public: the Mac installer and the Chrome extension, and where to get them */
+        /** Public: Ira for Mac, and where to get it */
         get: operations["downloads"];
         put?: never;
         post?: never;
@@ -1381,7 +1381,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Public: download a client as a zip */
+        /** Public: a client, from the project's latest release */
         get: operations["download"];
         put?: never;
         post?: never;
@@ -9610,14 +9610,12 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Successful Response */
-            200: {
+            /** @description To the file on the project's latest GitHub Release */
+            307: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content: {
-                    "application/zip": unknown;
-                };
+                content?: never;
             };
             /** @description Bad input */
             400: {
@@ -9646,7 +9644,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorDetail"];
                 };
             };
-            /** @description No such file here */
+            /** @description No such download */
             404: {
                 headers: {
                     [name: string]: unknown;
