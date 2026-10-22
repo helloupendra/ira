@@ -60,6 +60,48 @@ jobs:
       - name: Committed console build matches the source
         run: git diff --exit-code -- ../src/ira/web/admin
 
+  chrome-extension:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: clients/chrome-extension
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v5
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: clients/chrome-extension/package-lock.json
+      - run: npm ci
+      - run: npm test
+      - name: The manifest is valid JSON with the pinned key
+        run: node -e "const m = require('./manifest.json'); if (!m.key || m.manifest_version !== 3) process.exit(1)"
+
+  mac-companion:
+    needs: lint
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # macOS's own Python (Command Line Tools) is 3.9; the companion must run on it.
+          - { os: ubuntu-latest, python: "3.9" }
+          - { os: ubuntu-latest, python: "3.12" }
+          # The Keychain and the installer's dry run need macOS.
+          - { os: macos-latest, python: "3.12" }
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        working-directory: clients/mac
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: ${{ matrix.python }}
+      - run: pip install "websockets>=13" "pytest>=8"
+      - if: runner.os == 'macOS'
+        run: brew install shellcheck
+      - run: python -m pytest
+
   secrets:
     needs: test
     runs-on: ubuntu-latest
