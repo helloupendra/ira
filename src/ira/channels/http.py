@@ -15,7 +15,7 @@ from collections.abc import AsyncIterator
 from typing import Any
 
 from fastapi import APIRouter, Depends, FastAPI, HTTPException, Query, Request, Response
-from fastapi.responses import HTMLResponse, StreamingResponse
+from fastapi.responses import HTMLResponse, RedirectResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.types import Scope
@@ -540,6 +540,13 @@ def create_app(runtime: Runtime, *, start_channels: bool = True) -> FastAPI:
     app.include_router(admin_write.router)
 
     if (web.ADMIN_DIR / "index.html").is_file():
+        # The mount below only matches "/admin/...", and the catch-all "/" mount would
+        # answer a bare "/admin" with 404 before any slash redirect could apply.
+        @app.api_route("/admin", methods=["GET", "HEAD"], include_in_schema=False)
+        def admin_slash(request: Request) -> RedirectResponse:
+            query = request.url.query
+            return RedirectResponse("/admin/" + (f"?{query}" if query else ""), status_code=308)
+
         app.mount("/admin", ConsoleFiles(directory=web.ADMIN_DIR, html=True), name="admin")
     else:
 

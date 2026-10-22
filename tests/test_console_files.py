@@ -40,3 +40,14 @@ def test_without_a_build_admin_shows_the_placeholder(tmp_path, monkeypatch, regi
         response = client.get("/admin")
         assert response.status_code == 200
         assert INDEX not in response.text
+
+
+def test_admin_without_a_slash_redirects_to_the_console(tmp_path, monkeypatch, registry):
+    with _client(tmp_path, monkeypatch, registry) as client:
+        response = client.get("/admin", follow_redirects=False)
+        assert response.status_code == 308
+        assert response.headers["location"] == "/admin/"
+        response = client.get("/admin?next=users", follow_redirects=False)
+        assert response.headers["location"] == "/admin/?next=users"
+        assert client.head("/admin", follow_redirects=False).status_code == 308
+        assert client.get("/admin").text == INDEX
