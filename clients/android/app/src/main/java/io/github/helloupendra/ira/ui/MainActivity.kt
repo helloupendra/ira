@@ -29,6 +29,7 @@ class MainActivity : ComponentActivity() {
     override fun onResume() {
         super.onResume()
         PhoneState.visible = true
+        current = java.lang.ref.WeakReference(this)
     }
 
     override fun onPause() {
@@ -42,5 +43,13 @@ class MainActivity : ComponentActivity() {
 
     companion object {
         const val ACTION_TALK = "io.github.helloupendra.ira.TALK"
+
+        private var current = java.lang.ref.WeakReference<MainActivity>(null)
+
+        /**
+         * Ira steps aside so the app under it is in front again (the screen tools never use
+         * Ira's own window). The live call goes on in its service. Call on the main thread.
+         */
+        fun stepAside(): Boolean = current.get()?.moveTaskToBack(true) ?: false
     }
 }

@@ -9,8 +9,14 @@ import android.provider.Settings
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
 import io.github.helloupendra.ira.core.Args
+import io.github.helloupendra.ira.core.Screen
 import io.github.helloupendra.ira.core.ToolFailure
+import io.github.helloupendra.ira.ui.MainActivity
 import java.lang.ref.WeakReference
+import java.util.IdentityHashMap
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.JsonElement
 
 /**
@@ -19,8 +25,10 @@ import kotlinx.serialization.json.JsonElement
  * switches the service on in Android's settings after a strong warning, and every use is
  * Tier 3 on the server: it runs only after their PIN.
  *
- * The service reacts to no event on its own and reads the screen only when a tool asks.
- * Password fields are never read or typed into.
+ * It never reads or uses Ira's own window. After the person types the PIN in Ira, Ira is in
+ * front, so the app the tool names is brought back (or Ira steps aside) first. The service
+ * reacts to no event on its own and reads the screen only when a tool asks. Password fields
+ * are never read or typed into.
  */
 object ScreenAccess {
     const val AVAILABLE = true
@@ -33,46 +41,95 @@ object ScreenAccess {
 
     suspend fun read(context: Context, args: Args): JsonElement {
         val service = IraAccessibilityService.current() ?: throw ToolFailure("Ira's Accessibility service is off")
+        val front = prepare(context, service, args.string("app", 120))
         val root = service.rootInActiveWindow ?: throw ToolFailure("the screen cannot be read just now")
-        val lines = ArrayList<String>()
-        collect(root, lines, 0)
+        val tree = tree(root, IdentityHashMap())
+        val lines = Screen.labels(tree, limit = 300, maxEach = 500)
         val text = lines.joinToString("\n").take(4_000)
-        val app = root.packageName?.toString()?.let { appLabel(context, it) }
-        return Results.of("app" to app, "text" to text, "summary" to "On screen in ${app ?: "the app in front"}: ${text.take(300)}")
+        return Results.of("app" to front, "text" to text, "summary" to "On screen in ${front ?: "the app in front"}: ${text.take(300)}")
     }
 
     suspend fun act(context: Context, args: Args): JsonElement {
         val service = IraAccessibilityService.current() ?: throw ToolFailure("Ira's Accessibility service is off")
         val action = args.choice("action", listOf("tap", "type", "scroll_up", "scroll_down", "back", "home", "recents"))
             ?: throw ToolFailure("say what to do")
+        val front = if (action == "home" || action == "recents") null else prepare(context, service, args.string("app", 120))
         val done =
-            when (action) {
-                "back" -> service.performGlobalAction(AccessibilityService.GLOBAL_ACTION_BACK)
-                "home" -> service.performGlobalAction(AccessibilityService.GLOBAL_ACTION_HOME)
-                "recents" -> service.performGlobalAction(AccessibilityService.GLOBAL_ACTION_RECENTS)
-                "tap" -> tap(service, args.string("target", 100, required = true)!!)
-                "type" -> type(service, args.string("text", 500, required = true)!!)
-                else -> scroll(service, forward = action == "scroll_down")
+            withContext(Dispatchers.Main) {
+                when (action) {
+                    "back" -> service.performGlobalAction(AccessibilityService.GLOBAL_ACTION_BACK)
+                    "home" -> service.performGlobalAction(AccessibilityService.GLOBAL_ACTION_HOME)
+                    "recents" -> service.performGlobalAction(AccessibilityService.GLOBAL_ACTION_RECENTS)
+                    "tap" -> tap(service, args.string("target", 100, required = true)!!, front)
+                    "type" -> type(service, args.string("text", 500, required = true)!!, args.string("target", 100), front)
+                    else -> scroll(service, forward = action == "scroll_down")
+                }
             }
-        if (!done) throw ToolFailure("that did not work on the screen")
-        return Results.of("action" to action, "summary" to "Done: ${action.replace('_', ' ')}.")
+        if (!done) throw ToolFailure("that did not work on ${front ?: "the screen"}")
+        return Results.of("action" to action, "app" to front, "summary" to "Done in ${front ?: "the phone"}: ${action.replace('_', ' ')}.")
     }
 
-    private fun tap(service: AccessibilityService, target: String): Boolean {
+    /**
+     * Make sure the right app is in front, never Ira (Screen.plan); returns its name.
+     * Brings the named app back, or asks Ira to step aside, and waits up to three seconds.
+     */
+    private suspend fun prepare(context: Context, service: AccessibilityService, target: String?): String? {
+        val own = context.packageName
+        repeat(2) {
+            val front = service.rootInActiveWindow?.packageName?.toString()
+            when (val plan = Screen.plan(front, own, target, Apps.label(context, front))) {
+                Screen.Plan.Proceed -> return Apps.label(context, front) ?: front
+                is Screen.Plan.Bring -> {
+                    val app = Apps.find(context, plan.app) ?: throw ToolFailure("no app called '${plan.app}' is on the phone")
+                    val launch = context.packageManager.getLaunchIntentForPackage(app.pkg) ?: throw ToolFailure("${app.label} cannot be opened")
+                    // An Accessibility service may bring an app to the front; its task keeps its place.
+                    withContext(Dispatchers.Main) { context.startActivity(launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
+                    if (!waitFor(service) { it == app.pkg }) {
+                        throw ToolFailure(Screen.notInFront(app.label, Apps.label(context, service.rootInActiveWindow?.packageName?.toString())))
+                    }
+                }
+                Screen.Plan.StepAside -> {
+                    withContext(Dispatchers.Main) { MainActivity.stepAside() }
+                    if (!waitFor(service) { it != null && it != own }) {
+                        throw ToolFailure("Ira is on screen and no app is open behind it: say which app (app), or open it first with app_open")
+                    }
+                }
+            }
+        }
+        return Apps.label(context, service.rootInActiveWindow?.packageName?.toString())
+    }
+
+    private suspend fun waitFor(service: AccessibilityService, ok: (String?) -> Boolean): Boolean {
+        repeat(20) {
+            if (ok(service.rootInActiveWindow?.packageName?.toString())) {
+                delay(300) // let the app finish drawing
+                return true
+            }
+            delay(150)
+        }
+        return false
+    }
+
+    private fun tap(service: AccessibilityService, target: String, front: String?): Boolean {
         val root = service.rootInActiveWindow ?: return false
-        val found = root.findAccessibilityNodeInfosByText(target).filter { it.isVisibleToUser }
-        val node =
-            found.firstOrNull { (it.text?.toString() ?: it.contentDescription?.toString()).equals(target, ignoreCase = true) }
-                ?: found.firstOrNull()
-                ?: throw ToolFailure("nothing on the screen says '$target'")
-        var clickable: AccessibilityNodeInfo? = node
-        while (clickable != null && !clickable.isClickable) clickable = clickable.parent
-        return (clickable ?: node).performAction(AccessibilityNodeInfo.ACTION_CLICK)
+        val nodes = IdentityHashMap<Screen.Node, AccessibilityNodeInfo>()
+        val tree = tree(root, nodes)
+        val chosen = Screen.find(tree, target) ?: throw ToolFailure(Screen.notFound(target, front, tree))
+        var node: AccessibilityNodeInfo? = nodes[chosen]
+        while (node != null && !node.isClickable) node = node.parent
+        return (node ?: nodes[chosen])?.performAction(AccessibilityNodeInfo.ACTION_CLICK) == true
     }
 
-    private fun type(service: AccessibilityService, text: String): Boolean {
-        val field = service.rootInActiveWindow?.findFocus(AccessibilityNodeInfo.FOCUS_INPUT)
-            ?: throw ToolFailure("no text field is selected on the screen")
+    private fun type(service: AccessibilityService, text: String, target: String?, front: String?): Boolean {
+        val root = service.rootInActiveWindow ?: return false
+        var field = root.findFocus(AccessibilityNodeInfo.FOCUS_INPUT)
+        if (field == null || target != null) {
+            val nodes = IdentityHashMap<Screen.Node, AccessibilityNodeInfo>()
+            val tree = tree(root, nodes)
+            val chosen = Screen.find(tree, target ?: "text field") ?: throw ToolFailure(Screen.notFound(target ?: "a text field", front, tree))
+            field = nodes[chosen]
+        }
+        field ?: throw ToolFailure("no text field is selected on the screen")
         if (field.isPassword) throw ToolFailure("Ira never types into a password field")
         val arguments = Bundle().apply { putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, text) }
         return field.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, arguments)
@@ -91,21 +148,30 @@ object ScreenAccess {
         return false
     }
 
-    private fun collect(node: AccessibilityNodeInfo, out: MutableList<String>, depth: Int) {
-        if (depth > 40 || out.size > 300 || !node.isVisibleToUser) return
-        if (!node.isPassword) {
-            val text = node.text?.toString()?.trim().orEmpty().ifEmpty { node.contentDescription?.toString()?.trim().orEmpty() }
-            if (text.isNotEmpty() && out.lastOrNull() != text) out += text
-        }
-        for (i in 0 until node.childCount) node.getChild(i)?.let { collect(it, out, depth + 1) }
+    /** Android's view tree as Screen nodes (at most 500, 40 deep), remembering which is which. */
+    private fun tree(info: AccessibilityNodeInfo, map: IdentityHashMap<Screen.Node, AccessibilityNodeInfo>, depth: Int = 0): Screen.Node {
+        val children =
+            if (depth >= 40 || map.size >= 500) {
+                emptyList()
+            } else {
+                (0 until info.childCount).mapNotNull { i -> info.getChild(i)?.let { tree(it, map, depth + 1) } }
+            }
+        val node =
+            Screen.Node(
+                text = if (info.isPassword) null else info.text?.toString(),
+                description = info.contentDescription?.toString(),
+                viewId = info.viewIdResourceName,
+                hint = info.hintText?.toString(),
+                role = info.className?.toString(),
+                clickable = info.isClickable,
+                editable = info.isEditable,
+                visible = info.isVisibleToUser,
+                password = info.isPassword,
+                children = children,
+            )
+        map[node] = info
+        return node
     }
-
-    private fun appLabel(context: Context, packageName: String): String =
-        try {
-            context.packageManager.getApplicationLabel(context.packageManager.getApplicationInfo(packageName, 0)).toString()
-        } catch (_: Exception) {
-            packageName
-        }
 }
 
 class IraAccessibilityService : AccessibilityService() {
