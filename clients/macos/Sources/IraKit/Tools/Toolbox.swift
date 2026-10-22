@@ -109,20 +109,67 @@ public final class Toolbox: ToolRunner, @unchecked Sendable {
 
     // MARK: Calls
 
+    /// Called when macOS needs Ira restarted before the screen can be read.
+    public var onRestartNeeded: @Sendable () -> Void = {}
+
+    /// How long a tool may take on this Mac: always under the server's 25 seconds,
+    /// so a stuck tool answers with a reason instead of leaving Ira waiting.
+    public static func deadline(for name: String) -> Double {
+        switch name {
+        case "screen_read": return 15
+        case "files_find": return 12
+        case "mail_search", "mail_read", "mail_draft", "notes_search", "notes_read", "notes_add", "messages_send",
+            "shortcuts_run", "code_task_start", "code_task_push", "browser_tabs", "browser_show_tab":
+            return 22
+        default: return 10
+        }
+    }
+
+    /// What to say when a tool ran out of time.
+    static func lateMessage(_ name: String, screenPermitted: Bool) -> String {
+        if name == "screen_read" && screenPermitted {
+            return ScreenText.restartNeeded
+        }
+        return "that took too long on this Mac. If macOS is showing a permission prompt, answer it, then ask again"
+    }
+
     public func call(_ name: String, args: JSONValue) async throws -> JSONValue {
         guard args.objectValue != nil else { throw ToolFailure("arguments must be an object") }
         let started = Date()
         var target = Toolbox.target(name, args)
         do {
-            let content: JSONValue
+            let (content, readTarget) = try await withTimeout(Toolbox.deadline(for: name)) {
+                try await self.run(name, args)
+            }
+            if let readTarget { target = readTarget }
+            record(Activity(at: started, tool: name, target: target, ok: true))
+            return content
+        } catch is TimedOut {
+            record(Activity(at: started, tool: name, target: target, ok: false))
+            let permitted = name == "screen_read" && ScreenText.permitted
+            if permitted { onRestartNeeded() }
+            throw ToolFailure(Toolbox.lateMessage(name, screenPermitted: permitted))
+        } catch let failure as ToolFailure {
+            record(Activity(at: started, tool: name, target: target, ok: false))
+            if failure.message == ScreenText.restartNeeded { onRestartNeeded() }
+            throw failure
+        } catch {
+            record(Activity(at: started, tool: name, target: target, ok: false))
+            throw error
+        }
+    }
+
+    /// Run one tool; the second value is a better "What I read" target, when known after.
+    private func run(_ name: String, _ args: JSONValue) async throws -> (JSONValue, String?) {
+        let content: JSONValue
+        do {
             switch name {
             case "files_find": content = try await findFiles(args.objectValue!)
             case "file_read": content = try await readFile(args.objectValue!)
             case "file_open": content = try await openFile(args.objectValue!)
             case "screen_read":
                 let read = try await readScreen(args.objectValue!)
-                target = read.target
-                content = read.content
+                return (read.content, read.target)
             case "browser_tabs": content = try await BrowserTools.listTabs(args)
             case "browser_show_tab": content = try await BrowserTools.showTab(args)
             case "contacts_lookup":
@@ -154,12 +201,8 @@ public final class Toolbox: ToolRunner, @unchecked Sendable {
             default:
                 throw ToolFailure("this Mac has no tool '\(name)'")
             }
-            record(Activity(at: started, tool: name, target: target, ok: true))
-            return content
-        } catch {
-            record(Activity(at: started, tool: name, target: target, ok: false))
-            throw error
         }
+        return (content, nil)
     }
 
     /// What "What I read" shows for a call: a path, a name or a search, never contents.
@@ -355,13 +398,24 @@ public final class Toolbox: ToolRunner, @unchecked Sendable {
     func readScreen(_ args: [String: JSONValue]) async throws -> (content: JSONValue, target: String) {
         try Toolbox.check(args, allowed: [])
         guard ScreenText.permitted else { throw ToolFailure(ScreenText.notPermitted) }
+        // Allowed after Ira started: macOS applies it only to a fresh start, and a
+        // capture now would hang. Say so at once instead.
+        if !ScreenText.permittedAtLaunch { throw ToolFailure(ScreenText.restartNeeded) }
         guard let front = await frontApp() else { throw ToolFailure("no app is in front") }
+        let bundleID = await MainActor.run { NSRunningApplication(processIdentifier: front.pid)?.bundleIdentifier }
+        if let refusal = ScreenText.refusal(bundleID: bundleID, name: front.name) { throw ToolFailure(refusal) }
         guard let window = ScreenText.frontWindow(of: front.pid) else {
             throw ToolFailure("\(front.name) has no window open in front")
         }
         let app = window.app.isEmpty ? front.name : window.app
         let target = window.title.isEmpty ? app : "\(app) — \(window.title)"
-        let image = try await ScreenText.capture(window)
+        let image: CGImage
+        do {
+            image = try await withTimeout(10) { try await ScreenText.capture(window) }
+        } catch is TimedOut {
+            throw ToolFailure(
+                "I can't read \(app)'s window: macOS did not hand it over in time. If macOS is asking whether Ira may record the screen, answer it, then ask again")
+        }
         let text = try await Task.detached(priority: .userInitiated) { try ScreenText.recognize(image) }.value
         let read = FileText.cut(text, kind: "screen", maxChars: Toolbox.maxText)
         log.info("screen_read \(read.text.count) chars")

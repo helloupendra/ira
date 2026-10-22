@@ -304,6 +304,23 @@ struct HTTPVoiceTests {
 
 @Suite("Reading the screen")
 struct ScreenTextTests {
+    @Test func someWindowsAreNeverRead() {
+        #expect(ScreenText.refusal(bundleID: "com.apple.systempreferences", name: "System Settings")?
+            .hasPrefix("I can't read System Settings' window") == true)
+        #expect(ScreenText.refusal(bundleID: "com.1password.1password", name: "1Password")?.contains("passwords") == true)
+        #expect(ScreenText.refusal(bundleID: "com.google.Chrome", name: "Google Chrome") == nil)
+        #expect(ScreenText.refusal(bundleID: nil, name: "Unknown") == nil)
+    }
+
+    @Test func aStuckToolAnswersBeforeTheServerGivesUp() {
+        for tool in ToolCatalog.all(tasksConfigured: true).compactMap({ $0["name"]?.stringValue }) {
+            #expect(Toolbox.deadline(for: tool) < 25, "\(tool)")
+        }
+        #expect(Toolbox.deadline(for: "screen_read") == 15)
+        #expect(Toolbox.lateMessage("screen_read", screenPermitted: true) == ScreenText.restartNeeded)
+        #expect(Toolbox.lateMessage("files_find", screenPermitted: false).contains("permission prompt"))
+    }
+
     @Test func readingOrder() {
         let lines = [
             ScreenText.TextLine(text: "world", box: CGRect(x: 0.5, y: 0.8, width: 0.2, height: 0.05)),

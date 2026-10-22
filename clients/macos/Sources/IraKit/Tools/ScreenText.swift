@@ -17,9 +17,51 @@ public enum ScreenText {
 
     public static var permitted: Bool { CGPreflightScreenCaptureAccess() }
 
+    /// Whether Screen Recording was allowed when Ira started. macOS applies a
+    /// grant only to a fresh start: allowed later, the capture hangs until Ira
+    /// is reopened. The app reads it once at launch (`noteLaunch`).
+    nonisolated(unsafe) public private(set) static var permittedAtLaunch = true
+
+    public static func noteLaunch() {
+        permittedAtLaunch = CGPreflightScreenCaptureAccess()
+    }
+
+    /// Apps whose windows Ira never reads: System Settings (whose privacy pages
+    /// macOS protects, and whose capture can hang), the login and password
+    /// prompts, and password managers.
+    public static let neverRead: [String: String] = [
+        "com.apple.systempreferences": "System Settings",
+        "com.apple.SecurityAgent": "the password prompt",
+        "com.apple.loginwindow": "the login window",
+        "com.apple.keychainaccess": "Keychain Access",  // pragma: allowlist secret
+        "com.apple.Passwords": "Passwords",  // pragma: allowlist secret
+        "com.1password.1password": "1Password",  // pragma: allowlist secret
+        "com.agilebits.onepassword7": "1Password",  // pragma: allowlist secret
+        "com.bitwarden.desktop": "Bitwarden",
+        "com.lastpass.LastPass": "LastPass",
+        "com.dashlane.Dashlane": "Dashlane",
+    ]
+
+    /// Why the front app's window is not read, or nil.
+    public static func refusal(bundleID: String?, name: String) -> String? {
+        guard let bundleID, let known = neverRead[bundleID] else { return nil }
+        if bundleID == "com.apple.systempreferences" {
+            return "I can't read System Settings' window: macOS keeps it private. Bring the window you mean to the front and ask again"
+        }
+        return "I never read \(known)'s window: it can show passwords. Bring the window you mean to the front and ask again"
+    }
+
     /// Ask macOS to add Ira to the Screen Recording list (it shows its own dialog once).
     @discardableResult
     public static func requestPermission() -> Bool { CGRequestScreenCaptureAccess() }
+
+    public static let restartNeeded =
+        "macOS needs Ira restarted after the Screen Recording permission. Quit Ira and open it again"
+
+    /// Ira is about to capture the screen, and macOS may ask the person first
+    /// (monthly on macOS 15 and later): the app keeps its window out of the way.
+    public static let capturing = Notification.Name("in.ira.mac.capturing")
+    public static let captured = Notification.Name("in.ira.mac.captured")
 
     public static let notPermitted =
         "Screen Recording is off for Ira, so I cannot read the screen. Allow Ira in System Settings → Privacy & Security → Screen & System Audio Recording, then ask again"
@@ -51,7 +93,17 @@ public enum ScreenText {
 
     /// A picture of one window, at the screen's own resolution.
     public static func capture(_ window: Window) async throws -> CGImage {
-        let content = try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: true)
+        NotificationCenter.default.post(name: capturing, object: nil)
+        defer { NotificationCenter.default.post(name: captured, object: nil) }
+        let content: SCShareableContent
+        do {
+            content = try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: true)
+        } catch {
+            // Allowed in System Settings, yet refused here: the permission came while
+            // Ira was running, and macOS applies it only to a fresh start.
+            if permitted { throw ToolFailure(restartNeeded) }
+            throw ToolFailure(notPermitted)
+        }
         guard let target = content.windows.first(where: { $0.windowID == window.id }) else {
             throw ToolFailure("that window is no longer on screen")
         }

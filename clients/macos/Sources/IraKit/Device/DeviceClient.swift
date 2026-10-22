@@ -382,19 +382,27 @@ public final class DeviceClient: @unchecked Sendable {
             case .call(let id, let tool, let args):
                 calls.removeAll { $0.isCancelled }
                 calls.append(Task { [tools, log] in
+                    // Every call is logged: its tool, how long, and how it ended. Never contents.
+                    log.info("call \(tool) started")
                     let started = Date()
                     let reply: JSONValue
+                    var outcome = "ok"
                     do {
                         let content = try await tools.call(tool, args: args)
                         reply = DeviceProtocol.result(id: id, content: content)
                     } catch let failure as ToolFailure {
+                        outcome = "failed (\(DeviceClient.failureKind(failure.message)))"
                         reply = DeviceProtocol.failure(id: id, error: failure.message)
                     } catch {
+                        outcome = "failed (\(type(of: error)))"
                         reply = DeviceProtocol.failure(id: id, error: error.localizedDescription)
                     }
-                    let ok = reply["ok"]?.boolValue == true
-                    log.info(String(format: "%@ %@ in %.2fs", tool, ok ? "ok" : "failed", Date().timeIntervalSince(started)))
-                    try? await sender.send(DeviceProtocol.encodeResult(reply))
+                    log.info(String(format: "call %@ %@ in %.2fs", tool, outcome, Date().timeIntervalSince(started)))
+                    do {
+                        try await sender.send(DeviceProtocol.encodeResult(reply))
+                    } catch {
+                        log.warning("call \(tool): the answer could not be sent (the connection ended)")
+                    }
                 })
             case .ping:
                 try? await sender.send(DeviceProtocol.pong.encoded())
@@ -410,6 +418,16 @@ public final class DeviceClient: @unchecked Sendable {
             }
         }
         return nil
+    }
+
+    /// A failure's kind for the log, from its message: never the message itself,
+    /// which can name a file.
+    static func failureKind(_ message: String) -> String {
+        if message.contains("took too long") || message.contains("restarted") { return "late" }
+        if message.contains("System Settings") || message.contains("is off for Ira") { return "permission" }
+        if message.hasPrefix("Ira never") || message.contains("outside the folders") { return "refused" }
+        if message.hasPrefix("unknown argument") || message.contains("must be") { return "arguments" }
+        return "tool"
     }
 
     /// Tell the server this Mac is being removed: it revokes the token at once.
