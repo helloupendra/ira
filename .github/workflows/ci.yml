@@ -107,6 +107,27 @@ jobs:
         run: brew install shellcheck
       - run: ../../.companion-venv/bin/python -m pytest
 
+  macos-app:
+    # Ira for Mac: built with Swift Package Manager, as on a Mac with only the
+    # Command Line Tools. The zip and dmg are kept as this run's artifacts.
+    runs-on: macos-latest
+    defaults:
+      run:
+        working-directory: clients/macos
+    steps:
+      - uses: actions/checkout@v6
+      - run: swift --version
+      - run: swift build
+      - run: scripts/test.sh
+      - run: UNIVERSAL=1 scripts/make-app.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ira-mac-app
+          path: |
+            clients/macos/dist/Ira-*.zip
+            clients/macos/dist/Ira-*.dmg
+          if-no-files-found: error
+
   secrets:
     needs: test
     runs-on: ubuntu-latest
