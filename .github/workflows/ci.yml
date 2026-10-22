@@ -104,6 +104,36 @@ jobs:
           path: clients/android/app/build/outputs/apk/*/debug/*.apk
           if-no-files-found: error
 
+  ios-app:
+    # Ira for iPhone: the kit's tests and the app's UI tests on an iOS simulator,
+    # against a local Ira with the demo model and fake speech, and an unsigned
+    # simulator build kept as this run's artifact. No Apple account, certificate
+    # or key exists in this workflow; a TestFlight build is signed elsewhere
+    # (docs/clients/iphone.md).
+    runs-on: macos-latest
+    defaults:
+      run:
+        working-directory: clients/ios
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - run: pip install -e ../..
+      - run: brew install xcodegen
+      - run: xcodebuild -version && xcodegen --version
+      - name: Start a local Ira for the tests
+        run: scripts/local-ira.sh >> "$GITHUB_ENV"
+      - run: scripts/ci.sh
+      - name: The local Ira's log
+        if: failure()
+        run: cat "$IRA_TEST_DIR/serve.log"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ira-ios-simulator
+          path: clients/ios/dist/Ira-simulator.zip
+          if-no-files-found: error
+
   secrets:
     needs: test
     runs-on: ubuntu-latest
