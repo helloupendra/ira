@@ -22,7 +22,7 @@ from collections.abc import AsyncIterator
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, WebSocket
-from fastapi.responses import Response, StreamingResponse
+from fastapi.responses import RedirectResponse, StreamingResponse
 
 from ira import changes
 from ira.accounts import Principal
@@ -544,27 +544,19 @@ async def revoke_any_device(
 
 # --- downloads (public: the clients are open source) ----------------------------------
 
-RELEASES = "https://github.com/helloupendra/ira/releases/latest"
-_built: dict[tuple[str, str], bytes] = {}
-
 
 @router.get(
     "/v1/downloads",
     response_model=list[DownloadView],
     tags=["downloads"],
-    summary="Public: the Mac installer and the Chrome extension, and where to get them",
+    summary="Public: Ira for Mac, and where to get it",
 )
 def downloads() -> list[DownloadView]:
     from ira import clients
 
-    here = clients.root() is not None
     return [
         DownloadView(
-            name=d.name,
-            title=d.title,
-            description=d.description,
-            available=here,
-            url=f"/v1/downloads/{d.name}" if here else RELEASES,
+            name=d.name, title=d.title, description=d.description, available=False, url=d.url
         )
         for d in clients.DOWNLOADS
     ]
@@ -573,33 +565,24 @@ def downloads() -> list[DownloadView]:
 @router.get(
     "/v1/downloads/{name}",
     tags=["downloads"],
-    summary="Public: download a client as a zip",
-    response_class=Response,
+    summary="Public: a client, from the project's latest release",
+    response_class=RedirectResponse,
+    status_code=307,
     responses={
-        200: {"content": {"application/zip": {}}},
-        404: {"description": "No such file here"},
+        307: {"description": "To the file on the project's latest GitHub Release"},
+        404: {"description": "No such download"},
     },
 )
-def download(name: str, request: Request, runtime: Runtime = Depends(get_runtime)) -> Response:
+def download(name: str) -> RedirectResponse:
     from ira import clients
 
-    if name not in {d.name for d in clients.DOWNLOADS}:
-        raise HTTPException(404, detail="no such download")
-    # This server's address, so the Mac installer pairs a typed code with it.
-    server = runtime.public_url or str(request.base_url).rstrip("/")
-    key = (name, server)
-    if key not in _built:
-        try:
-            _built[key] = clients.build(name, server=server)
-        except FileNotFoundError:
-            raise HTTPException(
-                404, detail=f"this server does not carry the clients; see {RELEASES}"
-            ) from None
-    return Response(
-        content=_built[key],
-        media_type="application/zip",
-        headers={
-            "Content-Disposition": f'attachment; filename="{name}"',
-            "Cache-Control": "no-cache",
-        },
-    )
+    for d in clients.DOWNLOADS:
+        if d.name == name:
+            return RedirectResponse(d.url, status_code=307)
+    if name in clients.RETIRED:
+        raise HTTPException(
+            404,
+            detail="the Mac companion and the Chrome extension are retired: download Ira for "
+            f"Mac from {clients.RELEASES}",
+        )
+    raise HTTPException(404, detail="no such download")

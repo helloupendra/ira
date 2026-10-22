@@ -60,53 +60,6 @@ jobs:
       - name: Committed console build matches the source
         run: git diff --exit-code -- ../src/ira/web/admin
 
-  chrome-extension:
-    runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: clients/chrome-extension
-    steps:
-      - uses: actions/checkout@v6
-      - uses: actions/setup-node@v5
-        with:
-          node-version: "22"
-          cache: npm
-          cache-dependency-path: clients/chrome-extension/package-lock.json
-      - run: npm ci
-      - run: npm test
-      - name: The manifest is valid JSON with the pinned key
-        run: node -e "const m = require('./manifest.json'); if (!m.key || m.manifest_version !== 3) process.exit(1)"
-
-  mac-companion:
-    needs: lint
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - { os: ubuntu-latest, python: "3.12" }
-          # macOS's own Python (the Command Line Tools', 3.9): what install.sh finds on a
-          # Mac without Homebrew. The Keychain and the installer's dry run need macOS too.
-          - { os: macos-latest, python: system }
-    runs-on: ${{ matrix.os }}
-    defaults:
-      run:
-        working-directory: clients/mac
-    steps:
-      - uses: actions/checkout@v6
-      - if: matrix.python != 'system'
-        uses: actions/setup-python@v6
-        with:
-          python-version: ${{ matrix.python }}
-      - name: A virtualenv with the companion's test needs
-        run: |
-          if [ "${{ matrix.python }}" = system ]; then python=/usr/bin/python3; else python=python; fi
-          "$python" --version
-          "$python" -m venv ../../.companion-venv
-          ../../.companion-venv/bin/pip install "websockets>=13" "pytest>=8"
-      - if: runner.os == 'macOS'
-        run: brew install shellcheck
-      - run: ../../.companion-venv/bin/python -m pytest
-
   macos-app:
     # Ira for Mac: built with Swift Package Manager, as on a Mac with only the
     # Command Line Tools. The zip and dmg are kept as this run's artifacts.

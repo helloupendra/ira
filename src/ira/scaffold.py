@@ -63,7 +63,7 @@ BUSINESS_INSTRUCTIONS = """\
     rather than guessing. Keep answers short: they are often spoken."""
 PERSONAL_INSTRUCTIONS = """\
     This is one person's own assistant. When they ask about their Mac, their
-    Chrome tabs, the web or the news, use their devices and search. When a
+    browser tabs, the web or the news, use their devices and search. When a
     tool does not have the answer, say so plainly rather than guessing. Keep
     answers short: they are often spoken."""
 BUSINESS_TOOLS = """\
@@ -204,8 +204,9 @@ def render(options: InitOptions, *, today: dt.date | None = None) -> dict[str, s
             else "Two placeholder tools. Replace them with your own."
         ),
         "make_it_yours": (
-            "- Sign in, set your PIN, and pair your Mac on **Your devices** in the Ira\n"
-            "  app: Ira can then read and watch a Chrome tab when you ask.\n"
+            "- Sign in, set your PIN, and pair Ira for Mac on **Your devices** in the Ira\n"
+            "  app: Ira can then find your files, read your screen and your browser tabs\n"
+            "  when you ask.\n"
             "- Switch web and news search on in **Your assistant**, and list news feeds\n"
             "  under `search.news.feeds`."
             if options.personal
