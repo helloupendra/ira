@@ -117,9 +117,13 @@ async def test_the_model_cannot_lower_a_tier(tiered, ledger):
 # --- Tier 2: a "yes" from the person who asked --------------------------------------
 
 
-async def test_tier_two_runs_on_a_spoken_yes_without_a_model(tiered, ledger):
+async def test_tier_two_runs_on_a_spoken_yes_then_the_model_carries_on(tiered, ledger):
     provider = ScriptedProvider(
-        [call("send_invoice", {"order_id": "A1"}), "Shall I send the invoice for A1?"]
+        [
+            call("send_invoice", {"order_id": "A1"}),
+            "Shall I send the invoice for A1?",
+            "Invoice A1 bhej diya.",
+        ]
     )
     runtime = make_runtime(provider=provider, registry=tiered)
     user = owner(runtime)
@@ -129,9 +133,14 @@ async def test_tier_two_runs_on_a_spoken_yes_without_a_model(tiered, ledger):
 
     calls_before = len(provider.calls)
     reply = await runtime.assistant.ask("Haan, kar do.", conversation_id="t", user_id=user.id)
-    assert reply.text.startswith("Done: Send the invoice for order A1")
+    # The yes runs the action itself, before any model; then the model sees what it did.
     assert ledger.refunds == [("invoice", 0)]
-    assert len(provider.calls) == calls_before  # the yes never reached a model
+    assert len(provider.calls) == calls_before + 1
+    sent = provider.calls[-1]["messages"]
+    result = next(m for m in sent if m.role == "tool")
+    assert '"status": "done"' in result.text and "pending_confirmation" not in result.text
+    assert sent[-1].role == "user" and sent[-1].text == "Haan, kar do."
+    assert reply.text == "Invoice A1 bhej diya."
 
 
 async def test_tier_two_no_cancels_and_other_words_go_to_the_model(tiered, ledger):
@@ -308,7 +317,7 @@ async def test_personal_tools_reach_only_their_owner_wrapped_and_private(tiered)
 
 
 async def test_a_device_tool_of_tier_two_waits_and_runs_on_the_device(tiered):
-    provider = ScriptedProvider([call("chrome_read_tab", {"match": "x"}), "Shall I?"])
+    provider = ScriptedProvider([call("chrome_read_tab", {"match": "x"}), "Shall I?", "Done."])
     runtime = make_runtime(provider=provider, registry=tiered)
     me = owner(runtime)
     ran: list = []
@@ -324,8 +333,11 @@ async def test_a_device_tool_of_tier_two_waits_and_runs_on_the_device(tiered):
     assert reply.action is not None and ran == []
     assert "chrome_read_tab on Office Mac" in reply.action.summary
     reply = await runtime.assistant.ask("haan", conversation_id="t", user_id=me.id)
-    assert reply.text.startswith("Done")
+    assert reply.text == "Done."
     assert sent == [(7, "chrome_read_tab", {"match": "x"})]
+    # The device's answer reached the model as data from the device.
+    result = next(m for m in provider.calls[-1]["messages"] if m.role == "tool")
+    assert result.text.startswith('<device_output untrusted="true"') and '"ok": true' in result.text
     outcomes = [
         r["outcome"] for r in runtime.store.query("SELECT outcome FROM tool_log ORDER BY id")
     ]

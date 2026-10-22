@@ -144,6 +144,7 @@ class LiveCall:
         self.send_lock = asyncio.Lock()
         self.started_turns: dict[int, Turn] = {}
         self.last_heard = clock()
+        self.last_text = ""  # what the person last said, for the language of a follow-up
 
     # Sending.
 
@@ -173,6 +174,10 @@ class LiveCall:
             client_id = secrets.token_hex(6)
         self.conversation_id = client_id
         self.client = str(message.get("client") or "")[:40]
+        # While the call is open, an action confirmed on its card carries on here, spoken.
+        calls = getattr(self.runtime, "live_calls", None)
+        if isinstance(calls, dict):
+            calls[self.conversation_key(client_id)] = self
         tts = getattr(self.runtime.tts, "name", None)
         await self.send(
             {
@@ -277,6 +282,7 @@ class LiveCall:
         stt_ms: int | None = None,
     ) -> None:
         self.turns += 1
+        self.last_text = text
         turn = Turn(self.turns, text, at, started if started is not None else self.clock())
         if stt_ms is not None:
             turn.timings["stt_ms"] = stt_ms
@@ -286,6 +292,15 @@ class LiveCall:
         await self.send({"type": "heard", "turn": turn.number, "text": text, "language": language})
         self.current = turn
         self.answer = asyncio.ensure_future(self.run_turn(turn))
+
+    def follow_up(self) -> None:
+        """An action asked for in this call was confirmed on its card (a PIN, a yes): Ira
+        carries on, with what it returned, as a turn of its own in the call."""
+        self.turns += 1
+        turn = Turn(self.turns, self.last_text, None, self.clock())
+        self.started_turns[turn.number] = turn
+        self.current = turn
+        self.answer = asyncio.ensure_future(self.run_turn(turn, follow_up=True))
 
     async def interrupt(self) -> None:
         turn = self.current
@@ -319,7 +334,7 @@ class LiveCall:
 
     # One answer.
 
-    async def run_turn(self, turn: Turn) -> None:
+    async def run_turn(self, turn: Turn, *, follow_up: bool = False) -> None:
         speech: asyncio.Queue[str | None] = asyncio.Queue()
         speaker = asyncio.ensure_future(self.speak(turn, speech))
         sentences = Sentences()
@@ -327,13 +342,24 @@ class LiveCall:
         final = ""
         try:
             async with self.model_lock:  # one answer at a time keeps the conversation whole
-                async for event in self.runtime.assistant.events(
-                    turn.text,
-                    conversation_id=self.conversation_key(self.conversation_id),
-                    channel="voice",
-                    actor=self.principal.actor,
-                    user_id=self.user_id,
-                ):
+                assistant = self.runtime.assistant
+                conversation_id = self.conversation_key(self.conversation_id)
+                if follow_up:
+                    events = assistant.follow_up(
+                        conversation_id,
+                        channel="voice",
+                        actor=self.principal.actor,
+                        user_id=self.user_id,
+                    )
+                else:
+                    events = assistant.events(
+                        turn.text,
+                        conversation_id=conversation_id,
+                        channel="voice",
+                        actor=self.principal.actor,
+                        user_id=self.user_id,
+                    )
+                async for event in events:
                     kind = event.get("type")
                     if kind == "delta":
                         if "model_first_ms" not in turn.timings:
@@ -449,6 +475,11 @@ class LiveCall:
             await self.send_audio(header, audio)
 
     async def close(self) -> None:
+        calls = getattr(self.runtime, "live_calls", None)
+        if isinstance(calls, dict) and self.conversation_id:
+            key = self.conversation_key(self.conversation_id)
+            if calls.get(key) is self:
+                calls.pop(key)
         if self.transcription is not None:
             await self.transcription.cancel()
             self.transcription = None

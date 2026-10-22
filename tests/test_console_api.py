@@ -558,7 +558,7 @@ def test_actions_show_who_confirmed_and_the_confirm_roles(registry):
         assert security["cookie_samesite"] == "strict"
         assert "manager@example.com" in security["users_without_pin"]
         costs = client.get("/v1/admin/costs?days=7", headers=owner).json()
-        assert costs[0]["calls"] == 2
+        assert costs[0]["calls"] == 3  # the proposal, its read-back, the answer after it ran
 
 
 def sse_events(response) -> list[dict]:

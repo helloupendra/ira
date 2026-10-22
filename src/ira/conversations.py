@@ -25,6 +25,51 @@ def _encode(message: Message) -> tuple[str | None, str | None]:
     return content, calls
 
 
+MAX_SETTLED_CHARS = 8000
+SETTLED_NOTES = {
+    "done": "The person confirmed it and it ran: this is its result. Carry on with what they "
+    "asked, and answer.",
+    "failed": "The person confirmed it, but it failed. Say so plainly.",
+    "running": "The person confirmed it; it is still running.",
+    "cancelled": "The person said no. Nothing was changed.",
+    "expired": "Nobody confirmed it in time. Nothing was changed.",
+}
+
+
+def settled(row: Any, now: float, personal: Callable[[str], bool] | None = None) -> str | None:
+    """A proposal's tool result as the model sees it later: what became of the action.
+    None while it still waits. The model must never see "pending" for an action that ran."""
+    status = row["a_status"]
+    if status is None or (status == "pending" and (row["a_expires"] or 0) > now):
+        return None
+    state = {
+        "executed": "done",
+        "failed": "failed",
+        "executing": "running",
+        "cancelled": "cancelled",
+    }.get(status, "expired")
+    body: dict[str, Any] = {"status": state, "summary": row["a_summary"]}
+    result = json.loads(row["a_result"]) if row["a_result"] else None
+    if state == "done":
+        body["result"] = result
+    elif state == "failed":
+        body["error"] = (result or {}).get("error") if isinstance(result, dict) else result
+    body["note"] = SETTLED_NOTES[state]
+    text = json.dumps(body, default=str, ensure_ascii=False)
+    if len(text) > MAX_SETTLED_CHARS:
+        text = text[:MAX_SETTLED_CHARS] + "... [truncated]"
+    # What a device or a connection returned is text written by others: data, as when read.
+    if state == "done" and row["a_device"] is not None:
+        from ira.tools.personal import wrap_untrusted
+
+        text = wrap_untrusted("device", "your device", text)
+    elif state == "done" and personal is not None and personal(row["a_tool"] or ""):
+        from ira.tools.personal import wrap_untrusted
+
+        text = wrap_untrusted("connector", "your connection", text)
+    return text
+
+
 def _decode(row: Any) -> Message:
     calls = [ToolCall(**c) for c in json.loads(row["tool_calls"])] if row["tool_calls"] else []
     return Message(
@@ -40,6 +85,9 @@ class Conversations:
     def __init__(self, store: Store, *, clock: Callable[[], float] = time.time) -> None:
         self.store = store
         self.clock = clock
+        # Whether an action's tool is one of a person's own (a connection's), not the
+        # business's: what it returned is then untrusted. Set by the assistant.
+        self.personal: Callable[[str], bool] | None = None
 
     def ensure(self, conversation_id: str, *, channel: str, user_id: int | None) -> None:
         now = self.clock()
@@ -97,11 +145,20 @@ class Conversations:
         reject a tool result whose call has been cut off.
         """
         rows = self.store.query(
-            "SELECT m.* FROM messages m JOIN conversations c ON c.id = m.conversation_id "
+            "SELECT m.*, a.status AS a_status, a.result AS a_result, a.summary AS a_summary, "
+            "a.expires_at AS a_expires, a.device_id AS a_device, a.tool AS a_tool "
+            "FROM messages m JOIN conversations c ON c.id = m.conversation_id "
+            "LEFT JOIN pending_actions a ON a.id = m.action_id "
             "WHERE m.conversation_id = ? AND m.at >= c.reset_at ORDER BY m.id DESC LIMIT ?",
             (conversation_id, limit),
         )
-        messages = [_decode(r) for r in reversed(rows)]
+        now = self.clock()
+        messages = []
+        for row in reversed(rows):
+            message = _decode(row)
+            if message.role == "tool" and row["action_id"]:
+                message.content = settled(row, now, self.personal) or message.content
+            messages.append(message)
         while messages and messages[0].role != "user":
             messages.pop(0)
         return messages

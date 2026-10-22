@@ -8958,6 +8958,35 @@
                     "result": {
                         "title": "Result"
                     },
+                    "reply": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Reply",
+                        "description": "Ira's answer once the action ran: it saw the result and carried on with what was asked. Show it as Ira's next message."
+                    },
+                    "reply_message_id": {
+                        "anyOf": [
+                            {
+                                "type": "integer"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Reply Message Id"
+                    },
+                    "continued_in_call": {
+                        "type": "boolean",
+                        "title": "Continued In Call",
+                        "description": "The answer is being spoken in the live call instead.",
+                        "default": false
+                    },
                     "attempts_left": {
                         "anyOf": [
                             {

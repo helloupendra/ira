@@ -198,6 +198,13 @@ The PIN is the confirming user's own (set with `PUT /v1/me/pin` or
 | `already_done` | 409 | executed, cancelled or failed before |
 | `no_pin` | 409 | you have not set a PIN yet; the message says to set one in the Ira app's menu or ask an owner to reset it |
 | `expired` | 410 | past its 120 seconds, whether or not anything had marked it expired yet |
+
+When it ran (`executed`, or `failed`), Ira carries the conversation on: the
+model sees what the action returned (or why it failed) and goes on with what
+was asked. `reply` is that answer, with `reply_message_id`; show it as
+Ira's next message. When a live call is open on the conversation, the
+answer is spoken in the call instead, and `continued_in_call` is `true`.
+`POST /v1/actions/{id}/approve` (a Tier 2 "yes") answers the same way.
 | `locked` | 423 | too many wrong PINs; `locked_seconds` left, and `locked_until` (epoch seconds) when the lock ends |
 
 `POST /v1/actions/{id}/cancel` drops a pending action. Cancelling one past

@@ -429,12 +429,21 @@ async def speak(
 
 
 def _outcome_response(
-    response: Response, outcome: Any, runtime: Runtime, principal: Principal
+    response: Response,
+    outcome: Any,
+    runtime: Runtime,
+    principal: Principal,
+    after: dict[str, Any] | None = None,
 ) -> ActionOutcome:
     response.status_code = OUTCOME_STATUS.get(outcome.status, 200)
     body = outcome.public()
     if "action" in body:
         body["action"] = action_view(runtime, principal, body["action"])
+    if after and after.get("in_call"):
+        body["continued_in_call"] = True
+    elif after:
+        body["reply"] = after.get("text") or None
+        body["reply_message_id"] = after.get("message_id")
     return ActionOutcome(**body)
 
 
@@ -459,7 +468,8 @@ async def confirm_action(
         user_id=principal.user.id,
         role=principal.user.role,
     )
-    return _outcome_response(response, outcome, runtime, principal)
+    after = await runtime.continue_after(outcome, actor=principal.actor)
+    return _outcome_response(response, outcome, runtime, principal, after)
 
 
 @api.post(
@@ -477,7 +487,8 @@ async def approve_action(
     outcome = await runtime.guard.approve(
         action_id, user_id=principal.user.id, actor=principal.actor, channel=principal.channel
     )
-    return _outcome_response(response, outcome, runtime, principal)
+    after = await runtime.continue_after(outcome, actor=principal.actor)
+    return _outcome_response(response, outcome, runtime, principal, after)
 
 
 @api.post(

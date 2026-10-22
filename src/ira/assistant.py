@@ -80,6 +80,8 @@ OUT_OF_STEPS_RULE = (
     "result, and the one next step (what they could allow, tell you or try)."
 )
 WRAP_UP = "(Out of steps: tell me what you tried, what you found, and what to do next.)"
+# After an action was confirmed on its card: the person's act, said to the model, not stored.
+CONFIRMED_CUE = "(I confirmed it. Go on with what I asked.)"
 SPOKEN_RULE = (
     "This is a live voice call: answer in one to three short sentences meant to be heard, "
     "the most useful thing first. No lists, tables, markdown or web addresses; say numbers "
@@ -185,6 +187,8 @@ class Assistant:
         self.max_tool_rounds = max_tool_rounds
         self.history_messages = history_messages
         self.conversations = conversations or Conversations(store)
+        if self.conversations.personal is None:  # not the business's own: a connection's
+            self.conversations.personal = lambda name: name not in self.registry
         self.personal_tools = personal_tools
         self.user_settings = user_settings or UserSettings(store)
         self.tool_limit = ToolRateLimit(tool_calls_per_minute)
@@ -376,6 +380,11 @@ class Assistant:
             outcome = await self.guard.approve(
                 pending.id, user_id=user_id, actor=actor, channel=channel
             )
+            if outcome.status in ("executed", "failed"):
+                # The model sees what it did (or why it failed) and carries on with the plan.
+                async for event in self._turn(text, conversation_id, channel, actor, True, user_id):
+                    yield event
+                return
         else:
             outcome = self.guard.cancel(pending.id, actor=actor, channel=channel)
         message = outcome.message
@@ -396,18 +405,43 @@ class Assistant:
                 offered[extra.name] = extra
         return offered
 
+    async def follow_up(
+        self,
+        conversation_id: str,
+        *,
+        channel: str,
+        actor: str,
+        user_id: int | None,
+        stream: bool = True,
+    ) -> AsyncIterator[dict[str, Any]]:
+        """Carry on after an action was confirmed outside the chat (a PIN on its card): the
+        model sees what the action returned and goes on with the plan, then answers."""
+        lock = self._locks.setdefault(conversation_id, asyncio.Lock())
+        async with lock:
+            async for event in self._turn(
+                None, conversation_id, channel, actor, stream, user_id, cue=CONFIRMED_CUE
+            ):
+                yield event
+
     async def _turn(
         self,
-        text: str,
+        text: str | None,
         conversation_id: str,
         channel: str,
         actor: str,
         stream: bool,
         user_id: int | None = None,
+        *,
+        cue: str | None = None,
     ) -> AsyncIterator[dict[str, Any]]:
+        """One turn. ``text`` None continues the conversation without a new message (after a
+        confirmed action); ``cue`` is then said to the model, never stored, unless the
+        history already ends with the action's result."""
         history = self.history(conversation_id)
         start = len(history)
-        history.append(Message(role="user", content=text))
+        if text is not None:
+            history.append(Message(role="user", content=text))
+        asked = text if text is not None else _last_user_text(history)
         personal = self._offered(user_id)
         tools = self.registry.schemas() + [t.schema() for t in personal.values()]
         untrusted = bool(personal) or any(
@@ -427,6 +461,8 @@ class Assistant:
 
         for _ in range(self.max_tool_rounds):
             messages = [Message(role="system", content=system), *history]
+            if cue and history and history[-1].role != "tool":
+                messages.append(Message(role="user", content=cue))
             try:
                 response: ChatResponse | None = None
                 if stream:
@@ -504,7 +540,7 @@ class Assistant:
         else:
             final_text, wrap_model = "", None
             async for piece, used in self._wrap_up(
-                history, start, user_id, tier, stream, spoken, untrusted
+                history, start, asked, text is not None, user_id, tier, stream, spoken, untrusted
             ):
                 final_text += piece
                 wrap_model = used or wrap_model
@@ -514,7 +550,7 @@ class Assistant:
             history.append(Message(role="assistant", content=final_text, model=wrap_model))
 
         ids = self.conversations.append(conversation_id, history[start:])
-        if self.after_turn is not None and user_id is not None:
+        if self.after_turn is not None and user_id is not None and text is not None:
             task = asyncio.create_task(self.after_turn(user_id, text))
             self._background.add(task)
             task.add_done_callback(self._background.discard)
@@ -524,6 +560,8 @@ class Assistant:
         self,
         history: list[Message],
         start: int,
+        asked: str,
+        new_message: bool,
         user_id: int | None,
         tier: str | None,
         stream: bool,
@@ -534,7 +572,8 @@ class Assistant:
         what was found and what to do next. It carries no tool messages (some providers
         refuse those without tools): this turn's calls go in as Ira's own notes, with their
         results as quoted data. Yields (text, model); a fixed sentence if the call fails."""
-        notes = _tried(history[start + 1 :])
+        first = start + 1 if new_message else start  # this turn's own messages begin here
+        notes = _tried(history[first:])
         system = self.system_prompt(user_id, untrusted=untrusted, spoken=spoken)
         system += f"- {OUT_OF_STEPS_RULE}\n"
         earlier = [
@@ -542,10 +581,12 @@ class Assistant:
             for m in history[:start]
             if m.role in ("user", "assistant") and m.content and not m.tool_calls
         ]
+        if not new_message and earlier and earlier[-1].role == "user":
+            earlier.pop()  # the request being continued comes next, once
         messages = [
             Message(role="system", content=system),
             *earlier[-self.history_messages :],
-            Message(role="user", content=history[start].content),
+            Message(role="user", content=asked),
             Message(role="assistant", content=notes),
             Message(role="user", content=WRAP_UP),
         ]
@@ -566,7 +607,7 @@ class Assistant:
         except GatewayError as exc:
             log.warning("the wrap-up call failed: %s", exc)
         if not said:
-            yield _out_of_steps(history[start + 1 :]), None
+            yield _out_of_steps(history[first:]), None
 
     async def _run_tool(
         self,
@@ -771,6 +812,10 @@ def _preview(content: str) -> dict[str, Any]:
     if len(content) <= RESULT_PREVIEW_CHARS:
         return {"result": content, "truncated": False}
     return {"result": content[:RESULT_PREVIEW_CHARS] + CUT_MARK, "truncated": True}
+
+
+def _last_user_text(history: list[Message]) -> str:
+    return next((m.content or "" for m in reversed(history) if m.role == "user"), "")
 
 
 def _tried(messages: list[Message], limit: int = 300) -> str:

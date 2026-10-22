@@ -155,6 +155,10 @@ English; Hinglish came back in Devanagari ("क्रोम में कौन 
 हैं"), which the model reads well. A first word was sometimes lost when an
 utterance began with long quiet. Real voices will differ from Polly's.
 
+An action asked for in a call is read back and waits for a "haan" (Tier 2),
+or for the PIN on its card in the app (Tier 3). Once it has run, Ira hears
+what it returned and carries on in the call, spoken, as a turn of its own.
+
 ## Setting it up
 
 ```yaml

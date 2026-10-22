@@ -916,11 +916,11 @@ function actionCard(action) {
         settle(
           "executed",
           `Done. ${byYes ? "Approved" : "Confirmed"} by ${state.info.user.email} at ${clockTime(new Date())}.`,
-          outcome.result,
+          outcome.reply ? undefined : outcome.result, // Ira's answer says what came of it
         );
         break;
       case "failed":
-        settle("failed", outcome.message, outcome.result);
+        settle("failed", outcome.message, outcome.reply ? undefined : outcome.result);
         break;
       case "expired":
       case "cancelled":
@@ -935,6 +935,14 @@ function actionCard(action) {
       default:
         status.textContent = outcome.message || outcome.detail || "Something went wrong.";
         waiting(false);
+    }
+    // Ira saw what the action did and carried on: its answer is the next message. (In a live
+    // call it is spoken there instead, and arrives through the call.)
+    if (outcome.reply) {
+      const li = addTurn("ira", outcome.reply);
+      remember({ role: "ira", text: outcome.reply, how: { model: null, tools: [] } });
+      if (outcome.reply_message_id && typeof IraPersonal !== "undefined") IraPersonal.answered(li, outcome.reply_message_id);
+      announce(outcome.reply);
     }
   });
 

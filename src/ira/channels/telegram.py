@@ -381,6 +381,9 @@ class TelegramBot:
             role=principal.user.role,
         )
         await self._send(chat_id, outcome.message)
+        after = await self.runtime.continue_after(outcome, actor=principal.actor)
+        if after and after.get("text"):
+            await self._send(chat_id, after["text"])  # Ira saw the result and carried on
 
     async def _command(
         self, principal: Principal, chat_id: int, conversation_id: str, text: str

@@ -20,6 +20,10 @@ on its own it can never change anything.
   with the right PIN during the lock.
 - A compare-and-set on the action's status means it **runs at most once**,
   even when two confirmations race.
+- Once it has run, the model sees what became of it (its result, its
+  error, a no, or its expiry), never "waiting for confirmation" again, and
+  carries on from there. The yes or the PIN itself never passes through a
+  model: the server runs the action first, then tells the model.
 - Every proposal and outcome is written to `audit_log` with who and which
   channel.
 

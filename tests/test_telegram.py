@@ -119,6 +119,7 @@ async def test_a_typed_pin_is_deleted_and_never_sent_to_a_model(
             text="", tool_calls=[ToolCall("c1", "refund", '{"order_id": "A1", "amount": 9}')]
         ),
         "I've proposed the refund. Type your PIN to confirm.",
+        "Refund ho gaya.",
     ]
     await bot.handle_update(update("refund A1 by 9", message_id=10))
     assert any(text.startswith("Proposed: Refund 9 on order A1") for text in api.sent())
@@ -134,9 +135,10 @@ async def test_a_typed_pin_is_deleted_and_never_sent_to_a_model(
         i for i, c in enumerate(api.calls) if i > first_delete and c[0] == "sendMessage"
     )
     assert first_delete < first_reply_after  # deleted before anything else is said
-    assert api.sent()[-1].startswith("Done: Refund 9 on order A1")
+    assert api.sent()[-2].startswith("Done: Refund 9 on order A1")
+    assert api.sent()[-1] == "Refund ho gaya."  # then Ira, told what it did, carries on
     assert ledger.refunds == [("A1", 9)]
-    assert len(provider.calls) == model_calls_before
+    assert len(provider.calls) == model_calls_before + 1
     done = runtime.store.one("SELECT actor, channel FROM audit_log WHERE outcome = 'executed'")
     assert (done["actor"], done["channel"]) == ("owner@example.com", "telegram")
     every_message_sent_to_models = [m.text for call in provider.calls for m in call["messages"]]

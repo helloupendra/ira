@@ -170,6 +170,7 @@ async def test_a_connection_action_waits_for_yes_and_its_output_is_untrusted(sto
                 ],
             ),
             "Shall I open it?",
+            "Issue opened.",
         ]
     )
     runtime = make_runtime(provider=provider)
@@ -184,8 +185,12 @@ async def test_a_connection_action_waits_for_yes_and_its_output_is_untrusted(sto
     assert proposal.action is not None and proposal.action.tier == 2
     assert ("create_issue", "ira", "Typo on login") not in seen
     done = await runtime.assistant.ask("haan", conversation_id="c", user_id=user.id)
-    assert done.text.startswith("Done")
+    assert done.text == "Issue opened."
     assert ("create_issue", "ira", "Typo on login") in seen
+    # What the connection returned reaches the model as untrusted data, as a read does.
+    results = [m for m in provider.calls[-1]["messages"] if m.role == "tool"]
+    assert results[-1].text.startswith('<connection_output untrusted="true"')
+    assert '"status": "done"' in results[-1].text
     await runtime.connectors.close()
 
 

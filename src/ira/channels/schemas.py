@@ -202,6 +202,15 @@ class ActionOutcome(BaseModel):
     message: str
     action: ActionView | None = None
     result: Any = None
+    reply: str | None = Field(
+        default=None,
+        description="Ira's answer once the action ran: it saw the result and carried on "
+        "with what was asked. Show it as Ira's next message.",
+    )
+    reply_message_id: int | None = None
+    continued_in_call: bool = Field(
+        default=False, description="The answer is being spoken in the live call instead."
+    )
     attempts_left: int | None = None
     locked_seconds: int | None = None
     locked_until: float | None = Field(default=None, description=LOCKED_UNTIL)

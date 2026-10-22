@@ -83,6 +83,8 @@ class Runtime:
     learner: Learner | None = None
     # The businesses each person works with, as they described them.
     businesses: Businesses = field(init=False)
+    # The live calls open now, by their conversation: a confirmed action carries on in its call.
+    live_calls: dict[str, Any] = field(default_factory=dict)
     # Each person's connections to other services (MCP servers).
     connectors: Any = None
 
@@ -170,6 +172,35 @@ class Runtime:
         if self.connectors is not None:
             tools += self.connectors.tools_for(user_id)
         return tools
+
+    async def continue_after(self, outcome: Any, *, actor: str) -> dict[str, Any] | None:
+        """After an action ran from its card (a PIN, or a yes), carry its conversation on with
+        what it returned: spoken in the live call when one is open on it, otherwise here, and
+        the reply is returned ({"text", "message_id"}). None when there is nothing to carry."""
+        pending = outcome.action
+        if outcome.status not in ("executed", "failed") or pending is None:
+            return None
+        if not pending.conversation_id:
+            return None
+        call = self.live_calls.get(pending.conversation_id)
+        if call is not None:
+            call.follow_up()
+            return {"in_call": True}
+        text, message_id = "", None
+        try:
+            async for event in self.assistant.follow_up(
+                pending.conversation_id,
+                channel=pending.channel or "api",
+                actor=actor,
+                user_id=pending.user_id,
+                stream=False,
+            ):
+                if event.get("type") == "done":
+                    text, message_id = event.get("text") or "", event.get("message_id")
+        except Exception:
+            log.exception("carrying on after action %s failed", pending.id)
+            return None
+        return {"text": text, "message_id": message_id}
 
     def switched_off(self, user_id: int | None) -> list[str]:
         """For each of the person's devices, the skills its tools need that are not switched

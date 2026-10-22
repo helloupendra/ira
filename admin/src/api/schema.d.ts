@@ -1921,6 +1921,19 @@ export interface components {
             action?: components["schemas"]["ActionView"] | null;
             /** Result */
             result?: unknown;
+            /**
+             * Reply
+             * @description Ira's answer once the action ran: it saw the result and carried on with what was asked. Show it as Ira's next message.
+             */
+            reply?: string | null;
+            /** Reply Message Id */
+            reply_message_id?: number | null;
+            /**
+             * Continued In Call
+             * @description The answer is being spoken in the live call instead.
+             * @default false
+             */
+            continued_in_call: boolean;
             /** Attempts Left */
             attempts_left?: number | null;
             /** Locked Seconds */

@@ -86,6 +86,10 @@ switch it on.
   with their password again; an owner sets someone's password or email from
   Users & roles; `ira user password` and `ira user email` do it from the
   server. All go to the change log.
+- **A confirmed action carries on.** After a yes or a PIN, the model sees
+  what the action returned, or why it failed, and goes on with the request;
+  the app shows its answer, and a live call speaks it. Before, the model
+  kept seeing the action as waiting and asked for the PIN again.
 - **Skills that are off are named.** Ira knows which skills a device has
   but the person has not switched on, and says so ("Calls is off on Pixel
   7: switch it on under Your devices") instead of looking elsewhere.
