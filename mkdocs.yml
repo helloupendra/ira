@@ -88,6 +88,7 @@ nav:
   - Design notes:
       - "Phase 1: devices, Chrome and search": design/phase-1-devices.md
       - "Learning your routines": design/learning.md
+      - "Phase 2: tasks on your Mac": design/phase-2-tasks.md
   - Examples:
       - Sunrise Dental Clinic: examples/clinic.md
 

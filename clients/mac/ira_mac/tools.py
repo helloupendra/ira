@@ -124,12 +124,14 @@ class Toolbox:
         browser: Browser,
         announce: Announce,
         *,
+        tasks: Any = None,
         poll_seconds: float = POLL_SECONDS,
         max_watches: int = MAX_WATCHES,
         clock: Callable[[], float] = time.monotonic,
     ) -> None:
         self.browser = browser
         self.announce = announce
+        self.tasks = tasks  # a TaskRunner, when this Mac's config sets tasks up
         self.poll_seconds = poll_seconds
         self.max_watches = max_watches
         self.clock = clock
@@ -138,11 +140,18 @@ class Toolbox:
 
     @property
     def definitions(self) -> list[dict[str, Any]]:
-        return DEFINITIONS
+        return DEFINITIONS + (self.tasks.definitions if self.tasks is not None else [])
 
     async def call(self, name: str, args: dict[str, Any]) -> Any:
         if not isinstance(args, dict):
             raise ToolFailed("arguments must be an object")
+        if name.startswith("task_") and self.tasks is not None:
+            from ira_mac.tasks import TaskError
+
+            try:
+                return await self.tasks.call(name, args)
+            except TaskError as exc:
+                raise ToolFailed(str(exc)) from None
         handler = {
             "chrome_list_tabs": self.list_tabs,
             "chrome_read_tab": self.read_tab,

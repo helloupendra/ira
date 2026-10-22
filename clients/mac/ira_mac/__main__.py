@@ -5,6 +5,7 @@ run      the daemon (the LaunchAgent runs this)
 host     the Chrome native-messaging host (Chrome runs this)
 status   what is set up, never the token
 unpair   tell the server goodbye and forget the token
+detach   run from this Terminal, so tasks can reach ~/Documents
 """
 
 from __future__ import annotations
@@ -15,6 +16,7 @@ import contextlib
 import getpass
 import json
 import logging
+import os
 import signal
 import subprocess
 import sys
@@ -42,7 +44,9 @@ def cmd_pair(args: argparse.Namespace) -> int:
     except (PairError, KeychainError) as exc:
         print(f"Not paired: {exc}", file=sys.stderr)
         return 1
-    config.save(config.Config(server=paired.server, device_id=paired.device_id, label=paired.label))
+    # Keep the rest (the network salt, so named networks still match, and tasks).
+    current.server, current.device_id, current.label = paired.server, paired.device_id, paired.label
+    config.save(current)
     skills = ", ".join(paired.skills) or "none yet (switch them on in the Devices page)"
     print(f"Paired as {paired.label} (device {paired.device_id}) with {paired.server}.")
     print(f"Skills on: {skills}. The token is in your Keychain under 'ira-mac'.")
@@ -64,7 +68,12 @@ async def _run() -> int:
     bridge = ChromeBridge(config.socket_path())
     await bridge.start()
     announce: list = []
-    toolbox = Toolbox(bridge, lambda *event: announce[0](*event))
+    from ira_mac.tasks import TaskRunner, TaskSettings
+
+    task_settings = TaskSettings.from_config(settings.tasks)
+    tell = lambda *event: announce[0](*event)  # noqa: E731
+    tasks = TaskRunner(task_settings, tell) if task_settings is not None else None
+    toolbox = Toolbox(bridge, tell, tasks=tasks)
     daemon = Daemon(settings.websocket_url(), keychain.load, toolbox, label=settings.label)
     announce.append(daemon.announce)
     routine = Routine(daemon.observe, MacProbe(), config.salt(settings))
@@ -85,7 +94,44 @@ async def _run() -> int:
 
 def cmd_run(args: argparse.Namespace) -> int:
     logs.setup(None if args.foreground else config.log_path())
-    return asyncio.run(_run())
+    pid_file = config.home() / "run" / "daemon.pid"
+    pid_file.parent.mkdir(parents=True, exist_ok=True)
+    pid_file.write_text(str(os.getpid()), encoding="utf-8")
+    try:
+        return asyncio.run(_run())
+    finally:
+        with contextlib.suppress(OSError):
+            if pid_file.read_text(encoding="utf-8") == str(os.getpid()):
+                pid_file.unlink()
+
+
+def cmd_detach(args: argparse.Namespace) -> int:
+    """Run the companion from this Terminal session, which macOS lets into Documents.
+
+    A LaunchAgent may not read ~/Documents, ~/Desktop or ~/Downloads, so a task in
+    a repository there fails. This stops the LaunchAgent's copy and starts the
+    companion from here instead, until the next login (when the LaunchAgent
+    starts again). Full Disk Access for the companion's Python is the lasting way.
+    """
+    subprocess.run(
+        ["/bin/launchctl", "bootout", f"gui/{_uid()}/{config.LABEL}"],
+        capture_output=True,
+        check=False,
+    )
+    pid_file = config.home() / "run" / "daemon.pid"
+    with contextlib.suppress(OSError, ValueError):
+        old = int(pid_file.read_text(encoding="utf-8"))
+        os.kill(old, signal.SIGTERM)  # an earlier detached copy
+    subprocess.Popen(
+        [sys.executable, "-m", "ira_mac", "run"],
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        start_new_session=True,
+    )
+    print("The companion now runs from this Terminal session, until you log out.")
+    print("It can reach the folders Terminal may use. To go back: ./install.sh")
+    return 0
 
 
 def cmd_host(args: argparse.Namespace) -> int:
@@ -168,6 +214,9 @@ def main(argv: list[str] | None = None) -> int:
     p.set_defaults(handler=cmd_run)
     sub.add_parser("host", help="the Chrome native-messaging host").set_defaults(handler=cmd_host)
     sub.add_parser("status", help="what is set up").set_defaults(handler=cmd_status)
+    sub.add_parser(
+        "detach", help="run from this Terminal, so tasks can reach ~/Documents"
+    ).set_defaults(handler=cmd_detach)
     sub.add_parser("unpair", help="forget this Mac's token").set_defaults(handler=cmd_unpair)
     # Chrome starts the host with the extension's origin as an argument; ignore extras.
     args, _ = parser.parse_known_args(argv)

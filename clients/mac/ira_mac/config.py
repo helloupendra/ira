@@ -10,7 +10,7 @@ from __future__ import annotations
 import json
 import os
 import secrets
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
 LABEL = "in.ira.mac"
@@ -52,6 +52,9 @@ class Config:
     label: str = "My Mac"
     # Salts this Mac's network hashes, so the server can only tell networks apart.
     network_salt: str = ""
+    # Tasks: the agent's command and the repositories allowed. Only ever set here,
+    # by the person, on this Mac (see the tasks module).
+    tasks: dict = field(default_factory=dict)
 
     def websocket_url(self) -> str:
         if not self.server:
@@ -75,6 +78,7 @@ def load(path: Path | None = None) -> Config:
         device_id=data.get("device_id"),
         label=str(data.get("label") or Config.label),
         network_salt=str(data.get("network_salt") or ""),
+        tasks=data["tasks"] if isinstance(data.get("tasks"), dict) else {},
     )
 
 

@@ -92,6 +92,13 @@ fi
 
 companion() { PYTHONPATH="$APP/app" "$APP/venv/bin/python" -m ira_mac "$@"; }
 
+# A launcher: ira-mac status, ira-mac detach, ira-mac pair.
+cat > "$APP/ira-mac" <<LAUNCHER
+#!/bin/sh
+PYTHONPATH="$APP/app" exec "$APP/venv/bin/python" -m ira_mac "\$@"
+LAUNCHER
+chmod 755 "$APP/ira-mac"
+
 # The native messaging host: a small wrapper Chrome starts for the extension.
 HOST="$APP/ira-chrome-host"
 cat > "$HOST" <<HOSTSCRIPT
