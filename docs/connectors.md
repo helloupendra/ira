@@ -153,11 +153,37 @@ passwords). Ira opens the inbox read-only, so reading never marks a mail
 as read. The app password is sealed like a token. Calendar still needs
 Google's sign-in.
 
+## Telegram, as you
+
+The Telegram bot is for talking to Ira. This is different: Ira reads your
+own chats and, after your yes, sends as you. It is opt-in, and needs:
+
+1. Your own **api_id** and **api_hash**: sign in at my.telegram.org, then
+   **API development tools**, and create an app (any name).
+2. Under **Your connections**, **Telegram (as you)**: the two values, your
+   phone number with its country code, and your PIN. Telegram sends you a
+   code in the Telegram app; type it on the card (and your two-step
+   password, if you set one).
+
+Ira then has three tools: list your chats (Tier 0), read the latest
+messages of one chat (Tier 0), and send a message to one chat by its exact
+name (Tier 2: read back with the chat and the words, then your yes). When
+two chats match a name ("Rahul"), Ira asks which one. The login session is
+sealed like a token; **Remove** forgets it (also end it in Telegram's
+Settings, Devices).
+
+**Plainly:** Telegram allows clients made with your own api_id. Heavy
+automation can get an account limited, so Ira reads only when you ask and
+sends one confirmed message at a time.
+
+## WhatsApp
+
+There is no official WhatsApp API for personal accounts, and Ira will not
+use an unofficial one: they break WhatsApp's terms and risk a ban. For a
+business number, the WhatsApp Business Cloud API is the way. On a phone,
+the Android app reads notifications, including WhatsApp's, and replies
+through them, which is allowed.
+
 ## Coming next
 
-A Telegram user client for reading and sending as you (opt-in), and a kit
-for connecting any business's API. There is no official WhatsApp API for
-personal accounts, and Ira will not use an unofficial one: the WhatsApp
-Business Cloud API, for a business number, is the only way it will offer.
-On a phone, the Android app reads notifications, including WhatsApp's,
-and replies through them, which is allowed.
+A kit for connecting any business's API (`ira connector new`).

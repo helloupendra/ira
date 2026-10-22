@@ -8154,6 +8154,63 @@
                 }
             }
         },
+        "/v1/me/connections/{connection_id}/code": {
+            "post": {
+                "tags": [
+                    "your connections"
+                ],
+                "summary": "Finish signing in to Telegram with the code it sent you",
+                "operationId": "telegram_code",
+                "security": [
+                    {
+                        "HTTPBearer": []
+                    }
+                ],
+                "parameters": [
+                    {
+                        "name": "connection_id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "title": "Connection Id"
+                        }
+                    }
+                ],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/TelegramCode"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ConnectionView"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
         "/v1/me/connections/{connection_id}": {
             "patch": {
                 "tags": [
@@ -9167,7 +9224,8 @@
                         "type": "string",
                         "enum": [
                             "google",
-                            "imap"
+                            "imap",
+                            "telegram"
                         ],
                         "title": "Kind"
                     },
@@ -9461,7 +9519,8 @@
                                 "type": "string",
                                 "enum": [
                                     "google",
-                                    "imap"
+                                    "imap",
+                                    "telegram"
                                 ]
                             },
                             {
@@ -9469,12 +9528,22 @@
                             }
                         ],
                         "title": "Builtin",
-                        "description": "Or Google (sign in) or IMAP mail (with imap)."
+                        "description": "Or Google (sign in), IMAP mail (with imap) or Telegram as you (with telegram: Telegram sends a code to finish with)."
                     },
                     "imap": {
                         "anyOf": [
                             {
                                 "$ref": "#/components/schemas/ImapLogin"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ]
+                    },
+                    "telegram": {
+                        "anyOf": [
+                            {
+                                "$ref": "#/components/schemas/TelegramLogin"
                             },
                             {
                                 "type": "null"
@@ -9642,7 +9711,8 @@
                             "mcp_http",
                             "mcp_stdio",
                             "google",
-                            "imap"
+                            "imap",
+                            "telegram"
                         ],
                         "title": "Kind"
                     },
@@ -9680,7 +9750,9 @@
                             "new",
                             "ok",
                             "error",
-                            "needs_auth"
+                            "needs_auth",
+                            "needs_code",
+                            "needs_password"
                         ],
                         "title": "Status"
                     },
@@ -13341,6 +13413,64 @@
                 ],
                 "title": "TelegramChat",
                 "description": "A private chat paired with an account: it acts as that user."
+            },
+            "TelegramCode": {
+                "properties": {
+                    "code": {
+                        "type": "string",
+                        "maxLength": 10,
+                        "minLength": 3,
+                        "title": "Code",
+                        "description": "The code Telegram sent you."
+                    },
+                    "password": {
+                        "anyOf": [
+                            {
+                                "type": "string",
+                                "maxLength": 200
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Password",
+                        "description": "Your two-step password, if you set one."
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "code"
+                ],
+                "title": "TelegramCode"
+            },
+            "TelegramLogin": {
+                "properties": {
+                    "api_id": {
+                        "type": "integer",
+                        "exclusiveMinimum": 0.0,
+                        "title": "Api Id",
+                        "description": "From my.telegram.org, under API development tools."
+                    },
+                    "api_hash": {
+                        "type": "string",
+                        "maxLength": 32,
+                        "minLength": 32,
+                        "title": "Api Hash"
+                    },
+                    "phone": {
+                        "type": "string",
+                        "maxLength": 20,
+                        "title": "Phone",
+                        "description": "With its country code: +91..."
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "api_id",
+                    "api_hash",
+                    "phone"
+                ],
+                "title": "TelegramLogin"
             },
             "TelegramPairing": {
                 "properties": {

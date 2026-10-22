@@ -60,7 +60,7 @@ class Connection:
     user_id: int
     name: str
     slug: str
-    kind: str  # "mcp_http", "mcp_stdio", "google" or "imap"
+    kind: str  # "mcp_http", "mcp_stdio", "google", "imap" or "telegram"
     url: str | None
     server: str | None
     tools: list[dict[str, Any]] = field(default_factory=list)
@@ -128,6 +128,7 @@ class Connectors:
         callback_url: Callable[[], str] = lambda: "http://127.0.0.1:8765",
         google: Callable[[], Any] | None = None,
         mailbox: Callable[..., Any] | None = None,
+        telegram: Callable[..., Any] | None = None,
         zone_for: Callable[[int], Any] | None = None,
         clock: Callable[[], float] = time.time,
     ) -> None:
@@ -143,6 +144,9 @@ class Connectors:
         self.by_state: dict[str, SignIn | GoogleSignIn] = {}  # by the state echoed back
         self._google = google
         self._mailbox = mailbox
+        self._telegram = telegram
+        self.telegrams: dict[str, Any] = {}  # live Telegram clients, by connection
+        self.logins: dict[str, tuple[Any, str, str]] = {}  # (client, phone, code hash)
         self.zone_for = zone_for
 
     def sealer(self) -> Sealer:
@@ -183,8 +187,21 @@ class Connectors:
 
         return Mailbox(host, user, password, port)
 
+    def telegram(self, api_id: int, api_hash: str, session: str = "") -> Any:
+        if self._telegram is not None:
+            return self._telegram(api_id, api_hash, session)
+        from ira.connectors.telegram_user import TelegramUser
+
+        return TelegramUser(api_id, api_hash, session)
+
     def builtins(self) -> list[dict[str, Any]]:
         """Services Ira connects to itself, beside MCP servers."""
+        try:
+            import telethon  # noqa: F401
+
+            telegram_ready = True
+        except ImportError:
+            telegram_ready = self._telegram is not None
         return [
             {
                 "kind": "google",
@@ -198,6 +215,13 @@ class Connectors:
                 "description": "Any mailbox, read-only, with an app password from your mail "
                 "provider. No Google sign-in needed.",
                 "available": True,
+            },
+            {
+                "kind": "telegram",
+                "name": "Telegram (as you)",
+                "description": "Read your Telegram chats, and send as you after your yes. Needs "
+                "your own api_id and api_hash from my.telegram.org.",
+                "available": telegram_ready,
             },
         ]
 
@@ -288,8 +312,8 @@ class Connectors:
                 "mcp_name": d["mcp_name"],
                 "description": d["description"],
                 "schema": d["schema"],
-                "min_tier": 0,
-                "tier": 0,
+                "min_tier": int(d.get("tier", 0)),
+                "tier": int(d.get("tier", 0)),
                 "enabled": True,
             }
             for d in definitions
@@ -333,8 +357,72 @@ class Connectors:
         )
         return self.get(user_id, connection.id)
 
+    async def add_telegram(
+        self, user_id: int, name: str, api_id: int, api_hash: str, phone: str
+    ) -> Connection:
+        """Start signing in as the person: Telegram sends them a code."""
+        from ira.connectors.telegram_user import TOOLS
+
+        phone = re.sub(r"[\s()-]", "", phone)
+        if not re.fullmatch(r"\+\d{7,15}", phone):
+            raise ConnectionError_("give the phone number with its country code: +91...")
+        if api_id <= 0 or not re.fullmatch(r"[0-9a-f]{32}", api_hash.strip().lower()):
+            raise ConnectionError_("api_id and api_hash come from my.telegram.org, under API")
+        client = self.telegram(api_id, api_hash.strip().lower())
+        code_hash = await client.send_code(phone)
+        connection = self._insert(
+            user_id,
+            name or "Telegram",
+            "telegram",
+            url=None,
+            server=None,
+            secret={"api_id": api_id, "api_hash": api_hash.strip().lower(), "phone": phone},
+        )
+        self.logins[connection.id] = (client, phone, code_hash)
+        tools = self._builtin_tools(connection.slug, TOOLS)
+        self.store.execute(
+            "UPDATE connections SET tools = ?, status = 'needs_code' WHERE id = ?",
+            (json.dumps(tools), connection.id),
+        )
+        return self.get(user_id, connection.id)
+
+    async def telegram_code(
+        self, user_id: int, connection_id: str, code: str, password: str | None = None
+    ) -> Connection:
+        """Finish signing in with the code Telegram sent (and the two-step password)."""
+        from ira.connectors.telegram_user import NeedsPassword
+
+        connection = self.get(user_id, connection_id)
+        login = self.logins.get(connection.id)
+        if login is None:
+            raise ConnectionError_("this sign-in has expired: remove it and connect again")
+        client, phone, code_hash = login
+        try:
+            session = await client.sign_in(phone, code.strip(), code_hash, password)
+        except NeedsPassword:
+            self.store.execute(
+                "UPDATE connections SET status = 'needs_password' WHERE id = ?", (connection.id,)
+            )
+            raise
+        secret = {**self._secret(connection), "session": session}
+        sealed = self.sealer().seal(secret, f"{connection.user_id}:{connection.id}")
+        self.store.execute(
+            "UPDATE connections SET secret = ?, status = 'ok', error = NULL, checked_at = ? "
+            "WHERE id = ?",
+            (sealed, self.clock(), connection.id),
+        )
+        self.logins.pop(connection.id, None)
+        self.telegrams[connection.id] = client
+        return self.get(user_id, connection_id)
+
     async def remove(self, user_id: int, connection_id: str) -> None:
         connection = self.get(user_id, connection_id)
+        for live in (
+            self.telegrams.pop(connection.id, None),
+            self.logins.pop(connection.id, (None,))[0],
+        ):
+            if live is not None:
+                await live.close()
         worker = self.workers.pop(connection.id, None)
         if worker is not None:
             await worker.close()
@@ -543,6 +631,14 @@ class Connectors:
 
     async def _builtin_call(self, connection: Connection, name: str, args: dict[str, Any]) -> Any:
         secret = self._secret(connection)
+        if connection.kind == "telegram":
+            client = self.telegrams.get(connection.id)
+            if client is None:
+                if not secret.get("session"):
+                    raise NeedsSignIn("finish signing in to Telegram first")
+                client = self.telegram(secret["api_id"], secret["api_hash"], secret["session"])
+                self.telegrams[connection.id] = client
+            return await client.call(name, args)
         if connection.kind == "imap":
             box = self.mailbox(secret["host"], secret["user"], secret["password"], secret["port"])
             return await box.call(name, args)
@@ -585,9 +681,12 @@ class Connectors:
     async def refresh(self, user_id: int, connection_id: str) -> Connection:
         """Fetch the server's tools again, keeping the person's choices for known ones."""
         connection = self.get(user_id, connection_id)
-        if connection.kind in ("google", "imap"):
+        if connection.kind in ("google", "imap", "telegram"):
             secret = self._secret(connection)
-            if connection.kind == "google":
+            if connection.kind == "telegram":
+                status = "ok" if secret.get("session") else connection.status
+                error = None
+            elif connection.kind == "google":
                 status = "ok" if secret.get("tokens") else "needs_auth"
                 error = None if status == "ok" else "sign in with Google"
             else:
@@ -644,7 +743,7 @@ class Connectors:
         connection = self.get(user_id, connection_id)
         if not connection.enabled:
             raise ConnectionError_(f"{connection.name} is switched off")
-        if connection.kind in ("google", "imap"):
+        if connection.kind in ("google", "imap", "telegram"):
             return await self._builtin_call(connection, mcp_name, arguments)
         result = await self._worker(connection).request("call", (mcp_name, arguments))
         return mcp.result_text(result)
@@ -681,6 +780,10 @@ class Connectors:
         )
 
     async def close(self) -> None:
+        for client in [*self.telegrams.values(), *(login[0] for login in self.logins.values())]:
+            await client.close()
+        self.telegrams.clear()
+        self.logins.clear()
         for pending in list(self.sign_ins.values()):
             if pending.task is not None:
                 pending.task.cancel()

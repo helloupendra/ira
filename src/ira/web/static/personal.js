@@ -871,7 +871,11 @@ const IraPersonal = (() => {
           ? `Could not connect: ${connection.error || "unknown error"}`
           : connection.status === "needs_auth"
             ? "Sign in to the service to use it."
-            : "Not checked yet";
+            : connection.status === "needs_code"
+              ? "Telegram sent you a code: type it below."
+              : connection.status === "needs_password"
+                ? "Your account has a two-step password: type it with the code."
+                : "Not checked yet";
     const tools = el("details", {}, el("summary", { text: "Tools" }));
     for (const tool of connection.tools) {
       const on = el("input", { type: "checkbox", checked: tool.enabled, "aria-label": `Use ${tool.mcp_name}` });
@@ -912,7 +916,8 @@ const IraPersonal = (() => {
       el("p", {}, el("strong", { text: connection.name }), connection.enabled ? "" : " (off)"),
       el("p", { className: "muted small breakable", text: where }),
       el("p", { className: connection.status === "error" ? "error small" : "muted small", text: state }),
-      connection.tools.length ? tools : null,
+      connection.tools.length && connection.status === "ok" ? tools : null,
+      connection.status === "needs_code" || connection.status === "needs_password" ? telegramCode(connection, body) : null,
       pin,
       el(
         "div",
@@ -945,6 +950,34 @@ const IraPersonal = (() => {
     );
   }
 
+  function telegramCode(connection, body) {
+    const code = el("input", { name: "code", inputmode: "numeric", autocomplete: "one-time-code", maxlength: "10", required: true });
+    const password = el("input", { name: "password", type: "password", autocomplete: "off", maxlength: "200" });
+    const error = el("p", { className: "error", role: "alert" });
+    const form = el(
+      "form",
+      { className: "stack-tight" },
+      el("label", {}, "The code from Telegram", code),
+      el("label", { hidden: connection.status !== "needs_password" }, "Two-step password", password),
+      el("button", { type: "submit", className: "btn btn-primary", text: "Finish" }),
+      error,
+    );
+    form.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      try {
+        await call(`/v1/me/connections/${encodeURIComponent(connection.id)}/code`, {
+          method: "POST",
+          json: { code: code.value, password: password.value || undefined },
+        });
+        await renderConnections(body);
+      } catch (problem) {
+        password.closest("label").hidden = false;
+        error.textContent = problem.message;
+      }
+    });
+    return form;
+  }
+
   function addConnection(view, body) {
     const name = el("input", { name: "name", maxlength: "40", required: true, placeholder: "GitHub" });
     const url = el("input", { name: "url", type: "url", maxlength: "500", placeholder: "https://…/mcp" });
@@ -967,7 +1000,19 @@ const IraPersonal = (() => {
       el("label", {}, "Your address", imapUser),
       el("label", {}, "App password (from your mail provider, not your usual password)", imapPassword),
     );
-    let mode = "mcp"; // mcp, google or imap
+    // Telegram as you: your own api_id and api_hash, and your phone number.
+    const tgId = el("input", { name: "tg_id", inputmode: "numeric", maxlength: "12" });
+    const tgHash = el("input", { name: "tg_hash", maxlength: "32", autocomplete: "off" });
+    const tgPhone = el("input", { name: "tg_phone", type: "tel", maxlength: "20", placeholder: "+91…" });
+    const telegramFields = el(
+      "div",
+      { className: "stack-tight", hidden: true },
+      el("label", {}, "api_id (my.telegram.org, API development tools)", tgId),
+      el("label", {}, "api_hash", tgHash),
+      el("label", {}, "Your phone number", tgPhone),
+    );
+    let mode = "mcp"; // mcp, google, imap or telegram
+    const telegram = (view.builtins || []).find((b) => b.kind === "telegram");
     const google = (view.builtins || []).find((b) => b.kind === "google");
     const pin = pinField();
     const error = el("p", { className: "error", role: "alert" });
@@ -1010,6 +1055,19 @@ const IraPersonal = (() => {
               },
             })
           : null,
+        telegram && telegram.available
+          ? el("button", {
+              type: "button",
+              className: "text-btn",
+              text: "Telegram (as you)",
+              onClick: () => {
+                setMode("telegram");
+                name.value = "Telegram";
+                hint.textContent = "Ira reads your chats when you ask, and sends only after your yes. Telegram allows clients made with your own api_id; heavy automation can get an account limited.";
+                tgId.focus();
+              },
+            })
+          : null,
         el("button", {
           type: "button",
           className: "text-btn",
@@ -1028,6 +1086,7 @@ const IraPersonal = (() => {
       el("label", { className: "switch" }, oauth, el("span", { text: "Sign in with the service instead of a token" })),
       el("label", {}, "Token", token),
       imapFields,
+      telegramFields,
       hint,
       needs,
       pin,
@@ -1040,6 +1099,7 @@ const IraPersonal = (() => {
       for (const field of [url, token, oauth]) field.closest("label").hidden = mode !== "mcp";
       if (server.closest("label")) server.closest("label").hidden = mode !== "mcp";
       imapFields.hidden = mode !== "imap";
+      telegramFields.hidden = mode !== "telegram";
     }
     form.addEventListener("submit", async (event) => {
       event.preventDefault();
@@ -1049,6 +1109,7 @@ const IraPersonal = (() => {
       for (const [key, value] of data.entries()) if (key.startsWith("env:")) env[key.slice(4)] = value;
       const payload = { name: name.value, pin: $("input", pin).value || undefined };
       if (mode === "google") Object.assign(payload, { builtin: "google" });
+      else if (mode === "telegram") Object.assign(payload, { builtin: "telegram", telegram: { api_id: Number(tgId.value), api_hash: tgHash.value.trim(), phone: tgPhone.value } });
       else if (mode === "imap") Object.assign(payload, { builtin: "imap", imap: { host: imapHost.value, user: imapUser.value, password: imapPassword.value } });
       else if (server.value) Object.assign(payload, { server: server.value, env });
       else if (oauth.checked) Object.assign(payload, { url: url.value, oauth: true });

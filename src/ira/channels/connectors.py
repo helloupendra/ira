@@ -26,6 +26,7 @@ from ira.channels.schemas import (
     ConnectionView,
     OkResponse,
     ServerOffer,
+    TelegramCode,
 )
 from ira.connectors.sealed import SealError
 from ira.runtime import Runtime
@@ -98,6 +99,14 @@ async def add_connection(
             view = _view(connection)
             view.authorize_url = address
             return view
+        if body.builtin == "telegram":
+            if body.telegram is None:
+                raise HTTPException(400, detail="give api_id, api_hash and your phone number")
+            login = body.telegram
+            connection = await service.add_telegram(
+                who.user.id, body.name, login.api_id, login.api_hash, login.phone
+            )
+            return _view(connection)
         if body.builtin == "imap":
             if body.imap is None:
                 raise HTTPException(400, detail="give the mail server, address and app password")
@@ -191,6 +200,26 @@ async def refresh_connection(
     service = _service(runtime)
     try:
         return _view(await service.refresh(who.user.id, connection_id))
+    except (ToolError, SealError) as exc:
+        raise _fail(exc) from None
+
+
+@router.post(
+    "/{connection_id}/code",
+    response_model=ConnectionView,
+    summary="Finish signing in to Telegram with the code it sent you",
+)
+async def telegram_code(
+    connection_id: str,
+    body: TelegramCode,
+    who: Principal = Depends(your_session),
+    runtime: Runtime = Depends(get_runtime),
+) -> ConnectionView:
+    service = _service(runtime)
+    try:
+        return _view(
+            await service.telegram_code(who.user.id, connection_id, body.code, body.password)
+        )
     except (ToolError, SealError) as exc:
         raise _fail(exc) from None
 

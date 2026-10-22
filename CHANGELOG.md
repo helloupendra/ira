@@ -101,7 +101,9 @@ switch it on.
   and never shown again. Remote servers on private addresses are refused
   unless allowed. Google (Gmail and Calendar, read-only, through the
   owner's own OAuth client) and any mailbox over IMAP with an app password
-  are built in. Services that sign you in (OAuth) work too: Ira opens
+  are built in, and so is Telegram as you (a user client with the
+  person's own api_id; sending is Tier 2). Services that sign you in
+  (OAuth) work too: Ira opens
   their page and finishes when the browser comes back. A confirmed Tier 2
   or 3 action of a connection runs through that person's own tool.
 - **A general assistant.** Ira plans across tools on any of the person's

@@ -1390,11 +1390,11 @@ class ConnectionView(BaseModel):
     id: str
     name: str
     slug: str
-    kind: Literal["mcp_http", "mcp_stdio", "google", "imap"]
+    kind: Literal["mcp_http", "mcp_stdio", "google", "imap", "telegram"]
     url: str | None = Field(description="A remote server's address; never its token.")
     server: str | None = Field(description="A local server this IRA offers, by name.")
     enabled: bool
-    status: Literal["new", "ok", "error", "needs_auth"]
+    status: Literal["new", "ok", "error", "needs_auth", "needs_code", "needs_password"]
     error: str | None = None
     created_at: float
     checked_at: float | None = None
@@ -1413,7 +1413,7 @@ class ServerOffer(BaseModel):
 
 
 class BuiltinOffer(BaseModel):
-    kind: Literal["google", "imap"]
+    kind: Literal["google", "imap", "telegram"]
     name: str
     description: str
     available: bool = Field(description="False: this server's owner has not set it up.")
@@ -1424,6 +1424,19 @@ class ConnectionsView(BaseModel):
     connections: list[ConnectionView]
     servers: list[ServerOffer]
     builtins: list[BuiltinOffer] = Field(default_factory=list)
+
+
+class TelegramLogin(BaseModel):
+    api_id: int = Field(gt=0, description="From my.telegram.org, under API development tools.")
+    api_hash: str = Field(min_length=32, max_length=32)
+    phone: str = Field(max_length=20, description="With its country code: +91...")
+
+
+class TelegramCode(BaseModel):
+    code: str = Field(min_length=3, max_length=10, description="The code Telegram sent you.")
+    password: str | None = Field(
+        default=None, max_length=200, description="Your two-step password, if you set one."
+    )
 
 
 class ImapLogin(BaseModel):
@@ -1444,10 +1457,13 @@ class ConnectionCreate(BaseModel):
         default=False, description="Sign in with the service (OAuth) instead of a token."
     )
     server: str | None = Field(default=None, max_length=40, description="Or a local one, by name.")
-    builtin: Literal["google", "imap"] | None = Field(
-        default=None, description="Or Google (sign in) or IMAP mail (with imap)."
+    builtin: Literal["google", "imap", "telegram"] | None = Field(
+        default=None,
+        description="Or Google (sign in), IMAP mail (with imap) or Telegram as you (with "
+        "telegram: Telegram sends a code to finish with).",
     )
     imap: ImapLogin | None = None
+    telegram: TelegramLogin | None = None
     env: dict[str, str] = Field(default_factory=dict, description="What a local server needs.")
     pin: str | None = Field(default=None, description="Your action PIN.")
 

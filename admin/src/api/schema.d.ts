@@ -1667,6 +1667,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/me/connections/{connection_id}/code": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Finish signing in to Telegram with the code it sent you */
+        post: operations["telegram_code"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/me/connections/{connection_id}": {
         parameters: {
             query?: never;
@@ -2094,7 +2111,7 @@ export interface components {
              * Kind
              * @enum {string}
              */
-            kind: "google" | "imap";
+            kind: "google" | "imap" | "telegram";
             /** Name */
             name: string;
             /** Description */
@@ -2220,10 +2237,11 @@ export interface components {
             server?: string | null;
             /**
              * Builtin
-             * @description Or Google (sign in) or IMAP mail (with imap).
+             * @description Or Google (sign in), IMAP mail (with imap) or Telegram as you (with telegram: Telegram sends a code to finish with).
              */
-            builtin?: ("google" | "imap") | null;
+            builtin?: ("google" | "imap" | "telegram") | null;
             imap?: components["schemas"]["ImapLogin"] | null;
+            telegram?: components["schemas"]["TelegramLogin"] | null;
             /**
              * Env
              * @description What a local server needs.
@@ -2297,7 +2315,7 @@ export interface components {
              * Kind
              * @enum {string}
              */
-            kind: "mcp_http" | "mcp_stdio" | "google" | "imap";
+            kind: "mcp_http" | "mcp_stdio" | "google" | "imap" | "telegram";
             /**
              * Url
              * @description A remote server's address; never its token.
@@ -2314,7 +2332,7 @@ export interface components {
              * Status
              * @enum {string}
              */
-            status: "new" | "ok" | "error" | "needs_auth";
+            status: "new" | "ok" | "error" | "needs_auth" | "needs_code" | "needs_password";
             /** Error */
             error?: string | null;
             /** Created At */
@@ -3965,6 +3983,34 @@ export interface components {
              * @description That account's role now.
              */
             role: string;
+        };
+        /** TelegramCode */
+        TelegramCode: {
+            /**
+             * Code
+             * @description The code Telegram sent you.
+             */
+            code: string;
+            /**
+             * Password
+             * @description Your two-step password, if you set one.
+             */
+            password?: string | null;
+        };
+        /** TelegramLogin */
+        TelegramLogin: {
+            /**
+             * Api Id
+             * @description From my.telegram.org, under API development tools.
+             */
+            api_id: number;
+            /** Api Hash */
+            api_hash: string;
+            /**
+             * Phone
+             * @description With its country code: +91...
+             */
+            phone: string;
         };
         /**
          * TelegramPairing
@@ -10348,6 +10394,41 @@ export interface operations {
             cookie?: never;
         };
         requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConnectionView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    telegram_code: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                connection_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TelegramCode"];
+            };
+        };
         responses: {
             /** @description Successful Response */
             200: {

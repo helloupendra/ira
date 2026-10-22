@@ -590,3 +590,136 @@ async def test_imap_mail_with_an_app_password(store):
         "FROM",
         '"rahul@example.com"',
     ]
+
+
+class StandInTelethon:
+    """Just enough of Telethon's client: login, dialogs, messages, sending."""
+
+    password_needed = False
+    instances: list = []
+
+    def __init__(self, api_id, api_hash, session):
+        from types import SimpleNamespace
+
+        self.authorized = bool(session)
+        self.sent: list = []
+        self.session = SimpleNamespace(save=lambda: "sealed-me-please")
+        StandInTelethon.instances.append(self)
+
+    async def connect(self):
+        return None
+
+    def disconnect(self):
+        return None
+
+    async def send_code_request(self, phone):
+        from types import SimpleNamespace
+
+        return SimpleNamespace(phone_code_hash="hash-1")
+
+    async def is_user_authorized(self):
+        return self.authorized
+
+    async def sign_in(self, phone=None, code=None, phone_code_hash=None, password=None):
+        from telethon.errors import (
+            PasswordHashInvalidError,
+            PhoneCodeInvalidError,
+            SessionPasswordNeededError,
+        )
+
+        if password is not None:
+            if password != "two-step":  # pragma: allowlist secret
+                raise PasswordHashInvalidError(request=None)
+            self.authorized = True
+            return
+        if code != "12345" or phone_code_hash != "hash-1":
+            raise PhoneCodeInvalidError(request=None)
+        if StandInTelethon.password_needed:
+            raise SessionPasswordNeededError(request=None)
+        self.authorized = True
+
+    def _dialogs(self):
+        from types import SimpleNamespace
+
+        def dialog(name, unread):
+            return SimpleNamespace(
+                entity=SimpleNamespace(title=name), unread_count=unread, message=None
+            )
+
+        return [dialog("Rahul Sharma", 2), dialog("Rahul (Office)", 0), dialog("Family", 5)]
+
+    async def iter_dialogs(self, limit=None):
+        for d in self._dialogs()[:limit]:
+            yield d
+
+    async def iter_messages(self, entity, limit=None):
+        from types import SimpleNamespace
+
+        yield SimpleNamespace(out=False, sender=entity, date="10:01", message="GST file kar diya?")
+        yield SimpleNamespace(out=True, sender=None, date="10:00", message="Hello")
+
+    async def send_message(self, entity, text):
+        self.sent.append((entity.title, text))
+
+
+async def test_telegram_as_the_person(store):
+    pytest.importorskip("telethon")
+    from ira.connectors.telegram_user import NeedsPassword, TelegramUser
+
+    StandInTelethon.instances.clear()
+    StandInTelethon.password_needed = True
+    connectors = Connectors(
+        store,
+        lambda: Sealer(KEY),
+        ConnectorsConfig(),
+        telegram=lambda a, h, s: TelegramUser(a, h, s, client_factory=StandInTelethon),
+    )
+    assert connectors.builtins()[2]["kind"] == "telegram"
+    with pytest.raises(ToolError, match="country code"):
+        await connectors.add_telegram(1, "Telegram", 12345, "a" * 32, "98100 00000")
+    added = await connectors.add_telegram(
+        1, "Telegram", 12345, "0123456789abcdef" * 2, "+91 98100 00000"
+    )
+    assert added.status == "needs_code" and connectors.tools_for(1) == []
+    with pytest.raises(ToolError, match="code is wrong"):
+        await connectors.telegram_code(1, added.id, "00000")
+    with pytest.raises(NeedsPassword):
+        await connectors.telegram_code(1, added.id, "12345")
+    assert connectors.get(1, added.id).status == "needs_password"
+    done = await connectors.telegram_code(1, added.id, "12345", "two-step")
+    assert done.status == "ok"
+    raw = bytes(store.one("SELECT secret FROM connections WHERE id = ?", (added.id,))["secret"])
+    assert b"sealed-me-please" not in raw and b"0123456789abcdef" not in raw
+    tools = {t.name: t for t in connectors.tools_for(1)}
+    assert {name: t.tier for name, t in tools.items()} == {
+        "telegram_chats": 0,
+        "telegram_read": 0,
+        "telegram_send": 2,
+    }
+    chats = await tools["telegram_chats"].run({})
+    assert [c["name"] for c in chats["chats"]] == ["Rahul Sharma", "Rahul (Office)", "Family"]
+    with pytest.raises(
+        ToolError, match="several chats match rahul: Rahul \\(Office\\), Rahul Sharma"
+    ):
+        await tools["telegram_read"].run({"chat": "rahul"})
+    read = await tools["telegram_read"].run({"chat": "Rahul Sharma"})
+    assert read["messages"][-1] == {
+        "from": "Rahul Sharma",
+        "at": "10:01",
+        "text": "GST file kar diya?",
+    }
+    with pytest.raises(ToolError, match="exact name: Family"):
+        await tools["telegram_send"].run({"chat": "fam", "text": "Hi"})
+    sent = await tools["telegram_send"].run({"chat": "Family", "text": "Dinner at 8"})
+    assert sent["summary"] == "Sent to Family: Dinner at 8"
+    assert StandInTelethon.instances[0].sent == [("Family", "Dinner at 8")]
+    await connectors.close()
+    # After a restart, the sealed session signs in again by itself.
+    again = Connectors(
+        store,
+        lambda: Sealer(KEY),
+        ConnectorsConfig(),
+        telegram=lambda a, h, s: TelegramUser(a, h, s, client_factory=StandInTelethon),
+    )
+    assert (await again.tools_for(1)[0].run({}))["chats"]
+    await again.close()
