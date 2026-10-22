@@ -1,0 +1,8 @@
+body { font: 13px/1.5 system-ui, sans-serif; margin: 12px; width: 260px; color: #1d2321; background: #f6f4ef; }
+h1 { font-size: 15px; margin: 0 0 8px; }
+p { margin: 0 0 8px; }
+.muted { color: #5b6662; }
+@media (prefers-color-scheme: dark) {
+  body { color: #e7ece9; background: #121615; }
+  .muted { color: #9aa7a2; }
+}
