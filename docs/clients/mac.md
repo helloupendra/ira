@@ -106,6 +106,53 @@ companion tells Ira, every 30 seconds at most:
 It never reads what is on the screen, which apps run, your location or any
 file. What Ira does with this is in [What Ira learns](../learning.md).
 
+## Tasks: a coding agent, in folders you allow
+
+With the **tasks** skill on (under **Your devices**, with your PIN), Ira can
+hand a job to a coding agent on this Mac: "IRA repo mein login page ka typo
+theek karo aur tests chalao". It needs a `tasks` section in this Mac's
+`~/Library/Application Support/ira-mac/config.json`, which you write
+yourself; nothing about it is in the repository or on the server:
+
+```json
+"tasks": {
+  "command": ["/path/to/your/agent", "-p", "{prompt}", "--output-format", "stream-json"],
+  "repos": {"ira": {"path": "/Users/you/code/ira", "test": "ruff check . && pytest -q"}},
+  "worktrees": "~/ira-tasks",
+  "writable": ["~/.your-agent-state-folder"],
+  "minutes": 60
+}
+```
+
+- `command`: your coding agent's headless command line. `{prompt}` becomes
+  the task, as one argument; without it, the task is added last. An agent
+  that prints one JSON object per line, ending with `{"type": "result",
+  "result": "...", "is_error": false}`, gives live progress; plain text
+  works too.
+- `repos`: the only repositories a task may use, by name, each with an
+  optional `test` command run when the agent finishes.
+- `writable`: folders the agent must write to besides its worktree, such
+  as its own state folder.
+
+Then restart the companion (`./install.sh`). Starting a task needs your
+yes; Ira then says when it is done, with the files changed and whether the
+tests passed. **Each task gets a new git worktree and branch**
+(`ira/task-<id>`) under `worktrees`; your own checkout is never touched.
+
+The agent runs in macOS's sandbox: it may write only to its worktree, the
+repository's `.git`, temporary folders and `writable`. It cannot delete
+files elsewhere, and global installs fail. Its git refuses to push. Pushing
+a finished task's branch (never `main`) is `task_push`, which needs your
+PIN. These stop accidents and a confused agent, not hostile code: allow
+only repositories you trust. See the [design note](../design/phase-2-tasks.md).
+
+macOS keeps a LaunchAgent out of `~/Documents`, `~/Desktop` and
+`~/Downloads`. For a repository there, either run
+`~/Library/Application\ Support/ira-mac/ira-mac detach` in Terminal (the
+companion then runs from Terminal's session, with its access, until you log
+out), or give the companion's Python Full Disk Access in System Settings,
+Privacy & Security. The companion never changes this by itself.
+
 ## Remove it
 
 - **Stop Ira using it now:** remove the Mac on **Your devices** (or switch

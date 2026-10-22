@@ -88,7 +88,7 @@ def mask_tokens_in_logs() -> None:
 
 WEBSOCKET_PATH = "/v1/devices/ws"
 # The skills each kind of device is offered on its page, before it says what it has.
-KIND_SKILLS: dict[str, tuple[str, ...]] = {"mac": ("chrome", "routine"), "android": ()}
+KIND_SKILLS: dict[str, tuple[str, ...]] = {"mac": ("chrome", "routine", "tasks"), "android": ()}
 STREAM_KEEPALIVE = 20.0
 PIN_STATUS = {"wrong_pin": 403, "locked": 423, "no_pin": 409}
 

@@ -89,6 +89,13 @@ switch it on.
   with their password again; an owner sets someone's password or email from
   Users & roles; `ira user password` and `ira user email` do it from the
   server. All go to the change log.
+- **Tasks on your Mac** (the `tasks` skill): Ira hands a job to a coding
+  agent configured on the Mac, in a new git worktree and branch of a
+  repository the person allowed there. It runs in macOS's sandbox, its git
+  cannot push, and Ira reports the files changed and the tests. Starting a
+  task needs a yes; pushing its branch (`task_push`, never `main`) needs the
+  PIN. `ira-mac detach` and Full Disk Access are documented for
+  repositories in `~/Documents`. Re-pairing a Mac now keeps its network salt.
 - **The Mac companion checks certificates on any Python.** It uses macOS's
   own trust store (`truststore`), else a bundle, so python.org's Python no
   longer fails to pair with "could not reach"; failures now say why. The

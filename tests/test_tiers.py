@@ -332,6 +332,46 @@ async def test_a_device_tool_of_tier_two_waits_and_runs_on_the_device(tiered):
     assert outcomes == ["proposed", "executed"]
 
 
+async def test_a_tasks_push_waits_for_the_pin_and_then_runs_on_the_mac(tiered):
+    provider = ScriptedProvider([call("task_push", {"id": "t1a2b3"}), "Your PIN, please."])
+    runtime = make_runtime(provider=provider, registry=tiered)
+    runtime.guard.pin_iterations = FAST_PIN_ITERATIONS
+    me = owner(runtime)
+    runtime.guard.set_pin("4321", user_id=me.id, actor=me.email, channel="test")
+
+    async def never(arguments: dict[str, Any]) -> Any:
+        raise AssertionError("a Tier 3 tool never runs straight away")
+
+    runtime.assistant.personal_tools = lambda user_id: [
+        PersonalTool(
+            name="task_push",
+            description="Push a finished task's branch.",
+            parameters={"type": "object", "properties": {"id": {"type": "string"}}},
+            tier=3,
+            source="device",
+            label="Office Mac",
+            run=never,
+            device_id=7,
+            skill="tasks",
+        )
+    ]
+    sent: list = []
+
+    async def on_device(pending):
+        sent.append((pending.device_id, pending.tool, pending.params))
+        return {"summary": "Pushed ira/task-t1a2b3 to origin. Nothing was merged."}
+
+    runtime.guard.device_runner = on_device
+    reply = await runtime.assistant.ask("push it", conversation_id="t", user_id=me.id)
+    assert reply.action is not None and reply.action.tier == 3
+    assert runtime.guard.awaiting_yes("t", me.id) is None  # a yes is not enough
+    wrong = await runtime.guard.confirm(reply.action.id, "0000", user_id=me.id, role="owner")
+    assert wrong.status == "wrong_pin" and sent == []
+    done = await runtime.guard.confirm(reply.action.id, "4321", user_id=me.id, role="owner")
+    assert done.status == "executed"
+    assert sent == [(7, "task_push", {"id": "t1a2b3"})]
+
+
 # --- the HTTP API ----------------------------------------------------------------------
 
 
