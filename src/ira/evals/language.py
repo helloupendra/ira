@@ -127,21 +127,23 @@ def load_cases(path: Path = CASES) -> list[Case]:
     return [Case(**item) for item in data["cases"]]
 
 
-# Stand-ins for a Mac with Chrome and for search: fixed, fictional answers.
+# Stand-ins for Ira for Mac (its browser and screen tools) and for search: fixed,
+# fictional answers.
 TABS = {
     "tabs": [
-        {"id": 11, "title": "Inbox - Example Mail", "url": "https://mail.example.com/"},
-        {"id": 12, "title": "Upload - Example Drive", "url": "https://drive.example.com/upload"},
-        {"id": 13, "title": "Build #812 - Example CI", "url": "https://ci.example.net/builds/812"},
+        {"id": "chrome:1:11", "browser": "chrome", "title": "Inbox - Example Mail",
+         "url": "https://mail.example.com/"},
+        {"id": "chrome:1:12", "browser": "chrome", "title": "Upload - Example Drive",
+         "url": "https://drive.example.com/upload", "front": True},
+        {"id": "chrome:1:13", "browser": "chrome", "title": "Build #812 - Example CI",
+         "url": "https://ci.example.net/builds/812"},
     ],
-    "summary": "3 tabs open: Inbox - Example Mail; Upload - Example Drive; "
-    "Build #812 - Example CI.",
-}
-UPLOAD = {
-    "tab": TABS["tabs"][1],
-    "summary": "Upload - Example Drive: 63%, about 4 min left",
-    "progress": {"percent": 63, "eta": "4 min"},
-    "text": "quarterly-report.pdf 63% uploaded, about 4 min left",
+}  # fmt: skip
+SHOWN = {"summary": "Switched to Upload - Example Drive in Chrome.", "tab": TABS["tabs"][1]}
+SCREEN = {
+    "app": "Google Chrome",
+    "title": "Upload - Example Drive",
+    "text": "My Drive > Uploads\nquarterly-report.pdf\n63% uploaded, about 4 min left\nCancel",
 }
 NEWS = {
     "items": [
@@ -171,38 +173,49 @@ def stand_ins() -> list[PersonalTool]:
 
         return run
 
-    selector = {
-        "type": "object",
-        "properties": {
-            "tabId": {"type": "integer"},
-            "match": {"type": "string", "description": "Words from the tab's title or address."},
-        },
-    }
-    device = {"source": "device", "label": "Studio Mac", "device_id": 1, "skill": "chrome"}
+    # Names, tiers and descriptions as Ira for Mac offers them (ToolCatalog.swift).
+    browser = {"type": "string", "description": "Only this browser: chrome, safari, arc, ..."}
+    mac = {"source": "device", "label": "Studio Mac", "device_id": 1}
     return [
         PersonalTool(
-            "chrome_list_tabs",
-            "List the tabs open in Chrome on this Mac.",
-            {"type": "object", "properties": {}},
+            "browser_tabs",
+            "List the tabs open in the browsers on this Mac (Chrome, Safari, Arc, Edge, "
+            "Brave): each tab's title and address, which is in front, and an id. Only titles "
+            "and addresses, never page contents.",
+            {"type": "object", "properties": {"browser": browser}},
             0,
             run=fixed(TABS),
-            **device,
+            skill="browser",
+            **mac,
         ),
         PersonalTool(
-            "chrome_read_tab",
-            "Read one Chrome tab: title, address, text and progress.",
-            selector,
-            0,
-            run=fixed(UPLOAD),
-            **device,
-        ),
-        PersonalTool(
-            "chrome_watch_tab",
-            "Watch a Chrome tab and announce when it is done.",
-            selector,
+            "browser_show_tab",
+            "Bring one browser tab to the front, by words from its title or address or by its "
+            "id from browser_tabs. To answer what a tab shows ('how far is that upload?'), "
+            "bring it to the front, then use screen_read. Say that you switched to it.",
+            {
+                "type": "object",
+                "properties": {
+                    "match": {"type": "string", "description": "Words from its title or address."},
+                    "id": {"type": "string", "description": "The tab's id from browser_tabs."},
+                    "browser": browser,
+                },
+            },
             1,
-            run=fixed({"watching": True, "summary": "Watching Upload - Example Drive."}),
-            **device,
+            run=fixed(SHOWN),
+            skill="browser",
+            **mac,
+        ),
+        PersonalTool(
+            "screen_read",
+            "Read the text of the window in front on this Mac, in any app, only when the "
+            "person asks what is on their screen. Returns the app's name, the window's title "
+            "and the text.",
+            {"type": "object", "properties": {}},
+            0,
+            run=fixed(SCREEN),
+            skill="screen",
+            **mac,
         ),
         PersonalTool(
             "web_search",

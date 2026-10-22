@@ -6,19 +6,20 @@
 #           (Ira should answer or ask back instead of guessing)
 #   reply:  the language a reply should be in when reply_language is "auto"
 cases:
-  # Chrome tabs
-  - {id: tabs-hinglish, language: hinglish, intent: chrome_list_tabs, reply: hinglish, text: "Chrome mein kaunse tabs khule hain?"}
-  - {id: tabs-hindi, language: hi, intent: chrome_list_tabs, reply: hi, text: "क्रोम में कौन से टैब खुले हैं?"}
-  - {id: tabs-english, language: en, intent: chrome_list_tabs, reply: en, text: "Which tabs are open in Chrome?"}
-  - {id: tabs-hinglish-short, language: hinglish, intent: chrome_list_tabs, reply: hinglish, text: "Hey Ira, Chrome mein kya chal raha hai?"}
-  - {id: upload-hinglish, language: hinglish, intent: chrome_read_tab, reply: hinglish, text: "Chrome ke us upload tab mein kitna kaam hua?"}
-  - {id: upload-hinglish-half, language: hinglish, intent: chrome_read_tab, reply: hinglish, text: "upload kitna hua"}
-  - {id: upload-hindi, language: hi, intent: chrome_read_tab, reply: hi, text: "अपलोड वाले टैब में कितना हुआ?"}
-  - {id: upload-english, language: en, intent: chrome_read_tab, reply: en, text: "How far along is the upload tab?"}
-  - {id: build-english, language: en, intent: chrome_read_tab, reply: en, text: "What step is the build on?"}
-  - {id: watch-hinglish, language: hinglish, intent: chrome_watch_tab, reply: hinglish, text: "upload tab khatam ho jaaye to batana"}
-  - {id: watch-hindi, language: hi, intent: chrome_watch_tab, reply: hi, text: "जब अपलोड पूरा हो जाए तो बताना"}
-  - {id: watch-english, language: en, intent: chrome_watch_tab, reply: en, text: "Tell me when the upload finishes."}
+  # Browser tabs and the screen (Ira for Mac): reading what a tab shows means bringing it
+  # to the front, then reading the screen
+  - {id: tabs-hinglish, language: hinglish, intent: browser_tabs, reply: hinglish, text: "Chrome mein kaunse tabs khule hain?"}
+  - {id: tabs-hindi, language: hi, intent: browser_tabs, reply: hi, text: "क्रोम में कौन से टैब खुले हैं?"}
+  - {id: tabs-english, language: en, intent: browser_tabs, reply: en, text: "Which tabs are open in Chrome?"}
+  - {id: tabs-hinglish-short, language: hinglish, intent: browser_tabs, reply: hinglish, text: "Hey Ira, Chrome mein kya chal raha hai?"}
+  - {id: upload-hinglish, language: hinglish, intent: screen_read, reply: hinglish, text: "Chrome ke us upload tab mein kitna kaam hua?"}
+  - {id: upload-hinglish-half, language: hinglish, intent: screen_read, reply: hinglish, text: "upload kitna hua"}
+  - {id: upload-hindi, language: hi, intent: screen_read, reply: hi, text: "अपलोड वाले टैब में कितना हुआ?"}
+  - {id: upload-english, language: en, intent: screen_read, reply: en, text: "How far along is the upload tab?"}
+  - {id: build-english, language: en, intent: screen_read, reply: en, text: "What step is the build on?"}
+  - {id: screen-hinglish, language: hinglish, intent: screen_read, reply: hinglish, text: "screen pe kya likha hai?"}
+  - {id: screen-hindi, language: hi, intent: screen_read, reply: hi, text: "मेरी स्क्रीन पर क्या लिखा है?"}
+  - {id: screen-english, language: en, intent: screen_read, reply: en, text: "What's on my screen right now?"}
   # News and the web
   - {id: news-hinglish, language: hinglish, intent: news_search, reply: hinglish, text: "aaj ki khabar batao"}
   - {id: news-hindi, language: hi, intent: news_search, reply: hi, text: "आज की ताज़ा ख़बरें क्या हैं?"}

@@ -40,8 +40,9 @@ of the models configured in `ira.yaml`, with stand-in devices and search, and
 reports:
 
 - **intent**: the share of requests where Ira called the right tool, first
-  or after another (listing the tabs to find one, then reading it, is
-  right), or called none when none fits;
+  or after another (bringing a tab to the front, then reading the screen,
+  is right), or called none when none fits. The devices are stand-ins for
+  Ira for Mac's `browser_tabs`, `browser_show_tab` and `screen_read`;
 - **reply**: the share of answers in the language of the request, counted
   in words, with addresses and "quoted" or **bold** titles left out (a Hindi
   answer that lists English tab titles is a Hindi answer);
@@ -75,6 +76,13 @@ requests once; models are not deterministic, so runs differ.
 | 2 | ask when unsure | 86% / 90% / 100% | 100% / 80% / 100% | 1.8 s |
 | 3 | look first, then ask | 100% / 100% / 100% | 100% / 100% / 100% | 2.2 s |
 | 4 | look first, then ask | 100% / 100% / 100% | 100% / 100% / 86% | 2.8 s |
+
+Runs 1 to 4 used stand-ins for the old Chrome extension (list, read and
+watch a tab). On 23 Oct 2026 the set moved to Ira for Mac's own tools: a
+tab's progress is now read by bringing it to the front and reading the
+screen, and the three "tell me when the upload finishes" requests, which
+have no tool any more, became "what is on my screen?". **The new set has
+not been run yet**; its rows go here when it has.
 
 What the misses were:
 

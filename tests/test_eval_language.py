@@ -64,8 +64,8 @@ def test_quoted_data_does_not_change_the_language():
 
 
 def test_the_expected_tool_may_come_after_another():
-    assert intent_matches("chrome_read_tab", ["chrome_list_tabs", "chrome_read_tab"])
-    assert not intent_matches("chrome_read_tab", ["chrome_list_tabs"])
+    assert intent_matches("screen_read", ["browser_show_tab", "screen_read"])
+    assert not intent_matches("screen_read", ["browser_tabs", "browser_show_tab"])
     assert intent_matches("none", []) and not intent_matches("none", ["web_search"])
 
 
