@@ -22,6 +22,8 @@ let package = Package(
             dependencies: ["IraKit"],
             resources: [.copy("Fixtures")]
         ),
+        // The app's window: editing keys and keyboard focus. Needs a desktop session.
+        .testTarget(name: "IraAppTests", dependencies: ["Ira"]),
     ],
     swiftLanguageModes: [.v5]
 )

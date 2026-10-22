@@ -199,6 +199,9 @@ struct ChatView: View {
             topBar
             Divider()
             transcript
+            if conversation.needsRestart {
+                restartBanner
+            }
             if let notice = conversation.notice {
                 noticeView(notice)
             }
@@ -214,12 +217,22 @@ struct ChatView: View {
             Circle()
                 .fill(statusColor)
                 .frame(width: 8, height: 8)
+                .help(AppDelegate.describe(model.deviceState, paired: model.paired))
+                .accessibilityLabel(AppDelegate.describe(model.deviceState, paired: model.paired))
             Text(model.assistant).font(.headline)
             Text(statusText)
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .lineLimit(1)
             Spacer()
+            Button {
+                model.pinned.toggle()
+            } label: {
+                Image(systemName: model.pinned ? "pin.fill" : "pin")
+                    .foregroundStyle(model.pinned ? Color.iraText : Color.secondary)
+            }
+            .buttonStyle(.borderless)
+            .help(model.pinned ? "Kept on top: click to let it hide when you use another app" : "Keep on top while you work in other apps")
             Button {
                 form.flag.toggle()
             } label: {
@@ -279,11 +292,18 @@ struct ChatView: View {
                             .foregroundStyle(.secondary)
                             .id("caption")
                     }
+                    if conversation.busy {
+                        ThinkingRow(step: conversation.step, since: conversation.askedAt, stalled: conversation.stalled)
+                            .id("thinking")
+                    }
                 }
                 .padding(14)
             }
             .onChange(of: conversation.entries) { _, entries in
                 if let last = entries.last { withAnimation { proxy.scrollTo(last.id, anchor: .bottom) } }
+            }
+            .onChange(of: conversation.busy) { _, busy in
+                if busy { withAnimation { proxy.scrollTo("thinking", anchor: .bottom) } }
             }
         }
     }
@@ -293,9 +313,29 @@ struct ChatView: View {
             Text(notice)
                 .font(.callout)
                 .fixedSize(horizontal: false, vertical: true)
+                .textSelection(.enabled)
+            HStack {
+                if conversation.stalled {
+                    Button("Try again") { conversation.tryAgain() }
+                }
+                Button("Dismiss") { conversation.notice = nil }
+                    .buttonStyle(.link)
+            }
         }
         .padding(10)
         .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.orange.opacity(0.12))
+    }
+
+    private var restartBanner: some View {
+        HStack(alignment: .firstTextBaseline) {
+            Text("macOS needs Ira restarted after the Screen Recording permission.")
+                .font(.callout)
+                .fixedSize(horizontal: false, vertical: true)
+            Spacer()
+            Button("Restart Ira") { PermissionCenter.reopen() }
+        }
+        .padding(10)
         .background(Color.orange.opacity(0.12))
     }
 
@@ -354,6 +394,42 @@ struct ChatView: View {
         let message = form.entry
         form.entry = ""
         conversation.send(message)
+    }
+}
+
+/// "Ira is working": moving dots in Ira's green, the step in words, and the
+/// time since asking after 3 seconds.
+struct ThinkingRow: View {
+    let step: String
+    let since: Date?
+    let stalled: Bool
+
+    var body: some View {
+        TimelineView(.periodic(from: .now, by: 0.3)) { context in
+            HStack(spacing: 8) {
+                HStack(spacing: 4) {
+                    ForEach(0..<3) { index in
+                        let phase = Int(context.date.timeIntervalSinceReferenceDate / 0.3) % 3
+                        Circle()
+                            .fill(Color.iraText)
+                            .frame(width: 6, height: 6)
+                            .opacity(stalled ? 0.3 : (index == phase ? 1 : 0.35))
+                    }
+                }
+                Text(stalled ? "Still waiting…" : step)
+                    .foregroundStyle(.secondary)
+                if let since {
+                    let seconds = Int(context.date.timeIntervalSince(since))
+                    if seconds >= 3 {
+                        Text("\(seconds) s")
+                            .font(.caption.monospacedDigit())
+                            .foregroundStyle(.tertiary)
+                    }
+                }
+            }
+            .accessibilityElement(children: .combine)
+            .accessibilityLabel(stalled ? "Still waiting for an answer" : step)
+        }
     }
 }
 

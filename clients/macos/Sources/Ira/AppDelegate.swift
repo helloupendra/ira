@@ -33,6 +33,14 @@ final class FloatingPanel: NSPanel {
         onEscape?()
     }
 
+    /// Cut, copy, paste, select all, undo: sent to the field being typed in.
+    override func performKeyEquivalent(with event: NSEvent) -> Bool {
+        if let action = EditMenu.action(for: event), NSApp.sendAction(action, to: nil, from: self) {
+            return true
+        }
+        return super.performKeyEquivalent(with: event)
+    }
+
     /// Stop taking the keyboard, but stay on screen: typing then goes to the app
     /// or the system prompt the person turned to (a password sheet included).
     func giveUpKeyboard() {
@@ -55,20 +63,29 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var settingsWindow: NSWindow?
     private var hotKey: HotKey?
     private var wakeWatch: Any?
+    private var workWatch: Any?
+    private var markTimer: Timer?
+    private var markFrame = 0
+    private var hasSavedFrame = false
     private var observers: [NSObjectProtocol] = []
     private var escapeMonitor: Any?
     /// The window stepped aside for System Settings and comes back after it.
     private var returnAfterSettings = false
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        ScreenText.noteLaunch()
         model = AppModel()
         IraLog.shared.info("Ira \(IraApp.version) started")
 
         let root = MainView(model: model, conversation: model.conversation, openSettings: { [weak self] in
             self?.showSettings()
         })
+        EditMenu.install()
         panel = FloatingPanel(content: NSHostingView(rootView: root))
         panel.onEscape = { [weak self] in self?.hidePanel() }
+        // Where the person left it, and how big.
+        hasSavedFrame = UserDefaults.standard.string(forKey: "NSWindow Frame IraPanel") != nil
+        panel.setFrameAutosaveName("IraPanel")
 
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
         statusItem.button?.image = AppDelegate.menuBarImage()
@@ -81,10 +98,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         registerHotKey()
         model.onWake = { [weak self] in self?.showPanel() }
         watchOtherApps()
-        // The menu-bar mark shows a dot while "Hey Ira" listens.
-        wakeWatch = model.$wakeListening.sink { [weak self] listening in
-            self?.statusItem.button?.image = AppDelegate.menuBarImage(listening: listening)
+        // The menu-bar mark: a dot while "Hey Ira" listens, moving bars while Ira works.
+        wakeWatch = model.$wakeListening.sink { [weak self] _ in
+            DispatchQueue.main.async { self?.updateMark() }
         }
+        workWatch = model.conversation.$busy.sink { [weak self] _ in
+            DispatchQueue.main.async { self?.updateMark() }
+        }
+        model.conversation.onAnswer = { [weak self] text in self?.answered(text) }
         // First launch, or not paired yet: show the window so pairing is the first thing seen.
         if model.screen == .setup {
             showPanel()
@@ -187,7 +208,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     func showPanel() {
-        if !panel.isVisible {
+        if !panel.isVisible && !hasSavedFrame {
+            hasSavedFrame = true
             let mouse = NSEvent.mouseLocation
             let screen = NSScreen.screens.first(where: { $0.frame.contains(mouse) }) ?? NSScreen.main
             if let frame = screen?.visibleFrame {
@@ -209,7 +231,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         ) { [weak self] note in
             let app = note.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication
             guard app?.processIdentifier != getpid() else { return }
-            MainActor.assumeIsolated { self?.panel.giveUpKeyboard() }
+            MainActor.assumeIsolated { self?.otherAppActive() }
         })
         observers.append(workspace.addObserver(
             forName: NSWorkspace.didDeactivateApplicationNotification, object: nil, queue: .main
@@ -234,12 +256,65 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 self.panel.orderOut(nil)
             }
         })
+        // While the screen is captured, macOS may ask the person first (monthly on
+        // macOS 15 and later): the window drops below such a prompt and lets go
+        // of the keyboard, then comes back.
+        observers.append(NotificationCenter.default.addObserver(
+            forName: ScreenText.capturing, object: nil, queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated {
+                guard let self, self.panel.isVisible else { return }
+                self.panel.level = .normal
+                self.panel.giveUpKeyboard()
+            }
+        })
+        observers.append(NotificationCenter.default.addObserver(
+            forName: ScreenText.captured, object: nil, queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated { self?.panel.level = .floating }
+        })
         // Esc closes the window, wherever the cursor is in it.
         escapeMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
             guard event.keyCode == 53, let self, event.window === self.panel else { return event }
             self.hidePanel()
             return nil
         }
+    }
+
+    /// Another app (or a system prompt) became active: the window lets go of the
+    /// keyboard, and unless it is pinned, gets out of the way. A question still
+    /// running carries on; its answer arrives as a notification.
+    private func otherAppActive() {
+        guard panel.isVisible else { return }
+        if model.settings.panelPinned {
+            panel.giveUpKeyboard()
+        } else {
+            panel.orderOut(nil)
+        }
+    }
+
+    private func answered(_ text: String) {
+        guard !panel.isVisible, !text.isEmpty else { return }
+        Notifier.post(title: model.assistant, body: text)
+    }
+
+    private func updateMark() {
+        let working = model.conversation.busy
+        if working, markTimer == nil {
+            markTimer = Timer.scheduledTimer(withTimeInterval: 0.25, repeats: true) { [weak self] _ in
+                MainActor.assumeIsolated {
+                    guard let self else { return }
+                    self.markFrame = (self.markFrame + 1) % 4
+                    self.statusItem.button?.image = AppDelegate.menuBarImage(listening: self.model.wakeListening, frame: self.markFrame)
+                }
+            }
+        } else if !working {
+            markTimer?.invalidate()
+            markTimer = nil
+            markFrame = 0
+            statusItem.button?.image = AppDelegate.menuBarImage(listening: model.wakeListening)
+        }
+        statusItem.button?.toolTip = working ? "Ira is working on your question" : "Ira"
     }
 
     private func settingsClosed() {
@@ -250,6 +325,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         panel.orderFrontRegardless()
     }
 
+    /// Hide on purpose (Esc, the shortcut): the microphone stops too.
     func hidePanel() {
         panel.orderOut(nil)
         model.conversation.stopListening()
@@ -274,13 +350,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     /// The menu-bar mark: the repository's four voice bars, as a template image,
-    /// with a dot while "Hey Ira" listens.
-    static func menuBarImage(listening: Bool = false) -> NSImage {
+    /// with a dot while "Hey Ira" listens. While Ira works, the bars move
+    /// (`frame` 1 to 3).
+    static func menuBarImage(listening: Bool = false, frame: Int = 0) -> NSImage {
+        let heights: [[CGFloat]] = [[4, 9, 13, 7], [7, 13, 9, 4], [11, 6, 5, 12], [5, 11, 13, 9]]
         let image = NSImage(size: NSSize(width: listening ? 22 : 18, height: 18), flipped: false) { _ in
             NSColor.black.setFill()
-            let bars: [(x: CGFloat, y: CGFloat, h: CGFloat)] = [(3, 7, 4), (6.5, 4.5, 9), (10, 2.5, 13), (13.5, 5.5, 7)]
-            for bar in bars {
-                NSBezierPath(roundedRect: NSRect(x: bar.x, y: bar.y, width: 2, height: bar.h), xRadius: 1, yRadius: 1).fill()
+            let row = heights[frame % heights.count]
+            for (index, height) in row.enumerated() {
+                let x = 3 + CGFloat(index) * 3.5
+                let rect = NSRect(x: x, y: (18 - height) / 2, width: 2, height: height)
+                NSBezierPath(roundedRect: rect, xRadius: 1, yRadius: 1).fill()
             }
             if listening {
                 NSBezierPath(ovalIn: NSRect(x: 17.5, y: 13, width: 4, height: 4)).fill()

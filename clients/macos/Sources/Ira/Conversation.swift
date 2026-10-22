@@ -38,6 +38,21 @@ final class Conversation: ObservableObject {
     @Published var transportKind: String?
     /// What this Mac's key may do for its person (from /v1/info): ask, voice, actions.
     @Published var permissions: [String] = []
+    /// A question is on its way: from asking until the answer is complete.
+    @Published var busy = false
+    /// What Ira is doing for it now: "Thinking…", "Reading the screen…".
+    @Published var step = "Thinking…"
+    /// When the question was asked, for the elapsed time.
+    @Published var askedAt: Date?
+    /// Nothing heard back for 30 seconds.
+    @Published var stalled = false
+    /// macOS needs Ira restarted before the screen can be read.
+    @Published var needsRestart = false
+    /// The answer, complete: for a notification while the window is hidden.
+    var onAnswer: ((String) -> Void)?
+    private var lastQuestion: String?
+    private var lastProgress = Date()
+    private var watchdog: Timer?
 
     private let settings: AppSettings
     private let secrets: SecretStore
@@ -148,21 +163,77 @@ final class Conversation: ObservableObject {
         transportKind = nil
     }
 
+    // MARK: Showing that Ira is working
+
+    private func began(_ step: String) {
+        busy = true
+        stalled = false
+        self.step = step
+        askedAt = Date()
+        lastProgress = Date()
+        watchdog?.invalidate()
+        watchdog = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
+            MainActor.assumeIsolated {
+                guard let self, self.busy else { return }
+                if Date().timeIntervalSince(self.lastProgress) > 30, !self.stalled {
+                    self.stalled = true
+                    self.notice = "No answer yet. The server is slow or unreachable."
+                }
+                self.objectWillChange.send()  // the elapsed time
+            }
+        }
+    }
+
+    private func progressed(_ step: String? = nil) {
+        lastProgress = Date()
+        if stalled {
+            stalled = false
+            notice = nil
+        }
+        if let step { self.step = step }
+    }
+
+    private func finished() {
+        busy = false
+        stalled = false
+        askedAt = nil
+        watchdog?.invalidate()
+        watchdog = nil
+    }
+
+    /// Ask the last question again (after "No answer yet").
+    func tryAgain() {
+        guard let question = lastQuestion else { return }
+        transport?.interrupt()
+        disconnect()
+        notice = nil
+        finished()
+        send(question)
+    }
+
     // MARK: Typing
 
     func send(_ text: String) {
         let text = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else { return }
         lastInputWasVoice = false
+        lastQuestion = text
         let entry = Entry(role: .you, text: text)
         typed = (entry.id, text)
         entries.append(entry)
         mode = .thinking
+        notice = nil
+        began(transport == nil ? "Connecting to your Ira…" : "Thinking…")
         Task {
             guard let transport = await connect() else {
                 mode = .idle
+                finished()
+                if notice == nil {
+                    notice = "Ira could not be reached. Check that this Mac is online and paired, then try again."
+                }
                 return
             }
+            progressed("Thinking…")
             stopSpeaking()
             transport.text(text)
         }
@@ -266,6 +337,7 @@ final class Conversation: ObservableObject {
                 transport?.speechEnd(at: end)
                 mode = .thinking
                 lastActivity = Date()
+                began("Listening done. Thinking…")
             }
         }
         level = vad.level
@@ -289,6 +361,9 @@ final class Conversation: ObservableObject {
             caption = text
         case .heard(let turn, let text):
             caption = ""
+            if !busy { began("Thinking…") }
+            progressed("Thinking…")
+            if lastInputWasVoice { lastQuestion = text }
             if let typed, typed.text == text, let index = entries.firstIndex(where: { $0.id == typed.id }) {
                 entries[index].turn = turn
             } else {
@@ -297,9 +372,10 @@ final class Conversation: ObservableObject {
             typed = nil
             mode = .thinking
         case .tool(_, let name):
-            caption = Conversation.phrase(name)
+            progressed(Conversation.phrase(name))
         case .delta(let turn, let text):
             caption = ""
+            progressed()
             if let index = entryIndex(turn: turn) {
                 entries[index].text += text
             } else {
@@ -327,18 +403,28 @@ final class Conversation: ObservableObject {
             } else if !text.isEmpty {
                 entries.append(Entry(role: .ira, text: text, turn: turn))
             }
+            finished()
+            let answer = text.isEmpty ? (entryIndex(turn: turn).map { entries[$0].text } ?? "") : text
+            onAnswer?(answer)
             caption = ""
             if mode == .thinking { mode = listening ? .listening : .idle }
             lastActivity = Date()
         case .interrupted(let turn):
             interruptedTurn = max(interruptedTurn, turn)
+            finished()
         case .error(let message, let fatal):
-            notice = message
+            notice = Conversation.plain(message)
+            finished()
             if mode == .thinking { mode = listening ? .listening : .idle }
             if fatal { disconnect() }
         case .closed(let reason):
             transport = nil
             transportKind = nil
+            if busy {
+                finished()
+                notice = "The connection to your Ira dropped before the answer came. Press Try again."
+                stalled = true
+            }
             if listening {
                 stopListening()
                 notice = "The connection to Ira dropped\(reason.map { " (\($0))" } ?? ""). Press the mic to talk again."
@@ -346,12 +432,21 @@ final class Conversation: ObservableObject {
         }
     }
 
+    /// A server's error, as a sentence with what to do next.
+    static func plain(_ message: String) -> String {
+        let text = message.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty else { return "Something went wrong on your Ira. Try again." }
+        let sentence = text.prefix(1).uppercased() + text.dropFirst()
+        if sentence.hasSuffix(".") || sentence.hasSuffix("?") || sentence.hasSuffix("!") { return sentence }
+        return sentence + ". Try again, or ask it another way."
+    }
+
     static func phrase(_ tool: String) -> String {
         switch tool {
-        case "files_find": return "Looking for files…"
+        case "files_find": return "Finding files…"
         case "file_read": return "Reading the file…"
         case "file_open": return "Opening it…"
-        case "screen_read": return "Reading your screen…"
+        case "screen_read": return "Reading the screen…"
         case "browser_tabs": return "Looking at your browser tabs…"
         case "browser_show_tab": return "Switching to the tab…"
         case "contacts_lookup": return "Looking in your contacts…"

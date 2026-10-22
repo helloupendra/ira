@@ -17,6 +17,10 @@ final class AppModel: ObservableObject {
     @Published var companionPresent = false
     @Published var wakeListening = false
     @Published var wakeProblem: String?
+    /// Keep the window on top while working in other apps.
+    @Published var pinned: Bool {
+        didSet { settings.panelPinned = pinned }
+    }
 
     let settings: AppSettings
     let secrets: SecretStore
@@ -39,6 +43,7 @@ final class AppModel: ObservableObject {
         self.settings = settings
         self.secrets = secrets
         self.assistant = settings.assistantName
+        self.pinned = settings.panelPinned
         self.conversation = Conversation(settings: settings, secrets: secrets)
         trackFrontApp()
         lookForCompanion()
@@ -161,6 +166,9 @@ final class AppModel: ObservableObject {
             record: { [weak self] activity in
                 Task { @MainActor in self?.remember(activity) }
             })
+        toolbox.onRestartNeeded = { [weak self] in
+            Task { @MainActor in self?.conversation.needsRestart = true }
+        }
         self.toolbox = toolbox
         let client = DeviceClient(
             url: url, token: { secrets.load(SecretAccount.device) }, tools: toolbox,
