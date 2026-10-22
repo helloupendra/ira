@@ -89,6 +89,10 @@ switch it on.
   with their password again; an owner sets someone's password or email from
   Users & roles; `ira user password` and `ira user email` do it from the
   server. All go to the change log.
+- **A paired device may talk to Ira for its person**, over HTTP too: ask,
+  stream, voice and confirm actions, with at most those permissions of the
+  person's role. It still never changes settings, pairs or manages
+  anything, and revoking it stops it everywhere.
 - **Your connections** ([Your connections](docs/connectors.md)): each
   person connects MCP servers, remote (GitHub's own, read-only, is one
   tap) or local ones the operator offers, with the official MCP SDK

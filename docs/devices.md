@@ -36,8 +36,13 @@ used, expired or unknown code gives `410`.
 
 ## Tokens
 
-- A device token works on `GET /v1/devices/ws` and nowhere else: the rest of
-  the API answers `401`. Session and API tokens do not open the WebSocket.
+- A device token opens `GET /v1/devices/ws`, and lets the device talk to Ira
+  for its person: `/v1/ask`, `/v1/ask/stream`, `/v1/voice/*` (the live call
+  too) and confirming actions, with the person's tiers and PIN. That is all:
+  it has at most the `ask`, `voice` and `actions` permissions of its
+  person's role, and anything that needs a signed-in session (settings,
+  pairing, sessions, the console) answers `403`. Session and API tokens do
+  not open the device WebSocket.
 - Send it as `Authorization: Bearer irad_...`. A client that cannot set
   headers may use `?token=`; IRA masks the value in every log line it writes,
   but a proxy in front may log it, so prefer the header.

@@ -2,8 +2,8 @@
 
 * ``POST /v1/devices/pair`` (public; the one-time code is the secret): a device
   exchanges its pairing code for its own token.
-* ``GET /v1/devices/ws``: the device WebSocket. Only a device token works here,
-  and a device token works nowhere else.
+* ``GET /v1/devices/ws``: the device WebSocket. Only a device token works here.
+  Elsewhere a device token may only talk to Ira for its person (see deps).
 * ``/v1/me/devices``: your own devices. Pairing one and switching a skill on
   are new grants, so they need your PIN; switching off never does.
 * ``/v1/me/events``: what your devices announced, and a live stream of it.

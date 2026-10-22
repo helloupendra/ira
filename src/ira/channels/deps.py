@@ -90,13 +90,36 @@ def _unauthorized(detail: str = "sign in or send a bearer token") -> HTTPExcepti
     )
 
 
+# What a paired device may do for its person over HTTP: talk to Ira (typed or by voice) and
+# confirm actions. Never settings, accounts or anything an admin does: those need a session.
+DEVICE_PERMISSIONS = frozenset({"ask", "voice", "actions"})
+
+
+def device_principal(runtime: Runtime, token: str) -> Principal | None:
+    """The person a device token speaks for, with at most DEVICE_PERMISSIONS of theirs."""
+    from ira.devices.store import TOKEN_PREFIX
+
+    if not token.startswith(TOKEN_PREFIX) or runtime.hub is None:
+        return None
+    device = runtime.hub.devices.by_token(token)
+    if device is None:
+        return None
+    user = runtime.accounts.get_user(device.user_id)
+    if user is None:
+        return None
+    allowed = frozenset(user.permissions) & DEVICE_PERMISSIONS
+    return Principal(user, "device", allowed, f"device:{device.id}")
+
+
 async def get_principal(
     request: Request,
     credentials: HTTPAuthorizationCredentials | None = Depends(bearer_scheme),
     runtime: Runtime = Depends(get_runtime),
 ) -> Principal:
     if credentials is not None:
-        principal = runtime.accounts.principal(credentials.credentials)
+        principal = runtime.accounts.principal(credentials.credentials) or device_principal(
+            runtime, credentials.credentials
+        )
         if principal is None:
             raise _unauthorized("invalid or revoked token")
         return principal

@@ -151,18 +151,20 @@ def test_a_pairing_code_works_once_and_keeps_only_hashes(store):
     assert devices.by_token("ira_t_" + token[5:]) is None
 
 
-def test_device_tokens_work_only_on_the_websocket(registry):
+def test_a_device_token_talks_for_its_person_but_never_pairs(registry):
     runtime = make_runtime(registry=registry)
     user = person(runtime.store)
     token, _ = paired(runtime.hub.devices, user.id)
+    device = {"Authorization": f"Bearer {token}"}
     with TestClient(create_app(runtime, start_channels=False)) as client:
-        assert (
-            client.get("/v1/info", headers={"Authorization": f"Bearer {token}"}).status_code == 401
-        )
-        assert (
-            client.get("/v1/me/devices", headers={"Authorization": f"Bearer {token}"}).status_code
-            == 401
-        )
+        assert client.get("/v1/info", headers=device).json()["permissions"] == [
+            "actions",
+            "ask",
+            "voice",
+        ]
+        pairing = {"kind": "mac", "label": "Another", "skills": [], "pin": "4321"}
+        made = client.post("/v1/me/devices/pairing", json=pairing, headers=device)
+        assert made.status_code == 403  # pairing needs a signed-in session
         # And a person's own credentials do not open the device WebSocket.
         api_token, _ = runtime.accounts.create_token(user, "phone", ["ask"])
         for bad in (api_token, "irad_nope", ""):

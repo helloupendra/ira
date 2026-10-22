@@ -46,8 +46,10 @@ on its own it can never change anything.
 
 - A device pairs with a one-time code (8 characters, 10 minutes, hashed)
   and the person's PIN, and gets its own `irad_` token, hashed on the
-  server and valid only on the device WebSocket. Revoking it closes the
-  connection at once; removing an account revokes its devices.
+  server. It opens the device WebSocket and may talk to Ira for its person
+  (ask, voice, confirm an action with the PIN), never change settings, pair
+  or manage anything. Revoking it closes the connection and stops it
+  everywhere at once; removing an account revokes its devices.
 - A device's tools reach only its owner's conversations, and only while the
   skill is on. Switching one on needs the owner's PIN; an admin can only
   switch skills off.

@@ -19,7 +19,7 @@ from urllib.parse import urlsplit
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
 from ira.accounts import Principal
-from ira.channels.deps import SESSION_COOKIE
+from ira.channels.deps import SESSION_COOKIE, device_principal
 from ira.runtime import Runtime
 from ira.voice.live import PING_SECONDS, SILENT_SECONDS, LiveCall
 
@@ -48,17 +48,8 @@ def principal_for(websocket: WebSocket, runtime: Runtime) -> Principal | None:
     token = header[7:].strip() if header.lower().startswith("bearer ") else ""
     token = token or websocket.query_params.get("token", "")
     if token:
-        found = runtime.accounts.principal(token)
-        if found is not None:
-            return found
-        device = runtime.hub.devices.by_token(token) if runtime.hub else None
-        if device is None:
-            return None
-        user = runtime.accounts.get_user(device.user_id)
-        if user is None:
-            return None
-        # A paired device speaks for its person, with their permissions.
-        return Principal(user, "device", user.permissions, f"device:{device.id}")
+        # A paired device speaks for its person: ask, voice and actions, nothing more.
+        return runtime.accounts.principal(token) or device_principal(runtime, token)
     cookie = websocket.cookies.get(SESSION_COOKIE)
     if cookie and _same_origin(websocket, runtime):
         return runtime.accounts.session_principal(cookie)
