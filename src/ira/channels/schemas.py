@@ -1371,3 +1371,65 @@ class ObservationRow(BaseModel):
     label: str | None = None
     source: str
     device_id: int | None = None
+
+
+# Connections: each person's own links to other services (MCP servers).
+
+
+class ConnectionTool(BaseModel):
+    name: str = Field(description="The tool's name for Ira: the connection's slug first.")
+    mcp_name: str = Field(description="The tool's own name on its server.")
+    description: str | None = None
+    tier: int = Field(description="0 reads, 2 needs your yes, 3 your PIN; you may raise it.")
+    min_tier: int = Field(description="The lowest tier allowed, from the tool's annotations.")
+    enabled: bool
+
+
+class ConnectionView(BaseModel):
+    id: str
+    name: str
+    slug: str
+    kind: Literal["mcp_http", "mcp_stdio"]
+    url: str | None = Field(description="A remote server's address; never its token.")
+    server: str | None = Field(description="A local server this IRA offers, by name.")
+    enabled: bool
+    status: Literal["new", "ok", "error"]
+    error: str | None = None
+    created_at: float
+    checked_at: float | None = None
+    tools: list[ConnectionTool]
+
+
+class ServerOffer(BaseModel):
+    name: str
+    description: str
+    needs: list[str] = Field(description="What you give it, such as a token, kept sealed.")
+
+
+class ConnectionsView(BaseModel):
+    available: bool = Field(description="False: this server lacks the connectors extra.")
+    connections: list[ConnectionView]
+    servers: list[ServerOffer]
+
+
+class ConnectionCreate(BaseModel):
+    name: str = Field(min_length=1, max_length=40, description="Your name for it: GitHub.")
+    url: str | None = Field(default=None, max_length=500, description="A remote MCP server.")
+    headers: dict[str, str] = Field(
+        default_factory=dict,
+        description="Sent to a remote server, such as Authorization: Bearer <token>. Sealed.",
+    )
+    server: str | None = Field(default=None, max_length=40, description="Or a local one, by name.")
+    env: dict[str, str] = Field(default_factory=dict, description="What a local server needs.")
+    pin: str | None = Field(default=None, description="Your action PIN.")
+
+
+class ConnectionToolChange(BaseModel):
+    enabled: bool | None = None
+    tier: int | None = Field(default=None, ge=0, le=3)
+
+
+class ConnectionUpdate(BaseModel):
+    enabled: bool | None = None
+    tools: dict[str, ConnectionToolChange] = Field(default_factory=dict)
+    pin: str | None = Field(default=None, description="Needed to switch a connection back on.")

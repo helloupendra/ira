@@ -89,6 +89,14 @@ switch it on.
   with their password again; an owner sets someone's password or email from
   Users & roles; `ira user password` and `ira user email` do it from the
   server. All go to the change log.
+- **Your connections** ([Your connections](docs/connectors.md)): each
+  person connects MCP servers, remote (GitHub's own, read-only, is one
+  tap) or local ones the operator offers, with the official MCP SDK
+  (the `connectors` extra). Tiers come from each tool's annotations and
+  only get stricter; output is untrusted; tokens are sealed with AES-GCM
+  and never shown again. Remote servers on private addresses are refused
+  unless allowed. A confirmed Tier 2 or 3 action of a connection runs
+  through that person's own tool.
 - **A general assistant.** Ira plans across tools on any of the person's
   devices and connections (the call log, then the contacts, then the
   call), and asks which one when a target is unclear. It remembers the

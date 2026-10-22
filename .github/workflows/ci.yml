@@ -36,7 +36,7 @@ jobs:
       - uses: actions/setup-python@v6
         with:
           python-version: ${{ matrix.python-version }}
-      - run: pip install -e ".[dev,aws,ogg]"
+      - run: pip install -e ".[dev,aws,ogg,connectors]"
       - run: pytest
 
   frontend:

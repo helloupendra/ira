@@ -41,6 +41,8 @@ aws = ["botocore>=1.34"]
 # Telegram voice notes arrive as OGG/Opus. soundfile (BSD-3-Clause) bundles
 # libsndfile (LGPL-2.1+) with Opus support; ffmpeg on PATH also works.
 ogg = ["soundfile>=0.12"]
+# Each person's connections to MCP servers (GitHub and others), secrets sealed at rest.
+connectors = ["mcp>=2.3,<3", "cryptography>=43"]
 dev = [
     "pytest>=8",
     "ruff==0.16.9",

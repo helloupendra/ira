@@ -285,6 +285,23 @@ evidence (8 days over at least 14, a steady time), `ready` then `asked`
 once, and only `active` after a yes. Active ones `fade` after 21 days unseen,
 and are asked about again when they `change`.
 
+### Your connections
+
+Needs the `connectors` extra on the server (`available` says so) and a
+session with `ask`.
+
+| Route | Returns |
+| --- | --- |
+| `GET /v1/me/connections` | `ConnectionsView`: `available`, your `connections` (never a token) and the local `servers` this server offers |
+| `POST /v1/me/connections` | `ConnectionCreate`: `name`, and either `url` and `headers` (a remote MCP server; `https` and public unless the operator allows private ones) or `server` and `env` (a local one), and `pin`. Connects, fetches the tools, returns `ConnectionView` |
+| `POST /v1/me/connections/{id}/refresh` | fetches the tools again, keeping your choices |
+| `PATCH /v1/me/connections/{id}` | `ConnectionUpdate`: `enabled` (on again needs `pin`), `tools`: `{name: {enabled, tier}}`; a tier below its `min_tier` gives `400` |
+| `DELETE /v1/me/connections/{id}` | removes it and its token |
+
+Each tool's `min_tier` comes from its annotations: read-only is 0, unmarked
+or writing is 2, destructive or about sending, paying, sharing, deleting,
+merging or pushing is 3. See [Your connections](connectors.md).
+
 ## Devices
 
 The protocol, limits and security are in [Devices](devices.md). The routes:

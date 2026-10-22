@@ -76,6 +76,8 @@ class Runtime:
     # What each person let Ira notice about their day, and what it learned.
     learning: LearningService | None = None
     learner: Learner | None = None
+    # Each person's connections to other services (MCP servers).
+    connectors: Any = None
 
     def __post_init__(self) -> None:
         if self.hub is None:
@@ -100,7 +102,31 @@ class Runtime:
             self.assistant.personal_tools = self.personal_tools
         if self.guard.device_runner is None:
             self.guard.device_runner = self.hub.run_action
+        if self.guard.personal_runner is None:
+            self.guard.personal_runner = self._run_personal_action
+        if self.connectors is None:
+            from ira.connectors.service import Connectors
+
+            sealer: list[Any] = []
+
+            def seal() -> Any:
+                if not sealer:  # made on first use: the key file is not needed until then
+                    from ira.connectors.sealed import Sealer, load_key
+
+                    sealer.append(Sealer(load_key(self.settings.data_dir)))
+                return sealer[0]
+
+            self.connectors = Connectors(self.store, seal, self.settings.connectors)
         self.hub.welcome_extra = self._welcome
+
+    async def _run_personal_action(self, pending: Any) -> Any:
+        """A confirmed action of the person's own tool, found again by its name."""
+        from ira.tools.registry import ToolError
+
+        for tool in self.personal_tools(pending.user_id):
+            if tool.name == pending.tool and tool.device_id is None:
+                return await tool.run(pending.params)
+        raise ToolError(f"'{pending.tool}' is no longer one of your tools")
 
     async def _learn_from(self, user_id: int, message: str) -> None:
         """After a turn: what the person said about where they are going, if they allow it."""
@@ -122,6 +148,8 @@ class Runtime:
         if self.learning is not None and self.learner is not None:
             tools += reminder_tools(self.learning, user_id, self.learner.zone(user_id))
             tools += people_tools(self.learning.data, user_id)
+        if self.connectors is not None:
+            tools += self.connectors.tools_for(user_id)
         return tools
 
     def _welcome(self, user_id: int) -> dict[str, Any]:
@@ -174,6 +202,8 @@ class Runtime:
     async def aclose(self) -> None:
         for client in self.http_clients:
             await client.aclose()
+        if self.connectors is not None:
+            await self.connectors.close()
         if self.search is not None:
             await self.search.aclose()
         close = getattr(self.telegram_api, "aclose", None)

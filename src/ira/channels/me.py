@@ -352,6 +352,10 @@ def export_data(runtime: Runtime, principal: Principal) -> dict[str, Any]:
             for s in runtime.accounts.sessions(user_id)
         ],
         **_learning_export(runtime, user_id),
+        # Connections, never their secrets.
+        "connections": [
+            c.public() for c in (runtime.connectors.for_user(user_id) if runtime.connectors else [])
+        ],
     }
 
 
@@ -433,6 +437,8 @@ async def delete_my_data(
         devices = store.execute("DELETE FROM devices WHERE user_id = ?", (user_id,)).rowcount
         settings = store.execute("DELETE FROM user_settings WHERE user_id = ?", (user_id,)).rowcount
         learned = runtime.learning.data.delete_user(user_id) if runtime.learning else {}
+        if runtime.connectors is not None:
+            runtime.connectors.delete_user(user_id)
     deleted = DataDeleted(
         conversations=conversations,
         messages=messages,

@@ -219,6 +219,26 @@ CREATE TABLE IF NOT EXISTS device_events (
 CREATE INDEX IF NOT EXISTS device_events_user ON device_events (user_id, id);
 
 -- "What Ira did": every tool call, without its arguments or results.
+-- A person's connections to other services (MCP servers). The secret is sealed with
+-- AES-GCM under a key kept outside this database; tools is the list last fetched.
+CREATE TABLE IF NOT EXISTS connections (
+    id         TEXT PRIMARY KEY,
+    user_id    INTEGER NOT NULL,
+    name       TEXT NOT NULL,
+    slug       TEXT NOT NULL,
+    kind       TEXT NOT NULL,
+    url        TEXT,
+    server     TEXT,
+    secret     BLOB,
+    tools      TEXT NOT NULL DEFAULT '[]',
+    enabled    INTEGER NOT NULL DEFAULT 1,
+    status     TEXT NOT NULL DEFAULT 'new',
+    error      TEXT,
+    created_at REAL NOT NULL,
+    checked_at REAL,
+    UNIQUE (user_id, slug)
+);
+
 -- Real-time voice: each turn's timings, never its words. latency_ms is from the
 -- end of the person's speech to the first word they heard, on the app's clock.
 CREATE TABLE IF NOT EXISTS voice_turns (

@@ -182,6 +182,26 @@ class NewsConfig(_Strict):
     results: int = 8
 
 
+class McpServerConfig(_Strict):
+    """A local MCP server the operator allows people to connect, each with their own secrets."""
+
+    command: str
+    args: list[str] = Field(default_factory=list)
+    env: dict[str, str] = Field(default_factory=dict)
+    # Variables each person supplies (a token), kept sealed per person.
+    person_env: list[str] = Field(default_factory=list)
+    description: str = ""
+
+
+class ConnectorsConfig(_Strict):
+    # Local MCP servers people may connect; a person can never add a command themselves.
+    mcp_servers: dict[str, McpServerConfig] = Field(default_factory=dict)
+    # Remote servers on private, loopback or link-local addresses are refused unless this is
+    # true: otherwise a person could make this server reach machines on its own network.
+    allow_private: bool = False
+    max_tools: int = 40  # per connection, offered to the model
+
+
 class SearchConfig(_Strict):
     """Web and news search, which each person switches on for themselves."""
 
@@ -203,6 +223,7 @@ class Settings(_Strict):
     channels: ChannelsConfig = Field(default_factory=ChannelsConfig)
     actions: ActionsConfig = Field(default_factory=ActionsConfig)
     search: SearchConfig = Field(default_factory=SearchConfig)
+    connectors: ConnectorsConfig = Field(default_factory=ConnectorsConfig)
     config_dir: Path = Field(default_factory=Path.cwd, exclude=True)
 
     @field_validator("tools")

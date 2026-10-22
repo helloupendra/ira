@@ -590,8 +590,20 @@ class Assistant:
                 device_id, params = extra.target(arguments)
             except ToolError as exc:
                 return _failed(str(exc), safe_call)
-            if device_id is None or user_id is None:
+            if user_id is None:
                 return _failed("this tool cannot wait for a confirmation", safe_call)
+            if device_id is None:  # a person's own tool that is not a device's: a connection
+                pending = self.guard.propose_personal(
+                    extra.name,
+                    params,
+                    extra.summary(arguments),
+                    extra.tier,
+                    user_id=user_id,
+                    conversation_id=conversation_id,
+                    channel=channel,
+                    actor=actor,
+                )
+                return _proposed(pending, safe_call)
             pending = self.guard.propose_on_device(
                 extra.name,
                 params,

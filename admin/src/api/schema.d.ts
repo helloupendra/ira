@@ -1615,6 +1615,59 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/me/connections": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Your connections, and what you can add */
+        get: operations["my_connections"];
+        put?: never;
+        /** Connect a service (needs your PIN) */
+        post: operations["add_connection"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/me/connections/{connection_id}/refresh": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Fetch its tools again */
+        post: operations["refresh_connection"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/me/connections/{connection_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Remove a connection */
+        delete: operations["remove_connection"];
+        options?: never;
+        head?: never;
+        /** Switch it or its tools on or off, or raise a tool's tier */
+        patch: operations["update_connection"];
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -2083,6 +2136,142 @@ export interface components {
         ConfirmRequest: {
             /** Pin */
             pin: string;
+        };
+        /** ConnectionCreate */
+        ConnectionCreate: {
+            /**
+             * Name
+             * @description Your name for it: GitHub.
+             */
+            name: string;
+            /**
+             * Url
+             * @description A remote MCP server.
+             */
+            url?: string | null;
+            /**
+             * Headers
+             * @description Sent to a remote server, such as Authorization: Bearer <token>. Sealed.
+             */
+            headers?: {
+                [key: string]: string;
+            };
+            /**
+             * Server
+             * @description Or a local one, by name.
+             */
+            server?: string | null;
+            /**
+             * Env
+             * @description What a local server needs.
+             */
+            env?: {
+                [key: string]: string;
+            };
+            /**
+             * Pin
+             * @description Your action PIN.
+             */
+            pin?: string | null;
+        };
+        /** ConnectionTool */
+        ConnectionTool: {
+            /**
+             * Name
+             * @description The tool's name for Ira: the connection's slug first.
+             */
+            name: string;
+            /**
+             * Mcp Name
+             * @description The tool's own name on its server.
+             */
+            mcp_name: string;
+            /** Description */
+            description?: string | null;
+            /**
+             * Tier
+             * @description 0 reads, 2 needs your yes, 3 your PIN; you may raise it.
+             */
+            tier: number;
+            /**
+             * Min Tier
+             * @description The lowest tier allowed, from the tool's annotations.
+             */
+            min_tier: number;
+            /** Enabled */
+            enabled: boolean;
+        };
+        /** ConnectionToolChange */
+        ConnectionToolChange: {
+            /** Enabled */
+            enabled?: boolean | null;
+            /** Tier */
+            tier?: number | null;
+        };
+        /** ConnectionUpdate */
+        ConnectionUpdate: {
+            /** Enabled */
+            enabled?: boolean | null;
+            /** Tools */
+            tools?: {
+                [key: string]: components["schemas"]["ConnectionToolChange"];
+            };
+            /**
+             * Pin
+             * @description Needed to switch a connection back on.
+             */
+            pin?: string | null;
+        };
+        /** ConnectionView */
+        ConnectionView: {
+            /** Id */
+            id: string;
+            /** Name */
+            name: string;
+            /** Slug */
+            slug: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "mcp_http" | "mcp_stdio";
+            /**
+             * Url
+             * @description A remote server's address; never its token.
+             */
+            url: string | null;
+            /**
+             * Server
+             * @description A local server this IRA offers, by name.
+             */
+            server: string | null;
+            /** Enabled */
+            enabled: boolean;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "new" | "ok" | "error";
+            /** Error */
+            error?: string | null;
+            /** Created At */
+            created_at: number;
+            /** Checked At */
+            checked_at?: number | null;
+            /** Tools */
+            tools: components["schemas"]["ConnectionTool"][];
+        };
+        /** ConnectionsView */
+        ConnectionsView: {
+            /**
+             * Available
+             * @description False: this server lacks the connectors extra.
+             */
+            available: boolean;
+            /** Connections */
+            connections: components["schemas"]["ConnectionView"][];
+            /** Servers */
+            servers: components["schemas"]["ServerOffer"][];
         };
         /** ConversationRow */
         ConversationRow: {
@@ -3436,6 +3625,18 @@ export interface components {
              * @description The base URL to open: public_url when set, else http://host:port (127.0.0.1 for a wildcard host such as 0.0.0.0).
              */
             url: string;
+        };
+        /** ServerOffer */
+        ServerOffer: {
+            /** Name */
+            name: string;
+            /** Description */
+            description: string;
+            /**
+             * Needs
+             * @description What you give it, such as a token, kept sealed.
+             */
+            needs: string[];
         };
         /** SessionResponse */
         SessionResponse: {
@@ -9950,6 +10151,156 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ErrorDetail"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    my_connections: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConnectionsView"];
+                };
+            };
+        };
+    };
+    add_connection: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ConnectionCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConnectionView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    refresh_connection: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                connection_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConnectionView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    remove_connection: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                connection_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OkResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_connection: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                connection_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ConnectionUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConnectionView"];
                 };
             };
             /** @description Validation Error */

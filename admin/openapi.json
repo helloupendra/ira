@@ -7989,6 +7989,225 @@
                     }
                 ]
             }
+        },
+        "/v1/me/connections": {
+            "get": {
+                "tags": [
+                    "your connections"
+                ],
+                "summary": "Your connections, and what you can add",
+                "operationId": "my_connections",
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ConnectionsView"
+                                }
+                            }
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "HTTPBearer": []
+                    }
+                ]
+            },
+            "post": {
+                "tags": [
+                    "your connections"
+                ],
+                "summary": "Connect a service (needs your PIN)",
+                "operationId": "add_connection",
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/ConnectionCreate"
+                            }
+                        }
+                    },
+                    "required": true
+                },
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ConnectionView"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "HTTPBearer": []
+                    }
+                ]
+            }
+        },
+        "/v1/me/connections/{connection_id}/refresh": {
+            "post": {
+                "tags": [
+                    "your connections"
+                ],
+                "summary": "Fetch its tools again",
+                "operationId": "refresh_connection",
+                "security": [
+                    {
+                        "HTTPBearer": []
+                    }
+                ],
+                "parameters": [
+                    {
+                        "name": "connection_id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "title": "Connection Id"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ConnectionView"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/v1/me/connections/{connection_id}": {
+            "patch": {
+                "tags": [
+                    "your connections"
+                ],
+                "summary": "Switch it or its tools on or off, or raise a tool's tier",
+                "operationId": "update_connection",
+                "security": [
+                    {
+                        "HTTPBearer": []
+                    }
+                ],
+                "parameters": [
+                    {
+                        "name": "connection_id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "title": "Connection Id"
+                        }
+                    }
+                ],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/ConnectionUpdate"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ConnectionView"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            "delete": {
+                "tags": [
+                    "your connections"
+                ],
+                "summary": "Remove a connection",
+                "operationId": "remove_connection",
+                "security": [
+                    {
+                        "HTTPBearer": []
+                    }
+                ],
+                "parameters": [
+                    {
+                        "name": "connection_id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "title": "Connection Id"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/OkResponse"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
         }
     },
     "components": {
@@ -9028,6 +9247,328 @@
                     "pin"
                 ],
                 "title": "ConfirmRequest"
+            },
+            "ConnectionCreate": {
+                "properties": {
+                    "name": {
+                        "type": "string",
+                        "maxLength": 40,
+                        "minLength": 1,
+                        "title": "Name",
+                        "description": "Your name for it: GitHub."
+                    },
+                    "url": {
+                        "anyOf": [
+                            {
+                                "type": "string",
+                                "maxLength": 500
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Url",
+                        "description": "A remote MCP server."
+                    },
+                    "headers": {
+                        "additionalProperties": {
+                            "type": "string"
+                        },
+                        "type": "object",
+                        "title": "Headers",
+                        "description": "Sent to a remote server, such as Authorization: Bearer <token>. Sealed."
+                    },
+                    "server": {
+                        "anyOf": [
+                            {
+                                "type": "string",
+                                "maxLength": 40
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Server",
+                        "description": "Or a local one, by name."
+                    },
+                    "env": {
+                        "additionalProperties": {
+                            "type": "string"
+                        },
+                        "type": "object",
+                        "title": "Env",
+                        "description": "What a local server needs."
+                    },
+                    "pin": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Pin",
+                        "description": "Your action PIN."
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "name"
+                ],
+                "title": "ConnectionCreate"
+            },
+            "ConnectionTool": {
+                "properties": {
+                    "name": {
+                        "type": "string",
+                        "title": "Name",
+                        "description": "The tool's name for Ira: the connection's slug first."
+                    },
+                    "mcp_name": {
+                        "type": "string",
+                        "title": "Mcp Name",
+                        "description": "The tool's own name on its server."
+                    },
+                    "description": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Description"
+                    },
+                    "tier": {
+                        "type": "integer",
+                        "title": "Tier",
+                        "description": "0 reads, 2 needs your yes, 3 your PIN; you may raise it."
+                    },
+                    "min_tier": {
+                        "type": "integer",
+                        "title": "Min Tier",
+                        "description": "The lowest tier allowed, from the tool's annotations."
+                    },
+                    "enabled": {
+                        "type": "boolean",
+                        "title": "Enabled"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "name",
+                    "mcp_name",
+                    "tier",
+                    "min_tier",
+                    "enabled"
+                ],
+                "title": "ConnectionTool"
+            },
+            "ConnectionToolChange": {
+                "properties": {
+                    "enabled": {
+                        "anyOf": [
+                            {
+                                "type": "boolean"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Enabled"
+                    },
+                    "tier": {
+                        "anyOf": [
+                            {
+                                "type": "integer",
+                                "maximum": 3.0,
+                                "minimum": 0.0
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Tier"
+                    }
+                },
+                "type": "object",
+                "title": "ConnectionToolChange"
+            },
+            "ConnectionUpdate": {
+                "properties": {
+                    "enabled": {
+                        "anyOf": [
+                            {
+                                "type": "boolean"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Enabled"
+                    },
+                    "tools": {
+                        "additionalProperties": {
+                            "$ref": "#/components/schemas/ConnectionToolChange"
+                        },
+                        "type": "object",
+                        "title": "Tools"
+                    },
+                    "pin": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Pin",
+                        "description": "Needed to switch a connection back on."
+                    }
+                },
+                "type": "object",
+                "title": "ConnectionUpdate"
+            },
+            "ConnectionView": {
+                "properties": {
+                    "id": {
+                        "type": "string",
+                        "title": "Id"
+                    },
+                    "name": {
+                        "type": "string",
+                        "title": "Name"
+                    },
+                    "slug": {
+                        "type": "string",
+                        "title": "Slug"
+                    },
+                    "kind": {
+                        "type": "string",
+                        "enum": [
+                            "mcp_http",
+                            "mcp_stdio"
+                        ],
+                        "title": "Kind"
+                    },
+                    "url": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Url",
+                        "description": "A remote server's address; never its token."
+                    },
+                    "server": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Server",
+                        "description": "A local server this IRA offers, by name."
+                    },
+                    "enabled": {
+                        "type": "boolean",
+                        "title": "Enabled"
+                    },
+                    "status": {
+                        "type": "string",
+                        "enum": [
+                            "new",
+                            "ok",
+                            "error"
+                        ],
+                        "title": "Status"
+                    },
+                    "error": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Error"
+                    },
+                    "created_at": {
+                        "type": "number",
+                        "title": "Created At"
+                    },
+                    "checked_at": {
+                        "anyOf": [
+                            {
+                                "type": "number"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Checked At"
+                    },
+                    "tools": {
+                        "items": {
+                            "$ref": "#/components/schemas/ConnectionTool"
+                        },
+                        "type": "array",
+                        "title": "Tools"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "id",
+                    "name",
+                    "slug",
+                    "kind",
+                    "url",
+                    "server",
+                    "enabled",
+                    "status",
+                    "created_at",
+                    "tools"
+                ],
+                "title": "ConnectionView"
+            },
+            "ConnectionsView": {
+                "properties": {
+                    "available": {
+                        "type": "boolean",
+                        "title": "Available",
+                        "description": "False: this server lacks the connectors extra."
+                    },
+                    "connections": {
+                        "items": {
+                            "$ref": "#/components/schemas/ConnectionView"
+                        },
+                        "type": "array",
+                        "title": "Connections"
+                    },
+                    "servers": {
+                        "items": {
+                            "$ref": "#/components/schemas/ServerOffer"
+                        },
+                        "type": "array",
+                        "title": "Servers"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "available",
+                    "connections",
+                    "servers"
+                ],
+                "title": "ConnectionsView"
             },
             "ConversationRow": {
                 "properties": {
@@ -11987,6 +12528,33 @@
                 ],
                 "title": "ServerAddress",
                 "description": "Where the server listens, and where people open it."
+            },
+            "ServerOffer": {
+                "properties": {
+                    "name": {
+                        "type": "string",
+                        "title": "Name"
+                    },
+                    "description": {
+                        "type": "string",
+                        "title": "Description"
+                    },
+                    "needs": {
+                        "items": {
+                            "type": "string"
+                        },
+                        "type": "array",
+                        "title": "Needs",
+                        "description": "What you give it, such as a token, kept sealed."
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "name",
+                    "description",
+                    "needs"
+                ],
+                "title": "ServerOffer"
             },
             "SessionResponse": {
                 "properties": {

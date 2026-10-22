@@ -8,7 +8,7 @@
 # What it does:
 #   - installs Python 3, venv, git and build tools (and libsndfile if needed);
 #   - creates the system user `ira`;
-#   - installs ira-assistant[aws,ogg] from IRA_REPO at IRA_REF into
+#   - installs ira-assistant[aws,ogg,connectors] from IRA_REPO at IRA_REF into
 #     /opt/ira/app/.venv, owned by root so the service cannot change its code;
 #   - creates /srv/ira for the business folders, and /var/backups/ira;
 #   - installs the ira@.service systemd template and `ira-add-business`.
@@ -84,7 +84,7 @@ fi
 "$VENV/bin/python" -m pip install --quiet --no-cache-dir --force-reinstall --no-deps \
     "ira-assistant @ git+${IRA_REPO}@${IRA_REF}"
 "$VENV/bin/python" -m pip install --quiet --no-cache-dir \
-    "ira-assistant[aws,ogg] @ git+${IRA_REPO}@${IRA_REF}"
+    "ira-assistant[aws,ogg,connectors] @ git+${IRA_REPO}@${IRA_REF}"
 
 # soundfile ships its own libsndfile on most platforms; if this one cannot load
 # it, use the system's (Telegram voice notes are OGG/Opus).

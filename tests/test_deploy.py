@@ -85,7 +85,7 @@ def test_scripts_are_strict_executable_bash(script):
 def test_bootstrap_installs_from_the_public_repository():
     text = (AWS / "bootstrap.sh").read_text(encoding="utf-8")
     assert 'IRA_REPO="${IRA_REPO:-https://github.com/helloupendra/ira.git}"' in text
-    assert "ira-assistant[aws,ogg] @ git+${IRA_REPO}@${IRA_REF}" in text
+    assert "ira-assistant[aws,ogg,connectors] @ git+${IRA_REPO}@${IRA_REF}" in text
     assert "/opt/ira/app" in text and "/srv/ira" in text
     assert "useradd --system" in text and "--shell /usr/sbin/nologin ira" in text
     assert "/etc/systemd/system/ira@.service" in text

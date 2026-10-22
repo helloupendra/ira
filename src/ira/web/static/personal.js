@@ -104,6 +104,7 @@ const IraPersonal = (() => {
     activity: { title: "What Ira did", render: renderActivity },
     data: { title: "Your data", render: renderData },
     knows: { title: "What Ira knows about you", render: renderKnows },
+    connections: { title: "Your connections", render: renderConnections },
   };
 
   function open(name) {
@@ -836,6 +837,162 @@ const IraPersonal = (() => {
     });
     section.append(form);
     return section;
+  }
+
+  // --- your connections (MCP servers) ------------------------------------------------
+
+  const TIER_WORDS = ["reads only", "small change", "needs your yes", "needs your PIN"];
+  const PRESETS = {
+    github: { name: "GitHub", url: "https://api.githubcopilot.com/mcp/readonly", hint: "A fine-grained personal access token from github.com/settings/tokens. This address is read-only." },
+  };
+
+  async function renderConnections(body) {
+    const view = await call("/v1/me/connections");
+    if (!view.available) {
+      body.replaceChildren(el("p", { className: "muted", text: "This server does not offer connections yet: its owner installs them (the connectors extra)." }));
+      return;
+    }
+    const list = el("ul", { className: "cards" });
+    if (!view.connections.length) list.append(el("li", { className: "muted", text: "None yet. A connection lets Ira use a service for you, with its own tiers: reading is free, changes need your yes or your PIN." }));
+    for (const connection of view.connections) list.append(connectionCard(connection, body));
+    body.replaceChildren(el("section", { className: "stack" }, list), addConnection(view, body));
+  }
+
+  function connectionCard(connection, body) {
+    const path = `/v1/me/connections/${encodeURIComponent(connection.id)}`;
+    const error = el("p", { className: "error", role: "alert" });
+    const guard = (work) => () => work().catch((problem) => (error.textContent = problem.message));
+    const reload = () => renderConnections(body);
+    const where = connection.url || `${connection.server} (on this server)`;
+    const state =
+      connection.status === "ok"
+        ? `${connection.tools.filter((t) => t.enabled).length} of ${connection.tools.length} tools on`
+        : connection.status === "error"
+          ? `Could not connect: ${connection.error || "unknown error"}`
+          : "Not checked yet";
+    const tools = el("details", {}, el("summary", { text: "Tools" }));
+    for (const tool of connection.tools) {
+      const on = el("input", { type: "checkbox", checked: tool.enabled, "aria-label": `Use ${tool.mcp_name}` });
+      const tier = el("select", { "aria-label": `Tier of ${tool.mcp_name}` });
+      for (let n = tool.min_tier; n <= 3; n++) tier.append(el("option", { value: String(n), text: TIER_WORDS[n] }));
+      tier.value = String(tool.tier);
+      const save = guard(async () => {
+        await call(path, { method: "PATCH", json: { tools: { [tool.name]: { enabled: on.checked, tier: Number(tier.value) } } } });
+      });
+      on.addEventListener("change", save);
+      tier.addEventListener("change", save);
+      tools.append(el("div", { className: "row tool-row" }, on, el("span", { className: "small", text: tool.mcp_name, title: tool.description || "" }), tier));
+    }
+    const pin = pinField("Your PIN, to switch it back on");
+    pin.hidden = true;
+    const toggle = el("button", {
+      type: "button",
+      className: "btn btn-ghost",
+      text: connection.enabled ? "Switch off" : "Switch on",
+      onClick: guard(async () => {
+        if (connection.enabled) {
+          await call(path, { method: "PATCH", json: { enabled: false } });
+          return reload();
+        }
+        if (pin.hidden) {
+          pin.hidden = false;
+          return $("input", pin).focus();
+        }
+        const value = $("input", pin).value;
+        $("input", pin).value = "";
+        await call(path, { method: "PATCH", json: { enabled: true, pin: value } });
+        await reload();
+      }),
+    });
+    return el(
+      "li",
+      { className: "card" },
+      el("p", {}, el("strong", { text: connection.name }), connection.enabled ? "" : " (off)"),
+      el("p", { className: "muted small breakable", text: where }),
+      el("p", { className: connection.status === "error" ? "error small" : "muted small", text: state }),
+      connection.tools.length ? tools : null,
+      pin,
+      el(
+        "div",
+        { className: "row" },
+        toggle,
+        el("button", { type: "button", className: "btn btn-ghost", text: "Check again", onClick: guard(async () => { await call(`${path}/refresh`, { method: "POST" }); await reload(); }) }),
+        el("button", {
+          type: "button",
+          className: "text-btn danger",
+          text: "Remove",
+          onClick: guard(async () => {
+            if (!confirm(`Remove ${connection.name}? Its token is deleted from this server.`)) return;
+            await call(path, { method: "DELETE" });
+            await reload();
+          }),
+        }),
+      ),
+      error,
+    );
+  }
+
+  function addConnection(view, body) {
+    const name = el("input", { name: "name", maxlength: "40", required: true, placeholder: "GitHub" });
+    const url = el("input", { name: "url", type: "url", maxlength: "500", placeholder: "https://…/mcp" });
+    const token = el("input", { name: "token", type: "password", autocomplete: "off", maxlength: "500" });
+    const hint = el("p", { className: "muted small", text: "The token is sent as Authorization: Bearer, and kept sealed on this server; it is never shown again." });
+    const server = el("select", { name: "server" }, el("option", { value: "", text: "A remote server, by its address" }), view.servers.map((s) => el("option", { value: s.name, text: `${s.name}: ${s.description || "on this server"}` })));
+    const needs = el("div", { className: "stack-tight" });
+    const pin = pinField();
+    const error = el("p", { className: "error", role: "alert" });
+    const showNeeds = () => {
+      const chosen = view.servers.find((s) => s.name === server.value);
+      url.closest("label").hidden = Boolean(chosen);
+      token.closest("label").hidden = Boolean(chosen);
+      needs.replaceChildren(...(chosen ? chosen.needs.map((key) => el("label", {}, key, el("input", { name: `env:${key}`, type: "password", autocomplete: "off", required: true }))) : []));
+    };
+    const form = el(
+      "form",
+      { className: "stack card" },
+      el("div", { className: "row" }, el("span", { className: "muted small", text: "Quick:" }), el("button", {
+        type: "button",
+        className: "text-btn",
+        text: "GitHub (read-only)",
+        onClick: () => {
+          name.value = PRESETS.github.name;
+          url.value = PRESETS.github.url;
+          server.value = "";
+          showNeeds();
+          hint.textContent = PRESETS.github.hint;
+          token.focus();
+        },
+      })),
+      view.servers.length ? el("label", {}, "Where", server) : null,
+      el("label", {}, "Name", name),
+      el("label", {}, "Address of the MCP server", url),
+      el("label", {}, "Token", token),
+      hint,
+      needs,
+      pin,
+      el("button", { type: "submit", className: "btn btn-primary", text: "Connect" }),
+      error,
+    );
+    server.addEventListener("change", showNeeds);
+    form.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      error.textContent = "";
+      const data = new FormData(form);
+      const env = {};
+      for (const [key, value] of data.entries()) if (key.startsWith("env:")) env[key.slice(4)] = value;
+      const payload = { name: name.value, pin: $("input", pin).value || undefined };
+      if (server.value) Object.assign(payload, { server: server.value, env });
+      else Object.assign(payload, { url: url.value, headers: token.value ? { Authorization: `Bearer ${token.value}` } : {} });
+      token.value = "";
+      $("input", pin).value = "";
+      try {
+        await call("/v1/me/connections", { method: "POST", json: payload });
+        await renderConnections(body);
+      } catch (problem) {
+        error.textContent = problem.message;
+      }
+    });
+    return el("section", { className: "stack" }, el("h3", { text: "Connect a service" }), form);
   }
 
   // Thumbs on an answer, when you let Ira learn from them.

@@ -250,3 +250,25 @@ def test_info_says_whether_a_live_call_works_here(registry):
         runtime.stt, runtime.tts = FakeSTT(), FakeTTS()
         assert live(voice) is True
         assert live(typing) is False  # a token without voice
+
+
+def test_without_the_connectors_extra_everything_else_works(registry, monkeypatch):
+    import sys
+
+    monkeypatch.setitem(sys.modules, "mcp", None)  # as if the extra were not installed
+    runtime = make_runtime(registry=registry)
+    runtime.accounts.create_first_owner("owner@example.com", PASSWORD)
+    with TestClient(create_app(runtime, start_channels=False)) as client:
+        body = {"email": "owner@example.com", "password": PASSWORD, "use_cookie": False}
+        token = client.post("/v1/auth/login", json=body).json()["session_token"]
+        headers = {"Authorization": f"Bearer {token}"}
+        assert client.get("/v1/me/connections", headers=headers).json() == {
+            "available": False,
+            "connections": [],
+            "servers": [],
+        }
+        made = client.post(
+            "/v1/me/connections", json={"name": "x", "url": "https://a.example"}, headers=headers
+        )
+        assert made.status_code == 501 and "connectors extra" in made.json()["detail"]
+        assert client.post("/v1/ask", json={"text": "hello"}, headers=headers).status_code == 200

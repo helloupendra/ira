@@ -159,6 +159,8 @@ class ActionGuard:
         self.clock = clock
         # Runs a confirmed action that belongs to a device rather than the registry.
         self.device_runner: Callable[[PendingAction], Awaitable[Any]] | None = None
+        # Runs a confirmed action of a person's own tool (a connection's): set by the runtime.
+        self.personal_runner: Callable[[PendingAction], Awaitable[Any]] | None = None
 
     def confirm_roles_for(self, tool: str) -> tuple[str, ...]:
         """The roles allowed to confirm this action (they also need the actions permission)."""
@@ -287,6 +289,32 @@ class ActionGuard:
             actor=actor,
             user_id=user_id,
             device_id=device_id,
+        )
+
+    def propose_personal(
+        self,
+        tool: str,
+        params: dict[str, Any],
+        summary: str,
+        tier: int,
+        *,
+        user_id: int,
+        conversation_id: str | None = None,
+        channel: str | None = None,
+        actor: str | None = None,
+    ) -> PendingAction:
+        """Store a pending action of one person's own tool (a connection's), run once confirmed."""
+        if tier not in (2, 3):
+            raise ValueError("only Tier 2 and 3 tools wait for a confirmation")
+        return self._store_proposal(
+            tool,
+            params,
+            summary,
+            tier,
+            conversation_id=conversation_id,
+            channel=channel,
+            actor=actor,
+            user_id=user_id,
         )
 
     def _store_proposal(
@@ -622,6 +650,8 @@ class ActionGuard:
                 raise ToolError("devices are not available on this server")
             return await self.device_runner(pending)
         tool = self.registry.get(pending.tool)
+        if tool is None and self.personal_runner is not None and pending.user_id is not None:
+            return await self.personal_runner(pending)
         if tool is None:
             raise ToolError(f"the tool '{pending.tool}' is no longer registered")
         if not self.registry.is_enabled(tool.name):
