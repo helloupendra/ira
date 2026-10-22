@@ -10,7 +10,9 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
-import android.provider.Settings
+import android.accessibilityservice.AccessibilityServiceInfo
+import android.view.accessibility.AccessibilityManager
+import androidx.core.app.NotificationManagerCompat
 import androidx.core.app.NotificationCompat
 import io.github.helloupendra.ira.R
 import io.github.helloupendra.ira.core.Permissions
@@ -52,16 +54,14 @@ object PhoneState {
         return out
     }
 
-    fun notificationAccess(context: Context): Boolean {
-        val enabled = Settings.Secure.getString(context.contentResolver, "enabled_notification_listeners") ?: return false
-        val mine = ComponentName(context, IraNotificationListener::class.java).flattenToString()
-        return enabled.split(':').any { it == mine }
-    }
+    fun notificationAccess(context: Context): Boolean =
+        NotificationManagerCompat.getEnabledListenerPackages(context).contains(context.packageName)
 
     fun accessibilityOn(context: Context): Boolean {
         val service = ScreenAccess.serviceName(context) ?: return false
-        val enabled = Settings.Secure.getString(context.contentResolver, Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES) ?: return false
-        return enabled.split(':').any { it.equals(service, ignoreCase = true) }
+        val manager = context.getSystemService(AccessibilityManager::class.java) ?: return false
+        return manager.getEnabledAccessibilityServiceList(AccessibilityServiceInfo.FEEDBACK_ALL_MASK)
+            .any { it.id.equals(service, ignoreCase = true) || it.id.equals(ComponentName.unflattenFromString(service)?.flattenToShortString(), ignoreCase = true) }
     }
 
     val RECORD_AUDIO = Manifest.permission.RECORD_AUDIO
