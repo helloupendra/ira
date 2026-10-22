@@ -176,6 +176,10 @@ keeps working as before.
   (money, deleting, the screen tools) shows a card: type your action PIN
   there and press **Confirm**. A PIN is never spoken; three wrong PINs lock
   actions for 15 minutes, as everywhere in Ira.
+- **Report an answer** that is wrong, harmful, offensive or shows something
+  private: long-press it, or tap **⋮** beside it, pick a reason, add a note
+  if you like, and **Send**. The report goes to your Ira's owner with that
+  answer; nothing else is sent.
 - **End** the call with the button, or the notification's **End**. Two
   quiet minutes end it too.
 
@@ -404,7 +408,8 @@ listing** ([help](https://support.google.com/googleplay/android-developer/answer
 - Short description (80 characters), full description (4,000). Say plainly
   that Ira reads calls and SMS when you ask, as the default assistant: Play
   requires the features that use these permissions to be "prominently
-  documented and promoted in the app's description".
+  documented and promoted in the app's description". A draft is
+  [below](#a-draft-store-listing).
 - App icon 512 × 512 PNG (from `docs/assets/icon.svg`); feature graphic
   1024 × 500 JPEG or PNG without transparency; at least two phone
   screenshots (1080 × 1920 is the recommended size; up to 8). Use the
@@ -413,13 +418,27 @@ listing** ([help](https://support.google.com/googleplay/android-developer/answer
 
 **4. App content.** **Policy and programs → App content**, every section:
 
-- **Privacy policy**: `https://helloupendra.github.io/ira/docs/privacy/`. Play
-  needs a public page that names the developer and a privacy contact, the
-  data handled, how it is protected, and how it is kept and deleted, plus a
-  link in the app (Ira's **Settings → Privacy policy**)
+- **Privacy policy**: `https://helloupendra.github.io/ira/docs/privacy/`. It
+  has a section on the Android app and a contact, as Play asks (the data
+  handled, how it is protected, kept and deleted), and the app links to it
+  from **Settings → Privacy policy**
   ([help](https://support.google.com/googleplay/android-developer/answer/10144311)).
-- **Sign-in details** (app access): reviewers must be able to use the app,
-  so give them a demo Ira server and how to pair a phone with it.
+- **Sign-in details** (app access): reviewers test days later, so a
+  10-minute pairing code will not do. On the demo server's command line,
+  make a demo account and a code that lasts a week
+  ([A code for app reviewers](../devices.md#a-code-for-app-reviewers)):
+
+    ```bash
+    ira user add --email reviewer@example.com --role staff
+    ira pin set --user reviewer@example.com
+    ira device code --email reviewer@example.com --kind android --days 7 --uses 3 \
+        --skills calls,contacts,messages,reminders
+    ```
+
+    Give the reviewers the printed pairing link and code, the account's email,
+    password and PIN, and the steps: open Ira, paste the link, **Pair**, then
+    "who called?". Use the Sunrise Dental Clinic demo data, never real data,
+    and remove the account and its devices after the review.
 - **Ads**: no ads.
 - **Content rating**: the IARC questionnaire; answer for an assistant with
   no violence, gambling or user-generated public content
@@ -467,7 +486,10 @@ listing** ([help](https://support.google.com/googleplay/android-developer/answer
 **5. AI content reporting.** Play requires apps whose content is made by AI
 to let people report offensive content without leaving the app
 ([help](https://support.google.com/googleplay/android-developer/answer/13985936)).
-This version has no such button yet; it is needed before the closed test.
+Ira has it: long-press any answer, or tap **⋮**, then **Report**. The
+reports reach the server's owners and admins in the console
+([Reporting an answer](../api.md#reporting-an-answer)). Show it in the
+review video and mention it in the description.
 
 **6. Closed testing, then production.** A personal developer account made
 after 13 November 2023 must run a closed test with **at least 12 testers
@@ -486,3 +508,40 @@ production ([help](https://support.google.com/googleplay/android-developer/answe
 New apps must target Android 16 (API 36) or newer from 31 August 2026
 ([help](https://support.google.com/googleplay/android-developer/answer/11926878));
 Ira targets Android 17 (API 37).
+
+### A draft store listing
+
+**Short description** (76 characters):
+
+> Talk to your own self-hosted Ira: calls, messages, reminders, in your words.
+
+**Full description:**
+
+> Ira is the phone app for IRA, the open-source assistant you run yourself.
+> Pair the phone with your own Ira server, then talk to it like a call: Ira
+> hears you, answers a moment after you stop, and stops when you speak over
+> her. Hindi, English and Hinglish are all fine. You can type too.
+>
+> Ira can use your phone for you, when you ask:
+>
+> - Calls and contacts: "who called?", "whose number is this?", "call him".
+>   As your default digital assistant, Ira reads your call log and SMS only
+>   when you ask, and only while you are talking to Ira on the phone.
+> - Messages: read your SMS and the notifications on your phone, and reply
+>   through a notification's own reply button.
+> - Alarms, timers, reminders and your calendar; apps, directions, music and
+>   the flashlight.
+>
+> Anything that acts for you (a call, a message, a reply, a calendar event)
+> is read back with its exact target and waits for your "yes"; bigger steps
+> need your PIN, typed, never spoken. Each ability is a skill you switch on
+> yourself, and Android asks before each permission.
+>
+> Your conversations stay on your own server. The microphone is on only
+> during a call you start, and nothing is recorded. If an answer is wrong,
+> harmful or offensive, long-press it and choose Report: the report goes to
+> your server's owner.
+>
+> You need an IRA server (free and open source, MIT licence):
+> github.com/helloupendra/ira. Long-press the power button to open Ira once
+> it is your digital assistant.
