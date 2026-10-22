@@ -125,6 +125,9 @@ actions:
 search:
   # The key goes in .env; without it web_search says it is not configured.
   brave_api_key_env: BRAVE_SEARCH_API_KEY  # pragma: allowlist secret
+  # video_find uses YouTube's own search with this key, else Brave; a news channel's
+  # live stream needs neither.
+  youtube_api_key_env: YOUTUBE_API_KEY  # pragma: allowlist secret
   calls_per_hour: 30                        # for the whole server: the key is shared
   results: 5
   # country: IN

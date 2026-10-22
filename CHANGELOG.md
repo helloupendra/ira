@@ -86,6 +86,10 @@ switch it on.
   with their password again; an owner sets someone's password or email from
   Users & roles; `ira user password` and `ira user email` do it from the
   server. All go to the change log.
+- **"News chalao" plays.** `video_find` finds a news channel's live stream
+  or a video, and Ira opens its watch link on the phone or Mac, which
+  plays it. YouTube's own search API (with a key) or Brave's, never its
+  pages.
 - **Approval windows.** One PIN on a screen or app action on a device lets
   the next such steps there run without asking, for 15 minutes (each person
   chooses off or 5 to 60, under **Your assistant**, with **Stop**).

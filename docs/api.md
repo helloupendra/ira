@@ -234,6 +234,14 @@ on, and whether the server can answer: `web_ready` (a Brave Search API key in
 Without a key, `web_search` answers that it is not configured. The server
 makes at most 30 web searches an hour, for everyone together.
 
+With search on, **`video_find`** finds something to play: a named news
+channel's live stream (Aaj Tak, NDTV India, ABP News, Zee News, India TV,
+DD News and others, by their fixed `youtube.com/@channel/live` address),
+otherwise YouTube's own search with a YouTube Data API key in
+`YOUTUBE_API_KEY`, or Brave's, limited to youtube.com. It never reads
+YouTube's own pages. Ira then plays the link with `url_open` on the
+person's phone or Mac.
+
 ### Grants
 
 Everything you allowed Ira to use: a skill on one of your devices, or web

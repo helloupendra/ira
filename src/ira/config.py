@@ -218,6 +218,8 @@ class SearchConfig(_Strict):
 
     # A Brave Search API key, in .env. Without it, web_search says it is not configured.
     brave_api_key_env: str = "BRAVE_SEARCH_API_KEY"
+    # A YouTube Data API key, in .env, for video_find (Brave finds videos without one).
+    youtube_api_key_env: str = "YOUTUBE_API_KEY"
     calls_per_hour: int = 30
     results: int = 5
     country: str | None = None  # two letters, e.g. IN

@@ -25,7 +25,7 @@ import xml.etree.ElementTree as ET
 from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
-from urllib.parse import urlsplit
+from urllib.parse import parse_qs, quote_plus, urlsplit
 
 import httpx
 
@@ -38,6 +38,62 @@ from ira.tools.registry import ToolError
 log = logging.getLogger("ira.search")
 
 BRAVE_URL = "https://api.search.brave.com/res/v1/web/search"
+YOUTUBE_SEARCH = "https://www.googleapis.com/youtube/v3/search"
+VIDEO_CACHE_SECONDS = 600
+# News channels whose live stream has a fixed address on YouTube: opening it plays the stream.
+# Checked to resolve on 23 Oct 2026.
+LIVE_CHANNELS: dict[str, tuple[str, tuple[str, ...]]] = {
+    "@aajtak": ("Aaj Tak", ("aaj tak", "aajtak", "आज तक")),
+    "@ndtvindia": ("NDTV India", ("ndtv india", "एनडीटीवी इंडिया")),
+    "@ABPNEWS": ("ABP News", ("abp news", "abp", "एबीपी")),
+    "@zeenews": ("Zee News", ("zee news", "zee", "ज़ी न्यूज़", "जी न्यूज")),
+    "@IndiaTV": ("India TV", ("india tv", "इंडिया टीवी")),
+    "@DDNews": ("DD News", ("dd news", "doordarshan", "डीडी न्यूज़", "दूरदर्शन")),
+    "@News18India": ("News18 India", ("news18 india", "news 18")),
+    "@republicbharat": ("Republic Bharat", ("republic bharat", "रिपब्लिक भारत")),
+    "@ndtv": ("NDTV", ("ndtv",)),
+    "@IndiaToday": ("India Today", ("india today",)),
+    "@WION": ("WION", ("wion",)),
+    "@TimesNowNews": ("Times Now", ("times now",)),
+    "@CNNnews18": ("CNN-News18", ("cnn news18", "cnn-news18", "cnn news 18")),
+}
+VIDEO_FIND_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "query": {"type": "string", "description": "What to play, such as aaj tak live news."},
+        "live": {"type": "boolean", "description": "A live stream (live news), not a video."},
+    },
+    "required": ["query"],
+}
+
+
+def live_channel(query: str) -> dict[str, Any] | None:
+    """A news channel named in the request, as its live stream's address."""
+    text = f" {' '.join(query.lower().split())} "
+    for handle, (name, names) in LIVE_CHANNELS.items():
+        if any(f" {n} " in text or (len(n) > 4 and n in text) for n in names):
+            return {
+                "title": f"{name} LIVE",
+                "channel": name,
+                "url": f"https://www.youtube.com/{handle}/live",
+                "live": True,
+            }
+    return None
+
+
+def watch_id(url: str) -> str | None:
+    """The video id of a YouTube watch link, else None."""
+    parts = urlsplit(url)
+    host = parts.netloc.lower().removeprefix("www.").removeprefix("m.")
+    if host == "youtube.com" and parts.path == "/watch":
+        found = parse_qs(parts.query).get("v", [""])[0]
+    elif host == "youtu.be":
+        found = parts.path.strip("/")
+    else:
+        return None
+    return found if re.fullmatch(r"[A-Za-z0-9_-]{11}", found) else None
+
+
 HOUR = 3600.0
 MAX_FEED_BYTES = 2 * 1024 * 1024
 MAX_SNIPPET = 300
@@ -201,6 +257,7 @@ class Search:
         self._news: list[NewsItem] = []
         self._news_at: float | None = None
         self._news_lock = asyncio.Lock()
+        self._videos: dict[tuple[str, bool], tuple[float, dict[str, Any]]] = {}
 
     # What is set up.
 
@@ -325,11 +382,99 @@ class Search:
         found = [item.public() for _, _, item in scored[: self.config.news.results]]
         return {"query": query, "days": days, "items": found}
 
+    # Videos.
+
+    async def video(self, query: str, live: bool = False) -> dict[str, Any]:
+        """Videos to play: a news channel's live address when one is named, else YouTube's
+        own search (with a YouTube Data API key) or Brave's. Never YouTube's pages scraped."""
+        query = " ".join(query.split())[:200]
+        if not query:
+            raise ToolError("say what to play")
+        channel = live_channel(query)
+        if channel is not None and (live or "live" in query.lower() or "news" in query.lower()):
+            return {"query": query, "videos": [channel]}
+        key = (query.lower(), live)
+        cached = self._videos.get(key)
+        if cached and self.clock() - cached[0] < VIDEO_CACHE_SECONDS:
+            return cached[1]
+        youtube = os.environ.get(self.config.youtube_api_key_env)
+        if youtube:
+            found = await self._youtube(query, live, youtube)
+        elif self.web_ready:
+            found = await self._brave_videos(query)
+        else:
+            if channel is not None:
+                return {"query": query, "videos": [channel]}
+            return {
+                "query": query,
+                "videos": [],
+                "search_page": f"https://www.youtube.com/results?search_query={quote_plus(query)}",
+                "note": "No video search is set up on this server: open the search page.",
+            }
+        result = {"query": query, "videos": found}
+        self._videos[key] = (self.clock(), result)
+        return result
+
+    async def _youtube(self, query: str, live: bool, key: str) -> list[dict[str, Any]]:
+        if self.limit.take() is not None:
+            raise ToolError("too many searches this hour; try again later")
+        params: dict[str, Any] = {
+            "part": "snippet",
+            "type": "video",
+            "maxResults": 5,
+            "q": query,
+            "key": key,
+        }
+        if live:
+            params["eventType"] = "live"
+        try:
+            response = await self.client.get(YOUTUBE_SEARCH, params=params, timeout=15)
+        except httpx.HTTPError as exc:
+            raise ToolError(f"YouTube could not be reached ({type(exc).__name__})") from None
+        if response.status_code in (400, 403):
+            raise ToolError("YouTube refused the search; the owner should check the API key")
+        if response.status_code != 200:
+            raise ToolError(f"YouTube search failed (HTTP {response.status_code})")
+        videos = []
+        for item in response.json().get("items") or []:
+            video_id = (item.get("id") or {}).get("videoId")
+            snippet = item.get("snippet") or {}
+            if not video_id:
+                continue
+            videos.append(
+                {
+                    "title": clean_line(snippet.get("title"), 200),
+                    "channel": clean_line(snippet.get("channelTitle"), 100),
+                    "url": f"https://www.youtube.com/watch?v={video_id}",
+                    "live": snippet.get("liveBroadcastContent") == "live",
+                }
+            )
+        return videos
+
+    async def _brave_videos(self, query: str) -> list[dict[str, Any]]:
+        found = await self.web(f"{query} site:youtube.com")
+        videos = []
+        for result in found["results"]:
+            video_id = watch_id(result["url"])
+            if video_id:
+                videos.append(
+                    {
+                        "title": result["title"],
+                        "channel": None,
+                        "url": f"https://www.youtube.com/watch?v={video_id}",
+                        "live": False,
+                    }
+                )
+        return videos
+
     # The tools, for one person who switched web search on.
 
     def tools(self) -> list[PersonalTool]:
         async def web(arguments: dict[str, Any]) -> Any:
             return await self.web(str(arguments.get("query", "")), arguments.get("freshness"))
+
+        async def video(arguments: dict[str, Any]) -> Any:
+            return await self.video(str(arguments.get("query", "")), arguments.get("live") is True)
 
         async def news(arguments: dict[str, Any]) -> Any:
             try:
@@ -357,6 +502,18 @@ class Search:
                 source="web",
                 label="news feeds",
                 run=news,
+                skill="web",
+            ),
+            PersonalTool(
+                name="video_find",
+                description="Find a YouTube video or a news channel's live stream to play. "
+                "Returns watch links: to play one, open its url with url_open (Tier 1), then "
+                "say what is playing ('Aaj Tak LIVE chala diya'). For live news, set live.",
+                parameters=VIDEO_FIND_SCHEMA,
+                tier=0,
+                source="web",
+                label="video search",
+                run=video,
                 skill="web",
             ),
         ]
