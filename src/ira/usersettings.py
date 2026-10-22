@@ -180,7 +180,10 @@ LANGUAGE_WORDS = {
     "hinglish": "Hinglish (Hindi and English mixed in one sentence)",
 }
 REPLY_RULES = {
-    "auto": "Reply in the language and script they used.",
+    "auto": "Reply in the language and script of their latest message, not of earlier "
+    "messages or tool results: English gets English; Hindi in Devanagari gets Hindi in "
+    "Devanagari; Hindi or Hinglish in Latin letters gets Hinglish in Latin letters. Keep "
+    "names, titles and addresses as they are.",
     "en": "Always reply in English.",
     "hi": "Always reply in Hindi, in Devanagari.",
     "hinglish": "Always reply in Hinglish, in Latin letters.",

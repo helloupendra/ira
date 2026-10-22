@@ -8,6 +8,7 @@ from pathlib import Path
 from ira.config import Settings
 from ira.evals.language import (
     LANGUAGES,
+    intent_matches,
     load_cases,
     render,
     reply_language,
@@ -34,6 +35,33 @@ def test_reply_language():
     assert reply_language("Upload 63% ho gaya hai, abhi 4 minute baaki hain.") == "hinglish"
     assert reply_language("The upload is at 63%, about 4 minutes left.") == "en"
     assert reply_language("Open the main tab in the browser.") == "en"  # main, tab: English too
+
+
+def test_quoted_data_does_not_change_the_language():
+    # Real replies from the first run on Bedrock: Hindi prose around English titles.
+    tabs = (
+        "आपके Chrome में 3 टैब खुले हैं:\n1. **Inbox - Example Mail** (mail.example.com)\n"
+        "2. **Upload - Example Drive** (drive.example.com/upload)"
+    )
+    assert reply_language(tabs) == "hi"
+    web = (
+        "Python 3.13 के बारे में यह जानकारी मिली (docs.example.org, 1 Oct 2026): - नया "
+        "interactive interpreter - बेहतर error messages क्या आप और details चाहते हैं?"
+    )
+    assert reply_language(web) == "hi"
+    assert reply_language('Main ab "Upload - Example Drive" tab pe nazar rakh raha hoon.') == (
+        "hinglish"
+    )
+    assert reply_language("**Monsoon reaches the coast a week early**") == "en"  # only data
+    # A real miss stays a miss: an English opening on a Hindi question.
+    said = "You're welcome! मैं आपकी मदद के लिए yahan hoon. Agar kuch bhi chahiye ho to batayein."
+    assert reply_language(said) == "hinglish"
+
+
+def test_the_expected_tool_may_come_after_another():
+    assert intent_matches("chrome_read_tab", ["chrome_list_tabs", "chrome_read_tab"])
+    assert not intent_matches("chrome_read_tab", ["chrome_list_tabs"])
+    assert intent_matches("none", []) and not intent_matches("none", ["web_search"])
 
 
 def test_word_accuracy():

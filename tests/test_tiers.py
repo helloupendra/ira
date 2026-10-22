@@ -424,7 +424,8 @@ async def test_the_prompt_carries_the_persons_languages(tiered):
     await runtime.assistant.ask("hello", conversation_id="a", user_id=me.id)
     prompt = provider.calls[0]["messages"][0].text
     assert "Hinglish" in prompt and "Hindi (in Devanagari or in Latin letters)" in prompt
-    assert "Reply in the language and script they used." in prompt
+    assert "Reply in the language and script of their latest message" in prompt
+    assert "Hindi or Hinglish in Latin letters gets Hinglish in Latin letters" in prompt
     assert "ask one short question back" in prompt
 
     runtime.assistant.user_settings.set(me.id, "reply_language", "hinglish")

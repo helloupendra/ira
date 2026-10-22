@@ -31,41 +31,23 @@ from typing import Any
 import yaml
 
 from ira.config import Settings
+from ira.language import LANGUAGES, detect
 from ira.store import Store
 from ira.tools.personal import PersonalTool
 from ira.tools.registry import ToolRegistry
 
 CASES = Path(__file__).resolve().parent / "language.yaml"
-LANGUAGES = ("hi", "hinglish", "en")
-
-# Words that mark Hindi written in Latin letters. English words that are also
-# Hindi ("tab", "to", "is") are left out on purpose.
-HINDI_WORDS = frozenset(
-    re.findall(
-        r"[a-z]+",
-        "hai hain tha thi ho hoga hogi raha rahi rahe kya kyun kaise kaun kaunse konse mein "
-        "mujhe mera meri mere aap aapka aapki aapke tum tumhara hamara yeh ye woh wo nahi "
-        "nahin haan ji abhi kal aaj subah shaam raat baje ka ki ke ko se pe aur bhi toh sirf "
-        "kuch bahut thoda zyada jab tak kar karo karna kiya diya liya gaya gayi hua hui hue "
-        "wala wali wale batao bata batana dekho dekh chalo khatam poora khabar khule khula "
-        "kitna kitni dhundo theek thik shukriya acha accha bilkul",
-    )
-)
-DEVANAGARI = re.compile(r"[ऀ-ॿ]")
-LATIN = re.compile(r"[A-Za-z]")
 
 
 def reply_language(text: str) -> str:
     """hi (mostly Devanagari), hinglish (Latin with Hindi words), or en."""
-    devanagari = len(DEVANAGARI.findall(text))
-    latin = len(LATIN.findall(text))
-    if devanagari and devanagari >= latin:
-        return "hi"
-    words = re.findall(r"[a-z]+", text.lower())
-    hindi = sum(1 for w in words if w in HINDI_WORDS)
-    if hindi >= 2 or (words and hindi / len(words) >= 0.15):
-        return "hinglish"
-    return "en"
+    return detect(text)
+
+
+def intent_matches(expected: str, tools: list[str]) -> bool:
+    """The expected tool anywhere in the turn: listing tabs to find one, then reading it,
+    is right. "none" means no tool at all."""
+    return expected in tools if expected != "none" else not tools
 
 
 def words_of(text: str) -> list[str]:
@@ -289,7 +271,8 @@ async def run(settings: Settings, *, spoken: bool = False, only: str | None = No
                 text, tools = reply.text, reply.tools_used
             except Exception as exc:  # a failed case is scored, not fatal
                 text, tools, error = "", [], f"{type(exc).__name__}: {exc}"[:300]
-            intent = tools[0] if tools else "none"
+            intent = ", ".join(tools) if tools else "none"
+            intent_ok = intent_matches(case.intent, tools)
             language = reply_language(text)
             report.results.append(
                 Result(
@@ -298,7 +281,7 @@ async def run(settings: Settings, *, spoken: bool = False, only: str | None = No
                     asked=asked,
                     expected_intent=case.intent,
                     intent=intent,
-                    intent_ok=intent == case.intent,
+                    intent_ok=intent_ok,
                     expected_reply=case.reply,
                     reply_language=language,
                     reply_ok=language == case.reply,
