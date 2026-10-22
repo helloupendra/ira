@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Annotated, Any, Literal
 
-from pydantic import BaseModel, Field, RootModel
+from pydantic import BaseModel, Field, RootModel, model_validator
 
 from ira.security import PIN_MAX_LENGTH, PIN_MIN_LENGTH
 
@@ -188,7 +188,22 @@ class SpeakRequest(BaseModel):
 
 
 class ConfirmRequest(BaseModel):
-    pin: str = Field(min_length=PIN_MIN_LENGTH, max_length=PIN_MAX_LENGTH)
+    pin: str | None = Field(default=None, min_length=PIN_MIN_LENGTH, max_length=PIN_MAX_LENGTH)
+    device_id: int | None = Field(
+        default=None, description="With signature: the device whose approval key signed."
+    )
+    signature: str | None = Field(
+        default=None,
+        max_length=200,
+        description="Instead of the PIN: the device's ECDSA P-256 signature (DER, base64url) "
+        "over the action, after the person's fingerprint (see Security, Approvals).",
+    )
+
+    @model_validator(mode="after")
+    def _pin_or_signature(self) -> ConfirmRequest:
+        if (self.pin is None) == (self.signature is None or self.device_id is None):
+            raise ValueError("give the PIN, or a device_id and its signature")
+        return self
 
 
 LOCKED_UNTIL = (

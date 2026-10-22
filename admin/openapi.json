@@ -8991,6 +8991,128 @@
                     }
                 ]
             }
+        },
+        "/v1/me/approval-keys": {
+            "get": {
+                "tags": [
+                    "actions"
+                ],
+                "summary": "Devices that may approve",
+                "operationId": "my_keys",
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "items": {
+                                        "$ref": "#/components/schemas/ApprovalKeyView"
+                                    },
+                                    "type": "array",
+                                    "title": "Response My Keys"
+                                }
+                            }
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "HTTPBearer": []
+                    }
+                ]
+            },
+            "post": {
+                "tags": [
+                    "actions"
+                ],
+                "summary": "Enrol this device's approval key",
+                "description": "Only a device, with its own token, enrols its key; and only with the person's PIN.",
+                "operationId": "enrol_key",
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/ApprovalKeyIn"
+                            }
+                        }
+                    },
+                    "required": true
+                },
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ApprovalKeyView"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "HTTPBearer": []
+                    }
+                ]
+            }
+        },
+        "/v1/me/approval-keys/{device_id}": {
+            "delete": {
+                "tags": [
+                    "actions"
+                ],
+                "summary": "Remove a device's approval key",
+                "operationId": "remove_key",
+                "security": [
+                    {
+                        "HTTPBearer": []
+                    }
+                ],
+                "parameters": [
+                    {
+                        "name": "device_id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "integer",
+                            "title": "Device Id"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/OkResponse"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
         }
     },
     "components": {
@@ -9621,6 +9743,62 @@
                     "has_pin"
                 ],
                 "title": "AdminUserRow"
+            },
+            "ApprovalKeyIn": {
+                "properties": {
+                    "public_key": {
+                        "type": "string",
+                        "maxLength": 400,
+                        "title": "Public Key",
+                        "description": "EC P-256 SubjectPublicKeyInfo, DER, base64."
+                    },
+                    "algorithm": {
+                        "type": "string",
+                        "title": "Algorithm",
+                        "description": "ES256 only.",
+                        "default": "ES256"
+                    },
+                    "pin": {
+                        "type": "string",
+                        "maxLength": 20,
+                        "title": "Pin",
+                        "description": "The person's PIN, typed on the device."
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "public_key",
+                    "pin"
+                ],
+                "title": "ApprovalKeyIn"
+            },
+            "ApprovalKeyView": {
+                "properties": {
+                    "device_id": {
+                        "type": "integer",
+                        "title": "Device Id"
+                    },
+                    "device": {
+                        "type": "string",
+                        "title": "Device"
+                    },
+                    "algorithm": {
+                        "type": "string",
+                        "title": "Algorithm"
+                    },
+                    "created_at": {
+                        "type": "number",
+                        "title": "Created At"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "device_id",
+                    "device",
+                    "algorithm",
+                    "created_at"
+                ],
+                "title": "ApprovalKeyView"
             },
             "ApprovalMinutes": {
                 "properties": {
@@ -10323,16 +10501,45 @@
             "ConfirmRequest": {
                 "properties": {
                     "pin": {
-                        "type": "string",
-                        "maxLength": 12,
-                        "minLength": 4,
+                        "anyOf": [
+                            {
+                                "type": "string",
+                                "maxLength": 12,
+                                "minLength": 4
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
                         "title": "Pin"
+                    },
+                    "device_id": {
+                        "anyOf": [
+                            {
+                                "type": "integer"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Device Id",
+                        "description": "With signature: the device whose approval key signed."
+                    },
+                    "signature": {
+                        "anyOf": [
+                            {
+                                "type": "string",
+                                "maxLength": 200
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Signature",
+                        "description": "Instead of the PIN: the device's ECDSA P-256 signature (DER, base64url) over the action, after the person's fingerprint (see Security, Approvals)."
                     }
                 },
                 "type": "object",
-                "required": [
-                    "pin"
-                ],
                 "title": "ConfirmRequest"
             },
             "ConnectionCreate": {

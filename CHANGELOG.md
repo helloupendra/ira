@@ -90,6 +90,10 @@ switch it on.
   or a video, and Ira opens its watch link on the phone or Mac, which
   plays it. YouTube's own search API (with a key) or Brave's, never its
   pages.
+- **A fingerprint instead of the PIN.** A phone or Mac enrols a key that
+  only the person's fingerprint or face unlocks, once, with the PIN; it
+  then confirms an action by signing it. A wrong signature counts as a
+  wrong PIN.
 - **Approval windows.** One PIN on a screen or app action on a device lets
   the next such steps there run without asking, for 15 minutes (each person
   chooses off or 5 to 60, under **Your assistant**, with **Stop**).

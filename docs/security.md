@@ -199,7 +199,7 @@ reading the screen still needs the person's own words in a new message.
 A device can stop a window and never open or lengthen one: only a PIN on a
 confirm card does.
 
-### 2. Approving with the device's own key (designed)
+### 2. Approving with the device's own key (built)
 
 A phone or a Mac can approve with a fingerprint or Face ID instead of a
 typed PIN:
@@ -226,8 +226,11 @@ typed PIN:
    the PIN. The summary's hash binds the signature to what the person was
    shown.
 3. A wrong signature counts as a wrong PIN (three lock actions for 15
-   minutes). `DELETE /v1/me/approval-keys/{device_id}` removes a key, and
-   removing the device removes it too.
+   minutes). A signature is for one action only: it covers its id, its
+   summary and its expiry. A signed confirm opens an approval window just
+   as a PIN does. `GET /v1/me/approval-keys` lists the devices that may
+   approve; `DELETE /v1/me/approval-keys/{device_id}` removes a key, and a
+   removed device's key no longer works.
 
 ### 3. Trusted apps (designed)
 

@@ -91,3 +91,74 @@ async def set_minutes(
     if body.minutes == 0:
         runtime.approvals.stop(who.user.id)
     return _view(runtime, who.user.id)
+
+
+# --- approval keys: a fingerprint on the device instead of the PIN ------------------
+
+keys = APIRouter(prefix="/v1/me/approval-keys", tags=["actions"])
+
+
+class ApprovalKeyIn(BaseModel):
+    public_key: str = Field(
+        max_length=400, description="EC P-256 SubjectPublicKeyInfo, DER, base64."
+    )
+    algorithm: str = Field(default="ES256", description="ES256 only.")
+    pin: str = Field(max_length=20, description="The person's PIN, typed on the device.")
+
+
+class ApprovalKeyView(BaseModel):
+    device_id: int
+    device: str
+    algorithm: str
+    created_at: float
+
+
+@keys.post("", response_model=ApprovalKeyView, summary="Enrol this device's approval key")
+async def enrol_key(
+    body: ApprovalKeyIn,
+    who: Principal = Depends(require("actions")),
+    runtime: Runtime = Depends(get_runtime),
+) -> ApprovalKeyView:
+    """Only a device, with its own token, enrols its key; and only with the person's PIN."""
+    from ira.approval_keys import KeyError_
+
+    if who.via != "device" or not (who.credential_id or "").startswith("device:"):
+        raise HTTPException(403, detail="a device enrols its own key, with its device token")
+    device_id = int((who.credential_id or "device:0").split(":", 1)[1])
+    await _check_pin(runtime, who, body.pin, "let this device approve with a fingerprint")
+    try:
+        key = runtime.approval_keys.enrol(who.user.id, device_id, body.public_key, body.algorithm)
+    except KeyError_ as exc:
+        raise HTTPException(422, detail=str(exc)) from None
+    return ApprovalKeyView(
+        device_id=device_id,
+        device=runtime.device_label(device_id),
+        algorithm=key.algorithm,
+        created_at=key.created_at,
+    )
+
+
+@keys.get("", response_model=list[ApprovalKeyView], summary="Devices that may approve")
+def my_keys(
+    who: Principal = Depends(require("ask")), runtime: Runtime = Depends(get_runtime)
+) -> list[ApprovalKeyView]:
+    return [
+        ApprovalKeyView(
+            device_id=k.device_id,
+            device=runtime.device_label(k.device_id),
+            algorithm=k.algorithm,
+            created_at=k.created_at,
+        )
+        for k in runtime.approval_keys.for_user(who.user.id)
+    ]
+
+
+@keys.delete("/{device_id}", response_model=OkResponse, summary="Remove a device's approval key")
+def remove_key(
+    device_id: int,
+    who: Principal = Depends(require("ask")),
+    runtime: Runtime = Depends(get_runtime),
+) -> OkResponse:
+    if not runtime.approval_keys.remove(who.user.id, device_id):
+        raise HTTPException(404, detail="no approval key for that device")
+    return OkResponse()

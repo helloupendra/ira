@@ -163,6 +163,8 @@ class ActionGuard:
         self.personal_runner: Callable[[PendingAction], Awaitable[Any]] | None = None
         # Told of each action confirmed with a right PIN (approval windows).
         self.after_pin: Callable[[PendingAction], None] | None = None
+        # Checks a device's signature over an action: (user, device, action, signature).
+        self.signature_check: Callable[[int, int, PendingAction, str], bool] | None = None
 
     def confirm_roles_for(self, tool: str) -> tuple[str, ...]:
         """The roles allowed to confirm this action (they also need the actions permission)."""
@@ -445,17 +447,21 @@ class ActionGuard:
     async def confirm(
         self,
         action_id: str,
-        pin: str,
+        pin: str | None,
         *,
         actor: str | None = None,
         channel: str | None = None,
         user_id: int | None = None,
         role: str | None = None,
+        signed: tuple[int, str] | None = None,
     ) -> Outcome:
         """Check the PIN and run the action once.
 
         With ``user_id`` the PIN is that user's own and ``role`` must be allowed
         to confirm this action; without, the installation PIN is checked.
+        ``signed`` is (device id, signature) instead of the PIN: the person's device
+        signed this action with its enrolled key, after their fingerprint. A wrong
+        signature counts as a wrong PIN.
         """
         locked = self.locked_until()
         if locked is not None:
@@ -495,18 +501,26 @@ class ActionGuard:
                 channel,
             )
 
-        stored = self._stored_pin(user_id)
-        if stored is None:
-            message = (
-                "No action PIN is set. Run `ira pin set` first."
-                if user_id is None
-                else "You have no action PIN yet. "
-                "Set your PIN in the Ira app's menu, or ask an owner to reset it."
-            )
-            return self._finish(pending, "no_pin", message, actor, channel)
-        # PBKDF2 is deliberately slow; keep it off the event loop.
-        if not await asyncio.to_thread(verify_pin, pin, stored):
-            return self._wrong_pin(pending, actor, channel)
+        if signed is not None:
+            if self.signature_check is None or user_id is None:
+                message = "This server cannot check a device's approval key."
+                return self._finish(pending, "not_allowed", message, actor, channel)
+            device_id, signature = signed
+            if not self.signature_check(user_id, device_id, pending, signature):
+                return self._wrong_pin(pending, actor, channel)
+        else:
+            stored = self._stored_pin(user_id)
+            if stored is None:
+                message = (
+                    "No action PIN is set. Run `ira pin set` first."
+                    if user_id is None
+                    else "You have no action PIN yet. "
+                    "Set your PIN in the Ira app's menu, or ask an owner to reset it."
+                )
+                return self._finish(pending, "no_pin", message, actor, channel)
+            # PBKDF2 is deliberately slow; keep it off the event loop.
+            if not pin or not await asyncio.to_thread(verify_pin, pin, stored):
+                return self._wrong_pin(pending, actor, channel)
 
         self.store.execute("UPDATE pin_state SET failures = 0 WHERE id = 1")
         claimed = self.store.execute(

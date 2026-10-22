@@ -1893,6 +1893,44 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/me/approval-keys": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Devices that may approve */
+        get: operations["my_keys"];
+        put?: never;
+        /**
+         * Enrol this device's approval key
+         * @description Only a device, with its own token, enrols its key; and only with the person's PIN.
+         */
+        post: operations["enrol_key"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/me/approval-keys/{device_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Remove a device's approval key */
+        delete: operations["remove_key"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -2196,6 +2234,36 @@ export interface components {
             /** Has Pin */
             has_pin: boolean;
         };
+        /** ApprovalKeyIn */
+        ApprovalKeyIn: {
+            /**
+             * Public Key
+             * @description EC P-256 SubjectPublicKeyInfo, DER, base64.
+             */
+            public_key: string;
+            /**
+             * Algorithm
+             * @description ES256 only.
+             * @default ES256
+             */
+            algorithm: string;
+            /**
+             * Pin
+             * @description The person's PIN, typed on the device.
+             */
+            pin: string;
+        };
+        /** ApprovalKeyView */
+        ApprovalKeyView: {
+            /** Device Id */
+            device_id: number;
+            /** Device */
+            device: string;
+            /** Algorithm */
+            algorithm: string;
+            /** Created At */
+            created_at: number;
+        };
         /** ApprovalMinutes */
         ApprovalMinutes: {
             /**
@@ -2490,7 +2558,17 @@ export interface components {
         /** ConfirmRequest */
         ConfirmRequest: {
             /** Pin */
-            pin: string;
+            pin?: string | null;
+            /**
+             * Device Id
+             * @description With signature: the device whose approval key signed.
+             */
+            device_id?: number | null;
+            /**
+             * Signature
+             * @description Instead of the PIN: the device's ECDSA P-256 signature (DER, base64url) over the action, after the person's fingerprint (see Security, Approvals).
+             */
+            signature?: string | null;
         };
         /** ConnectionCreate */
         ConnectionCreate: {
@@ -11319,6 +11397,90 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ApprovalsView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    my_keys: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApprovalKeyView"][];
+                };
+            };
+        };
+    };
+    enrol_key: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ApprovalKeyIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApprovalKeyView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    remove_key: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                device_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OkResponse"];
                 };
             };
             /** @description Validation Error */

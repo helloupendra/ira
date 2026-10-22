@@ -461,6 +461,7 @@ async def confirm_action(
     principal: Principal = Depends(require("actions")),
     runtime: Runtime = Depends(get_runtime),
 ) -> ActionOutcome:
+    signed = (body.device_id, body.signature) if body.signature and body.device_id else None
     outcome = await runtime.guard.confirm(
         action_id,
         body.pin,
@@ -468,6 +469,7 @@ async def confirm_action(
         channel=principal.channel,
         user_id=principal.user.id,
         role=principal.user.role,
+        signed=signed,
     )
     after = await runtime.continue_after(outcome, actor=principal.actor)
     return _outcome_response(response, outcome, runtime, principal, after)
@@ -607,6 +609,7 @@ def create_app(runtime: Runtime, *, start_channels: bool = True) -> FastAPI:
     app.include_router(businesses.router)
     app.include_router(my_tokens.router)
     app.include_router(approvals.router)
+    app.include_router(approvals.keys)
     devices.mask_tokens_in_logs()
 
     @app.get("/pair", include_in_schema=False)

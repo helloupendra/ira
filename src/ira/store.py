@@ -234,6 +234,16 @@ CREATE TABLE IF NOT EXISTS approval_windows (
 );
 CREATE INDEX IF NOT EXISTS approval_windows_user ON approval_windows (user_id, device_id);
 
+-- Each device's approval key: a public key whose private half only the person's
+-- fingerprint or face unlocks, so it may confirm instead of the PIN.
+CREATE TABLE IF NOT EXISTS approval_keys (
+    device_id  INTEGER PRIMARY KEY,
+    user_id    INTEGER NOT NULL,
+    public_key TEXT NOT NULL,
+    algorithm  TEXT NOT NULL,
+    created_at REAL NOT NULL
+);
+
 -- The businesses a person works with, as they describe them: Ira keeps them in mind.
 CREATE TABLE IF NOT EXISTS businesses (
     id         TEXT PRIMARY KEY,

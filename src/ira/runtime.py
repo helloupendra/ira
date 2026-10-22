@@ -9,6 +9,7 @@ from typing import Any
 
 from ira import overrides, setupcode
 from ira.accounts import Accounts
+from ira.approval_keys import ApprovalKeys
 from ira.approvals import Approvals, covered
 from ira.assistant import Assistant
 from ira.businesses import Businesses
@@ -89,6 +90,8 @@ class Runtime:
     live_calls: dict[str, Any] = field(default_factory=dict)
     # Approval windows: one PIN on a screen-control action covers the next steps on a device.
     approvals: Approvals = field(init=False)
+    # Devices' approval keys: a fingerprint on the device instead of the PIN.
+    approval_keys: ApprovalKeys = field(init=False)
     # Each person's connections to other services (MCP servers).
     connectors: Any = None
 
@@ -125,6 +128,12 @@ class Runtime:
             self.assistant.device_label = self.device_label
         if self.guard.after_pin is None:
             self.guard.after_pin = self._after_pin
+        self.approval_keys = ApprovalKeys(
+            self.store,
+            active_device=lambda device_id: hub.devices.get(device_id) if hub else None,
+        )
+        if self.guard.signature_check is None:
+            self.guard.signature_check = self.approval_keys.verify
         if self.assistant.after_turn is None:
             self.assistant.after_turn = self._learn_from
         if self.assistant.personal_tools is None:
