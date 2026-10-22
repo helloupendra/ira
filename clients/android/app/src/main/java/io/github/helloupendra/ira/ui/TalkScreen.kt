@@ -75,9 +75,11 @@ import androidx.compose.ui.unit.dp
 import io.github.helloupendra.ira.IraApp
 import io.github.helloupendra.ira.R
 import io.github.helloupendra.ira.device.LinkState
-import io.github.helloupendra.ira.service.ConversationService
 import io.github.helloupendra.ira.voice.CallStatus
 import io.github.helloupendra.ira.voice.CallUi
+import io.github.helloupendra.ira.voice.PhoneSession
+import io.github.helloupendra.ira.voice.TalkMode
+import io.github.helloupendra.ira.voice.Transcript
 import kotlinx.coroutines.flow.MutableStateFlow
 
 @Composable
@@ -94,10 +96,13 @@ fun TalkScreen(app: IraApp, talkRequests: Int, onSkills: () -> Unit, onSettings:
     var micRefused by remember { mutableStateOf(false) }
     var notificationsRefused by remember { mutableStateOf(false) }
     var typed by remember { mutableStateOf("") }
+    var sending by remember { mutableStateOf(false) }
+    var sendError by remember { mutableStateOf<String?>(null) }
+    val lines by app.transcript.lines.collectAsState()
     var confirming by remember { mutableStateOf(false) }
     var outcome by remember { mutableStateOf<String?>(null) }
     var refresh by remember { mutableIntStateOf(0) }
-    var reporting by remember { mutableStateOf<CallUi.Line?>(null) }
+    var reporting by remember { mutableStateOf<Transcript.Line?>(null) }
     val server = app.settings.server.orEmpty().removePrefix("https://").removePrefix("http://")
     LifecycleResumeEffect(Unit) {
         refresh++
@@ -109,7 +114,7 @@ fun TalkScreen(app: IraApp, talkRequests: Int, onSkills: () -> Unit, onSettings:
         rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
             refresh++
             micRefused = !granted
-            if (granted && callAfterGrant) ConversationService.start(context)
+            if (granted && callAfterGrant) app.startVoice(context)
         }
     val notificationPermission =
         rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
@@ -124,7 +129,7 @@ fun TalkScreen(app: IraApp, talkRequests: Int, onSkills: () -> Unit, onSettings:
         callAfterGrant = call
         when {
             !app.settings.micDisclosureAccepted -> disclose = call
-            hasMic() -> if (call) ConversationService.start(context)
+            hasMic() -> if (call) app.startVoice(context)
             micRefused -> openAppSettings(context)
             else -> micPermission.launch(Manifest.permission.RECORD_AUDIO)
         }
@@ -135,7 +140,6 @@ fun TalkScreen(app: IraApp, talkRequests: Int, onSkills: () -> Unit, onSettings:
     // The assistant gesture opened Ira: start listening at once.
     LaunchedEffect(talkRequests) { if (talkRequests > 0 && session?.ui?.value?.listening != true) talk() }
 
-    val callOn = ui.status != CallStatus.Off && ui.status != CallStatus.Ended
     val skillsOn by app.skillsOn.collectAsState()
     val facts =
         remember(refresh, skillsOn) {
@@ -156,7 +160,7 @@ fun TalkScreen(app: IraApp, talkRequests: Int, onSkills: () -> Unit, onSettings:
             TextButton(onClick = onSettings) { Text("Settings") }
         }
         StatusLine(ui, link)
-        if (!checklistHidden && !Checklist.complete(facts) && !callOn) {
+        if (!checklistHidden && !Checklist.complete(facts) && !ui.listening) {
             ChecklistCard(
                 steps = Checklist.steps(facts),
                 refused = { action ->
@@ -183,7 +187,7 @@ fun TalkScreen(app: IraApp, talkRequests: Int, onSkills: () -> Unit, onSettings:
                 },
             )
         }
-        Transcript(ui, Modifier.weight(1f), onReport = { reporting = it })
+        Conversation(ui, lines, Modifier.weight(1f), onReport = { reporting = it })
         ui.action?.let { card ->
             ActionCardView(
                 card = card,
@@ -225,33 +229,52 @@ fun TalkScreen(app: IraApp, talkRequests: Int, onSkills: () -> Unit, onSettings:
         TalkControl(
             ui = ui,
             onTap = {
+                val current = session
                 when {
-                    !callOn || !ui.listening -> talk()
-                    ui.status == CallStatus.Speaking -> session?.stopIra()
+                    current == null || !ui.listening -> talk()
+                    ui.status == CallStatus.Speaking -> current.stopIra()
+                    current is PhoneSession -> current.stopListening()
                     else -> app.endCall()
                 }
             },
         )
+        fun send() {
+            val text = typed.trim()
+            if (text.isEmpty() || sending) return
+            sending = true
+            sendError = null
+            app.send(text) { error ->
+                sending = false
+                if (error == null) {
+                    // Ira has it: clear the field, unless the person typed on meanwhile.
+                    if (typed.trim() == text) typed = ""
+                } else {
+                    sendError = error
+                }
+            }
+        }
+        sendError?.let { error ->
+            Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp), verticalAlignment = Alignment.CenterVertically) {
+                Text(error, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
+                TextButton(onClick = { send() }, enabled = !sending) { Text("Retry") }
+            }
+        }
         Row(
             Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             OutlinedTextField(
                 value = typed,
-                onValueChange = { typed = it },
+                onValueChange = {
+                    typed = it
+                    sendError = null
+                },
                 placeholder = { Text("Type to ${ui.assistant}") },
                 maxLines = 3,
                 modifier = Modifier.weight(1f),
             )
             Spacer(Modifier.size(8.dp))
-            Button(
-                enabled = typed.isNotBlank(),
-                onClick = {
-                    val text = typed
-                    typed = ""
-                    (session ?: app.startCall(listen = false))?.type(text)
-                },
-            ) { Text("Send") }
+            Button(enabled = typed.isNotBlank() && !sending, onClick = { send() }) { Text(if (sending) "Sending" else "Send") }
         }
     }
 
@@ -338,7 +361,7 @@ private fun StatusLine(ui: CallUi, link: LinkState) {
         when (ui.status) {
             CallStatus.Off -> "Tap the microphone to talk, or type."
             CallStatus.Connecting -> "Connecting..."
-            CallStatus.Listening -> if (ui.listening) "Listening" else "Connected. Type, or tap the microphone."
+            CallStatus.Listening -> if (ui.listening) "Listening" else "Type, or tap the microphone."
             CallStatus.Hearing -> "Hearing you"
             CallStatus.Thinking -> "Thinking"
             CallStatus.Speaking -> "Speaking. Talk to interrupt."
@@ -346,24 +369,31 @@ private fun StatusLine(ui: CallUi, link: LinkState) {
             CallStatus.Ended -> "Call ended."
         }
     val tools = if (link is LinkState.Connected) "Phone tools: on" else "Phone tools: off"
+    // Which way Ira hears: the server (a live call) or the phone's own recognition.
+    val mode =
+        when {
+            ui.mode == TalkMode.LIVE && ui.status != CallStatus.Ended -> "Live call · "
+            ui.mode == TalkMode.PHONE -> "Talk (phone recognition) · "
+            else -> ""
+        }
     Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp), verticalAlignment = Alignment.CenterVertically) {
-        Text(text, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.primary, modifier = Modifier.weight(1f))
+        Text(mode + text, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.primary, modifier = Modifier.weight(1f))
         Text(tools, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }
 
 @Composable
-private fun Transcript(ui: CallUi, modifier: Modifier, onReport: (CallUi.Line) -> Unit) {
+private fun Conversation(ui: CallUi, lines: List<Transcript.Line>, modifier: Modifier, onReport: (Transcript.Line) -> Unit) {
     val list = rememberLazyListState()
-    val count = ui.lines.size + if (ui.caption.isNotBlank()) 1 else 0
-    LaunchedEffect(count, ui.lines.lastOrNull()?.text?.length) { if (count > 0) list.animateScrollToItem(count - 1) }
+    val count = lines.size + 1 + if (ui.caption.isNotBlank()) 1 else 0
+    LaunchedEffect(count, lines.lastOrNull()?.text?.length) { list.animateScrollToItem(count - 1) }
     LazyColumn(
         state = list,
         modifier = modifier.fillMaxWidth().padding(horizontal = 16.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         item { Spacer(Modifier.height(8.dp)) }
-        items(ui.lines) { line -> Bubble(line, onReport) }
+        items(lines, key = { it.key }) { line -> Bubble(line, onReport) }
         if (ui.caption.isNotBlank()) {
             item {
                 Text(
@@ -378,7 +408,7 @@ private fun Transcript(ui: CallUi, modifier: Modifier, onReport: (CallUi.Line) -
 }
 
 @Composable
-private fun Bubble(line: CallUi.Line, onReport: (CallUi.Line) -> Unit) {
+private fun Bubble(line: Transcript.Line, onReport: (Transcript.Line) -> Unit) {
     val mine = !line.fromIra
     val reportable = line.fromIra && line.messageId != null
     Row(
@@ -424,7 +454,7 @@ private fun Bubble(line: CallUi.Line, onReport: (CallUi.Line) -> Unit) {
 
 /** Report one of Ira's answers: a reason, an optional note, then send. */
 @Composable
-private fun ReportDialog(line: CallUi.Line, onSend: (reason: String, note: String, done: (Reports.Result) -> Unit) -> Unit, onClose: () -> Unit) {
+private fun ReportDialog(line: Transcript.Line, onSend: (reason: String, note: String, done: (Reports.Result) -> Unit) -> Unit, onClose: () -> Unit) {
     var reason by remember(line.messageId) { mutableStateOf<String?>(null) }
     var note by remember(line.messageId) { mutableStateOf("") }
     var busy by remember(line.messageId) { mutableStateOf(false) }

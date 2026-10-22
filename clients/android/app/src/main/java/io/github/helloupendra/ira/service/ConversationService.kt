@@ -38,7 +38,7 @@ class ConversationService : Service() {
             return START_NOT_STICKY
         }
         ServiceCompat.startForeground(this, ID, notification(), ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE)
-        if (app.startCall(listen = true) == null) stopSelf()
+        if (app.startLive() == null) stopSelf()
         return START_NOT_STICKY
     }
 

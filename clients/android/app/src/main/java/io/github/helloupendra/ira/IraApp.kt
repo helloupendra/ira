@@ -21,7 +21,14 @@ import io.github.helloupendra.ira.service.ConversationService
 import io.github.helloupendra.ira.tools.PhoneState
 import io.github.helloupendra.ira.tools.PhoneTools
 import io.github.helloupendra.ira.ui.MainActivity
+import io.github.helloupendra.ira.core.ServerInfo
+import io.github.helloupendra.ira.net.Net
+import io.github.helloupendra.ira.voice.Conversation
 import io.github.helloupendra.ira.voice.LiveSession
+import io.github.helloupendra.ira.voice.PhoneSession
+import io.github.helloupendra.ira.voice.Transcript
+import java.io.IOException
+import kotlin.concurrent.thread
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.MainScope
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -50,8 +57,14 @@ class IraApp : Application() {
     private val skills = MutableStateFlow<Set<String>>(emptySet())
     val skillsOn: StateFlow<Set<String>> = skills
 
-    private val call = MutableStateFlow<LiveSession?>(null)
-    val session: StateFlow<LiveSession?> = call
+    /** What was said, kept across a live call and the phone's own speech. */
+    val transcript = Transcript()
+
+    private val call = MutableStateFlow<Conversation?>(null)
+    val session: StateFlow<Conversation?> = call
+
+    private var info: ServerInfo? = null
+    private var infoAt = 0L
 
     /** Why the last call ended, when it was not the person's own doing; shown on the talk screen. */
     private val ended = MutableStateFlow<String?>(null)
@@ -101,29 +114,118 @@ class IraApp : Application() {
         if (current != null) current.unpair(finish) else finish()
     }
 
-    // The call.
+    // The conversation.
 
-    /** A call with Ira: [listen] turns the microphone on (a voice call), else typing only. */
-    fun startCall(listen: Boolean): LiveSession? {
-        call.value?.let {
-            if (listen) it.startListening()
+    /** The server's `/v1/info` (a minute old at most), then [done] on the main thread. */
+    fun serverInfo(done: (ServerInfo?) -> Unit) {
+        val fresh = info?.takeIf { System.currentTimeMillis() - infoAt < 60_000 }
+        if (fresh != null) return done(fresh)
+        val server = settings.server
+        val token = secrets.token()
+        if (server == null || token == null) return done(null)
+        thread(name = "ira-info") {
+            val got =
+                try {
+                    Net.get(server.trimEnd('/') + "/v1/info", token).takeIf { it.status == 200 }?.let { ServerInfo.parse(it.body) }
+                } catch (_: IOException) {
+                    null
+                }
+            main.post {
+                if (got != null) {
+                    info = got
+                    infoAt = System.currentTimeMillis()
+                }
+                done(got ?: info)
+            }
+        }
+    }
+
+    /**
+     * A typed turn. Over the live call only while one is connected; otherwise, and if that
+     * fails, through `/v1/ask/stream`. [done] gets null once Ira has it, else what went wrong:
+     * the screen keeps the text so nothing typed is lost.
+     */
+    fun send(text: String, done: (String?) -> Unit) {
+        val current = call.value
+        if (current is LiveSession && current.connected) {
+            current.send(text) { error -> if (error == null) done(null) else phone(null)?.send(text, done) ?: done(error) }
+            return
+        }
+        val session = phone(null) ?: return done("This phone is not paired with an Ira. Pair it from Settings.")
+        session.send(text, done)
+    }
+
+    /**
+     * The microphone: a live call when the server has one (`/v1/info` live), else the phone's
+     * own speech recognition. Called from a screen the person is using.
+     */
+    fun startVoice(context: android.content.Context) {
+        serverInfo { known ->
+            if (known?.live == true) {
+                ConversationService.start(context)
+            } else {
+                val notice = if (known != null) LiveSession.NO_LIVE else "Your Ira did not answer just now. Using the phone's own speech recognition."
+                phone(notice)?.startListening()
+            }
+        }
+    }
+
+    /** The phone-speech session (typing, and speech the phone recognises): the current one, or a new one. */
+    private fun phone(notice: String?): PhoneSession? {
+        (call.value as? PhoneSession)?.let {
+            it.inform(notice)
             return it
         }
         val server = settings.server ?: return null
+        (call.value as? LiveSession)?.end()
+        val session =
+            PhoneSession(
+                context = this,
+                server = server,
+                token = { secrets.token() },
+                conversationId = { settings.conversationId },
+                transcript = transcript,
+                info = info,
+                onConversation = { settings.conversationId = it },
+                onEnded = { reason ->
+                    ended.value = reason
+                    PhoneState.callOn = false
+                    if (call.value is PhoneSession) call.value = null
+                    release("call")
+                },
+                notice = notice,
+            )
+        ended.value = null
+        call.value = session
+        PhoneState.callOn = true
+        hold("call")
+        return session
+    }
+
+    /** A live call (the foreground service starts it), ending phone-speech mode first. */
+    fun startLive(): LiveSession? {
+        (call.value as? LiveSession)?.let { return it }
+        val server = settings.server ?: return null
+        (call.value as? PhoneSession)?.end()
         val session =
             LiveSession(
                 context = this,
                 server = server,
                 token = { secrets.token() },
                 conversationId = settings.conversationId,
-                listen = listen,
+                transcript = transcript,
                 onConversation = { settings.conversationId = it },
-                onEnded = { reason ->
+                onEnded = { reason, unavailable ->
                     ended.value = reason
                     PhoneState.callOn = false
-                    call.value = null
+                    if (call.value is LiveSession) call.value = null
                     release("call")
                     stopService(Intent(this, ConversationService::class.java))
+                    if (unavailable) {
+                        // No live call on this server: the phone's own speech instead, at once.
+                        info = info?.copy(live = false)
+                        phone(LiveSession.NO_LIVE)?.startListening()
+                    }
                 },
             )
         ended.value = null

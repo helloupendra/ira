@@ -22,21 +22,18 @@ import okhttp3.WebSocketListener
 import okio.ByteString
 import okio.ByteString.Companion.toByteString
 
-/** What the talk screen shows. Kept in memory only, for this call. */
+/** What the talk screen shows besides the transcript. Kept in memory only. */
 data class CallUi(
     val status: CallStatus = CallStatus.Off,
     val assistant: String = "Ira",
     val caption: String = "",
-    val lines: List<Line> = emptyList(),
     val action: ActionCard? = null,
     val notice: String? = null,
     val level: Float = 0f,
     /** The microphone is on. */
     val listening: Boolean = false,
-) {
-    /** [messageId]: the server's id of one of Ira's answers, once it is complete (for Report). */
-    data class Line(val turn: Int, val fromIra: Boolean, val text: String, val stopped: Boolean = false, val messageId: Long? = null)
-}
+    val mode: TalkMode = TalkMode.TEXT,
+)
 
 enum class CallStatus { Off, Connecting, Listening, Hearing, Thinking, Speaking, Reconnecting, Ended }
 
@@ -52,13 +49,15 @@ class LiveSession(
     private val server: String,
     private val token: () -> String?,
     private var conversationId: String?,
-    listen: Boolean,
+    private val transcript: Transcript,
     private val onConversation: (String) -> Unit,
-    private val onEnded: (String?) -> Unit,
-) : SentencePlayer.Listener {
+    /** The call ended: why (null when the person hung up), and whether live calls cannot work here. */
+    private val onEnded: (reason: String?, unavailable: Boolean) -> Unit,
+) : SentencePlayer.Listener, Conversation {
     private val main = Handler(Looper.getMainLooper())
-    private val state = MutableStateFlow(CallUi(status = CallStatus.Connecting))
-    val ui: StateFlow<CallUi> = state
+    private val state = MutableStateFlow(CallUi(status = CallStatus.Connecting, mode = TalkMode.LIVE))
+    override val ui: StateFlow<CallUi> = state
+    override val mode = TalkMode.LIVE
 
     private var machine = CallMachine()
     private val vad = EnergyVad()
@@ -76,19 +75,18 @@ class LiveSession(
     @Volatile
     private var listening = false
 
-    /** The person wants the microphone on (a voice call), not only typing. */
-    var listenWanted: Boolean = listen
-        private set
-
     private val idle = Runnable { onQuiet() }
 
     fun start() {
         connect()
     }
 
-    /** Turn the microphone on for this call (the talk button after typing). */
-    fun startListening() {
-        listenWanted = true
+    /** True while the call is connected: a typed turn can go over it. */
+    val connected: Boolean
+        get() = ready && socket != null && !ended
+
+    /** Turn the microphone on again (it is on from the start of a call). */
+    override fun startListening() {
         if (ready && !listening) {
             listening = mic.start()
             if (!listening) state.update { it.copy(notice = MIC_BUSY) }
@@ -96,34 +94,35 @@ class LiveSession(
         state.update { it.copy(listening = listening) }
     }
 
-    /** A typed turn, in the same conversation. */
-    fun type(text: String) {
-        apply(machine.typed(text))
+    /** A typed turn over the call; the server shows it back as `heard`. */
+    override fun send(text: String, done: (String?) -> Unit) {
+        if (!connected) return done("The live call is not connected. Send it again in a moment.")
+        done(if (apply(machine.typed(text))) null else "The live call dropped. Send it again in a moment.")
     }
 
     /** The stop button: Ira stops talking and stops this answer. */
-    fun stopIra() {
+    override fun stopIra() {
         apply(machine.stop())
         state.update { it.copy(status = statusOf(machine.phase)) }
     }
 
     /** A tap on a Tier 2 card: the same short yes or no the server listens for. */
-    fun answer(yes: Boolean) {
+    override fun answer(yes: Boolean) {
         state.update { it.copy(action = null) }
-        type(if (yes) "yes" else "no")
+        send(if (yes) "yes" else "no") { error -> if (error != null) state.update { it.copy(notice = error) } }
     }
 
-    fun dismissAction() {
+    override fun dismissAction() {
         state.update { it.copy(action = null) }
     }
 
     /** A line from the app itself in the transcript (an action confirmed with the PIN). */
-    fun note(text: String) {
-        state.update { it.copy(lines = (it.lines + CallUi.Line(0, true, text)).takeLast(MAX_LINES)) }
+    override fun note(text: String) {
+        transcript.add(Transcript.Line("note:${nowMs()}", true, text))
     }
 
     /** Hang up on purpose. */
-    fun end(reason: String? = null) {
+    override fun end(reason: String?) {
         if (ended) return
         ended = true
         main.removeCallbacksAndMessages(null)
@@ -135,8 +134,10 @@ class LiveSession(
             it.close(1000, "bye")
         }
         socket = null
-        state.update { it.copy(status = CallStatus.Ended, notice = reason ?: it.notice, level = 0f, listening = false) }
-        onEnded(reason)
+        val unavailable = reason != null && LIVE_UNAVAILABLE.any { reason.contains(it, ignoreCase = true) }
+        val shown = if (unavailable) NO_LIVE else reason
+        state.update { it.copy(status = CallStatus.Ended, notice = shown ?: it.notice, level = 0f, listening = false) }
+        onEnded(shown, unavailable)
     }
 
     // The connection.
@@ -221,40 +222,34 @@ class LiveSession(
                 conversationId = message.conversationId
                 onConversation(message.conversationId)
                 state.update { it.copy(status = CallStatus.Listening, assistant = message.assistant, notice = null) }
-                if (listenWanted) {
-                    listening = mic.start()
-                    if (!listening) state.update { it.copy(notice = MIC_BUSY) }
-                }
+                listening = mic.start()
+                if (!listening) state.update { it.copy(notice = MIC_BUSY) }
                 state.update { it.copy(listening = listening) }
                 quietTimer()
             }
             is Live.Partial -> state.update { it.copy(caption = message.text) }
-            is Live.Heard ->
-                state.update {
-                    it.copy(caption = "", lines = (it.lines + CallUi.Line(message.turn, false, message.text)).takeLast(MAX_LINES))
-                }
-            is Live.Delta -> state.update { it.copy(lines = upsertIra(it.lines, message.turn) { old -> old + message.text }) }
+            is Live.Heard -> {
+                state.update { it.copy(caption = "") }
+                transcript.add(Transcript.Line(key(message.turn) + ":you", false, message.text))
+            }
+            is Live.Delta -> transcript.ira(key(message.turn)) { it.copy(text = it.text + message.text) }
             is Live.Done -> {
-                state.update { s ->
-                    val lines = upsertIra(s.lines, message.turn) { old -> message.text.ifBlank { old } }
-                    // Turns restart at 1 after a reconnect: only this answer, the latest of its turn.
-                    val index = lines.indexOfLast { it.fromIra && it.turn == message.turn }
-                    s.copy(lines = lines.mapIndexed { i, line -> if (i == index) line.copy(messageId = message.messageId) else line })
-                }
+                transcript.ira(key(message.turn)) { it.copy(text = message.text.ifBlank { it.text }, messageId = message.messageId) }
                 quietTimer()
             }
-            is Live.Interrupted ->
-                state.update { s -> s.copy(lines = s.lines.map { if (it.fromIra && it.turn == message.turn) it.copy(stopped = true) else it }) }
+            is Live.Interrupted -> transcript.stopped(key(message.turn))
             is Live.Error -> if (!message.fatal) state.update { it.copy(notice = message.message) }
             else -> Unit
         }
         state.update { it.copy(status = statusOf(machine.phase)) }
     }
 
-    private fun apply(effects: List<CallMachine.Effect>) {
+    /** Do what the machine says; false when a frame for the server could not be sent. */
+    private fun apply(effects: List<CallMachine.Effect>): Boolean {
+        var sent = true
         for (effect in effects) {
             when (effect) {
-                is CallMachine.Effect.Send -> socket?.send(effect.json)
+                is CallMachine.Effect.Send -> sent = (socket?.send(effect.json) == true) && sent
                 is CallMachine.Effect.StopPlayback -> player.stop()
                 is CallMachine.Effect.Play -> player.enqueue(effect.sentences)
                 is CallMachine.Effect.ShowAction -> state.update { it.copy(action = effect.card) }
@@ -262,6 +257,7 @@ class LiveSession(
             }
         }
         replying = machine.playing
+        return sent
     }
 
     // The microphone (its own thread) and the voice detector.
@@ -333,17 +329,16 @@ class LiveSession(
             }
         }
 
-    private fun upsertIra(lines: List<CallUi.Line>, turn: Int, change: (String) -> String): List<CallUi.Line> {
-        val index = lines.indexOfLast { it.fromIra && it.turn == turn }
-        val out = lines.toMutableList()
-        if (index >= 0) out[index] = out[index].copy(text = change(out[index].text)) else out += CallUi.Line(turn, true, change(""))
-        return out.takeLast(MAX_LINES)
-    }
+    /** Turns restart at 1 on each connection: the connection's number keeps lines apart. */
+    private fun key(turn: Int) = "live$generation:$turn"
 
-    private companion object {
+    companion object {
         const val MIC_BUSY =
             "The microphone is busy or not allowed. Close other apps that use it, or allow the microphone for Ira in Android's settings."
-        const val MAX_LINES = 40
-        const val QUIET_MS = 120_000L
+        const val NO_LIVE = "Live calls need your Ira to have speech set up. Using the phone's own speech recognition instead."
+
+        /** The server's reasons that mean no live call can work here (`channels/live.py`). */
+        private val LIVE_UNAVAILABLE = listOf("speech-to-text", "text-to-speech", "talk to Ira by voice")
+        private const val QUIET_MS = 120_000L
     }
 }

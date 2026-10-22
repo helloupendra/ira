@@ -46,6 +46,13 @@
             <action android:name="android.intent.action.VIEW" />
             <data android:scheme="google.navigation" />
         </intent>
+        <!-- The phone's own speech recognition and voice, when a server has no live call. -->
+        <intent>
+            <action android:name="android.speech.RecognitionService" />
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.TTS_SERVICE" />
+        </intent>
     </queries>
 
     <application

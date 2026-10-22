@@ -10,11 +10,13 @@ object Disclosures {
     const val MIC_TITLE = "Ira listens only while you talk"
 
     fun mic(server: String): String =
-        "To hear you, Ira uses the microphone during a call you start. The phone itself notices " +
-            "when you speak, and only what you say is sent, to your own Ira server ($server), " +
-            "which turns it into text for your conversation. Nothing is recorded or kept as " +
-            "audio, on the phone or on the server. The microphone is on only during a call: a " +
-            "notification shows it, and End, or two quiet minutes, turn it off."
+        "To hear you, Ira uses the microphone while you talk to it. In a live call, the phone " +
+            "notices when you speak and sends only what you say to your own Ira server ($server), " +
+            "which turns it into text. When your Ira has no live calls, the phone's own speech " +
+            "recognition (Google's on most phones) turns it into text instead: on the phone when " +
+            "it can, otherwise online; your Ira then gets only the text. Nothing is recorded or " +
+            "kept as audio. The microphone is on only while you talk: End, or two quiet minutes, " +
+            "turn it off."
 
     fun skillTitle(skill: String): String =
         when (skill) {
