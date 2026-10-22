@@ -86,6 +86,10 @@ switch it on.
   with their password again; an owner sets someone's password or email from
   Users & roles; `ira user password` and `ira user email` do it from the
   server. All go to the change log.
+- **Out of steps, still an answer.** When a request uses up its tool rounds
+  (now 8 by default, from 6), Ira says what it tried, what it found and
+  what to do next, in the person's language. And it searches for a file,
+  folder or contact with at most three forms of the name, then says so.
 - **Ira on iPhone.** The web app installs to the Home Screen and its live
   call works in Safari: sound starts on the tap, the silent switch does not
   mute a call, and the screen stays on. "Hey Siri, Ask Ira" is a Shortcut

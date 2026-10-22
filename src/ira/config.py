@@ -161,7 +161,7 @@ class AssistantConfig(_Strict):
     business: str = "your business"
     instructions: str = ""
     tier: str = "default"
-    max_tool_rounds: int = 6
+    max_tool_rounds: int = 8
     history_messages: int = 30
     # The languages people speak to Ira in, and the language it replies in ("auto": the
     # one they spoke). Each person can change both for themselves.

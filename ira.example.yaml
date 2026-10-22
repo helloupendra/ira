@@ -8,7 +8,7 @@ assistant:
   instructions: |
     Extra guidance for the model, appended to the built-in system prompt.
   tier: default                   # which model chain answers chat
-  max_tool_rounds: 6
+  max_tool_rounds: 8
   history_messages: 30            # messages of context per conversation
 
 data_dir: ./data                  # SQLite files; relative to this file

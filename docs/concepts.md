@@ -33,7 +33,11 @@ define `setup(ctx)` (called after import, with `ctx.data_dir`) and `seed(ctx)`
 
 ## Read tools and action tools
 
-**Read tools** (`@tool`) run as soon as the model calls them.
+**Read tools** (`@tool`) run as soon as the model calls them. One request
+may take several in a row, each using what the last returned, up to
+`assistant.max_tool_rounds` model calls (8 by default). When they run out,
+Ira makes one more call with no tools and says what it tried, the best it
+found, and the next step, so an answer is never just "I could not finish".
 
 **Action tools** (`@action`) change something, so calling one only creates a
 **pending action**:

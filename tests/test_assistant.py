@@ -237,3 +237,44 @@ async def test_the_reply_lists_each_tool_call(registry):
     assert json.loads(status["result"]) == {"order_id": "A1", "status": "shipped"}
     assert refund["id"] == "c2" and refund["ok"] is True
     assert json.loads(refund["result"])["status"] == "pending_confirmation"
+
+
+async def test_out_of_steps_still_says_what_was_tried_and_what_next(registry):
+    """The budget runs out: one more call, with no tools and no tool messages, sums it up."""
+    rounds = 8  # the default budget
+    searching = [
+        tool_call("order_status", json.dumps({"order_id": f"A{n}"}), f"c{n}") for n in range(rounds)
+    ]
+    summary = "Maine 8 orders dekhe, A7 tak sab shipped hain. Kaunsa order chahiye, bata do."
+    provider = ScriptedProvider([*searching, summary])
+    runtime = make_runtime(provider=provider, registry=registry)
+    assert runtime.assistant.max_tool_rounds == rounds
+
+    events = [
+        e
+        async for e in runtime.assistant.events(
+            "mera order kahan hai?", conversation_id="t", stream=True
+        )
+    ]
+
+    assert "".join(e["text"] for e in events if e["type"] == "delta") == summary
+    assert events[-1]["type"] == "done" and events[-1]["text"] == summary
+    last = provider.calls[-1]
+    assert len(provider.calls) == rounds + 1 and last["tools"] is None
+    assert all(m.role != "tool" and not m.tool_calls for m in last["messages"])
+    notes = last["messages"][-2]
+    assert notes.role == "assistant" and notes.text.count("- order_status") == rounds
+    assert '"A7"' in notes.text and "shipped" in notes.text
+    assert "used every step" in last["messages"][0].text
+    stored = runtime.assistant.history("t")
+    assert stored[-1].role == "assistant" and stored[-1].text == summary
+
+
+async def test_out_of_steps_with_no_summary_names_the_tools(registry):
+    calls = [tool_call("order_status", '{"order_id": "A1"}', f"c{n}") for n in range(8)]
+    provider = ScriptedProvider([*calls, ""])
+    runtime = make_runtime(provider=provider, registry=registry)
+
+    reply = await runtime.assistant.ask("where is A1?", conversation_id="t")
+
+    assert reply.text == "I could not finish that in the steps I have. I tried order_status (8x)."
