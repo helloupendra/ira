@@ -181,7 +181,8 @@ struct PermissionRow: View {
                             .foregroundStyle(.green)
                             .font(.callout)
                     case .missing:
-                        Button("Open System Settings", action: open)
+                        // Screen Recording: asking first lists this build of Ira, then the page opens.
+                        Button("Open System Settings", action: permission.id == "screen" ? ask : open)
                     case .notAsked:
                         if permission.askable { Button("Allow", action: ask) } else { Text("Asked when needed").font(.caption).foregroundStyle(.secondary) }
                     case .unknown:
@@ -192,6 +193,12 @@ struct PermissionRow: View {
                     .font(.callout)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
+                if let note = permission.note, permission.state != .granted {
+                    Text(note)
+                        .font(.caption)
+                        .foregroundStyle(.orange)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
                 if permission.state == .missing && permission.id == "screen" {
                     HStack(alignment: .firstTextBaseline) {
                         Text("Switch Ira on there. macOS then asks to quit and reopen Ira; if it does not, press Reopen Ira.")
@@ -201,7 +208,7 @@ struct PermissionRow: View {
                         Button("Reopen Ira") { PermissionCenter.reopen() }
                             .controlSize(.small)
                     }
-                } else if permission.state == .missing {
+                } else if permission.state == .missing && permission.note == nil {
                     Text("Off. Switch Ira on there, then come back.")
                         .font(.caption)
                         .foregroundStyle(.orange)

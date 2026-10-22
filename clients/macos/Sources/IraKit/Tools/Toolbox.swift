@@ -291,7 +291,20 @@ public final class Toolbox: ToolRunner, @unchecked Sendable {
             if let refusal = policy.refusal(path) { throw ToolFailure(refusal) }
             scopes = [URL(fileURLWithPath: PathPolicy.expand(path, home: policy.home)?.path ?? path)]
         }
-        let blocked = folderGrants.blocked(in: scopes)
+        // Look at the guarded folders this search covers: macOS answers at once for
+        // those it was asked about (a "no" since switched on counts now), and asks
+        // the person, once, about the others. Spotlight would skip them in silence.
+        let grants = folderGrants
+        let covered = grants.covered(by: scopes)
+        let unasked = covered.filter { grants.access($0) == .notAsked }
+        if !unasked.isEmpty { NotificationCenter.default.post(name: PermissionPrompt.asking, object: nil) }
+        _ = try? await withTimeout(8) {
+            for folder in covered {
+                if grants.access(folder) == .notAsked { grants.ask(folder) } else { grants.recheck(folder) }
+            }
+        }
+        if !unasked.isEmpty { NotificationCenter.default.post(name: PermissionPrompt.asked, object: nil) }
+        let blocked = grants.blocked(in: scopes)
         var found: [FileSearch.Found]
         if kind == "folder", let words = query.words.isEmpty ? nil : query.words {
             found = await findFolders(words.joined(separator: " "), scopes: scopes, policy: policy, blocked: blocked)
@@ -318,7 +331,7 @@ public final class Toolbox: ToolRunner, @unchecked Sendable {
         var content: [String: JSONValue] = [
             "results": .array(results),
             "count": .number(Double(found.count)),
-            "summary": .string(Toolbox.findSummary(found, policy: policy, notSearched: blocked)),
+            "summary": .string(Toolbox.findSummary(found, policy: policy, notSearched: blocked, grants: grants)),
         ]
         if !blocked.isEmpty { content["notSearched"] = .array(blocked.map { .string($0) }) }
         return .object(content)
@@ -352,8 +365,11 @@ public final class Toolbox: ToolRunner, @unchecked Sendable {
             .map(\.0).filter { seen.insert($0.url.path).inserted }
     }
 
-    static func findSummary(_ found: [FileSearch.Found], policy: PathPolicy, notSearched: [String] = []) -> String {
-        let unsearched = FolderGrants.notSearched(notSearched).map { " " + $0 } ?? ""
+    static func findSummary(
+        _ found: [FileSearch.Found], policy: PathPolicy, notSearched: [String] = [], grants: FolderGrants? = nil
+    ) -> String {
+        let note = grants.map { $0.notSearched(notSearched) } ?? FolderGrants.notSearched(notSearched)
+        let unsearched = note.map { " " + $0 } ?? ""
         if found.isEmpty { return "Nothing matched where I could look." + unsearched }
         let names = found.prefix(5).map { "\($0.url.lastPathComponent) in \(policy.display($0.url.deletingLastPathComponent()))" }
         let more = found.count > 5 ? " and \(found.count - 5) more" : ""
@@ -438,7 +454,7 @@ public final class Toolbox: ToolRunner, @unchecked Sendable {
 
     func readScreen(_ args: [String: JSONValue]) async throws -> (content: JSONValue, target: String) {
         try Toolbox.check(args, allowed: [])
-        guard ScreenText.permitted else { throw ToolFailure(ScreenText.notPermitted) }
+        guard ScreenText.permitted else { throw ToolFailure(ScreenText.notPermittedNow) }
         // Allowed after Ira started: macOS applies it only to a fresh start, and a
         // capture now would hang. Say so at once instead.
         if !ScreenText.permittedAtLaunch { throw ToolFailure(ScreenText.restartNeeded) }

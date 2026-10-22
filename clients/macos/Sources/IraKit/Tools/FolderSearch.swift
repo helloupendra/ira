@@ -131,30 +131,47 @@ public enum FolderMatch {
 /// Whether Ira may look inside the folders macOS guards (Documents, Desktop,
 /// Downloads). Spotlight leaves them out silently when it may not, and never
 /// asks, so the app asks once on purpose and remembers the answer here.
+/// Ira is about to ask macOS for a permission, which may show its own dialog;
+/// the answer came back. The app keeps its window below the dialog meanwhile.
+public enum PermissionPrompt {
+    public static let asking = Notification.Name("in.ira.mac.askingPermission")
+    public static let asked = Notification.Name("in.ira.mac.askedPermission")
+}
+
 public enum FolderAccess: String, Sendable {
     case granted, denied, notAsked
 }
 
+/// Whether Ira may look into Documents, Desktop and Downloads, as macOS last
+/// answered *this build* of Ira. An answer given to another build (Ira was
+/// rebuilt or updated) counts as not asked: macOS asks the new build again.
 public struct FolderGrants: @unchecked Sendable {
     public static let guarded = ["Documents", "Desktop", "Downloads"]
     public let defaults: UserDefaults
     public let home: URL
+    public let identity: String
 
-    public init(defaults: UserDefaults = .standard, home: URL = FileManager.default.homeDirectoryForCurrentUser) {
+    public init(
+        defaults: UserDefaults = .standard, home: URL = FileManager.default.homeDirectoryForCurrentUser,
+        identity: String = CodeIdentity.current
+    ) {
         self.defaults = defaults
         self.home = home
+        self.identity = identity
     }
 
     public func access(_ folder: String) -> FolderAccess {
-        FolderAccess(rawValue: defaults.string(forKey: "folderAccess.\(folder)") ?? "") ?? .notAsked
+        guard defaults.string(forKey: "folderAccess.\(folder).build") == identity else { return .notAsked }
+        return FolderAccess(rawValue: defaults.string(forKey: "folderAccess.\(folder)") ?? "") ?? .notAsked
     }
 
     public func record(_ folder: String, _ access: FolderAccess) {
         defaults.set(access.rawValue, forKey: "folderAccess.\(folder)")
+        defaults.set(identity, forKey: "folderAccess.\(folder).build")
     }
 
-    /// Look inside the folder on purpose: macOS asks the person the first time,
-    /// and answers at once after that. Blocks until they answer.
+    /// Look inside the folder on purpose: macOS asks the person the first time
+    /// (blocking until they answer), and answers at once after that.
     @discardableResult
     public func ask(_ folder: String) -> FolderAccess {
         let url = home.appendingPathComponent(folder)
@@ -163,19 +180,52 @@ public struct FolderGrants: @unchecked Sendable {
         return access
     }
 
-    /// The guarded folders a search over `scopes` covers but may not look into.
-    public func blocked(in scopes: [URL]) -> [String] {
+    /// Look again at a folder macOS already answered about (it does not ask again):
+    /// a "no" switched on in System Settings since becomes a yes.
+    public func recheck(_ folder: String) {
+        if access(folder) != .notAsked { ask(folder) }
+    }
+
+    /// The guarded folders a search over `scopes` covers (those this Mac has).
+    public func covered(by scopes: [URL]) -> [String] {
         FolderGrants.guarded.filter { folder in
             let url = home.appendingPathComponent(folder).standardizedFileURL
-            let covered = scopes.contains { PathPolicy.isInside(url, $0.standardizedFileURL) || PathPolicy.isInside($0.standardizedFileURL, url) }
-            return covered && access(folder) != .granted
+            // Whether the folder itself exists is not private: no prompt.
+            guard FileManager.default.fileExists(atPath: url.path) else { return false }
+            return scopes.contains { PathPolicy.isInside(url, $0.standardizedFileURL) || PathPolicy.isInside($0.standardizedFileURL, url) }
         }
     }
 
-    /// The sentence for a search that could not look everywhere.
+    /// The guarded folders a search over `scopes` covers but may not look into.
+    public func blocked(in scopes: [URL]) -> [String] {
+        covered(by: scopes).filter { access($0) != .granted }
+    }
+
+    /// The sentence for a search that could not look everywhere: what macOS
+    /// refused, and where to switch it on; what it has not been asked yet.
+    public func notSearched(_ folders: [String]) -> String? {
+        FolderGrants.notSearched(denied: folders.filter { access($0) == .denied },
+                                 unasked: folders.filter { access($0) != .denied })
+    }
+
+    public static func notSearched(denied: [String], unasked: [String]) -> String? {
+        var parts: [String] = []
+        if !denied.isEmpty {
+            let switches = denied.map { "“\($0) Folder”" }
+            parts.append("macOS keeps Ira out of \(list(denied)). Switch on \(list(switches)) in System Settings → Privacy & Security → Files and Folders → Ira, then ask again.")
+        }
+        if !unasked.isEmpty {
+            parts.append("I can't search \(list(unasked)) yet. Press Allow for \(unasked.count == 1 ? "it" : "them") in Ira's checklist (Settings → Permissions) and answer macOS with Allow, then ask again.")
+        }
+        return parts.isEmpty ? nil : parts.joined(separator: " ")
+    }
+
+    /// For callers that only have folder names: as if macOS was not asked yet.
     public static func notSearched(_ folders: [String]) -> String? {
-        guard !folders.isEmpty else { return nil }
-        let names = folders.count == 1 ? folders[0] : folders.dropLast().joined(separator: ", ") + " and " + folders.last!
-        return "I can't search \(names) yet. Allow Ira for \(folders.count == 1 ? "it" : "them") in Ira's checklist (Settings → Permissions → Files and Folders), then ask again."
+        notSearched(denied: [], unasked: folders)
+    }
+
+    static func list(_ names: [String]) -> String {
+        names.count == 1 ? names[0] : names.dropLast().joined(separator: ", ") + " and " + names.last!
     }
 }

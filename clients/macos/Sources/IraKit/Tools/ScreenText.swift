@@ -4,6 +4,62 @@ import Foundation
 import ScreenCaptureKit
 import Vision
 
+/// Screen Recording as macOS keeps it: per build of Ira. An entry given to an
+/// older build (ad hoc, or signed by another identity) stays in the list under
+/// the same name, switched on, yet does not count for this one.
+public struct ScreenGrant: @unchecked Sendable {
+    public enum State: Equatable, Sendable {
+        case granted
+        /// Off, and an older build of Ira had it (`certain`), or may have had it.
+        case rebuilt(certain: Bool)
+        case missing
+    }
+
+    public let defaults: UserDefaults
+    public let identity: String
+
+    public init(defaults: UserDefaults = .standard, identity: String = CodeIdentity.current) {
+        self.defaults = defaults
+        self.identity = identity
+    }
+
+    public func state(permitted: Bool) -> State {
+        if permitted {
+            defaults.set(identity, forKey: "screen.grantedBuild")
+            return .granted
+        }
+        if let previous = defaults.string(forKey: "screen.grantedBuild") {
+            return previous == identity ? .missing : .rebuilt(certain: true)
+        }
+        // Builds before 0.2.2 did not note theirs: one that ran here may be listed.
+        return defaults.bool(forKey: "firstRunDone") ? .rebuilt(certain: false) : .missing
+    }
+
+    /// Whether to ask macOS now: once per build when an older build had it, and
+    /// once in all when one may have had it (an install from before 0.2.2).
+    public func requestOnce(permitted: Bool) -> Bool {
+        let asked = defaults.string(forKey: "screen.requestedBuild")
+        switch state(permitted: permitted) {
+        case .rebuilt(certain: true) where asked != identity: break
+        case .rebuilt(certain: false) where asked == nil: break
+        default: return false
+        }
+        defaults.set(identity, forKey: "screen.requestedBuild")
+        return true
+    }
+
+    public static func advice(_ state: State) -> String? {
+        switch state {
+        case .rebuilt(certain: true):
+            return "Ira was rebuilt: remove the old Ira from Screen Recording and add this one. In the list, select Ira, press −, then press + and choose Ira in Applications."
+        case .rebuilt(certain: false):
+            return "If Ira is already in the Screen Recording list, that is an older build: select it, press −, then press + and choose Ira in Applications."
+        default:
+            return nil
+        }
+    }
+}
+
 /// Reading the window in front: ScreenCaptureKit takes the picture, Vision reads
 /// the text on this Mac, and only the text leaves it. The picture is dropped as
 /// soon as it is read.
@@ -24,6 +80,10 @@ public enum ScreenText {
 
     public static func noteLaunch() {
         permittedAtLaunch = CGPreflightScreenCaptureAccess()
+        let grant = ScreenGrant()
+        // A rebuilt Ira is a new app to macOS's Screen Recording list: ask once per
+        // build, so macOS lists this one (the old entry no longer counts).
+        if grant.requestOnce(permitted: permittedAtLaunch) { requestPermission() }
     }
 
     /// Apps whose windows Ira never reads: System Settings (whose privacy pages
@@ -77,6 +137,14 @@ public enum ScreenText {
     public static let notPermitted =
         "Screen Recording is off for Ira, so I cannot read the screen. Allow Ira in System Settings → Privacy & Security → Screen & System Audio Recording, then ask again"
 
+    /// Why the screen cannot be read, with the old-build case spelt out.
+    public static var notPermittedNow: String {
+        if case .rebuilt = ScreenGrant().state(permitted: false) {
+            return "Screen Recording is off for this build of Ira (Ira was rebuilt). In System Settings → Privacy & Security → Screen & System Audio Recording, remove the old Ira with −, add this one with +, then reopen Ira and ask again"
+        }
+        return notPermitted
+    }
+
     /// The front window of `pid`: the first normal window in macOS's front-to-back order.
     public static func frontWindow(of pid: pid_t) -> Window? {
         guard let list = CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID)
@@ -113,7 +181,7 @@ public enum ScreenText {
             // Allowed in System Settings, yet refused here: the permission came while
             // Ira was running, and macOS applies it only to a fresh start.
             if permitted { throw ToolFailure(restartNeeded) }
-            throw ToolFailure(notPermitted)
+            throw ToolFailure(notPermittedNow)
         }
         guard let target = content.windows.first(where: { $0.windowID == window.id }) else {
             throw ToolFailure("that window is no longer on screen")

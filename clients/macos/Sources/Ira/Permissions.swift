@@ -28,6 +28,8 @@ struct Permission: Identifiable, Equatable {
     let pane: String
     /// Whether Ira can ask for it from a button (some only ask when first used).
     let askable: Bool
+    /// What to do in System Settings when it is off, when there is more to say.
+    var note: String? = nil
 }
 
 @MainActor
@@ -77,12 +79,14 @@ final class PermissionCenter: ObservableObject {
                        icon: "mic", state: mic, pane: "Privacy_Microphone", askable: true),
             Permission(id: "screen", title: "Screen Recording",
                        why: "Only for “what is on my screen?”. Ira reads the words of the window in front on this Mac and sends only the words.",
-                       icon: "macwindow", state: ScreenText.permitted ? .granted : .missing, pane: "Privacy_ScreenCapture", askable: true),
+                       icon: "macwindow", state: ScreenText.permitted ? .granted : .missing, pane: "Privacy_ScreenCapture", askable: true,
+                       note: ScreenGrant.advice(ScreenGrant().state(permitted: ScreenText.permitted))),
         ]
         // Spotlight leaves these folders out silently until Ira may open them,
         // so each has its own Allow: Ira looks inside once, and macOS asks.
         let grants = FolderGrants()
         for folder in FolderGrants.guarded {
+            grants.recheck(folder)
             let state: Permission.State
             switch grants.access(folder) {
             case .granted: state = .granted
@@ -93,7 +97,8 @@ final class PermissionCenter: ObservableObject {
                 id: "folder-\(folder)", title: "Files: \(folder)",
                 why: "So Ira can find and read files in your \(folder) folder when you ask. Until you allow it, Ira cannot search there at all.",
                 icon: folder == "Documents" ? "doc" : folder == "Desktop" ? "menubar.dock.rectangle" : "arrow.down.circle",
-                state: state, pane: "Privacy_FilesAndFolders", askable: true))
+                state: state, pane: "Privacy_FilesAndFolders", askable: true,
+                note: state == .missing ? "Off. In System Settings → Privacy & Security → Files and Folders, open Ira and switch on “\(folder) Folder”, then come back." : nil))
         }
         list += [
             Permission(id: "contacts", title: "Contacts",

@@ -94,7 +94,7 @@ steps aside, so nothing covers a password sheet there.
 | Permission | Why | When macOS asks |
 | --- | --- | --- |
 | **Microphone** | So you can talk to Ira. It listens only after you press the mic, and stops when you press it again or stay quiet for a while. | when you press **Allow**, or the mic the first time |
-| **Files and folders** | So Ira can find a file and read it to you. | the first time Ira opens something in Documents, Desktop or Downloads: choose **Allow** |
+| **Files and folders** | So Ira can find a file and read it to you. Until you allow a folder, Spotlight leaves it out of every search without a word, so Documents, Desktop and Downloads each have their own row. | when you press **Allow** on that row, or the first search that covers the folder: choose **Allow** |
 | **Screen Recording** | Only for "what is on my screen?". Ira takes a picture of the window in front, reads its words on this Mac, and sends only the words. | when you press **Allow**; macOS then sends you to System Settings to switch Ira on. macOS applies it only after Ira restarts: Ira shows **Reopen Ira** (or **Restart Ira**) for that |
 | **Contacts** | So Ira can put a name to a number, or find the number or email to write to. | when you press **Allow**, or the first lookup |
 | **Calendars and Reminders** | So Ira can tell you what is on your day, and add an event or a reminder. A new event waits for your yes. | when you press **Allow** |
@@ -316,6 +316,9 @@ disconnects at once.
 | "use https:// for a server on another machine" | Your Ira's address must start with `https://`, unless it runs on this Mac |
 | The menu says "This Mac was removed from Ira" | It was removed on **Your devices**: choose **Settings → Pair again** |
 | Ira says Screen Recording is off | **System Settings → Privacy & Security → Screen & System Audio Recording**, switch Ira on, then press **Restart Ira** |
+| The checklist says "Ira was rebuilt" | The Ira switched on under Screen Recording is an older build, which no longer counts. Select it, press **−**, press **+** and choose Ira in Applications, then **Reopen Ira** |
+| A search says it can't search Documents, Desktop or Downloads yet | Press **Allow** on that folder's row in Ira's checklist (**Settings → Permissions**) and answer macOS with **Allow** |
+| A search says macOS keeps Ira out of a folder | **System Settings → Privacy & Security → Files and Folders → Ira**, switch on that folder (for example "Documents Folder") |
 | Ira says macOS needs it restarted | Screen Recording was switched on while Ira ran: press **Restart Ira** in its window |
 | "No answer yet. The server is slow or unreachable." | Check that this Mac is online and your Ira is running, then press **Try again** |
 | Ira says macOS did not let it open a file | **System Settings → Privacy & Security → Files and Folders**, switch on Ira's folders |

@@ -1,4 +1,5 @@
 import Foundation
+import IraKit
 
 /// What Ira's window does when another app becomes active.
 ///
@@ -36,8 +37,8 @@ enum PanelPolicy {
 
 extension Notification.Name {
     /// Ira asked macOS for a permission (object: nil); its answer came back.
-    static let iraAskingPermission = Notification.Name("in.ira.mac.askingPermission")
-    static let iraAskedPermission = Notification.Name("in.ira.mac.askedPermission")
+    static let iraAskingPermission = PermissionPrompt.asking
+    static let iraAskedPermission = PermissionPrompt.asked
 }
 
 /// Why Ira quit, kept for the log of the next start.

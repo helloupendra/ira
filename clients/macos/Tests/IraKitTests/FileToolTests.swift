@@ -386,20 +386,67 @@ struct FolderMatchTests {
 
     @Test func aSearchSaysWhatItCouldNotLookInto() throws {
         let home = try temporaryFolder()
+        for folder in FolderGrants.guarded {
+            try FileManager.default.createDirectory(at: home.appendingPathComponent(folder), withIntermediateDirectories: true)
+        }
         let defaults = UserDefaults(suiteName: "ira-tests-\(UUID().uuidString)")!
-        let grants = FolderGrants(defaults: defaults, home: home)
+        let grants = FolderGrants(defaults: defaults, home: home, identity: "build-a")
         #expect(grants.blocked(in: [home]) == ["Documents", "Desktop", "Downloads"])
         grants.record("Documents", .granted)
         grants.record("Desktop", .denied)
         #expect(grants.blocked(in: [home]) == ["Desktop", "Downloads"])
         #expect(grants.blocked(in: [home.appendingPathComponent("Documents/GitHub")]) == [])
-        #expect(FolderGrants.notSearched(["Desktop", "Downloads"])?.hasPrefix("I can't search Desktop and Downloads yet.") == true)
+        #expect(grants.notSearched(["Desktop", "Downloads"]) == "macOS keeps Ira out of Desktop. Switch on “Desktop Folder” in System Settings → Privacy & Security → Files and Folders → Ira, then ask again. I can't search Downloads yet. Press Allow for it in Ira's checklist (Settings → Permissions) and answer macOS with Allow, then ask again.")
         #expect(Toolbox.findSummary([], policy: PathPolicy(home: home), notSearched: ["Documents"])
-            == "Nothing matched where I could look. I can't search Documents yet. Allow Ira for it in Ira's checklist (Settings → Permissions → Files and Folders), then ask again.")
+            == "Nothing matched where I could look. I can't search Documents yet. Press Allow for it in Ira's checklist (Settings → Permissions) and answer macOS with Allow, then ask again.")
         // Asking on purpose records the answer (a test folder is not guarded, so it is allowed).
-        try FileManager.default.createDirectory(at: home.appendingPathComponent("Downloads"), withIntermediateDirectories: true)
         #expect(grants.ask("Downloads") == .granted)
         #expect(grants.access("Downloads") == .granted)
+        // A folder this Mac does not have is not a reason to say anything.
+        try FileManager.default.removeItem(at: home.appendingPathComponent("Desktop"))
+        #expect(grants.blocked(in: [home]) == [])
+    }
+
+    @Test func answersGivenToAnotherBuildDoNotCount() throws {
+        let home = try temporaryFolder()
+        try FileManager.default.createDirectory(at: home.appendingPathComponent("Documents"), withIntermediateDirectories: true)
+        let defaults = UserDefaults(suiteName: "ira-tests-\(UUID().uuidString)")!
+        FolderGrants(defaults: defaults, home: home, identity: "build-a").record("Documents", .denied)
+        let rebuilt = FolderGrants(defaults: defaults, home: home, identity: "build-b")
+        #expect(rebuilt.access("Documents") == .notAsked)
+        // Before 0.2.2 no build was noted: those answers count as not asked too.
+        defaults.set("granted", forKey: "folderAccess.Desktop")
+        #expect(rebuilt.access("Desktop") == .notAsked)
+        // Looking again turns an old "no" into the answer macOS gives now.
+        let same = FolderGrants(defaults: defaults, home: home, identity: "build-a")
+        same.recheck("Documents")
+        #expect(same.access("Documents") == .granted)
+    }
+
+    @Test func screenRecordingKnowsARebuiltIra() {
+        let defaults = UserDefaults(suiteName: "ira-tests-\(UUID().uuidString)")!
+        let first = ScreenGrant(defaults: defaults, identity: "cdhash H\"aaaa\"")
+        #expect(first.state(permitted: false) == .missing)
+        #expect(first.requestOnce(permitted: false) == false)
+        #expect(first.state(permitted: true) == .granted)
+        let rebuilt = ScreenGrant(defaults: defaults, identity: "identifier \"in.ira.mac\" and certificate leaf = H\"bbbb\"")
+        #expect(rebuilt.state(permitted: false) == .rebuilt(certain: true))
+        #expect(ScreenGrant.advice(.rebuilt(certain: true))?.hasPrefix("Ira was rebuilt: remove the old Ira from Screen Recording and add this one.") == true)
+        // macOS is asked once per build, so it lists this one.
+        #expect(rebuilt.requestOnce(permitted: false) == true)
+        #expect(rebuilt.requestOnce(permitted: false) == false)
+        // The same build switched off later is just off.
+        #expect(rebuilt.state(permitted: true) == .granted)
+        #expect(rebuilt.state(permitted: false) == .missing)
+        #expect(ScreenGrant.advice(.missing) == nil)
+
+        // An install from before 0.2.2 noted no build: it may be listed.
+        let older = UserDefaults(suiteName: "ira-tests-\(UUID().uuidString)")!
+        older.set(true, forKey: "firstRunDone")
+        let upgraded = ScreenGrant(defaults: older, identity: "build-c")
+        #expect(upgraded.state(permitted: false) == .rebuilt(certain: false))
+        #expect(upgraded.requestOnce(permitted: false) == true)
+        #expect(ScreenGrant(defaults: older, identity: "build-d").requestOnce(permitted: false) == false)
     }
 
     @Test func theFolderToolFallsBackToTheWalk() async throws {

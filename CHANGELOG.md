@@ -180,7 +180,10 @@ switch it on.
   on-device "Hey Ira", a pin to keep the window on top, a live "working"
   row, a PIN box for Tier 3, deadlines on every tool, and "Remove Ira from
   this Mac". Every Mac skill can be ticked at pairing, and devices may send
-  `task_progress`.
+  `task_progress`. Permissions are kept per build: a rebuilt Ira says so in
+  its checklist and asks macOS to list it for Screen Recording, and a search
+  asks macOS about Documents, Desktop and Downloads itself, or says which
+  switch in Files and Folders is off.
 - **Ira for Android** (`clients/android/`, [guide](docs/clients/android.md)):
   Kotlin and Compose, Android 10 and later. Pairs with a link or a code and
   keeps its key encrypted with an Android Keystore key. Live voice over

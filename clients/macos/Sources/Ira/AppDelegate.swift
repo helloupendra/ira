@@ -73,6 +73,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var returnAfterSettings = false
     /// Ira has asked macOS for a permission and waits for the answer.
     private var askingPermission = false
+    /// Whether the window was up when Ira began asking: only then does it come back.
+    private var shownWhileAsking = false
     private var capturing = false
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -297,6 +299,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             MainActor.assumeIsolated {
                 guard let self else { return }
                 self.askingPermission = true
+                self.shownWhileAsking = self.panel.isVisible
                 guard self.panel.isVisible else { return }
                 self.panel.level = .normal
                 self.panel.giveUpKeyboard()
@@ -310,7 +313,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 self.askingPermission = false
                 self.panel.level = .floating
                 self.model.permissions.refresh()
-                if !self.returnAfterSettings { self.panel.makeKeyAndOrderFront(nil) }
+                if self.shownWhileAsking && !self.returnAfterSettings { self.panel.makeKeyAndOrderFront(nil) }
             }
         })
         // Esc closes the window, wherever the cursor is in it.
