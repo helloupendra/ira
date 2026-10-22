@@ -1,15 +1,20 @@
 #!/usr/bin/env bash
-# Add one business: its folder, its IRA instance on its own port, and the lines
-# to give it a hostname through the Cloudflare tunnel.
+# Add one business, or one person's own assistant: its folder, its IRA instance
+# on its own port, and the lines to give it a hostname through the Cloudflare tunnel.
 #
 #   sudo ira-add-business clinic 8811 clinic.example.com
+#   sudo ira-add-business --personal riley 8812 ira.example.com
+#
+# --personal makes one person's own assistant: no placeholder tools (their paired
+# devices and search add tools) and a search section in ira.yaml.
 #
 # Optional, in the environment:
-#   IRA_BUSINESS  one line about the business (default: the business name)
+#   IRA_BUSINESS  one line about the business (default: the business name;
+#                 with --personal, "one person's own work and day")
 #   IRA_NAME      the assistant's name (default: Ira)
 #
-# It runs `ira init --provider bedrock` as the ira user in /srv/ira/<business>,
-# enables and starts ira@<business>, and prints the cloudflared ingress lines,
+# It runs `ira init --provider bedrock` as the ira user in /srv/ira/<name>,
+# enables and starts ira@<name>, and prints the cloudflared ingress lines,
 # the one-time setup link from the journal, and what to do next.
 # Installed by bootstrap.sh as /usr/local/sbin/ira-add-business.
 
@@ -23,8 +28,13 @@ die() {
     exit 1
 }
 
+personal=0
+if [ "${1:-}" = "--personal" ]; then
+    personal=1
+    shift
+fi
 if [ $# -lt 2 ] || [ $# -gt 3 ]; then
-    echo "usage: $0 <business> <port> [hostname]" >&2
+    echo "usage: $0 [--personal] <name> <port> [hostname]" >&2
     exit 2
 fi
 business=$1
@@ -55,8 +65,13 @@ fi
 
 echo "==> $folder"
 install -d -o ira -g ira -m 750 "$folder"
-args=(init "$folder" --provider bedrock --port "$port"
-    --business "${IRA_BUSINESS:-$business}" --name "${IRA_NAME:-Ira}")
+args=(init "$folder" --provider bedrock --port "$port" --name "${IRA_NAME:-Ira}")
+if [ "$personal" = 1 ]; then
+    args+=(--personal)
+    [ -z "${IRA_BUSINESS:-}" ] || args+=(--business "$IRA_BUSINESS")
+else
+    args+=(--business "${IRA_BUSINESS:-$business}")
+fi
 if [ -n "$hostname" ]; then
     args+=(--public-url "https://$hostname")
 fi
@@ -84,9 +99,11 @@ for _ in $(seq 1 30); do
     sleep 1
 done
 
+what="Business"
+[ "$personal" = 0 ] || what="Personal assistant"
 cat <<EOF
 
-Business $business: /srv/ira/$business, port $port, running as ira@$business.
+$what $business: /srv/ira/$business, port $port, running as ira@$business.
 EOF
 if [ -n "$hostname" ]; then
     cat <<EOF
@@ -119,8 +136,19 @@ cat <<EOF
 3. Check everything, models and voice included:
 
      sudo -u ira ira doctor /srv/ira/$business
+EOF
+if [ "$personal" = 1 ]; then
+    cat <<EOF
+
+4. Pair a Mac on the Ira app's Your devices page (the pairing link carries this
+   server's address), and list news feeds under search.news.feeds in
+   /srv/ira/$business/ira.yaml; a Brave Search key goes in its .env (chmod 600).
+EOF
+else
+    cat <<EOF
 
 4. Replace /srv/ira/$business/tools.py with this business's own tools, then:
 
      sudo systemctl restart ira@$business
 EOF
+fi

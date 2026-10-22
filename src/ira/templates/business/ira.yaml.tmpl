@@ -11,15 +11,12 @@ assistant:
   name: ${name_yaml}  # can be changed later from the console
   business: ${business_yaml}
   instructions: |
-    Answer from the tools. When they do not have the answer, say so plainly
-    rather than guessing. Keep answers short: they are often spoken.
+${instructions}
   tier: default                   # the model chain that answers chat
 
 data_dir: ./data                  # ira.db and your tools' files; back it up
 
-# Tool modules, relative to this file. tools.py holds two examples to replace.
-tools:
-  - ./tools.py
+${tools_section}
 
 ${provider_sections}
 
@@ -38,3 +35,4 @@ actions:
   expiry_seconds: 120
   # Who may confirm an action with their own PIN (viewers never can).
   confirm_roles: [owner, admin, staff]
+${search_section}

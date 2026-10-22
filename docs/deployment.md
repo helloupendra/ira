@@ -286,6 +286,11 @@ sudo IRA_BUSINESS="Sunrise Dental, a small clinic" ira-add-business clinic 8811 
 - `IRA_BUSINESS` is one line about the business for the model, and
   `IRA_NAME` the assistant's name (default Ira). Both can be edited later in
   `ira.yaml`.
+- `--personal` (first) makes one person's own assistant instead:
+  `sudo ira-add-business --personal riley 8812 ira.example.com`. It has no
+  placeholder tools, since the person's paired devices and search add their
+  tools, and a `search:` section for news feeds; a Brave Search key goes in
+  its `.env`.
 
 It runs `ira init --provider bedrock` as the `ira` user, enables and starts
 `ira@clinic`, and prints the cloudflared ingress lines, the one-time setup
@@ -363,6 +368,12 @@ For each later business, add its two ingress lines (`ira-add-business`
 prints them), route its hostname, and `sudo systemctl restart cloudflared`.
 
 - Cloudflare serves HTTPS, which the browser's microphone requires.
+- Devices (the Mac companion, later the phone) connect to
+  `wss://<hostname>/v1/devices/ws` through the same tunnel: cloudflared
+  passes WebSockets through with no extra setting. Cloudflare closes a
+  WebSocket idle for 100 seconds; both sides ping every 30, and a device
+  reconnects by itself after a tunnel restart. The pairing link carries the
+  server's address, from `public_url`, so set the hostname before pairing.
 - IRA refuses a browser write whose `Origin` names another host than the
   `Host` (or `X-Forwarded-Host`) it receives. cloudflared normally forwards
   the public hostname. If the app or the console answers 403 "cross-origin

@@ -52,6 +52,36 @@ class InitOptions:
     region: str | None = None
     voice: str | None = None
     public_url: str | None = None
+    # One person's own assistant: no placeholder tools (their devices and search
+    # add tools), a search section, and wording about a person, not a business.
+    personal: bool = False
+
+
+PERSONAL_BUSINESS = "one person's own work and day"
+BUSINESS_INSTRUCTIONS = """\
+    Answer from the tools. When they do not have the answer, say so plainly
+    rather than guessing. Keep answers short: they are often spoken."""
+PERSONAL_INSTRUCTIONS = """\
+    This is one person's own assistant. When they ask about their Mac, their
+    Chrome tabs, the web or the news, use their devices and search. When a
+    tool does not have the answer, say so plainly rather than guessing. Keep
+    answers short: they are often spoken."""
+BUSINESS_TOOLS = """\
+# Tool modules, relative to this file. tools.py holds two examples to replace.
+tools:
+  - ./tools.py"""
+PERSONAL_TOOLS = """\
+# Tool modules, relative to this file. tools.py holds two examples, switched off:
+# a personal assistant's tools come from the person's paired devices and search.
+tools: []"""
+PERSONAL_SEARCH = """
+# Web and news search, which each person switches on for themselves (with their
+# PIN) in the Ira app. web_search needs BRAVE_SEARCH_API_KEY in .env.
+search:
+  calls_per_hour: 30
+  news:
+    cache_minutes: 15
+    feeds: []   # RSS or Atom: - { name: Example News, url: https://news.example.com/rss }"""
 
 
 def _template(name: str) -> str:
@@ -126,14 +156,18 @@ def check_options(options: InitOptions) -> InitOptions:
         public_url = check_public_url(options.public_url)
     except ValueError as exc:
         raise InitError(f"--public-url: {exc}") from None
+    business = options.business
+    if options.personal and business == InitOptions.business:
+        business = PERSONAL_BUSINESS
     return InitOptions(
         name=_one_line("--name", options.name, 40),
-        business=_one_line("--business", options.business, 200),
+        business=_one_line("--business", business, 200),
         port=options.port,
         provider=options.provider,
         region=options.region,
         voice=options.voice,
         public_url=public_url,
+        personal=options.personal,
     )
 
 
@@ -159,6 +193,25 @@ def render(options: InitOptions, *, today: dt.date | None = None) -> dict[str, s
             "the server's AWS role"
             if options.provider == "bedrock"
             else "the free demo router: a keyword matcher, not a language model"
+        ),
+        "instructions": PERSONAL_INSTRUCTIONS if options.personal else BUSINESS_INSTRUCTIONS,
+        "tools_section": PERSONAL_TOOLS if options.personal else BUSINESS_TOOLS,
+        "search_section": PERSONAL_SEARCH if options.personal else "",
+        "kind": "a personal assistant" if options.personal else "One IRA instance",
+        "tools_row": (
+            "Two example tools, switched off: your devices and search add your tools."
+            if options.personal
+            else "Two placeholder tools. Replace them with your own."
+        ),
+        "make_it_yours": (
+            "- Sign in, set your PIN, and pair your Mac on **Your devices** in the Ira\n"
+            "  app: Ira can then read and watch a Chrome tab when you ask.\n"
+            "- Switch web and news search on in **Your assistant**, and list news feeds\n"
+            "  under `search.news.feeds`."
+            if options.personal
+            else "- Describe the business in `assistant.business` and `assistant.instructions`.\n"
+            "- Replace `find_notes` and `add_note` in `tools.py` with tools over your own\n"
+            "  data. Reads are `@tool`; changes are `@action`, and run only after a PIN."
         ),
     }
     files = {

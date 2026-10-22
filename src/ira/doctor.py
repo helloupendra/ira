@@ -356,7 +356,11 @@ def check_tools(report: Report, settings: Settings) -> None:
     from ira.tools.registry import ToolContext, default_registry
 
     if not settings.tools:
-        report.add("warn", "tools", "no tool modules: the assistant can only chat")
+        report.add(
+            "warn",
+            "tools",
+            "no tool modules: only each person's paired devices and search add tools",
+        )
         return
     ctx = ToolContext(data_dir=settings.data_dir, config_dir=settings.config_dir)
     loaded: set[str] = set()

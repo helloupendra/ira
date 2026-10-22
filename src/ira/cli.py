@@ -1,6 +1,6 @@
 """The ``ira`` command line.
 
-ira init FOLDER [--provider P]    create a business folder: ira.yaml, tools.py, README
+ira init FOLDER [--provider P]    create a business (or --personal) folder: ira.yaml, README
 ira doctor [FOLDER] [--no-models] check a business folder; non-zero exit on a failure
 ira setup                         create the owner account
 ira serve                         run the API, web chat, console and enabled channels
@@ -252,6 +252,7 @@ def cmd_init(args: argparse.Namespace) -> int:
         region=args.region,
         voice=args.voice,
         public_url=args.public_url,
+        personal=args.personal,
     )
     folder = Path(args.folder).expanduser()
     try:
@@ -322,6 +323,11 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--region", help="Bedrock Mantle region (default: us-east-1)")
     p.add_argument("--voice", help="Polly voice (default: Kajal, Indian English)")
     p.add_argument("--public-url", help="the address people open, e.g. https://ira.example.com")
+    p.add_argument(
+        "--personal",
+        action="store_true",
+        help="one person's own assistant: no placeholder tools, search settings",
+    )
 
     p = add("doctor", cmd_doctor, "check a business folder: config, tools, models, voice, owner")
     p.add_argument("folder", nargs="?", help="the business folder (default: ./ira.yaml)")

@@ -235,3 +235,18 @@ def test_cli_init(tmp_path, capsys):
     assert "not empty" in capsys.readouterr().err
     assert main(["init", str(tmp_path / "x"), "--voice", "Kajal"]) == 1
     assert "--provider bedrock" in capsys.readouterr().err
+
+
+def test_a_personal_folder_has_no_placeholder_tools(tmp_path, isolated_tools):
+    folder = tmp_path / "me"
+    init_folder(folder, InitOptions(personal=True, provider="bedrock", port=8812))
+    settings = load_settings(folder / "ira.yaml")
+    assert settings.tools == []
+    assert settings.assistant.business == "one person's own work and day"
+    assert "one person's own assistant" in settings.assistant.instructions
+    assert settings.search.news.feeds == [] and settings.search.calls_per_hour == 30
+    readme = (folder / "README.md").read_text()
+    assert readme.startswith("# Ira for one person's own work and day")
+    assert "Your devices" in readme and "find_notes" not in readme
+    business = render(InitOptions(business="Example Shop"))["ira.yaml"]
+    assert "./tools.py" in business and "search:" not in business

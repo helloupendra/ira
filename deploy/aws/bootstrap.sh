@@ -14,7 +14,8 @@
 #   - installs the ira@.service systemd template and `ira-add-business`.
 #
 # It does not install cloudflared, open a port or start any instance. Add a
-# business with `sudo ira-add-business <business> <port> [hostname]`.
+# business with `sudo ira-add-business <business> <port> [hostname]`, or one person's own
+# assistant with `sudo ira-add-business --personal <name> <port> [hostname]`.
 # See docs/deployment.md, "AWS with Bedrock".
 
 set -euo pipefail
@@ -120,5 +121,5 @@ if [ "${#running[@]}" -gt 0 ]; then
     printf '    %s\n' "${running[@]}"
     echo "Restart them with:  sudo systemctl restart 'ira@*'"
 else
-    echo "Next: sudo ira-add-business <business> <port> [hostname]"
+    echo "Next: sudo ira-add-business [--personal] <name> <port> [hostname]"
 fi

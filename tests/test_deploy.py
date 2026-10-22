@@ -100,6 +100,8 @@ def test_add_business_runs_init_as_the_ira_user():
     assert 'systemctl enable --now "ira@$business"' in text
     assert "http_status:404" in text and "#code=" in text
     assert "[[ $business =~ ^[a-z0-9][a-z0-9-]{0,30}$ ]]" in text
+    # One person's own assistant: ira init --personal, no placeholder tools.
+    assert 'if [ "${1:-}" = "--personal" ]' in text and "args+=(--personal)" in text
 
 
 def test_cloudflared_example_routes_two_businesses_then_404():

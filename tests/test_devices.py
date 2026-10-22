@@ -748,3 +748,27 @@ async def test_a_device_that_says_goodbye_is_revoked(store):
     await hub.run(socket, device)
     assert socket.closed[0] == 1000
     assert hub.devices.by_token(token) is None
+
+
+def test_the_websocket_works_behind_a_tunnel(app_runtime):
+    """Behind cloudflared the Host is the public name and X-Forwarded-* are set."""
+    from ira.devices.protocol import PING_SECONDS, SILENCE_SECONDS
+
+    owner = app_runtime.accounts.find_user("owner@example.com")
+    token, _ = paired(app_runtime.hub.devices, owner.id)
+    headers = {
+        "Authorization": f"Bearer {token}",
+        "Host": "ira.example.com",
+        "Origin": "https://somewhere-else.example.net",
+        "X-Forwarded-Proto": "https",
+        "X-Forwarded-For": "203.0.113.7",
+    }
+    app = create_app(app_runtime, start_channels=False)
+    with (
+        TestClient(app) as client,
+        client.websocket_connect("/v1/devices/ws", headers=headers) as ws,
+    ):
+        ws.send_json(hello())
+        assert ws.receive_json()["type"] == "welcome"
+    # Cloudflare closes a WebSocket idle for 100 seconds: pings keep it well under.
+    assert PING_SECONDS < 100 / 2 and SILENCE_SECONDS < 100
