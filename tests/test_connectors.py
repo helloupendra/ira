@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import asyncio
 import os
 import stat
 from typing import Any
+from urllib.parse import parse_qs
 
 import pytest
 from fastapi.testclient import TestClient
@@ -235,3 +237,146 @@ def test_connecting_needs_the_pin_and_stays_with_its_person():
         assert client.get("/v1/me/connections", headers=mine).json()["connections"] == []
         both = {**body, "server": "github", "pin": "4321"}
         assert client.post("/v1/me/connections", json=both, headers=mine).status_code == 400
+
+
+class MemoryAuth:
+    """An OAuth authorization server in memory, as the MCP SDK's server expects one."""
+
+    def __init__(self) -> None:
+        self.clients: dict = {}
+        self.codes: dict = {}
+        self.tokens: dict = {}
+        self.refresh: dict = {}
+
+    async def get_client(self, client_id):
+        return self.clients.get(client_id)
+
+    async def register_client(self, client_info):
+        self.clients[client_info.client_id] = client_info
+
+    async def authorize(self, client, params):
+        import secrets as random
+        import time
+
+        from mcp.server.auth.provider import AuthorizationCode, construct_redirect_uri
+
+        code = random.token_hex(8)
+        self.codes[code] = AuthorizationCode(
+            code=code,
+            scopes=params.scopes or [],
+            expires_at=time.time() + 300,
+            client_id=client.client_id,
+            code_challenge=params.code_challenge,
+            redirect_uri=params.redirect_uri,
+            redirect_uri_provided_explicitly=params.redirect_uri_provided_explicitly,
+            resource=params.resource,
+        )
+        return construct_redirect_uri(str(params.redirect_uri), code=code, state=params.state)
+
+    async def load_authorization_code(self, client, authorization_code):
+        return self.codes.get(authorization_code)
+
+    async def exchange_authorization_code(self, client, authorization_code):
+        import secrets as random
+        import time
+
+        from mcp.server.auth.provider import AccessToken, RefreshToken
+        from mcp.shared.auth import OAuthToken
+
+        self.codes.pop(authorization_code.code, None)
+        token, refresh = "at_" + random.token_hex(8), "rt_" + random.token_hex(8)
+        self.tokens[token] = AccessToken(
+            token=token,
+            client_id=client.client_id,
+            scopes=authorization_code.scopes,
+            expires_at=int(time.time()) + 3600,
+            resource=authorization_code.resource,
+        )
+        self.refresh[refresh] = RefreshToken(
+            token=refresh, client_id=client.client_id, scopes=authorization_code.scopes
+        )
+        return OAuthToken(
+            access_token=token, token_type="Bearer", expires_in=3600, refresh_token=refresh
+        )
+
+    async def load_access_token(self, token):
+        return self.tokens.get(token)
+
+    async def load_refresh_token(self, client, refresh_token):
+        return self.refresh.get(refresh_token)
+
+    async def exchange_refresh_token(self, client, refresh_token, scopes):
+        raise NotImplementedError
+
+    async def revoke_token(self, token):
+        self.tokens.pop(getattr(token, "token", ""), None)
+
+
+async def test_signing_in_to_a_service_with_oauth(store):
+    import socket
+
+    import httpx
+    import uvicorn
+    from mcp.server.auth.settings import AuthSettings, ClientRegistrationOptions
+
+    with socket.socket() as probe:
+        probe.bind(("127.0.0.1", 0))
+        port = probe.getsockname()[1]
+    base = f"http://127.0.0.1:{port}"
+    auth = MemoryAuth()
+    secured = MCPServer(
+        "secured",
+        auth_server_provider=auth,
+        auth=AuthSettings(
+            issuer_url=base,
+            resource_server_url=f"{base}/mcp",
+            client_registration_options=ClientRegistrationOptions(enabled=True),
+        ),
+    )
+
+    @secured.tool(annotations=ToolAnnotations(read_only_hint=True))
+    def whoami() -> str:
+        """Who is signed in."""
+        return "signed in"
+
+    server = uvicorn.Server(
+        uvicorn.Config(
+            secured.streamable_http_app(), host="127.0.0.1", port=port, log_level="error"
+        )
+    )
+    serving = asyncio.ensure_future(server.serve())
+    while not server.started:
+        await asyncio.sleep(0.05)
+    try:
+        config = ConnectorsConfig(allow_private=True)
+        connectors = Connectors(
+            store, lambda: Sealer(KEY), config, callback_url=lambda: "https://ira.example.com"
+        )
+        added = connectors.add_remote(1, "Secured", f"{base}/mcp", oauth=True)
+        address = await connectors.sign_in(1, added.id)
+        assert address and address.startswith(base)
+        pending = connectors.sign_ins[added.id]
+        # The person's browser signs in at the service, which sends it back to IRA.
+        async with httpx.AsyncClient() as browser:
+            back = await browser.get(address, follow_redirects=False)
+        location = back.headers["location"]
+        assert location.startswith("https://ira.example.com/v1/connections/oauth/callback?")
+        query = {k: v[0] for k, v in parse_qs(location.split("?", 1)[1]).items()}
+        with pytest.raises(ToolError, match="expired"):
+            connectors.signed_in("not-the-state", query["code"])
+        assert connectors.signed_in(query["state"], query["code"]) == "Secured"
+        await pending.task
+        connection = connectors.get(1, added.id)
+        assert connection.status == "ok" and [t["mcp_name"] for t in connection.tools] == ["whoami"]
+        raw = bytes(store.one("SELECT secret FROM connections WHERE id = ?", (added.id,))["secret"])
+        assert not any(token.encode() in raw for token in auth.tokens)  # sealed
+        tool = connectors.tools_for(1)[0]
+        assert await tool.run({}) == "signed in"
+        await connectors.close()
+        # After a restart, the sealed tokens are used again: no new sign-in.
+        again = Connectors(store, lambda: Sealer(KEY), config)
+        assert await again.tools_for(1)[0].run({}) == "signed in"
+        await again.close()
+    finally:
+        server.should_exit = True
+        await serving

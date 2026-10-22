@@ -578,6 +578,7 @@ def create_app(runtime: Runtime, *, start_channels: bool = True) -> FastAPI:
     app.include_router(learning.router)
     app.include_router(live.router)
     app.include_router(connectors.router)
+    app.include_router(connectors.callback)
     devices.mask_tokens_in_logs()
 
     @app.get("/pair", include_in_schema=False)

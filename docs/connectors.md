@@ -54,6 +54,25 @@ connectors:
 Each person then picks it under **Where** and gives their own value for
 each `person_env` variable.
 
+## Services that sign you in (OAuth)
+
+Many MCP servers ask you to sign in with the service itself instead of a
+token. Tick **Sign in with the service instead of a token**: Ira opens the
+service's sign-in page; when you approve, the service sends your browser
+back to this server (`/v1/connections/oauth/callback`), and the connection
+finishes on its own. The MCP SDK does the protocol's part: it finds the
+service's authorization server, registers Ira as a client, uses PKCE, and
+checks that the answer belongs to this sign-in. The tokens are sealed like
+any other secret and refreshed when they expire.
+
+- This server's address must be one the service can send you back to:
+  `channels.http.public_url`, or `http://127.0.0.1:<port>` on your own
+  computer.
+- You have 10 minutes to finish signing in.
+- If the service ever wants you to sign in again, the connection says so
+  and offers **Sign in**; Ira does not wait for it in the middle of an
+  answer.
+
 ## What Ira may do with them
 
 Every tool gets a tier, from what its server says about it, and only ever

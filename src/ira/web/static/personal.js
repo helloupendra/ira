@@ -869,7 +869,9 @@ const IraPersonal = (() => {
         ? `${connection.tools.filter((t) => t.enabled).length} of ${connection.tools.length} tools on`
         : connection.status === "error"
           ? `Could not connect: ${connection.error || "unknown error"}`
-          : "Not checked yet";
+          : connection.status === "needs_auth"
+            ? "Sign in to the service to use it."
+            : "Not checked yet";
     const tools = el("details", {}, el("summary", { text: "Tools" }));
     for (const tool of connection.tools) {
       const on = el("input", { type: "checkbox", checked: tool.enabled, "aria-label": `Use ${tool.mcp_name}` });
@@ -917,6 +919,17 @@ const IraPersonal = (() => {
         { className: "row" },
         toggle,
         el("button", { type: "button", className: "btn btn-ghost", text: "Check again", onClick: guard(async () => { await call(`${path}/refresh`, { method: "POST" }); await reload(); }) }),
+        connection.status === "needs_auth" || connection.status === "new"
+          ? el("button", {
+              type: "button",
+              className: "btn btn-primary",
+              text: "Sign in",
+              onClick: guard(async () => {
+                const popup = window.open("about:blank", "_blank"); // opened on the tap: not blocked
+                signIn(await call(`${path}/sign-in`, { method: "POST" }), body, popup);
+              }),
+            })
+          : null,
         el("button", {
           type: "button",
           className: "text-btn danger",
@@ -936,6 +949,10 @@ const IraPersonal = (() => {
     const name = el("input", { name: "name", maxlength: "40", required: true, placeholder: "GitHub" });
     const url = el("input", { name: "url", type: "url", maxlength: "500", placeholder: "https://…/mcp" });
     const token = el("input", { name: "token", type: "password", autocomplete: "off", maxlength: "500" });
+    const oauth = el("input", { type: "checkbox", name: "oauth" });
+    oauth.addEventListener("change", () => {
+      token.closest("label").hidden = oauth.checked;
+    });
     const hint = el("p", { className: "muted small", text: "The token is sent as Authorization: Bearer, and kept sealed on this server; it is never shown again." });
     const server = el("select", { name: "server" }, el("option", { value: "", text: "A remote server, by its address" }), view.servers.map((s) => el("option", { value: s.name, text: `${s.name}: ${s.description || "on this server"}` })));
     const needs = el("div", { className: "stack-tight" });
@@ -966,6 +983,7 @@ const IraPersonal = (() => {
       view.servers.length ? el("label", {}, "Where", server) : null,
       el("label", {}, "Name", name),
       el("label", {}, "Address of the MCP server", url),
+      el("label", { className: "switch" }, oauth, el("span", { text: "Sign in with the service instead of a token" })),
       el("label", {}, "Token", token),
       hint,
       needs,
@@ -982,17 +1000,46 @@ const IraPersonal = (() => {
       for (const [key, value] of data.entries()) if (key.startsWith("env:")) env[key.slice(4)] = value;
       const payload = { name: name.value, pin: $("input", pin).value || undefined };
       if (server.value) Object.assign(payload, { server: server.value, env });
+      else if (oauth.checked) Object.assign(payload, { url: url.value, oauth: true });
       else Object.assign(payload, { url: url.value, headers: token.value ? { Authorization: `Bearer ${token.value}` } : {} });
       token.value = "";
       $("input", pin).value = "";
+      const popup = payload.oauth ? window.open("about:blank", "_blank") : null; // on the tap
       try {
-        await call("/v1/me/connections", { method: "POST", json: payload });
+        const made = await call("/v1/me/connections", { method: "POST", json: payload });
+        if (made.authorize_url) return signIn(made, body, popup);
+        if (popup) popup.close();
         await renderConnections(body);
       } catch (problem) {
+        if (popup) popup.close();
         error.textContent = problem.message;
       }
     });
     return el("section", { className: "stack" }, el("h3", { text: "Connect a service" }), form);
+  }
+
+  // Signing in to a service (OAuth): open its page, then wait for the connection to finish.
+  function signIn(connection, body, popup) {
+    if (!connection.authorize_url) {
+      if (popup) popup.close();
+      return renderConnections(body);
+    }
+    if (popup && !popup.closed) {
+      popup.opener = null;
+      popup.location.href = connection.authorize_url;
+    } else {
+      window.open(connection.authorize_url, "_blank", "noopener");
+    }
+    body.prepend(el("p", { className: "note", role: "status", text: `Sign in to ${connection.name} in the page that opened. This updates when you are back.` }));
+    const started = Date.now();
+    const poll = async () => {
+      if (!$("#panel").open || Date.now() - started > 600000) return;
+      const view = await call("/v1/me/connections").catch(() => null);
+      const now = view && view.connections.find((c) => c.id === connection.id);
+      if (now && now.status !== "new" && now.status !== "needs_auth") return renderConnections(body);
+      setTimeout(poll, 2000);
+    };
+    setTimeout(poll, 2000);
   }
 
   // Thumbs on an answer, when you let Ira learn from them.

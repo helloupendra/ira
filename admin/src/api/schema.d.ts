@@ -1633,6 +1633,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/me/connections/{connection_id}/sign-in": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Sign in to the service again (OAuth): open authorize_url */
+        post: operations["sign_in_again"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/me/connections/{connection_id}/refresh": {
         parameters: {
             query?: never;
@@ -1666,6 +1683,23 @@ export interface paths {
         head?: never;
         /** Switch it or its tools on or off, or raise a tool's tier */
         patch: operations["update_connection"];
+        trace?: never;
+    };
+    "/v1/connections/oauth/callback": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Public: where a service sends you back after signing in */
+        get: operations["oauth_callback"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
 }
@@ -2157,6 +2191,12 @@ export interface components {
                 [key: string]: string;
             };
             /**
+             * Oauth
+             * @description Sign in with the service (OAuth) instead of a token.
+             * @default false
+             */
+            oauth: boolean;
+            /**
              * Server
              * @description Or a local one, by name.
              */
@@ -2251,7 +2291,7 @@ export interface components {
              * Status
              * @enum {string}
              */
-            status: "new" | "ok" | "error";
+            status: "new" | "ok" | "error" | "needs_auth";
             /** Error */
             error?: string | null;
             /** Created At */
@@ -2260,6 +2300,11 @@ export interface components {
             checked_at?: number | null;
             /** Tools */
             tools: components["schemas"]["ConnectionTool"][];
+            /**
+             * Authorize Url
+             * @description Open this to sign in to the service (OAuth); the connection finishes when the browser comes back.
+             */
+            authorize_url?: string | null;
         };
         /** ConnectionsView */
         ConnectionsView: {
@@ -10217,6 +10262,37 @@ export interface operations {
             };
         };
     };
+    sign_in_again: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                connection_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConnectionView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     refresh_connection: {
         parameters: {
             query?: never;
@@ -10301,6 +10377,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ConnectionView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    oauth_callback: {
+        parameters: {
+            query?: {
+                state?: string;
+                code?: string | null;
+                error?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/html": string;
                 };
             };
             /** @description Validation Error */

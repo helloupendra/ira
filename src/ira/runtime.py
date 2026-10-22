@@ -116,7 +116,9 @@ class Runtime:
                     sealer.append(Sealer(load_key(self.settings.data_dir)))
                 return sealer[0]
 
-            self.connectors = Connectors(self.store, seal, self.settings.connectors)
+            self.connectors = Connectors(
+                self.store, seal, self.settings.connectors, callback_url=self.base_url
+            )
         self.hub.welcome_extra = self._welcome
 
     async def _run_personal_action(self, pending: Any) -> Any:

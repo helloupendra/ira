@@ -1393,11 +1393,16 @@ class ConnectionView(BaseModel):
     url: str | None = Field(description="A remote server's address; never its token.")
     server: str | None = Field(description="A local server this IRA offers, by name.")
     enabled: bool
-    status: Literal["new", "ok", "error"]
+    status: Literal["new", "ok", "error", "needs_auth"]
     error: str | None = None
     created_at: float
     checked_at: float | None = None
     tools: list[ConnectionTool]
+    authorize_url: str | None = Field(
+        default=None,
+        description="Open this to sign in to the service (OAuth); the connection finishes "
+        "when the browser comes back.",
+    )
 
 
 class ServerOffer(BaseModel):
@@ -1418,6 +1423,9 @@ class ConnectionCreate(BaseModel):
     headers: dict[str, str] = Field(
         default_factory=dict,
         description="Sent to a remote server, such as Authorization: Bearer <token>. Sealed.",
+    )
+    oauth: bool = Field(
+        default=False, description="Sign in with the service (OAuth) instead of a token."
     )
     server: str | None = Field(default=None, max_length=40, description="Or a local one, by name.")
     env: dict[str, str] = Field(default_factory=dict, description="What a local server needs.")

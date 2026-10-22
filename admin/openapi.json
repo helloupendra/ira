@@ -8060,6 +8060,53 @@
                 ]
             }
         },
+        "/v1/me/connections/{connection_id}/sign-in": {
+            "post": {
+                "tags": [
+                    "your connections"
+                ],
+                "summary": "Sign in to the service again (OAuth): open authorize_url",
+                "operationId": "sign_in_again",
+                "security": [
+                    {
+                        "HTTPBearer": []
+                    }
+                ],
+                "parameters": [
+                    {
+                        "name": "connection_id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "title": "Connection Id"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ConnectionView"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
         "/v1/me/connections/{connection_id}/refresh": {
             "post": {
                 "tags": [
@@ -8192,6 +8239,84 @@
                             "application/json": {
                                 "schema": {
                                     "$ref": "#/components/schemas/OkResponse"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/v1/connections/oauth/callback": {
+            "get": {
+                "tags": [
+                    "your connections"
+                ],
+                "summary": "Public: where a service sends you back after signing in",
+                "operationId": "oauth_callback",
+                "parameters": [
+                    {
+                        "name": "state",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "type": "string",
+                            "maxLength": 200,
+                            "default": "",
+                            "title": "State"
+                        }
+                    },
+                    {
+                        "name": "code",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "anyOf": [
+                                {
+                                    "type": "string",
+                                    "maxLength": 2000
+                                },
+                                {
+                                    "type": "null"
+                                }
+                            ],
+                            "title": "Code"
+                        }
+                    },
+                    {
+                        "name": "error",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "anyOf": [
+                                {
+                                    "type": "string",
+                                    "maxLength": 200
+                                },
+                                {
+                                    "type": "null"
+                                }
+                            ],
+                            "title": "Error"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "text/html": {
+                                "schema": {
+                                    "type": "string"
                                 }
                             }
                         }
@@ -9278,6 +9403,12 @@
                         "title": "Headers",
                         "description": "Sent to a remote server, such as Authorization: Bearer <token>. Sealed."
                     },
+                    "oauth": {
+                        "type": "boolean",
+                        "title": "Oauth",
+                        "description": "Sign in with the service (OAuth) instead of a token.",
+                        "default": false
+                    },
                     "server": {
                         "anyOf": [
                             {
@@ -9487,7 +9618,8 @@
                         "enum": [
                             "new",
                             "ok",
-                            "error"
+                            "error",
+                            "needs_auth"
                         ],
                         "title": "Status"
                     },
@@ -9523,6 +9655,18 @@
                         },
                         "type": "array",
                         "title": "Tools"
+                    },
+                    "authorize_url": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Authorize Url",
+                        "description": "Open this to sign in to the service (OAuth); the connection finishes when the browser comes back."
                     }
                 },
                 "type": "object",

@@ -9,7 +9,10 @@ a person may raise a tier, never lower it.
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException
+import html
+
+from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.responses import HTMLResponse
 
 from ira import changes
 from ira.accounts import Principal
@@ -85,7 +88,9 @@ async def add_connection(
     await check_pin(runtime, who, body.pin, f"connecting {body.name}")
     try:
         if body.url:
-            connection = service.add_remote(who.user.id, body.name, body.url, body.headers)
+            connection = service.add_remote(
+                who.user.id, body.name, body.url, body.headers, oauth=body.oauth
+            )
         else:
             connection = service.add_server(who.user.id, body.name, str(body.server), body.env)
     except (ToolError, SealError) as exc:
@@ -98,7 +103,62 @@ async def add_connection(
         channel=who.channel,
         after={"url": connection.url, "server": connection.server},
     )
+    if body.oauth:
+        address = await service.sign_in(who.user.id, connection.id)
+        view = _view(service.get(who.user.id, connection.id))
+        view.authorize_url = address
+        return view
     return _view(await service.refresh(who.user.id, connection.id))
+
+
+@router.post(
+    "/{connection_id}/sign-in",
+    response_model=ConnectionView,
+    summary="Sign in to the service again (OAuth): open authorize_url",
+)
+async def sign_in_again(
+    connection_id: str,
+    who: Principal = Depends(your_session),
+    runtime: Runtime = Depends(get_runtime),
+) -> ConnectionView:
+    service = _service(runtime)
+    try:
+        address = await service.sign_in(who.user.id, connection_id)
+        view = _view(service.get(who.user.id, connection_id))
+    except (ToolError, SealError) as exc:
+        raise _fail(exc) from None
+    view.authorize_url = address
+    return view
+
+
+# The service sends the browser back here. The session cookie is SameSite=Strict, so it
+# does not come with a redirect from another site: the one-time OAuth state is the proof.
+callback = APIRouter(tags=["your connections"])
+
+
+@callback.get(
+    "/v1/connections/oauth/callback",
+    response_class=HTMLResponse,
+    summary="Public: where a service sends you back after signing in",
+)
+def oauth_callback(
+    state: str = Query("", max_length=200),
+    code: str | None = Query(None, max_length=2000),
+    error: str | None = Query(None, max_length=200),
+    runtime: Runtime = Depends(get_runtime),
+) -> HTMLResponse:
+    try:
+        name = _service(runtime).signed_in(state, code, error)
+        title, text = "Connected", f"{name} is connected. You can close this window."
+    except (ToolError, HTTPException) as exc:
+        title, text = "Not connected", str(getattr(exc, "detail", exc))
+    page = (
+        "<!doctype html><meta charset=utf-8><meta name=viewport content='width=device-width'>"
+        f"<title>{html.escape(title)}</title>"
+        "<body style='font:16px system-ui;margin:2rem;max-width:32rem'>"
+        f"<h1>{html.escape(title)}</h1><p>{html.escape(text)}</p></body>"
+    )
+    return HTMLResponse(page, status_code=200 if title == "Connected" else 400)
 
 
 @router.post(

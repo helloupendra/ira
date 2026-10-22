@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 import re
 import secrets
@@ -9,6 +10,7 @@ import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any
+from urllib.parse import parse_qs, urlsplit
 
 from ira.config import ConnectorsConfig
 from ira.connectors import mcp
@@ -22,6 +24,24 @@ SLUG = re.compile(r"[^a-z0-9]+")
 
 class ConnectionError_(ToolError):
     pass
+
+
+class NeedsSignIn(ConnectionError_):
+    """The service wants its sign-in again, and nobody is there to do it."""
+
+
+SIGN_IN_SECONDS = 600.0  # the person has ten minutes to finish signing in
+
+
+@dataclass
+class SignIn:
+    """One OAuth sign-in in progress: the address to open, then the code that comes back."""
+
+    connection_id: str
+    user_id: int
+    url: asyncio.Future[str]
+    code: asyncio.Future[Any]
+    task: asyncio.Task[Any] | None = None
 
 
 @dataclass
@@ -95,6 +115,7 @@ class Connectors:
         config: ConnectorsConfig,
         *,
         target_factory: Callable[[Connection, dict[str, Any]], Any] | None = None,
+        callback_url: Callable[[], str] = lambda: "http://127.0.0.1:8765",
         clock: Callable[[], float] = time.time,
     ) -> None:
         self.store = store
@@ -103,6 +124,10 @@ class Connectors:
         self._target_factory = target_factory
         self.clock = clock
         self.workers: dict[str, mcp.Worker] = {}
+        # Where a service sends the browser back after sign-in (this server's own address).
+        self.callback_url = callback_url
+        self.sign_ins: dict[str, SignIn] = {}  # by connection
+        self.by_state: dict[str, SignIn] = {}  # by the OAuth state the service echoes back
 
     def sealer(self) -> Sealer:
         return self._sealer()
@@ -167,7 +192,13 @@ class Connectors:
         return self.get(user_id, connection_id)
 
     def add_remote(
-        self, user_id: int, name: str, url: str, headers: dict[str, str] | None = None
+        self,
+        user_id: int,
+        name: str,
+        url: str,
+        headers: dict[str, str] | None = None,
+        *,
+        oauth: bool = False,
     ) -> Connection:
         url = mcp.check_url(url, self.config.allow_private)
         clean = {
@@ -178,9 +209,10 @@ class Connectors:
         for key in clean:
             if not re.fullmatch(r"[A-Za-z0-9-]{1,64}", key):
                 raise ConnectionError_(f"'{key}' is not a header name")
-        return self._insert(
-            user_id, name, "mcp_http", url=url, server=None, secret={"headers": clean}
-        )
+        secret: dict[str, Any] = {"headers": clean}
+        if oauth:
+            secret["oauth"] = {}  # tokens come after the person signs in
+        return self._insert(user_id, name, "mcp_http", url=url, server=None, secret=secret)
 
     def add_server(
         self, user_id: int, name: str, server: str, env: dict[str, str] | None = None
@@ -253,7 +285,8 @@ class Connectors:
         if self._target_factory is not None:
             return self._target_factory(connection, secret)
         if connection.kind == "mcp_http":
-            return mcp.http_transport(str(connection.url), secret.get("headers") or {})
+            auth = self._oauth(connection) if "oauth" in secret else None
+            return mcp.http_transport(str(connection.url), secret.get("headers") or {}, auth)
         cfg = self.config.mcp_servers.get(str(connection.server))
         if cfg is None:
             raise ConnectionError_(f"this server no longer offers {connection.server}")
@@ -267,6 +300,110 @@ class Connectors:
             self.workers[connection.id] = worker
         return worker
 
+    # OAuth: the SDK does discovery, registration, PKCE, the state check and the tokens;
+    # here the person's browser goes to the service and comes back.
+
+    def _seal_part(self, connection: Connection, key: str, value: Any) -> None:
+        secret = self._secret(connection)
+        secret.setdefault("oauth", {})[key] = value
+        sealed = self.sealer().seal(secret, f"{connection.user_id}:{connection.id}")
+        self.store.execute(
+            "UPDATE connections SET secret = ? WHERE id = ?", (sealed, connection.id)
+        )
+
+    def _oauth(self, connection: Connection) -> Any:
+        from mcp.client.auth import OAuthClientProvider, TokenStorage
+        from mcp.shared.auth import OAuthClientInformationFull, OAuthClientMetadata, OAuthToken
+
+        service = self
+
+        class Sealed(TokenStorage):
+            async def get_tokens(self) -> OAuthToken | None:
+                saved = service._secret(connection).get("oauth", {}).get("tokens")
+                return OAuthToken.model_validate(saved) if saved else None
+
+            async def set_tokens(self, tokens: OAuthToken) -> None:
+                service._seal_part(connection, "tokens", tokens.model_dump(mode="json"))
+
+            async def get_client_info(self) -> OAuthClientInformationFull | None:
+                saved = service._secret(connection).get("oauth", {}).get("client")
+                return OAuthClientInformationFull.model_validate(saved) if saved else None
+
+            async def set_client_info(self, client_info: OAuthClientInformationFull) -> None:
+                service._seal_part(connection, "client", client_info.model_dump(mode="json"))
+
+        async def redirect(url: str) -> None:
+            sign_in = self.sign_ins.get(connection.id)
+            if sign_in is None:
+                raise NeedsSignIn(f"{connection.name} wants you to sign in again")
+            state = (parse_qs(urlsplit(url).query).get("state") or [""])[0]
+            self.by_state[state] = sign_in
+            if not sign_in.url.done():
+                sign_in.url.set_result(url)
+
+        async def callback() -> Any:
+            sign_in = self.sign_ins.get(connection.id)
+            if sign_in is None:
+                raise NeedsSignIn(f"{connection.name} wants you to sign in again")
+            return await asyncio.wait_for(asyncio.shield(sign_in.code), SIGN_IN_SECONDS)
+
+        metadata = OAuthClientMetadata(
+            client_name="Ira",
+            redirect_uris=[f"{self.callback_url().rstrip('/')}/v1/connections/oauth/callback"],
+            grant_types=["authorization_code", "refresh_token"],
+            response_types=["code"],
+            token_endpoint_auth_method="none",
+        )
+        return OAuthClientProvider(
+            server_url=str(connection.url),
+            client_metadata=metadata,
+            storage=Sealed(),
+            redirect_handler=redirect,
+            callback_handler=callback,
+        )
+
+    async def sign_in(self, user_id: int, connection_id: str) -> str | None:
+        """Start signing in to a connection's service: the address to open, or None if it is
+        already signed in. Signing in finishes in the background, when the browser comes back."""
+        connection = self.get(user_id, connection_id)
+        loop = asyncio.get_running_loop()
+        old = self.sign_ins.pop(connection.id, None)
+        if old is not None and old.task is not None:
+            old.task.cancel()
+        worker = self.workers.pop(connection.id, None)
+        if worker is not None:
+            await worker.close()  # a fresh client, so the sign-in happens now
+        pending = SignIn(connection.id, user_id, loop.create_future(), loop.create_future())
+        self.sign_ins[connection.id] = pending
+
+        async def finish() -> None:
+            try:
+                await self.refresh(user_id, connection_id)
+            finally:
+                if self.sign_ins.get(connection.id) is pending:
+                    self.sign_ins.pop(connection.id, None)
+
+        pending.task = asyncio.ensure_future(finish())
+        done, _ = await asyncio.wait(
+            {pending.url, pending.task}, timeout=30, return_when="FIRST_COMPLETED"
+        )
+        if pending.url in done:
+            return pending.url.result()
+        return None
+
+    def signed_in(self, state: str, code: str | None, error: str | None = None) -> str:
+        """The browser came back from the service: hand the code to the waiting sign-in."""
+        from mcp.shared.auth import AuthorizationCodeResult
+
+        pending = self.by_state.pop(state, None)
+        if pending is None or pending.code.done():
+            raise ConnectionError_("this sign-in has expired: start it again from Your connections")
+        if error or not code:
+            pending.code.set_exception(NeedsSignIn(f"the service said: {error or 'no code'}"))
+            raise ConnectionError_(f"the service did not sign you in ({error or 'no code'})")
+        pending.code.set_result(AuthorizationCodeResult(code=code, state=state))
+        return self.get(pending.user_id, pending.connection_id).name
+
     async def refresh(self, user_id: int, connection_id: str) -> Connection:
         """Fetch the server's tools again, keeping the person's choices for known ones."""
         connection = self.get(user_id, connection_id)
@@ -274,10 +411,11 @@ class Connectors:
         try:
             listed = await self._worker(connection).request("list")
         except Exception as exc:
+            needs = isinstance(exc, NeedsSignIn) or "sign in" in str(exc)
             message = str(exc)[:300] or type(exc).__name__
             self.store.execute(
-                "UPDATE connections SET status = 'error', error = ?, checked_at = ? WHERE id = ?",
-                (message, self.clock(), connection.id),
+                "UPDATE connections SET status = ?, error = ?, checked_at = ? WHERE id = ?",
+                ("needs_auth" if needs else "error", message, self.clock(), connection.id),
             )
             return self.get(user_id, connection_id)
         tools = []
@@ -344,6 +482,10 @@ class Connectors:
         )
 
     async def close(self) -> None:
+        for pending in list(self.sign_ins.values()):
+            if pending.task is not None:
+                pending.task.cancel()
+        self.sign_ins.clear()
         for worker in list(self.workers.values()):
             await worker.close()
         self.workers.clear()

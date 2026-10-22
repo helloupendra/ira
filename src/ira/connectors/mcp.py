@@ -123,11 +123,13 @@ def result_text(result: Any) -> str:
     return text[:MAX_RESULT_CHARS]
 
 
-def http_transport(url: str, headers: dict[str, str]) -> Any:
+def http_transport(url: str, headers: dict[str, str], auth: Any = None) -> Any:
     import httpx2
     from mcp.client.streamable_http import streamable_http_client
 
-    client = httpx2.AsyncClient(headers=headers, timeout=httpx2.Timeout(30.0, read=CALL_SECONDS))
+    client = httpx2.AsyncClient(
+        headers=headers, auth=auth, timeout=httpx2.Timeout(30.0, read=CALL_SECONDS)
+    )
     return streamable_http_client(url, http_client=client)
 
 
