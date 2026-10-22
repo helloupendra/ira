@@ -107,6 +107,14 @@ switch it on.
   you speak. On a call, a proposed action is read back with its exact
   target. Macs can now be offered the `files` and `screen` skills, for
   the native Mac app.
+- **Ira for Mac** (`clients/macos/`, [guide](docs/clients/macos.md)): a
+  native menu-bar app, opened with Option-Space, that pairs in the app (a
+  link or a code), keeps its key in the Keychain, and offers `files_find`
+  (Spotlight), `file_read` (PDF, Word, RTF, text), `file_open` and
+  `screen_read` (the front window's text, read on the Mac with Vision). Talk
+  by typing or by voice over `/v1/voice/live`, with barge-in; servers without
+  live voice use the HTTP API after a sign-in. Built with SwiftPM alone into
+  an ad-hoc-signed `Ira.app`, zip and dmg, in CI on a macOS runner.
 - **Tasks on your Mac** (the `tasks` skill): Ira hands a job to a coding
   agent configured on the Mac, in a new git worktree and branch of a
   repository the person allowed there. It runs in macOS's sandbox, its git
