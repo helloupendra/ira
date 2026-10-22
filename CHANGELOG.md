@@ -89,6 +89,11 @@ switch it on.
   with their password again; an owner sets someone's password or email from
   Users & roles; `ira user password` and `ira user email` do it from the
   server. All go to the change log.
+- **The connector kit.** `ira connector new <name>` writes a tool pack for
+  any business's API: one tool per operation from an OpenAPI description,
+  three general tools from a base URL, or one that asks another Ira with an
+  ask-only token. Reading is Tier 0, changes Tier 2 with the exact call read
+  back, deleting Tier 3.
 - **A pairing code for app reviewers.** `ira device code --email ... --days 7
   --uses 3` makes a code that lasts up to 14 days and pairs up to 10
   devices, from the server's command line only.

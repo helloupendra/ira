@@ -336,6 +336,41 @@ def cmd_device_code(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_connector_new(args: argparse.Namespace) -> int:
+    """Write a tool pack for a business's API: from OpenAPI, a REST base URL, or another Ira."""
+    import ast
+    from pathlib import Path
+
+    from ira.connectors.kit import KitError, env_prefix, ident, new_pack
+
+    try:
+        code = new_pack(
+            args.name,
+            openapi=args.openapi,
+            base_url=args.base_url,
+            ira=args.ira,
+            auth=args.auth,
+            header=args.header,
+            token_url=args.token_url,
+        )
+        ast.parse(code)
+    except (KitError, SyntaxError) as exc:
+        print(f"Error: {exc}", file=sys.stderr)
+        return 1
+    out = Path(args.out or f"tools/{ident(args.name)}.py")
+    if out.exists() and not args.force:
+        print(f"{out} exists; --force replaces it", file=sys.stderr)
+        return 1
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(code, encoding="utf-8")
+    tools = code.count("\n@tool(") + code.count("\n@action(")
+    print(f"Wrote {out}: {tools} tool(s). Read it, then:")
+    print(f"  1. set the {env_prefix(args.name)}_* settings it lists in the server's environment")
+    print(f"  2. add it to ira.yaml:  tools: [{out}]")
+    print("  3. restart Ira; the console's Tools page shows each tool and its tier")
+    return 0
+
+
 def cmd_user_list(args: argparse.Namespace) -> int:
     settings = _settings(args)
     for user in Accounts(_store(settings)).users():
@@ -512,6 +547,22 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--email", required=True)
     p.add_argument("--role", required=True, choices=[r for r in ROLES if r != "owner"])
     add("list", cmd_user_list, "list accounts", user)
+    connector = sub.add_parser("connector", help="connect a business's API").add_subparsers(
+        dest="connector_command", required=True
+    )
+    p = add("new", cmd_connector_new, "write a tool pack for an API", connector)
+    p.add_argument("name", help="the business or service, such as sunrise")
+    source = p.add_mutually_exclusive_group()
+    source.add_argument("--openapi", help="its OpenAPI description: a file or an https URL")
+    source.add_argument("--ira", metavar="URL", help="another Ira to ask, with an ask-only token")
+    p.add_argument(
+        "--base-url", help="the API's address (with no description, three general tools)"
+    )
+    p.add_argument("--auth", choices=["none", "api-key", "bearer", "oauth"])
+    p.add_argument("--header", help="the API key's header (default X-API-Key)")
+    p.add_argument("--token-url", help="OAuth client credentials: where to get a token")
+    p.add_argument("--out", help="the file to write (default tools/<name>.py)")
+    p.add_argument("--force", action="store_true", help="replace the file if it exists")
     device = sub.add_parser("device", help="devices").add_subparsers(
         dest="device_command", required=True
     )

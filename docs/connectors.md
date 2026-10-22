@@ -184,6 +184,53 @@ business number, the WhatsApp Business Cloud API is the way. On a phone,
 the Android app reads notifications, including WhatsApp's, and replies
 through them, which is allowed.
 
-## Coming next
+## Any business: the connector kit
 
-A kit for connecting any business's API (`ira connector new`).
+A business that has an API, but no MCP server, gets a **tool pack**: one
+Python file of ordinary tools, written for you, that you read and edit.
+Run it on the Ira server, where `ira.yaml` lives:
+
+```bash
+# From its OpenAPI description (a file or an https URL, JSON or YAML): one tool per operation.
+ira connector new sunrise --openapi https://api.sunrise-dental.example/openapi.json
+
+# From its address alone: three general tools, read, change and delete, under that address.
+ira connector new desk --base-url https://desk.example/api --auth bearer
+
+# Another business's own Ira: one tool that asks it, with a token that may only ask.
+ira connector new client --ira https://ira.client.example
+```
+
+It writes `tools/<name>.py` and says what to do next: set the settings it
+lists (`SUNRISE_API_KEY`, `SUNRISE_TOKEN`, or `SUNRISE_CLIENT_ID` and
+`SUNRISE_CLIENT_SECRET`) in the server's environment, add the file under
+`tools:` in `ira.yaml`, and restart Ira. The console's **Tools** page then
+lists each tool with its tier.
+
+- **Tiers.** Reading (GET) is Tier 0, and what it returns is untrusted
+  text. POST, PUT and PATCH are Tier 2: Ira reads back the exact call, the
+  address with its id and every value, and waits for a yes. DELETE is
+  Tier 3, with the PIN. Edit the file to raise any of them, or to remove a
+  tool Ira should never have.
+- **Sign-in.** `--auth` is `api-key` (the header from the description, or
+  `--header`), `bearer` (a token), `oauth` (client credentials for the
+  server: `--token-url`), or `none`. A description's own security scheme
+  is used when you give none. An API that each person signs in to is better
+  added under **Your connections**, as an MCP server with OAuth.
+- **Safe to generate.** Every name and description taken from a
+  description is written as a Python string, never as code, and the
+  general tools refuse a path that leaves the API's address. Still, read
+  the file before you load it: it is code that runs in your Ira.
+- The tools are the server's, for everyone who may ask on it. On your own
+  Ira, that is you.
+
+### Another business's Ira, and freelance clients
+
+A business that runs its own Ira (for a freelance client, `ira-add-business`
+gives them one, see [Deployment](deployment.md#5-add-a-business)) can let
+your Ira ask it things. They make you an API token with the **ask** scope
+only, in their console's **Tokens & security**. `--ira` writes a pack with
+one tool, `<name>_ask`, that sends your question to their `/v1/ask` and
+returns the answer. The token cannot confirm anything, so their Ira never
+acts for you: at most it proposes, and their people decide. Their answer is
+text written by others, never instructions for yours.
