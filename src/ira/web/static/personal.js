@@ -246,8 +246,8 @@ const IraPersonal = (() => {
     return form;
   }
 
-  function copyButton(text, label) {
-    const button = el("button", { type: "button", className: "text-btn", text: label });
+  function copyButton(text, label, className = "text-btn") {
+    const button = el("button", { type: "button", className, text: label });
     button.addEventListener("click", async () => {
       try {
         await navigator.clipboard.writeText(text);
@@ -269,7 +269,7 @@ const IraPersonal = (() => {
             { className: "steps" },
             el("li", {}, "Download ", mac ? el("a", { href: mac.url, text: "the Ira companion for Mac" }) : "the Ira companion for Mac", " and open the zip."),
             el("li", {}, "In Terminal, run: ", el("code", { text: "cd ~/Downloads/ira-mac && ./install.sh" })),
-            el("li", { text: "When it asks, paste the pairing link (or type the code)." }),
+            el("li", { text: "When it asks, paste the pairing link you copied above." }),
             el("li", {}, "In Chrome, open ", el("code", { text: "chrome://extensions" }), ", switch on Developer mode, click Load unpacked, and choose the folder the installer names."),
             el("li", {}, "Ask Ira: ", el("q", { text: "Chrome mein kaunse tabs khule hain?" })),
           )
@@ -278,8 +278,9 @@ const IraPersonal = (() => {
       "div",
       { className: "card pairing" },
       el("h3", { text: `Pair ${pairing.label}` }),
+      el("div", { className: "row" }, copyButton(pairing.pair_url, "Copy the pairing link", "btn btn-primary")),
+      el("p", { className: "muted", text: "Paste the link when the installer asks. Or type this code:" }),
       el("p", { className: "pair-code", text: pairing.code }),
-      el("div", { className: "row" }, copyButton(pairing.code, "Copy the code"), copyButton(pairing.pair_url, "Copy the link")),
       el("img", { className: "qr", src: pairing.qr_svg, alt: `QR code for pairing ${pairing.label}`, width: "180", height: "180" }),
       left,
       steps,

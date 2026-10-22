@@ -21,7 +21,7 @@ import sys
 
 from ira_mac import __version__, config, logs
 from ira_mac.keychain import Keychain, KeychainError
-from ira_mac.pair import PairError, exchange, parse
+from ira_mac.pair import PairError, choose, exchange
 
 log = logging.getLogger("ira_mac")
 
@@ -35,7 +35,8 @@ def cmd_pair(args: argparse.Namespace) -> int:
         print()
         return 1
     try:
-        server, code = parse(entry, args.server or current.server)
+        known = [args.server, config.given_server(), current.server]
+        server, code = choose(entry, known, input)
         paired = exchange(server, code)
         Keychain().save(paired.token)
     except (PairError, KeychainError) as exc:
@@ -55,6 +56,10 @@ async def _run() -> int:
     from ira_mac.tools import Toolbox
 
     settings = config.load()
+    if not settings.server:
+        log.warning("not paired yet: run ./install.sh --pair; checking again in 5 minutes")
+        await asyncio.sleep(300)  # then launchd starts it again
+        return 0
     keychain = Keychain()
     bridge = ChromeBridge(config.socket_path())
     await bridge.start()
@@ -138,7 +143,7 @@ def cmd_unpair(args: argparse.Namespace) -> int:
     keychain = Keychain()
     token = keychain.load()
     if token:
-        told = asyncio.run(_goodbye(settings.websocket_url(), token))
+        told = bool(settings.server) and asyncio.run(_goodbye(settings.websocket_url(), token))
         print(
             "The server revoked this Mac."
             if told

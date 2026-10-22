@@ -45,3 +45,17 @@ def test_without_the_sources_the_releases_page_is_named(registry, monkeypatch):
     with TestClient(create_app(make_runtime(registry=registry), start_channels=False)) as client:
         listed = client.get("/v1/downloads").json()
         assert listed[0]["available"] is False and "releases" in listed[0]["url"]
+
+
+def test_the_mac_zip_from_a_server_knows_that_server(registry):
+    runtime = make_runtime(registry=registry)
+    with TestClient(create_app(runtime, start_channels=False)) as client:
+        local = zipfile.ZipFile(io.BytesIO(client.get("/v1/downloads/ira-mac.zip").content))
+        assert local.read("ira-mac/server.txt") == b"http://testserver\n"
+        runtime.settings.channels.http.public_url = "https://ira.example.com"
+        public = zipfile.ZipFile(io.BytesIO(client.get("/v1/downloads/ira-mac.zip").content))
+        assert public.read("ira-mac/server.txt") == b"https://ira.example.com\n"
+        chrome = client.get("/v1/downloads/ira-chrome-extension.zip").content
+        assert not any(n.endswith("server.txt") for n in names(chrome))
+    # The releases' copy names no server: the installer asks for it.
+    assert "ira-mac/server.txt" not in names(clients.build("ira-mac.zip"))

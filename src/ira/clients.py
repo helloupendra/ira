@@ -90,8 +90,12 @@ def _add(archive: zipfile.ZipFile, source: Path, name: str) -> None:
     archive.writestr(info, source.read_bytes())
 
 
-def build(name: str, base: Path | None = None) -> bytes:
-    """One download's zip, the same bytes every time for the same sources."""
+def build(name: str, base: Path | None = None, server: str | None = None) -> bytes:
+    """One download's zip, the same bytes every time for the same sources.
+
+    ``server``: the address of the server handing it out. The Mac installer
+    keeps it (``server.txt``), so a typed pairing code goes to the right place.
+    """
     base = base or root()
     if base is None:
         raise FileNotFoundError("the client sources are not on this server")
@@ -101,6 +105,10 @@ def build(name: str, base: Path | None = None) -> bytes:
         if name == "ira-mac.zip":
             for file in MAC_FILES:
                 _add(archive, base / "mac" / file, f"ira-mac/{file}")
+            if server:
+                info = zipfile.ZipInfo("ira-mac/server.txt", date_time=(2026, 1, 1, 0, 0, 0))
+                info.external_attr = (0o100000 | 0o644) << 16
+                archive.writestr(info, server.rstrip("/") + "\n")
             for file in EXTENSION_FILES:
                 _add(archive, extension / file, f"ira-mac/chrome-extension/{file}")
         elif name == "ira-chrome-extension.zip":

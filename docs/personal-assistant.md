@@ -69,9 +69,10 @@ lines, top left), and choose **Your devices**.
     cd ~/Downloads/ira-mac && ./install.sh
     ```
 
-    When it asks, paste the **pairing link** (the "Copy the link" button) or
-    type the code. The installer keeps this Mac's own key in your Keychain
-    and starts the companion; it starts again by itself when you log in.
+    When it asks, paste the **pairing link** (the "Copy the pairing link"
+    button), or type the code: a zip downloaded from your Ira already knows
+    its address. The installer keeps this Mac's own key in your Keychain and
+    starts the companion; it starts again by itself when you log in.
 
 The card says **is paired** when it worked.
 

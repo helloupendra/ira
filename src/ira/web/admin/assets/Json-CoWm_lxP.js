@@ -1,1 +1,0 @@
-import{j as t}from"./index-CB62FCHV.js";function e(n){if(typeof n=="string")try{return JSON.stringify(JSON.parse(n),null,2)}catch{return n}return n===void 0?"":JSON.stringify(n,null,2)??""}function o({value:n,compact:s=!1}){const r=e(n);return r?t.jsx("pre",{className:s?"json json-compact":"json",children:r}):t.jsx("span",{className:"muted",children:"none"})}export{o as J};

@@ -16,9 +16,10 @@ from types import SimpleNamespace
 
 import pytest
 
+from ira_mac import config
 from ira_mac.keychain import Keychain, KeychainError
 from ira_mac.logs import RedactingFormatter, redact
-from ira_mac.pair import PairError, check_server, exchange, parse
+from ira_mac.pair import PairError, check_server, choose, exchange, parse
 from ira_mac.tools import Toolbox
 
 from .conftest import FakeBrowser
@@ -188,3 +189,38 @@ def test_exchange_posts_the_code_and_reads_the_token():
 
     with pytest.raises(PairError, match="expired or mistyped"):
         exchange("https://ira.example.com", "ABCD-EFGH", opener=gone)
+
+
+def test_a_typed_code_uses_the_first_known_server_or_asks():
+    asked = []
+
+    def ask(prompt):
+        asked.append(prompt)
+        return "https://ira.example.com "
+
+    link = "https://ira.example.net/pair#code=ABCD-EFGH"
+    from_link = choose(link, ["https://ira.example.org"], ask)
+    assert from_link == ("https://ira.example.net", "ABCD-EFGH")
+    assert choose("ABCD-EFGH", [None, "https://ira.example.org", "http://127.0.0.1:8765"], ask) == (
+        "https://ira.example.org",
+        "ABCD-EFGH",
+    )
+    assert asked == []
+    # Nothing known: it asks, never guesses this machine.
+    assert choose("ABCD-EFGH", [None, None, ""], ask) == ("https://ira.example.com", "ABCD-EFGH")
+    assert len(asked) == 1
+    with pytest.raises(PairError, match="which server"):
+        choose("ABCD-EFGH", [], lambda prompt: "  ")
+
+
+def test_the_downloads_server_txt_is_the_default(tmp_path, monkeypatch):
+    monkeypatch.setenv("IRA_MAC_HOME", str(tmp_path))
+    assert config.given_server() is None
+    (tmp_path / "server.txt").write_text("https://ira.example.com\n", encoding="utf-8")
+    assert config.given_server() == "https://ira.example.com"
+    (tmp_path / "server.txt").write_text("not an address\n", encoding="utf-8")
+    assert config.given_server() is None
+    unpaired = config.load(tmp_path / "missing.json")
+    assert unpaired.server == ""
+    with pytest.raises(ValueError, match="not paired"):
+        unpaired.websocket_url()

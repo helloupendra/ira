@@ -57,6 +57,10 @@ def test_a_dry_run_installs_and_uninstalls_in_place():
         for _ in range(2):  # safe to run again
             subprocess.run([str(HERE / "install.sh")], env=env, check=True, capture_output=True)
         app = home / "Library" / "Application Support" / "ira-mac"
+        assert not (app / "server.txt").exists()  # a checkout's installer knows no server
+        given = ["--server", "https://ira.example.com"]
+        subprocess.run([str(HERE / "install.sh"), *given], env=env, check=True, capture_output=True)
+        assert (app / "server.txt").read_text() == "https://ira.example.com\n"
         assert (app / "app" / "ira_mac" / "daemon.py").is_file()
         assert (app / "chrome-extension" / "manifest.json").is_file()
         assert not (app / "chrome-extension" / "test").exists()

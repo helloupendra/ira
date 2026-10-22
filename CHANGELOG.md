@@ -74,6 +74,10 @@ switch it on.
 - **Half sentences**: when a tool that only reads can settle what was meant,
   Ira looks first and asks only when looking would not help.
 - `GET /admin` without a trailing slash redirects to the console.
+- **A typed pairing code finds its server.** A Mac zip downloaded from an
+  IRA server carries that server's address, so typing the code works; with
+  no address known the companion asks instead of trying this Mac. The
+  pairing card offers the link first.
 - **The setup link survives restarts.** The setup code is kept in the
   database for 24 hours, so a link already handed out keeps working after a
   restart; `ira setup --new-code` replaces it.

@@ -527,7 +527,7 @@ async def revoke_any_device(
 # --- downloads (public: the clients are open source) ----------------------------------
 
 RELEASES = "https://github.com/helloupendra/ira/releases/latest"
-_built: dict[str, bytes] = {}
+_built: dict[tuple[str, str], bytes] = {}
 
 
 @router.get(
@@ -562,20 +562,23 @@ def downloads() -> list[DownloadView]:
         404: {"description": "No such file here"},
     },
 )
-def download(name: str) -> Response:
+def download(name: str, request: Request, runtime: Runtime = Depends(get_runtime)) -> Response:
     from ira import clients
 
     if name not in {d.name for d in clients.DOWNLOADS}:
         raise HTTPException(404, detail="no such download")
-    if name not in _built:
+    # This server's address, so the Mac installer pairs a typed code with it.
+    server = runtime.public_url or str(request.base_url).rstrip("/")
+    key = (name, server)
+    if key not in _built:
         try:
-            _built[name] = clients.build(name)
+            _built[key] = clients.build(name, server=server)
         except FileNotFoundError:
             raise HTTPException(
                 404, detail=f"this server does not carry the clients; see {RELEASES}"
             ) from None
     return Response(
-        content=_built[name],
+        content=_built[key],
         media_type="application/zip",
         headers={
             "Content-Disposition": f'attachment; filename="{name}"',

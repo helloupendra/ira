@@ -4,6 +4,7 @@
 #   ./install.sh                     install, and pair if this Mac has no token yet
 #   ./install.sh --pair              pair again (a new code from the Devices page)
 #   ./install.sh --server URL        the IRA server, when you type a code, not a link
+#                                    (a zip from your server already knows it: server.txt)
 #
 # What it sets up, all under your own account (no sudo):
 #   ~/Library/Application Support/ira-mac/    the companion, its virtualenv, logs
@@ -24,7 +25,7 @@ while [ $# -gt 0 ]; do
     case "$1" in
         --server) SERVER="${2:?--server needs an address}"; shift 2 ;;
         --pair) PAIR=1; shift ;;
-        -h|--help) sed -n '2,13p' "$0"; exit 0 ;;
+        -h|--help) sed -n '2,14p' "$0"; exit 0 ;;
         *) echo "Unknown option: $1" >&2; exit 2 ;;
     esac
 done
@@ -56,6 +57,13 @@ mkdir -p "$APP/app" "$APP/run" "$APP/logs"
 chmod 700 "$APP" "$APP/run" "$APP/logs"
 rm -rf "$APP/app/ira_mac"
 cp -R "$HERE/ira_mac" "$APP/app/ira_mac"
+# The server a typed code is for: --server, else the one that served this download.
+rm -f "$APP/server.txt"
+if [ -n "$SERVER" ]; then
+    printf '%s\n' "$SERVER" > "$APP/server.txt"
+elif [ -f "$HERE/server.txt" ]; then
+    cp "$HERE/server.txt" "$APP/server.txt"
+fi
 find "$APP/app" -name __pycache__ -type d -prune -exec rm -rf {} +
 
 # The Chrome extension, kept where "Load unpacked" can find it again after updates.
@@ -109,7 +117,7 @@ done
 has_token="$(companion status 2>/dev/null | "$PYTHON" -c 'import json, sys; print(json.load(sys.stdin).get("token_in_keychain", False))' || echo False)"
 if [ -z "${IRA_MAC_NO_PAIR:-}" ] && { [ "$PAIR" = 1 ] || [ "$has_token" != True ]; }; then
     say "Pair this Mac: on the Devices page of your Ira app, choose Add a device, then Mac."
-    if [ -n "$SERVER" ]; then companion pair --server "$SERVER"; else companion pair; fi
+    companion pair
 fi
 
 xml() { "$PYTHON" -c 'import sys; from xml.sax.saxutils import escape; print(escape(sys.argv[1]))' "$1"; }

@@ -181,8 +181,9 @@ function PairingCode({
       <div className="devices-code-row">
         <img className="devices-qr" src={pairing.qr_svg} alt={`QR code for pairing ${pairing.label}`} width={168} height={168} />
         <div className="stack">
+          <CopyField label="Pairing link: paste it when the installer asks" value={pairing.pair_url} />
+          <p className="muted">Or type this code:</p>
           <p className="devices-code mono">{pairing.code}</p>
-          <CopyField label="Pairing link" value={pairing.pair_url} />
         </div>
       </div>
       <ol className="devices-steps">

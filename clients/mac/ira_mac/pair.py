@@ -12,6 +12,7 @@ import re
 import urllib.error
 import urllib.request
 from dataclasses import dataclass
+from typing import Callable
 from urllib.parse import urlsplit
 
 from ira_mac import __version__
@@ -44,6 +45,21 @@ def parse(entry: str, server: str | None) -> tuple[str, str]:
             raise PairError("say which server this code is for (--server)")
         return server.rstrip("/"), entry
     raise PairError("paste the pairing link or type the 8-character code")
+
+
+ASK = "Your Ira's address, as at the start of the pairing link (https://...): "
+
+
+def choose(entry: str, known: list[str | None], ask: Callable[[str], str]) -> tuple[str, str]:
+    """(server, code): a pasted link names its server; a typed code uses the first
+    known one (--server, the download's server.txt, the last pairing), or asks."""
+    entry = entry.strip()
+    server = next((s for s in known if s), None)
+    if CODE.match(entry) and not server:
+        server = ask(ASK).strip()
+        if not server:
+            raise PairError("say which server this code is for")
+    return parse(entry, server)
 
 
 def check_server(server: str) -> str:

@@ -36,15 +36,26 @@ def log_path() -> Path:
     return home() / "logs" / "ira-mac.log"
 
 
+def given_server() -> str | None:
+    """The server that served this download (its server.txt), if any."""
+    try:
+        text = (home() / "server.txt").read_text(encoding="utf-8").strip()
+    except OSError:
+        return None
+    return text if text.startswith(("https://", "http://")) and " " not in text else None
+
+
 @dataclass
 class Config:
-    server: str = "http://127.0.0.1:8765"
+    server: str = ""  # unknown until paired: never a guess
     device_id: int | None = None
     label: str = "My Mac"
     # Salts this Mac's network hashes, so the server can only tell networks apart.
     network_salt: str = ""
 
     def websocket_url(self) -> str:
+        if not self.server:
+            raise ValueError("this Mac is not paired yet: run ./install.sh --pair")
         base = self.server.rstrip("/")
         if base.startswith("https://"):
             return "wss://" + base[len("https://") :] + "/v1/devices/ws"
@@ -60,7 +71,7 @@ def load(path: Path | None = None) -> Config:
     except (OSError, ValueError):
         return Config()
     return Config(
-        server=str(data.get("server") or Config.server),
+        server=str(data.get("server") or ""),
         device_id=data.get("device_id"),
         label=str(data.get("label") or Config.label),
         network_salt=str(data.get("network_salt") or ""),

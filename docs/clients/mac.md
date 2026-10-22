@@ -20,6 +20,12 @@ Mac (the companion), and the **Ira for Chrome** extension. The
 Running `./install.sh` again updates the companion and keeps its pairing.
 `./install.sh --pair` pairs it again with a new code.
 
+A typed code goes to the server named by `--server`, else to the server the
+zip came from (a zip from `/v1/downloads` carries its address in
+`server.txt`), else to the one this Mac paired with before. With none of
+these (the zip from GitHub Releases), the companion asks for the address; it
+never guesses. A pasted link always names its own server.
+
 The installer needs Python 3.9 or newer, which macOS offers to install with
 its Command Line Tools (`xcode-select --install`). It downloads one library
 (`websockets`) from the Python Package Index. It never asks for your
