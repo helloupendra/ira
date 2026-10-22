@@ -6,6 +6,7 @@
 #   scripts/ci.sh app         the app from project.yml (XcodeGen), and its UI tests
 #   scripts/ci.sh release     an unsigned Release build for the simulator, in dist/
 #   scripts/ci.sh             all four
+#   scripts/ci.sh diagnose    which kit file the compiler is slow on (one file per process)
 #
 # With IRA_TEST_SERVER, IRA_TEST_PAIRING and IRA_UITEST_LINK set (see
 # scripts/local-ira.sh), the tests also pair with that local Ira, talk to it

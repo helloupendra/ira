@@ -27,18 +27,23 @@ struct SetupView: View {
                 }
             }
             Section {
-                Button {
-                    model.finishSetup()
-                } label: {
-                    Text(model.ready ? "Start talking to \(model.assistantName)" : "Pair and allow the microphone first")
-                        .frame(maxWidth: .infinity)
-                }
-                .buttonStyle(.borderedProminent)
-                .disabled(!model.ready)
-                .accessibilityIdentifier("start")
             } footer: {
                 Text("You can allow the rest later: Settings, Get Ira ready. iOS lets no app read your calls, SMS or other apps' notifications, so Ira for iPhone never asks for them.")
             }
+        }
+        .safeAreaInset(edge: .bottom) {
+            Button {
+                model.finishSetup()
+            } label: {
+                Text(model.ready ? "Start talking to \(model.assistantName)" : "Pair and allow the microphone first")
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 4)
+            }
+            .buttonStyle(.borderedProminent)
+            .disabled(!model.ready)
+            .accessibilityIdentifier("start")
+            .padding()
+            .background(.bar)
         }
         .navigationTitle("Get Ira ready")
         .sheet(isPresented: $pairing) { PairView() }
