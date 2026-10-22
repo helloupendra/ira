@@ -8,7 +8,7 @@ import kotlinx.serialization.json.buildJsonObject
 /**
  * Pairing: trade the one-time code from the Devices page for this phone's own token.
  *
- * The same exchange as the Mac companion (`clients/mac/ira_mac/pair.py`): someone pastes
+ * The same exchange as Ira for Mac (`clients/macos/.../Device/Pairing.swift`): someone pastes
  * the pairing link (`https://ira.example.com/pair#code=ABCD-EFGH`), scans its QR code, or
  * types the server and the code; the app asks `POST /v1/devices/pair` and keeps the token
  * it gets in the Android Keystore. A code works once, within 10 minutes.
