@@ -196,6 +196,35 @@ public enum ScreenText {
         return try await SCScreenshotManager.captureImage(contentFilter: filter, configuration: configuration)
     }
 
+    /// Where `words` are written in a window, as points on the screen (top left
+    /// origin), top to bottom: for a click when no control has that name.
+    public static func locate(_ words: String, in window: Window) async throws -> [CGPoint] {
+        let content = try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: true)
+        guard let target = content.windows.first(where: { $0.windowID == window.id }) else {
+            throw ToolFailure("that window is no longer on screen")
+        }
+        let frame = target.frame
+        let image = try await capture(window)
+        let boxes = try await Task.detached(priority: .userInitiated) { () -> [CGRect] in
+            let request = VNRecognizeTextRequest()
+            request.recognitionLevel = .accurate
+            request.recognitionLanguages = ScreenText.languages()
+            try VNImageRequestHandler(cgImage: image, options: [:]).perform([request])
+            return (request.results ?? []).compactMap { observation in
+                guard let candidate = observation.topCandidates(1).first,
+                    let range = candidate.string.range(of: words, options: [.caseInsensitive, .diacriticInsensitive])
+                else { return nil }
+                return (try? candidate.boundingBox(for: range))?.boundingBox ?? observation.boundingBox
+            }
+        }.value
+        return boxes.map { point(of: $0, in: frame) }.sorted { $0.y != $1.y ? $0.y < $1.y : $0.x < $1.x }
+    }
+
+    /// The middle of a box Vision found (0-1, origin bottom left) on the screen.
+    public static func point(of box: CGRect, in frame: CGRect) -> CGPoint {
+        CGPoint(x: frame.minX + box.midX * frame.width, y: frame.minY + (1 - box.midY) * frame.height)
+    }
+
     /// Languages to read, English and Hindi first, as far as this Mac's Vision knows them.
     public static func languages() -> [String] {
         let request = VNRecognizeTextRequest()

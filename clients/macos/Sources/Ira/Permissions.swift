@@ -81,6 +81,9 @@ final class PermissionCenter: ObservableObject {
                        why: "Only for “what is on my screen?”. Ira reads the words of the window in front on this Mac and sends only the words.",
                        icon: "macwindow", state: ScreenText.permitted ? .granted : .missing, pane: "Privacy_ScreenCapture", askable: true,
                        note: ScreenGrant.advice(ScreenGrant().state(permitted: ScreenText.permitted))),
+            Permission(id: "accessibility", title: "Accessibility",
+                       why: "Only for using the Mac for you (the Control skill): typing, pressing keys, clicking, scrolling and menus, after your PIN. Never in password fields.",
+                       icon: "hand.point.up.left", state: MacControl.trusted ? .granted : .missing, pane: "Privacy_Accessibility", askable: true),
         ]
         // Spotlight leaves these folders out silently until Ira may open them,
         // so each has its own Allow: Ira looks inside once, and macOS asks.
@@ -154,6 +157,7 @@ final class PermissionCenter: ObservableObject {
         switch permission.id {
         case "mic": _ = await AVCaptureDevice.requestAccess(for: .audio)
         case "screen": ScreenText.requestPermission()
+        case "accessibility": MacControl.requestTrust()
         case "contacts": _ = try? await CNContactStore().requestAccess(for: .contacts)
         case "calendar": _ = try? await EKEventStore().requestFullAccessToEvents()
         case "reminders": _ = try? await EKEventStore().requestFullAccessToReminders()
@@ -176,7 +180,8 @@ final class PermissionCenter: ObservableObject {
             }
         }
         refresh()
-        if let now = all.first(where: { $0.id == permission.id }), now.state != .granted {
+        // macOS's own Accessibility dialog already offers to open the page.
+        if let now = all.first(where: { $0.id == permission.id }), now.state != .granted, permission.id != "accessibility" {
             open(now)
         }
     }

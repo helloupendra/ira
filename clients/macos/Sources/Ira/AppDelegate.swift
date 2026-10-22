@@ -229,6 +229,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 panel.setFrameOrigin(NSPoint(x: frame.midX - size.width / 2, y: frame.maxY - size.height - 40))
             }
         }
+        // Back on top, after stepping below a prompt or an app Ira worked in.
+        panel.level = .floating
         panel.makeKeyAndOrderFront(nil)
         NotificationCenter.default.post(name: .iraFocusInput, object: nil)
     }
@@ -289,6 +291,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             MainActor.assumeIsolated {
                 self?.capturing = false
                 self?.panel.level = .floating
+            }
+        })
+        // While Ira types or clicks in another app, its window keeps out of the way:
+        // below that app's windows and off the keyboard.
+        observers.append(NotificationCenter.default.addObserver(
+            forName: MacControl.acting, object: nil, queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated {
+                guard let self else { return }
+                self.capturing = true
+                guard self.panel.isVisible else { return }
+                self.panel.level = .normal
+                self.panel.giveUpKeyboard()
+            }
+        })
+        observers.append(NotificationCenter.default.addObserver(
+            forName: MacControl.acted, object: nil, queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated {
+                self?.capturing = false
             }
         })
         // While Ira asks macOS for a permission, its window stays: below the

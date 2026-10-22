@@ -8,9 +8,9 @@ import Foundation
 /// is only ever a string. macOS asks the person once per app ("Ira wants to
 /// control Mail"); the answer lives in Privacy & Security → Automation.
 ///
-/// * `mail_search`, `mail_read` (Tier 0), `mail_draft` (Tier 2: a draft opens in
+/// * `mail_search` (Tier 0, which reads one email given its id), `mail_draft` (Tier 2: a draft opens in
 ///   Mail for the person to check; Ira never presses Send);
-/// * `notes_search`, `notes_read` (Tier 0), `notes_add` (Tier 1);
+/// * `notes_search` (Tier 0, which reads one note given its id), `notes_add` (Tier 1);
 /// * `messages_send` (Tier 2): an iMessage to a number or an email address.
 public enum AppleScriptTools {
     public static let unit = "\u{1F}"

@@ -201,7 +201,15 @@ switch it on.
   `task_progress`. Permissions are kept per build: a rebuilt Ira says so in
   its checklist and asks macOS to list it for Screen Recording, and a search
   asks macOS about Documents, Desktop and Downloads itself, or says which
-  switch in Files and Folders is off.
+  switch in Files and Folders is off. The **control** skill lets Ira use
+  the Mac like a person, through Accessibility: `mac_click` (by a
+  control's label, or where the words are written), `mac_type`,
+  `mac_keys`, `mac_scroll` and `mac_menu`, each Tier 3 and covered by an
+  approval window, never in password fields, password managers, System
+  Settings' private pages or the Apple menu. To stay within 30 tools, a few
+  merged: `mail_search` and `notes_search` read one item by id,
+  `reminders_set` adds or completes, `file_open` opens in VS Code, and
+  `code_task_status` lists tasks without an id.
 - **Ira for Android** (`clients/android/`, [guide](docs/clients/android.md)):
   Kotlin and Compose, Android 10 and later. Pairs with a link or a code and
   keeps its key encrypted with an Android Keystore key. Live voice over

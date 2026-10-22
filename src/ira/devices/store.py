@@ -42,7 +42,8 @@ SKILLS: dict[str, str] = {
     "routine": "Routine: when this Mac locks, sleeps and wakes, and which of your named "
     "networks it is on, so Ira can learn your day. Never what you do on it.",
     "files": "Files: find files by name, kind, date or what is in them, read the one you ask "
-    "about (PDF, Word, text) and open it. Only in folders you allow, only when you ask.",
+    "about (PDF, Word, text) and open it, or a folder in VS Code. Only in folders you allow, "
+    "only when you ask.",
     "screen": "Screen: read the text of the window in front of you, only when you ask. Only "
     "the text leaves the Mac, never a picture.",
     "browser": "Browser: the tabs open in Chrome, Safari, Arc, Edge or Brave (titles and "
@@ -50,6 +51,9 @@ SKILLS: dict[str, str] = {
     "clipboard": "Clipboard: read what you copied, when you ask. Never what a password "
     "manager marked as private.",
     "shortcuts": "Shortcuts: list your Shortcuts, and run one you name after your yes.",
+    "control": "Control: use this Mac like a person when you ask (type, press keys, click, "
+    "scroll and choose menu items), each step after your PIN or within an approval it "
+    "opened. Never in password fields, password managers or System Settings' private pages.",
     # Skills the phone and Mac apps offer; Ira reads and acts only when you ask.
     "calls": "Calls: who called, and placing a call after you say yes to the exact number.",
     "contacts": "Contacts: find a person's number or email in your contacts.",
@@ -62,7 +66,7 @@ SKILLS: dict[str, str] = {
     "mail": "Mail: search and read your recent mail, and write one after your yes (on a "
     "Mac, a draft you send yourself).",
     "notes": "Notes: find and read your notes, and add one.",
-    "apps": "Apps: open an app, a web page (after your yes) or, on a Mac, a folder in VS Code.",
+    "apps": "Apps: open an app, or a web page after your yes.",
     "location": "Location: where this device is, when you ask. Never tracked.",
     "media": "Media: play, pause and skip what is playing.",
 }

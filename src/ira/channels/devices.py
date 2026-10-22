@@ -102,6 +102,7 @@ KIND_SKILLS: dict[str, tuple[str, ...]] = {
         "apps",
         "clipboard",
         "shortcuts",
+        "control",
         "routine",
         "tasks",
     ),

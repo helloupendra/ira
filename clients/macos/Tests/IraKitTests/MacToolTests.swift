@@ -47,16 +47,43 @@ struct CatalogTests {
             "browser_tabs": "browser 0", "browser_show_tab": "browser 1",
             "contacts_lookup": "contacts 0",
             "calendar_read": "calendar 0", "calendar_add": "calendar 2",
-            "reminders_list": "reminders 0", "reminders_add": "reminders 1", "reminders_done": "reminders 1",
-            "mail_search": "mail 0", "mail_read": "mail 0", "mail_draft": "mail 2",
+            "reminders_list": "reminders 0", "reminders_set": "reminders 1",
+            "mail_search": "mail 0", "mail_draft": "mail 2",
             "messages_send": "messages 2",
-            "notes_search": "notes 0", "notes_read": "notes 0", "notes_add": "notes 1",
-            "app_open": "apps 1", "url_open": "apps 2", "vscode_open": "apps 1",
+            "notes_search": "notes 0", "notes_add": "notes 1",
+            "app_open": "apps 1", "url_open": "apps 2",
             "clipboard_read": "clipboard 0",
             "shortcuts_list": "shortcuts 0", "shortcuts_run": "shortcuts 2",
-            "code_task_start": "tasks 2", "code_task_status": "tasks 0", "code_task_list": "tasks 0",
+            "mac_type": "control 3", "mac_keys": "control 3", "mac_click": "control 3", "mac_scroll": "control 3",
+            "mac_menu": "control 3",
+            "code_task_start": "tasks 2", "code_task_status": "tasks 0",
             "code_task_stop": "tasks 1", "code_task_push": "tasks 3",
         ])
+    }
+
+    /// An approval window covers the control tools: none may carry a word that
+    /// keeps a tool out of it, and each says to prefer a direct tool.
+    @Test func controlToolsCanBeCoveredByAnApproval() {
+        let never = ["send", "reply", "call", "place", "pay", "buy", "transfer", "delete", "remove", "push", "grant", "pair"]
+        for tool in ToolCatalog.control {
+            let name = tool["name"]!.stringValue!
+            #expect(!never.contains(where: name.contains), "\(name)")
+            #expect(name.hasPrefix("mac_"))
+            let description = tool["description"]!.stringValue!
+            #expect(description.contains("Last resort") && description.contains("url_open"), "\(name)")
+            let properties = tool["parameters"]?["properties"]?.objectValue ?? [:]
+            #expect(properties["task"] != nil && properties["app"] != nil, "\(name)")
+        }
+    }
+
+    @Test func toolsThatDoTwoThingsTakeOnlyOnesArguments() throws {
+        #expect(throws: ToolFailure.self) { try Toolbox.only(["done": true, "title": "Pay rent", "due": "2026-10-24"], ["id", "title"], what: "marking a reminder done", drop: ["done"]) }
+        let done = try Toolbox.only(["done": true, "title": "Pay rent"], ["id", "title"], what: "marking a reminder done", drop: ["done"])
+        #expect(done == ["title": "Pay rent"])
+        #expect(Toolbox.target("mail_search", ["id": "42"]) == "one email")
+        #expect(Toolbox.target("code_task_status", [:]) == "all tasks")
+        #expect(Toolbox.target("mac_type", ["text": "lofi music", "app": "Safari"]) == "10 characters in Safari")
+        #expect(Toolbox.target("mac_click", ["label": "Subscribe"]) == "“Subscribe”")
     }
 
     @Test func everyToolHasAVerbForWhatIRead() {
@@ -537,5 +564,144 @@ struct ConfirmTests {
         let wrong = try await client.confirm(actionID: "act_1", pin: "1111")
         #expect(wrong["status"] == "wrong_pin")
         #expect(wrong["attempts_left"]?.intValue == 2)
+    }
+}
+
+/// An element tree standing in for another app's window.
+final class FakeNode: MacControl.Node {
+    let role: String
+    let subrole: String?
+    let names: [String]
+    let enabled: Bool
+    let actions: [String]
+    let frame: CGRect?
+    var nodes: [FakeNode]
+
+    init(_ role: String, _ names: [String] = [], subrole: String? = nil, enabled: Bool = true,
+         actions: [String] = [], y: CGFloat = 0, _ nodes: [FakeNode] = []) {
+        self.role = role
+        self.subrole = subrole
+        self.names = names
+        self.enabled = enabled
+        self.actions = actions
+        self.frame = CGRect(x: 10, y: y, width: 80, height: 20)
+        self.nodes = nodes
+    }
+
+    func isSame(_ other: FakeNode) -> Bool { self === other }
+}
+
+@Suite("Using the Mac like a person")
+struct ControlTests {
+    @Test func keysAndShortcuts() throws {
+        let presses = try MacControl.parseKeys("cmd+L, cmd+shift+t  return")
+        #expect(presses.map(\.spoken) == ["Command-L", "Command-Shift-T", "Return"])
+        #expect(presses[0].code == CGKeyCode(0x25))
+        #expect(presses[0].flags == CGEventFlags.maskCommand.rawValue)
+        #expect(presses[1].flags == CGEventFlags([.maskCommand, .maskShift]).rawValue)
+        #expect(try MacControl.parseKeys("down down esc").map(\.spoken) == ["Down", "Down", "Escape"])
+        #expect(try MacControl.parseKeys("cmd++").map(\.spoken) == ["Command-="])
+        #expect(try MacControl.parseKeys("f5 option+delete").map(\.spoken) == ["F5", "Option-Delete"])
+        #expect(throws: ToolFailure.self) { try MacControl.parseKeys("hyper+x") }
+        #expect(throws: ToolFailure.self) { try MacControl.parseKeys("cmd+printscreen") }
+        #expect(throws: ToolFailure.self) { try MacControl.parseKeys(Array(repeating: "down", count: 13).joined(separator: " ")) }
+        #expect(throws: ToolFailure.self) { try MacControl.parseKeys("  ") }
+    }
+
+    @Test func aControlIsFoundByItsLabel() throws {
+        let field = FakeNode("AXTextField", ["Search"], y: 10)
+        let search = FakeNode("AXButton", [], actions: ["AXPress"], y: 10, [FakeNode("AXStaticText", ["Search"])])
+        let subscribe = FakeNode("AXButton", ["Subscribe…"], actions: ["AXPress"], y: 300)
+        let window = FakeNode("AXWindow", ["YouTube"], [
+            FakeNode("AXGroup", [], [field, search]),
+            FakeNode("AXGroup", [], [FakeNode("AXStaticText", ["Subscribers"]), subscribe]),
+        ])
+        // The text inside a button counts as the button's.
+        let both = MacControl.find("search", role: nil, in: window)
+        #expect(both.count == 2)
+        #expect(MacControl.find("search", role: "button", in: window).first?.node === search)
+        #expect(MacControl.find("Search", role: "field", in: window).first?.node === field)
+        // An ellipsis and case do not matter; a longer word is not the label.
+        let found = MacControl.find("subscribe", role: nil, in: window)
+        #expect(found.count == 1 && found.first?.node === subscribe)
+        #expect(MacControl.find("upload", role: nil, in: window).isEmpty)
+        // Words with no control around them are a last resort, clicked where they are.
+        let words = MacControl.find("subscribers", role: nil, in: window)
+        #expect(words.count == 1 && words.first?.actionable == false)
+        #expect(MacControl.find("subscribers", role: "button", in: window).isEmpty)
+        // Two equally good matches: Ira asks which, and index picks one top to bottom.
+        guard case .failure(let failure) = MacControl.choose(both, index: nil) else { Issue.record("should ask"); return }
+        #expect(failure.message.contains("2 controls called “Search”"))
+        guard case .success(let second) = MacControl.choose(both, index: 2) else { Issue.record("index"); return }
+        #expect(second.node === field || second.node === search)
+        guard case .failure = MacControl.choose(both, index: 3) else { Issue.record("out of range"); return }
+    }
+
+    @Test func betterNamesAndEnabledControlsComeFirst() {
+        let exact = FakeNode("AXButton", ["Play"], actions: ["AXPress"], y: 200)
+        let longer = FakeNode("AXButton", ["Play all"], actions: ["AXPress"], y: 100)
+        let greyed = FakeNode("AXButton", ["Play"], enabled: false, actions: ["AXPress"], y: 50)
+        let window = FakeNode("AXWindow", [], [greyed, longer, exact])
+        let found = MacControl.find("play", role: nil, in: window)
+        #expect(found.map(\.node).first === exact)
+        #expect(found[1].node === greyed)
+        #expect(found[2].node === longer)
+        guard case .success(let chosen) = MacControl.choose(found, index: nil) else { Issue.record("one best"); return }
+        #expect(chosen.node === exact)
+    }
+
+    @Test func whereIraNeverActs() {
+        #expect(MacControl.refusal(bundleID: "in.ira.mac", app: "Ira", window: nil) != nil)
+        #expect(MacControl.refusal(bundleID: "com.1password.1password", app: "1Password", window: nil)?.contains("passwords") == true)
+        #expect(MacControl.refusal(bundleID: "com.apple.systempreferences", app: "System Settings", window: "Privacy & Security") != nil)
+        #expect(MacControl.refusal(bundleID: "com.apple.systempreferences", app: "System Settings", window: "Users & Groups") != nil)
+        #expect(MacControl.refusal(bundleID: "com.apple.systempreferences", app: "System Settings", window: nil) != nil)
+        #expect(MacControl.refusal(bundleID: "com.apple.systempreferences", app: "System Settings", window: "Appearance") == nil)
+        #expect(MacControl.refusal(bundleID: "com.apple.Safari", app: "Safari", window: "YouTube") == nil)
+        #expect(MacControl.isSecure(role: "AXTextField", subrole: "AXSecureTextField"))
+        #expect(MacControl.isSecure(role: "AXSecureTextField", subrole: nil))
+        #expect(!MacControl.isSecure(role: "AXTextField", subrole: "AXSearchField"))
+    }
+
+    @Test func menuPaths() throws {
+        #expect(try MacControl.menuPath("File > New Window") == ["File", "New Window"])
+        #expect(try MacControl.menuPath("View → Sort By > Name") == ["View", "Sort By", "Name"])
+        #expect(throws: ToolFailure.self) { try MacControl.menuPath("File") }
+        #expect(throws: ToolFailure.self) { try MacControl.menuPath("Apple > Restart…") }
+        #expect(MacControl.pick("new window", among: ["New Tab", "New Window", "New Private Window"]) == 1)
+        #expect(MacControl.pick("Export", among: ["Export as PDF…", "Export…"]) == 1)
+        #expect(MacControl.pick("New", among: ["New Tab", "New Window"]) == nil)
+        #expect(MacControl.pick("Show Sidebar", among: ["Show Sidebar…"]) == 0)
+    }
+
+    @Test func wordsOnScreenBecomeAPoint() {
+        let frame = CGRect(x: 100, y: 50, width: 800, height: 600)
+        let point = ScreenText.point(of: CGRect(x: 0.5, y: 0.75, width: 0.1, height: 0.1), in: frame)
+        #expect(point == CGPoint(x: 100 + 0.55 * 800, y: 50 + (1 - 0.8) * 600))
+    }
+
+    @Test func withoutAccessibilityItSaysWhere() async {
+        // Tests run without Accessibility: every control tool answers with where to switch it on.
+        guard !MacControl.trusted else { return }
+        MacControl.mayPrompt = false
+        let toolbox = Toolbox(policy: { PathPolicy(home: FileManager.default.temporaryDirectory) }, frontApp: { nil },
+                              log: IraLog(directory: nil), record: { _ in })
+        for name in ["mac_type", "mac_keys", "mac_click", "mac_scroll", "mac_menu"] {
+            let args: JSONValue = switch name {
+            case "mac_type": ["text": "hello"]
+            case "mac_keys": ["keys": "return"]
+            case "mac_click": ["label": "OK"]
+            case "mac_scroll": ["direction": "down"]
+            default: ["path": "File > New Window"]
+            }
+            do {
+                _ = try await toolbox.call(name, args: args)
+                Issue.record("\(name) ran without Accessibility")
+            } catch let failure as ToolFailure {
+                #expect(failure.message == MacControl.notTrusted, "\(name)")
+            } catch {
+                Issue.record("\(name): \(error)")
+            }
+        }
     }
 }

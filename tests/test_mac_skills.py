@@ -16,8 +16,9 @@ def test_every_mac_skill_is_offered_and_explained():
     mac = KIND_SKILLS["mac"]
     for skill in ("files", "screen", "browser", "contacts", "calendar", "reminders", "mail"):
         assert skill in mac
-    for skill in ("notes", "messages", "apps", "clipboard", "shortcuts", "routine", "tasks"):
+    for skill in ("notes", "messages", "apps", "clipboard", "shortcuts", "control", "routine"):
         assert skill in mac
+    assert "tasks" in mac
     assert "chrome" not in mac and "chrome" not in SKILLS
     assert all(SKILLS.get(skill) for skill in mac), [s for s in mac if not SKILLS.get(s)]
 
@@ -43,3 +44,11 @@ def test_a_long_task_may_say_how_it_is_going():
         pass
     else:
         raise AssertionError("an unknown event must be refused")
+
+
+def test_an_approval_covers_the_macs_control_tools():
+    from ira.approvals import covered
+
+    for name in ("mac_type", "mac_keys", "mac_click", "mac_scroll", "mac_menu"):
+        assert covered(name, "control"), name
+    assert not covered("messages_send", "messages") and not covered("code_task_push", "tasks")

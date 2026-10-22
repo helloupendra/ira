@@ -101,6 +101,7 @@ steps aside, so nothing covers a password sheet there.
 | **Automation: Mail, Notes, Messages** | So Ira can search your inbox and notes, draft an email, and send an iMessage. | the first time Ira uses each app ("Ira wants to control Mail") |
 | **Automation: your browser** | So Ira can list your Chrome, Safari, Arc, Edge or Brave tabs and bring one to the front. Never page contents or passwords. | the first time Ira looks at that browser |
 | **Speech Recognition** | Only for "Hey Ira", if you switch it on: the Mac listens for the phrase by itself. | when you switch "Hey Ira" on |
+| **Accessibility** | Only for the control skill: typing, keys, clicks, scrolling and menus in other apps, after your PIN. | when you press **Allow**; macOS then sends you to System Settings to switch Ira on |
 | **Documents** (coding tasks only) | Ira works in your repositories, which often live in Documents. | the first coding task |
 
 You can change any of these in **System Settings → Privacy & Security**.
@@ -177,28 +178,62 @@ reading needs nothing more (Tier 0); opening or adding something small, Ira
 does and tells you (Tier 1); anything that reaches another person or changes
 your calendar, Ira reads back exactly ("Send *I am 10 minutes late* to Avery
 Example, +91 98765 43210?") and waits for your yes (Tier 2); pushing code
-needs your PIN (Tier 3).
+and using the Mac for you need your PIN (Tier 3).
 
 | Skill | What Ira can do | Tier |
 | --- | --- | --- |
-| **files** | find files (Spotlight), read one (PDF, Word, RTF, text), open one | 0, 0, 1 |
+| **files** | find files (Spotlight), read one (PDF, Word, RTF, text), open one, or open a folder in VS Code | 0, 0, 1 |
 | **screen** | read the text of the window in front | 0 |
 | **browser** | list your tabs in Chrome, Safari, Arc, Edge or Brave (titles and addresses); bring one to the front, so Ira can read it from the screen | 0; 1 |
 | **contacts** | look up a person by name, number or email | 0 |
 | **calendar** | read your calendars (iCloud, Google, Exchange: all those added to the Mac); add an event | 0; 2 |
-| **reminders** | list reminders; add one; mark one done | 0; 1; 1 |
+| **reminders** | list reminders; add one or mark one done | 0; 1 |
 | **mail** | search the inbox and read an email (read only); draft an email, opened in Mail for you to send | 0; 2 |
 | **notes** | search and read Apple Notes; add a note | 0; 1 |
 | **messages** | send an iMessage to a number or email | 2 |
-| **apps** | open an app; open a folder in VS Code; open a web page | 1; 1; 2 |
+| **apps** | open an app; open a web page | 1; 2 |
 | **clipboard** | read what you copied, when you ask | 0 |
 | **shortcuts** | list your Shortcuts; run one (it can do whatever you built it to) | 0; 2 |
+| **control** | use the Mac like a person: type, press keys, click, scroll, choose a menu item ([below](#using-the-mac-for-you)) | 3 |
 | **tasks** | start, follow and stop a coding task; push its branch | 2, 0, 1; 3 |
 | **routine** | lock, sleep, wake and the network's code, for learning your day | (no tool) |
 
 Ira chains these by itself: "98765 43210 kiska number hai?" looks the number
 up in Contacts; "usko message karo..." then proposes the message to that
 person, and sends it on your "haan".
+
+### Using the Mac for you
+
+With the **control** skill on and **Accessibility** allowed for Ira (its
+checklist has a row for it), Ira can do what you would do with the keyboard
+and mouse:
+
+| Tool | Does |
+| --- | --- |
+| `mac_click` | clicks a button, link, tab, checkbox or row by its label as shown ("Subscribe", "Downloads"); a field gets the cursor. If no control has that name, it clicks where the words are written (that needs Screen Recording) |
+| `mac_type` | types into the field that has the cursor, and presses Return if asked |
+| `mac_keys` | presses keys or a shortcut: `cmd+l`, `cmd+shift+t`, `return`, `esc`, `down down return` |
+| `mac_scroll` | scrolls the front window up, down, left or right |
+| `mac_menu` | chooses a menu item: `File > New Window`, `View > Show Sidebar` |
+
+- **It prefers a direct way.** "Play lofi on YouTube" opens
+  `https://www.youtube.com/results?search_query=lofi` with `url_open`;
+  "open Notes" uses `app_open`. Clicking and typing are for what has no
+  direct tool.
+- **Your PIN, then an approval.** Each step is Tier 3. Confirming one with
+  your PIN opens an **approval** for this Mac (15 minutes unless you chose
+  otherwise): the next steps of the task run without asking. Sending,
+  paying, deleting, pushing and new grants still ask
+  every time ([Security](../security.md#approvals-fewer-pins-for-one-task)).
+- **It says what it did, never what it saw**: "Clicked the Subscribe button
+  in Safari. Safari is in front now." Ira looks with `screen_read` before
+  the next step.
+- **Never**: in a password field (or while macOS's secure typing is on),
+  in a password manager or Keychain Access, in System Settings except
+  everyday pages (Appearance, Displays, Sound, Notifications, Focus and the
+  like), or in the Apple menu (shut down, restart, log out).
+- While Ira types or clicks, its window steps below the app it works in and
+  lets go of the keyboard. Press Option-Space to bring it back.
 
 ## What Ira can and cannot see
 
@@ -235,6 +270,8 @@ Ira **cannot**:
   something;
 - see the screen at all unless the **Screen** skill is on and you allowed
   Screen Recording;
+- type, press keys or click in any app unless the **control** skill is on,
+  you allowed Accessibility, and you gave your PIN for that task;
 - send an email. It writes a draft and opens it in Mail; you press Send;
 - read your clipboard when a password manager marked what you copied as
   private;
@@ -298,7 +335,7 @@ The safety rules:
 in VS Code. If your editor extension documents a link that opens it with a
 request filled in (some do: a `vscode://...` link with a `prompt`), put that
 link in `tasks.json` as `"vscode": {"promptURI": "vscode://.../open?prompt={prompt}"}`,
-and `vscode_open` with a prompt fills the request in for you. Such links fill
+and `file_open` with `app: vscode` and a prompt fills the request in for you. Such links fill
 the request in but do not send it: you press Return.
 
 ## Remove Ira from this Mac
@@ -384,29 +421,31 @@ SDKs make a macro whose plugin ships with Xcode only.
 | `Tests/IraKitTests/` | pairing against a URLProtocol stub, device and live-voice frames against a fake WebSocket, the deny list, a tiny `.docx` fixture, a PDF drawn in the test, tool schemas and deadlines, the browser scripts, the routine readings, taking over the companion, the wake phrase, and the voice detector on synthetic audio. No test opens a network connection |
 | `Tests/IraAppTests/` | the window: Cmd-V pastes into the Ask field (with the pasteboard put back after), the editing keys, and letting go of the keyboard. They need a desktop session |
 
-The tools the app offers (30, the server's most per device):
+The tools the app offers (30 with coding tasks set up, the server's most per
+device):
 
 | Tool | Skill | Tier |
 | --- | --- | --- |
-| `files_find {query?, kind?, modifiedWithinDays?, folder?}`, `file_read {path, maxChars?}`, `file_open {path}` | `files` | 0, 0, 1 |
+| `files_find {query?, kind?, modifiedWithinDays?, folder?}`, `file_read {path, maxChars?}`, `file_open {path, app?, prompt?}` (app `vscode` opens a folder too) | `files` | 0, 0, 1 |
 | `screen_read {}` | `screen` | 0 |
 | `browser_tabs {browser?}`, `browser_show_tab {match?, id?, browser?}` | `browser` | 0, 1 |
 | `contacts_lookup {query}` | `contacts` | 0 |
 | `calendar_read {from?, days?, query?, calendar?}`, `calendar_add {title, start, end?, durationMinutes?, allDay?, location?, notes?, calendar?}` | `calendar` | 0, 2 |
-| `reminders_list {list?, includeDone?, query?}`, `reminders_add {title, due?, list?, notes?}`, `reminders_done {id?, title?}` | `reminders` | 0, 1, 1 |
-| `mail_search {query?, days?, limit?}`, `mail_read {id, maxChars?}`, `mail_draft {to, cc?, subject?, body?}` | `mail` | 0, 0, 2 |
+| `reminders_list {list?, includeDone?, query?}`, `reminders_set {title?, due?, list?, notes?, done?, id?}` (adds one, or with `done` marks one done) | `reminders` | 0, 1 |
+| `mail_search {query?, days?, limit?, id?, maxChars?}` (with `id`, reads that email), `mail_draft {to, cc?, subject?, body?}` | `mail` | 0, 2 |
 | `messages_send {to, name?, text}` | `messages` | 2 |
-| `notes_search {query?, limit?}`, `notes_read {id, maxChars?}`, `notes_add {title, body?, folder?}` | `notes` | 0, 0, 1 |
-| `app_open {name}`, `vscode_open {path, prompt?}`, `url_open {url}` | `apps` | 1, 1, 2 |
+| `notes_search {query?, limit?, id?, maxChars?}` (with `id`, reads that note), `notes_add {title, body?, folder?}` | `notes` | 0, 1 |
+| `app_open {name}`, `url_open {url}` | `apps` | 1, 2 |
 | `clipboard_read {}` | `clipboard` | 0 |
 | `shortcuts_list {}`, `shortcuts_run {name, input?}` | `shortcuts` | 0, 2 |
-| `code_task_start {repo, instruction, openInVSCode?}`, `code_task_status {id}`, `code_task_list {}`, `code_task_stop {id}`, `code_task_push {id}` | `tasks` | 2, 0, 0, 1, 3 |
+| `mac_type {text, pressReturn?}`, `mac_keys {keys}`, `mac_click {label, role?, index?}`, `mac_scroll {direction, amount?}`, `mac_menu {path}`, each also `{app?, task?}` | `control` | 3 |
+| `code_task_start {repo, instruction, openInVSCode?}`, `code_task_status {id?}` (without `id`, lists them), `code_task_stop {id}`, `code_task_push {id}` | `tasks` | 2, 0, 1, 3 |
 
 The coding-task tools are in the hello only when `tasks.json` is set up.
 A long task says how it is going with `task_progress` (after 5 minutes, then
 every 10), and ends with `task_done` or `task_failed`. Each tool has a
-deadline under the server's 25 seconds (15 for `screen_read`, 22 for the
-scripted apps, 10 for most), and every call is logged with its tool, time
+deadline under the server's 25 seconds (15 for `screen_read`, 20 for the
+control tools, 22 for the scripted apps, 10 for most), and every call is logged with its tool, time
 and outcome. The routine skill sends `observe` frames, not tool calls.
 
 There are no third-party dependencies: everything comes with macOS.

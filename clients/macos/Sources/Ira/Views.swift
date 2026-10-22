@@ -181,8 +181,8 @@ struct PermissionRow: View {
                             .foregroundStyle(.green)
                             .font(.callout)
                     case .missing:
-                        // Screen Recording: asking first lists this build of Ira, then the page opens.
-                        Button("Open System Settings", action: permission.id == "screen" ? ask : open)
+                        // Screen Recording and Accessibility: asking first lists this build of Ira.
+                        Button("Open System Settings", action: ["screen", "accessibility"].contains(permission.id) ? ask : open)
                     case .notAsked:
                         if permission.askable { Button("Allow", action: ask) } else { Text("Asked when needed").font(.caption).foregroundStyle(.secondary) }
                     case .unknown:

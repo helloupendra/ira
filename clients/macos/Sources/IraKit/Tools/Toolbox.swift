@@ -34,24 +34,24 @@ public struct Activity: Equatable, Identifiable, Sendable {
         case "calendar_read": return "Read your calendar"
         case "calendar_add": return "Added an event"
         case "reminders_list": return "Read your reminders"
-        case "reminders_add": return "Added a reminder"
-        case "reminders_done": return "Completed a reminder"
+        case "reminders_set": return "Set a reminder"
         case "mail_search": return "Searched your mail"
-        case "mail_read": return "Read an email"
         case "mail_draft": return "Drafted an email"
         case "messages_send": return "Sent a message"
         case "notes_search": return "Searched your notes"
-        case "notes_read": return "Read a note"
         case "notes_add": return "Added a note"
         case "app_open": return "Opened an app"
         case "url_open": return "Opened a web page"
-        case "vscode_open": return "Opened VS Code"
         case "clipboard_read": return "Read the clipboard"
         case "shortcuts_list": return "Listed your shortcuts"
         case "shortcuts_run": return "Ran a shortcut"
+        case "mac_type": return "Typed on your Mac"
+        case "mac_keys": return "Pressed keys"
+        case "mac_click": return "Clicked"
+        case "mac_scroll": return "Scrolled"
+        case "mac_menu": return "Chose a menu item"
         case "code_task_start": return "Started a coding task"
         case "code_task_status": return "Checked a coding task"
-        case "code_task_list": return "Listed coding tasks"
         case "code_task_stop": return "Stopped a coding task"
         case "code_task_push": return "Pushed a task's branch"
         default: return tool
@@ -76,6 +76,7 @@ public final class Toolbox: ToolRunner, @unchecked Sendable {
     private let record: @Sendable (Activity) -> Void
     private let log: IraLog
     private let eventKit = EventKitTools()
+    private var control: ControlTools { ControlTools(frontApp: frontApp, log: log) }
     /// Which of Documents, Desktop and Downloads Ira may look into.
     public let folderGrants: FolderGrants
     /// Coding tasks; their done and failed events go out through `announce`.
@@ -122,7 +123,8 @@ public final class Toolbox: ToolRunner, @unchecked Sendable {
         switch name {
         case "screen_read": return 15
         case "files_find": return 12
-        case "mail_search", "mail_read", "mail_draft", "notes_search", "notes_read", "notes_add", "messages_send",
+        case "mac_type", "mac_keys", "mac_click", "mac_scroll", "mac_menu": return 20
+        case "mail_search", "mail_draft", "notes_search", "notes_add", "messages_send",
             "shortcuts_run", "code_task_start", "code_task_push", "browser_tabs", "browser_show_tab":
             return 22
         default: return 10
@@ -170,7 +172,15 @@ public final class Toolbox: ToolRunner, @unchecked Sendable {
             switch name {
             case "files_find": content = try await findFiles(args.objectValue!)
             case "file_read": content = try await readFile(args.objectValue!)
-            case "file_open": content = try await openFile(args.objectValue!)
+            case "file_open":
+                // In VS Code, a folder too (a repository), with a request filled in for its assistant.
+                if args["app"]?.stringValue == "vscode" {
+                    var rest = args.objectValue!
+                    rest["app"] = nil
+                    content = try await AppTools.vscodeOpen(.object(rest), policy: policy(), promptTemplate: TaskSettings.load()?.promptURI)
+                } else {
+                    content = try await openFile(args.objectValue!)
+                }
             case "screen_read":
                 let read = try await readScreen(args.objectValue!)
                 return (read.content, read.target)
@@ -182,24 +192,36 @@ public final class Toolbox: ToolRunner, @unchecked Sendable {
             case "calendar_read": content = try await eventKit.calendarRead(args)
             case "calendar_add": content = try await eventKit.calendarAdd(args)
             case "reminders_list": content = try await eventKit.remindersList(args)
-            case "reminders_add": content = try await eventKit.remindersAdd(args)
-            case "reminders_done": content = try await eventKit.remindersDone(args)
-            case "mail_search": content = try await AppleScriptTools.mailSearch(args)
-            case "mail_read": content = try await AppleScriptTools.mailRead(args)
+            case "reminders_set":
+                if args["done"]?.boolValue == true {
+                    content = try await eventKit.remindersDone(Toolbox.only(args, ["id", "title"], what: "marking a reminder done", drop: ["done"]))
+                } else {
+                    content = try await eventKit.remindersAdd(Toolbox.only(args, ["title", "due", "list", "notes"], what: "adding a reminder", drop: ["done"]))
+                }
+            case "mail_search":
+                content = args["id"] == nil
+                    ? try await AppleScriptTools.mailSearch(args)
+                    : try await AppleScriptTools.mailRead(Toolbox.only(args, ["id", "maxChars"], what: "reading one email"))
             case "mail_draft": content = try await AppleScriptTools.mailDraft(args)
             case "messages_send": content = try await AppleScriptTools.messagesSend(args)
-            case "notes_search": content = try await AppleScriptTools.notesSearch(args)
-            case "notes_read": content = try await AppleScriptTools.notesRead(args)
+            case "notes_search":
+                content = args["id"] == nil
+                    ? try await AppleScriptTools.notesSearch(args)
+                    : try await AppleScriptTools.notesRead(Toolbox.only(args, ["id", "maxChars"], what: "reading one note"))
             case "notes_add": content = try await AppleScriptTools.notesAdd(args)
             case "app_open": content = try await AppTools.appOpen(args, home: policy().home)
             case "url_open": content = try await AppTools.urlOpen(args)
-            case "vscode_open": content = try await AppTools.vscodeOpen(args, policy: policy(), promptTemplate: TaskSettings.load()?.promptURI)
             case "clipboard_read": content = try await AppTools.clipboardRead(args)
             case "shortcuts_list": content = try await AppTools.shortcutsList(args)
             case "shortcuts_run": content = try await AppTools.shortcutsRun(args)
+            case "mac_type": content = try await control.type(args)
+            case "mac_keys": content = try await control.keys(args)
+            case "mac_click": content = try await control.click(args)
+            case "mac_scroll": content = try await control.scroll(args)
+            case "mac_menu": content = try await control.menu(args)
             case "code_task_start": content = try await tasks.start(args)
-            case "code_task_status": content = try await tasks.status(args)
-            case "code_task_list": content = try await tasks.list(args)
+            case "code_task_status":
+                content = args["id"] == nil ? try await tasks.list(args) : try await tasks.status(args)
             case "code_task_stop": content = try await tasks.stop(args)
             case "code_task_push": content = try await tasks.push(args)
             default:
@@ -216,23 +238,30 @@ public final class Toolbox: ToolRunner, @unchecked Sendable {
         }
         switch name {
         case "files_find": return describeSearch(args.objectValue ?? [:])
-        case "file_read", "file_open", "vscode_open": return shown(args["path"]?.stringValue.map { String($0.prefix(1000)) })
+        case "file_read", "file_open": return shown(args["path"]?.stringValue.map { String($0.prefix(1000)) })
         case "browser_tabs": return text("browser") ?? "all browsers"
         case "browser_show_tab": return text("match") ?? text("id") ?? ""
         case "contacts_lookup": return text("query") ?? ""
         case "calendar_read": return text("from") ?? "today"
-        case "calendar_add", "reminders_add", "notes_add": return text("title") ?? ""
-        case "reminders_done": return text("title") ?? text("id") ?? ""
-        case "mail_search", "notes_search": return text("query").map { "“\($0)”" } ?? "latest"
-        case "mail_read", "notes_read": return "one \(name.hasPrefix("mail") ? "email" : "note")"
+        case "calendar_add", "notes_add": return text("title") ?? ""
+        case "reminders_set": return text("title") ?? text("id") ?? ""
+        case "mail_search", "notes_search":
+            if args["id"] != nil { return "one \(name.hasPrefix("mail") ? "email" : "note")" }
+            return text("query").map { "“\($0)”" } ?? "latest"
         case "mail_draft":
             let to = (args["to"]?.arrayValue?.compactMap(\.stringValue) ?? [text("to")].compactMap { $0 }).joined(separator: ", ")
             return "to \(to)"
         case "messages_send": return "to \(text("name") ?? text("to") ?? "")"
         case "app_open", "shortcuts_run": return text("name") ?? ""
         case "url_open": return text("url").flatMap { AppTools.webURL($0)?.host } ?? ""
+        case "mac_type": return "\(args["text"]?.stringValue?.count ?? 0) characters" + (text("app").map { " in \($0)" } ?? "")
+        case "mac_keys": return (text("keys") ?? "") + (text("app").map { " in \($0)" } ?? "")
+        case "mac_click": return (text("label").map { "“\($0)”" } ?? "") + (text("app").map { " in \($0)" } ?? "")
+        case "mac_scroll": return (text("direction") ?? "") + (text("app").map { " in \($0)" } ?? "")
+        case "mac_menu": return (text("path") ?? "") + (text("app").map { " in \($0)" } ?? "")
         case "code_task_start": return text("repo") ?? ""
-        case "code_task_status", "code_task_stop", "code_task_push": return text("id") ?? ""
+        case "code_task_status": return text("id") ?? "all tasks"
+        case "code_task_stop", "code_task_push": return text("id") ?? ""
         default: return ""
         }
     }
@@ -250,6 +279,15 @@ public final class Toolbox: ToolRunner, @unchecked Sendable {
         if let days = args["modifiedWithinDays"]?.intValue { parts.append("last \(days) days") }
         if let folder = args["folder"]?.stringValue { parts.append("in \(folder.prefix(80))") }
         return parts.isEmpty ? "recent files" : parts.joined(separator: ", ")
+    }
+
+    /// The arguments for one use of a tool that does two things, refusing the other's.
+    static func only(_ args: JSONValue, _ keys: Set<String>, what: String, drop: Set<String> = []) throws -> JSONValue {
+        var object = args.objectValue ?? [:]
+        for key in drop { object[key] = nil }
+        let extra = Set(object.keys).subtracting(keys).sorted()
+        if !extra.isEmpty { throw ToolFailure("\(extra.joined(separator: ", ")) do not go with \(what)") }
+        return .object(object)
     }
 
     static func check(_ args: [String: JSONValue], allowed: Set<String>) throws {
@@ -438,7 +476,8 @@ public final class Toolbox: ToolRunner, @unchecked Sendable {
     }
 
     func openFile(_ args: [String: JSONValue]) async throws -> JSONValue {
-        try Toolbox.check(args, allowed: ["path"])
+        try Toolbox.check(args, allowed: ["path", "app"])
+        if let app = try Toolbox.text(args, "app"), app != "default" { throw ToolFailure("app must be default or vscode") }
         guard let path = try Toolbox.text(args, "path", limit: 2000) else { throw ToolFailure("say which file: its path") }
         let policy = self.policy()
         if let refusal = Toolbox.openRefusal(path, policy: policy) { throw ToolFailure(refusal) }

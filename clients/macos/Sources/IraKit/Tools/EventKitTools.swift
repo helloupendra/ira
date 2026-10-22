@@ -5,7 +5,7 @@ import Foundation
 /// Google and Exchange accounts added to the Mac all count, with no sign-in.
 ///
 /// * `calendar_read` (Tier 0), `calendar_add` (Tier 2: it changes the calendar);
-/// * `reminders_list` (Tier 0), `reminders_add` and `reminders_done` (Tier 1).
+/// * `reminders_list` (Tier 0), `reminders_set` (Tier 1: add one, or mark one done).
 public final class EventKitTools: @unchecked Sendable {
     private let store = EKEventStore()
     private let timeZone: TimeZone

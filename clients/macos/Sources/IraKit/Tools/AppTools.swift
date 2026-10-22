@@ -3,8 +3,8 @@ import Foundation
 
 /// Apps, links, VS Code, the clipboard and Shortcuts.
 ///
-/// * `app_open` (Tier 1) and `vscode_open` (Tier 1): open an app, or a folder
-///   in VS Code; Ira says it did;
+/// * `app_open` (Tier 1): open an app; and, for `file_open` with app vscode,
+///   a folder in VS Code; Ira says it did;
 /// * `url_open` (Tier 2): a web page, read back first;
 /// * `clipboard_read` (Tier 0, `clipboard` skill): only when asked, and never
 ///   what a password manager marked as a password;
