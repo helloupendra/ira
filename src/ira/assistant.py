@@ -29,6 +29,7 @@ from ira import toollog
 from ira.conversations import Conversations
 from ira.models.base import ChatResponse, Message, StreamDone, TextDelta, ToolCall
 from ira.models.gateway import Gateway, GatewayError
+from ira.models.leaked import recover
 from ira.security import looks_like_pin
 from ira.store import Store
 from ira.tools.actions import ActionGuard, PendingAction
@@ -55,7 +56,8 @@ How you work:
 - Use the tools to look things up. Never invent appointments, prices, names or numbers.
 - Plan: one request may need several tools in a row, on any of the person's devices or \
 connections. Use what one returns to call the next (the call log gives a number, the \
-contacts give its name, then the call).
+contacts give its name, then the call). Never say you will look something up: call the \
+tool now, in this reply.
 - When the target is unclear (two contacts called Rahul, two uploads), ask which one and \
 name the choices. Never guess the target of an action.
 - Searching for a file, folder, contact or message: try at most three forms of the name \
@@ -438,6 +440,11 @@ class Assistant:
                 return
             assert response is not None
             model = response.model
+            if not response.tool_calls and response.text:
+                prose, recovered = recover(response.text, {t["name"] for t in tools})
+                if recovered:  # a call written as text: run it, as the model meant
+                    log.warning("%s wrote %d tool call(s) as text", model, len(recovered))
+                    response.text, response.tool_calls = prose, recovered
 
             if not response.tool_calls:
                 final_text = response.text

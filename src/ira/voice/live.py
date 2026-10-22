@@ -46,7 +46,7 @@ PIN_IN_APP = {
 # Scripts no one asked for (a model that drifts into Chinese, say) are never spoken.
 # Nor is a model's raw tool-call markup that leaked into its text.
 _UNSPEAKABLE = re.compile(
-    r"[\u3040-\u30ff\u3400-\u9fff\uac00-\ud7af]|<\|?tool_call|\bfunctions\.[a-z_]+:\d"
+    r"[\u3040-\u30ff\u3400-\u9fff\uac00-\ud7af]|<\|?tool_call|\bfunctions\.[a-z_]+:\d|<invoke\b"
 )
 
 _SENTENCE = re.compile(r"(.+?[.!?\u0964\u0965])(?=\s|$)|(.+?[\u3002\uff01\uff1f])|(.+?)\n", re.S)
