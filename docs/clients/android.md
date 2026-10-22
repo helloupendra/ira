@@ -318,8 +318,20 @@ While a window is open, the talk screen shows **Ira can use this phone for
 12 more minutes** with **Stop**. **Settings → Approvals** shows how long
 windows last (change it on your Ira, under **Your assistant**) and every
 open window, each with **Stop**. The phone can stop a window, never open or
-lengthen one: only a PIN does. Approving with a fingerprint instead of the
-PIN is built in the app and waits for your Ira to support it.
+lengthen one: only a PIN does.
+
+**Approve with your fingerprint.** In **Settings → Approvals**, enroll this
+phone once with your PIN: the app makes a key in the phone's secure
+hardware that only your fingerprint (or screen lock) unlocks, and gives your
+Ira its public half. A card that needs your PIN then offers **Approve with
+fingerprint** first; typing the PIN stays the fallback. The phone signs the
+action, the summary you were shown and its expiry, so a signature can never
+approve anything else; a refused one counts as a wrong PIN.
+
+**Trusted apps.** Settings → Approvals lists the apps on this phone where
+Ira may tap and type without asking (YouTube, for example), once a screen
+result shows that app in front. Add or remove them on your Ira, under **Your
+assistant → Trusted apps** (adding one needs your PIN).
 
 ## Move to another Ira
 
