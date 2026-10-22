@@ -73,6 +73,11 @@ on its own it can never change anything.
   password managers or System Settings; its scripts take the model's words
   only as arguments. Each tool answers within its own deadline, under the
   server's 25 seconds.
+- Ira for iPhone keeps its token in the iPhone's Keychain, readable only on
+  that iPhone after its first unlock and never synced; a key it cannot read
+  is never taken for "not paired". It offers only what iOS allows (contacts,
+  calendar, reminders, location, and a call through the iPhone's own Call
+  prompt), each tool gated on its iOS permission and its tier.
 
 ### The PIN never reaches a model
 
