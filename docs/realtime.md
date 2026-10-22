@@ -124,15 +124,23 @@ own, so a phone adds its round trip (about 50 to 150 ms in India).
 | --- | --- | --- | --- | --- |
 | 1 | 1.67 s | 5.58 s | 1.30 s | 7.16 s |
 | 2 | 2.18 s | 5.10 s | 1.21 s | 5.79 s |
+| 3, deployed (23 Oct) | 1.61 s | 5.59 s | 1.15 s | 9.54 s |
+
+Run 3 is the same set on the server as deployed on 23 Oct 2026 (fda306a,
+with `qwen.qwen3-235b-a22b-2507` added to the chain and Ira for Mac's
+browser and screen tools as the stand-ins). 23 of 24 turns spoke; the
+slow ones were two tool-heavy turns whose model took 5.5 s and 9.5 s to
+start. The one silent turn: "woh wala", heard as "Vovala", got an answer in
+Chinese, which Ira refuses to speak.
 
 Where the time goes, as medians after `speech_end` arrives:
 
-| Step | Run 1 | Run 2 |
-| --- | --- | --- |
-| the final transcript | 0.18 s | 0.16 s |
-| the model's first words | 1.17 s | 1.97 s |
-| the first sentence's speech (Polly) | 0.08 s | 0.09 s |
-| the first audio sent | 1.05 s | 1.54 s |
+| Step | Run 1 | Run 2 | Run 3 |
+| --- | --- | --- | --- |
+| the final transcript | 0.18 s | 0.16 s | 0.18 s |
+| the model's first words | 1.17 s | 1.97 s | 1.10 s |
+| the first sentence's speech (Polly) | 0.08 s | 0.09 s | 0.08 s |
+| the first audio sent | 1.05 s | 1.54 s | 1.00 s |
 
 The model's first words decide it, and they vary from run to run and from
 request to request: a request that needs a tool waits for two model calls

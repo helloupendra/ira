@@ -24,6 +24,7 @@ import shutil
 import subprocess
 import tempfile
 import time
+import unicodedata
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any
@@ -34,7 +35,7 @@ from ira.config import Settings
 from ira.language import LANGUAGES, detect
 from ira.store import Store
 from ira.tools.personal import PersonalTool
-from ira.tools.registry import ToolRegistry
+from ira.tools.registry import ToolError, ToolRegistry
 from ira.voice.audio import pcm16_wav
 
 CASES = Path(__file__).resolve().parent / "language.yaml"
@@ -52,8 +53,15 @@ def intent_matches(expected: str, tools: list[str]) -> bool:
 
 
 def words_of(text: str) -> list[str]:
+    # The nukta (ख़ or ख) is optional in everyday Hindi spelling: it is not a mishearing.
+    text = unicodedata.normalize("NFC", unicodedata.normalize("NFD", text).replace("\u093c", ""))
     cleaned = re.sub(r"[!-/:-@\[-`{-~।॥‘-‟…]", " ", text.lower())
     return cleaned.split()
+
+
+def devanagari(text: str) -> bool:
+    letters = [c for c in text if c.isalpha()]
+    return bool(letters) and sum("\u0900" <= c <= "\u097f" for c in letters) > len(letters) / 2
 
 
 def word_accuracy(expected: str, heard: str) -> float:
@@ -78,6 +86,9 @@ class Case:
     intent: str
     reply: str
     text: str
+    # Hinglish as Hindi speech-to-text writes it: in Devanagari ("क्रोम में ..."). The same
+    # words in the other script are not a mishearing.
+    devanagari: str | None = None
 
 
 @dataclass
@@ -139,11 +150,13 @@ TABS = {
          "url": "https://ci.example.net/builds/812"},
     ],
 }  # fmt: skip
-SHOWN = {"summary": "Switched to Upload - Example Drive in Chrome.", "tab": TABS["tabs"][1]}
-SCREEN = {
-    "app": "Google Chrome",
-    "title": "Upload - Example Drive",
-    "text": "My Drive > Uploads\nquarterly-report.pdf\n63% uploaded, about 4 min left\nCancel",
+# What screen_read shows for whichever tab is in front.
+SCREENS = {
+    "chrome:1:11": "Inbox (2)\nAsha: Lunch tomorrow?\nExample Shop: Your order has shipped",
+    "chrome:1:12": "My Drive > Uploads\nquarterly-report.pdf\n63% uploaded, about 4 min left\n"
+    "Cancel",
+    "chrome:1:13": "Build #812 - main\nStep 4 of 6: Run tests (2 min 10 s)\nCheckout: done\n"
+    "Install: done\nLint: done",
 }
 NEWS = {
     "items": [
@@ -172,6 +185,23 @@ def stand_ins() -> list[PersonalTool]:
             return value
 
         return run
+
+    # Each request starts with the upload tab in front; browser_show_tab changes that, and
+    # screen_read shows the tab in front.
+    front = {"tab": TABS["tabs"][1]}
+
+    async def show(arguments: dict[str, Any]) -> Any:
+        wanted = str(arguments.get("id") or arguments.get("match") or "").lower().strip()
+        for tab in TABS["tabs"]:
+            words = f"{tab['title']} {tab['url']}".lower()
+            if wanted and (wanted == tab["id"] or all(w in words for w in wanted.split())):
+                front["tab"] = tab
+                return {"summary": f"Switched to {tab['title']} in Chrome.", "tab": tab}
+        raise ToolError(f"no open tab matches {wanted!r}")
+
+    async def screen(arguments: dict[str, Any]) -> Any:
+        tab = front["tab"]
+        return {"app": "Google Chrome", "title": tab["title"], "text": SCREENS[tab["id"]]}
 
     # Names, tiers and descriptions as Ira for Mac offers them (ToolCatalog.swift).
     browser = {"type": "string", "description": "Only this browser: chrome, safari, arc, ..."}
@@ -202,7 +232,7 @@ def stand_ins() -> list[PersonalTool]:
                 },
             },
             1,
-            run=fixed(SHOWN),
+            run=show,
             skill="browser",
             **mac,
         ),
@@ -213,7 +243,7 @@ def stand_ins() -> list[PersonalTool]:
             "and the text.",
             {"type": "object", "properties": {}},
             0,
-            run=fixed(SCREEN),
+            run=screen,
             skill="screen",
             **mac,
         ),
@@ -307,6 +337,8 @@ async def run(
                         speech = synthesize(case.text, case.language, folder)
                     heard = await runtime.stt.transcribe(speech)
                     accuracy = word_accuracy(case.text, heard)
+                    if case.devanagari and devanagari(heard):
+                        accuracy = max(accuracy, word_accuracy(case.devanagari, heard))
                     asked = heard
                 reply = await runtime.assistant.ask(
                     asked, conversation_id=f"eval:{case.id}", channel="eval", user_id=user.id
@@ -317,6 +349,9 @@ async def run(
             intent = ", ".join(tools) if tools else "none"
             intent_ok = intent_matches(case.intent, tools)
             language = reply_language(text)
+            # Ira answers in the script it was asked in: a request heard in Devanagari gets
+            # Hindi, which sounds the same when spoken.
+            expected = "hi" if heard and devanagari(heard) else case.reply
             report.results.append(
                 Result(
                     id=case.id,
@@ -325,9 +360,9 @@ async def run(
                     expected_intent=case.intent,
                     intent=intent,
                     intent_ok=intent_ok,
-                    expected_reply=case.reply,
+                    expected_reply=expected,
                     reply_language=language,
-                    reply_ok=language == case.reply,
+                    reply_ok=language == expected,
                     reply=text[:300],
                     seconds=round(time.monotonic() - started, 2),
                     heard=heard,

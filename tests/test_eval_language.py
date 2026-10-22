@@ -11,6 +11,7 @@ import pytest
 from ira.config import Settings
 from ira.evals.language import (
     LANGUAGES,
+    devanagari,
     intent_matches,
     load_cases,
     render,
@@ -20,6 +21,7 @@ from ira.evals.language import (
     synthesize_polly,
     word_accuracy,
 )
+from ira.tools.registry import ToolError
 from ira.voice.audio import wav_info
 
 
@@ -115,3 +117,25 @@ def test_polly_can_speak_the_requests():
         )
         wav = synthesize_polly("आज की ख़बर", "hi", "ap-south-1", client)
     assert wav_info(wav).sample_rate == 16_000 and wav_info(wav).frames == 1600
+
+
+@pytest.mark.anyio
+async def test_the_screen_shows_the_tab_ira_brought_to_the_front():
+    tools = {tool.name: tool for tool in stand_ins()}
+    assert "63% uploaded" in (await tools["screen_read"].run({}))["text"]
+    shown = await tools["browser_show_tab"].run({"match": "build"})
+    assert shown["tab"]["title"] == "Build #812 - Example CI"
+    assert "Step 4 of 6" in (await tools["screen_read"].run({}))["text"]
+    with pytest.raises(ToolError, match="no open tab"):
+        await tools["browser_show_tab"].run({"match": "spreadsheet"})
+    fresh = {tool.name: tool for tool in stand_ins()}  # each request starts again
+    assert "63% uploaded" in (await fresh["screen_read"].run({}))["text"]
+
+
+def test_hinglish_heard_in_devanagari_is_not_a_mishearing():
+    assert devanagari("क्रोम में कौन से टैब्स खुले हैं?") and not devanagari("Chrome mein tabs")
+    assert devanagari("Python 3.13 में क्या नया है, वेब पे ढूंढो")
+    assert word_accuracy("आज की ताज़ा ख़बरें", "आज की ताजा खबरें") == 1.0  # the nukta is optional
+    cases = {case.id: case for case in load_cases()}
+    hinglish = [case for case in cases.values() if case.language == "hinglish"]
+    assert hinglish and all(devanagari(case.devanagari or "") for case in hinglish)

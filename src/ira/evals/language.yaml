@@ -5,32 +5,33 @@
 #   intent: the tool a good answer starts with, or "none" when no tool fits
 #           (Ira should answer or ask back instead of guessing)
 #   reply:  the language a reply should be in when reply_language is "auto"
+#   devanagari: a Hinglish request as Hindi speech-to-text writes it, for --spoken
 cases:
   # Browser tabs and the screen (Ira for Mac): reading what a tab shows means bringing it
   # to the front, then reading the screen
-  - {id: tabs-hinglish, language: hinglish, intent: browser_tabs, reply: hinglish, text: "Chrome mein kaunse tabs khule hain?"}
+  - {id: tabs-hinglish, language: hinglish, intent: browser_tabs, reply: hinglish, text: "Chrome mein kaunse tabs khule hain?", devanagari: "क्रोम में कौन से टैब्स खुले हैं?"}
   - {id: tabs-hindi, language: hi, intent: browser_tabs, reply: hi, text: "क्रोम में कौन से टैब खुले हैं?"}
   - {id: tabs-english, language: en, intent: browser_tabs, reply: en, text: "Which tabs are open in Chrome?"}
-  - {id: tabs-hinglish-short, language: hinglish, intent: browser_tabs, reply: hinglish, text: "Hey Ira, Chrome mein kya chal raha hai?"}
-  - {id: upload-hinglish, language: hinglish, intent: screen_read, reply: hinglish, text: "Chrome ke us upload tab mein kitna kaam hua?"}
-  - {id: upload-hinglish-half, language: hinglish, intent: screen_read, reply: hinglish, text: "upload kitna hua"}
+  - {id: tabs-hinglish-short, language: hinglish, intent: browser_tabs, reply: hinglish, text: "Hey Ira, Chrome mein kya chal raha hai?", devanagari: "हे इरा, क्रोम में क्या चल रहा है?"}
+  - {id: upload-hinglish, language: hinglish, intent: screen_read, reply: hinglish, text: "Chrome ke us upload tab mein kitna kaam hua?", devanagari: "क्रोम के उस अपलोड टैब में कितना काम हुआ?"}
+  - {id: upload-hinglish-half, language: hinglish, intent: screen_read, reply: hinglish, text: "upload kitna hua", devanagari: "अपलोड कितना हुआ"}
   - {id: upload-hindi, language: hi, intent: screen_read, reply: hi, text: "अपलोड वाले टैब में कितना हुआ?"}
   - {id: upload-english, language: en, intent: screen_read, reply: en, text: "How far along is the upload tab?"}
   - {id: build-english, language: en, intent: screen_read, reply: en, text: "What step is the build on?"}
-  - {id: screen-hinglish, language: hinglish, intent: screen_read, reply: hinglish, text: "screen pe kya likha hai?"}
+  - {id: screen-hinglish, language: hinglish, intent: screen_read, reply: hinglish, text: "screen pe kya likha hai?", devanagari: "स्क्रीन पे क्या लिखा है?"}
   - {id: screen-hindi, language: hi, intent: screen_read, reply: hi, text: "मेरी स्क्रीन पर क्या लिखा है?"}
   - {id: screen-english, language: en, intent: screen_read, reply: en, text: "What's on my screen right now?"}
   # News and the web
-  - {id: news-hinglish, language: hinglish, intent: news_search, reply: hinglish, text: "aaj ki khabar batao"}
+  - {id: news-hinglish, language: hinglish, intent: news_search, reply: hinglish, text: "aaj ki khabar batao", devanagari: "आज की खबर बताओ"}
   - {id: news-hindi, language: hi, intent: news_search, reply: hi, text: "आज की ताज़ा ख़बरें क्या हैं?"}
   - {id: news-english, language: en, intent: news_search, reply: en, text: "Any news about the monsoon today?"}
-  - {id: web-hinglish, language: hinglish, intent: web_search, reply: hinglish, text: "Python 3.13 mein kya naya hai, web pe dhundo"}
+  - {id: web-hinglish, language: hinglish, intent: web_search, reply: hinglish, text: "Python 3.13 mein kya naya hai, web pe dhundo", devanagari: "Python 3.13 में क्या नया है, वेब पे ढूंढो"}
   - {id: web-english, language: en, intent: web_search, reply: en, text: "Search the web for the Python 3.13 release notes."}
   - {id: web-hindi, language: hi, intent: web_search, reply: hi, text: "इंटरनेट पर पाइथन 3.13 के बारे में खोजो"}
   # Nothing to look up, or not enough to go on: answer or ask back, no tool
-  - {id: remind-hinglish, language: hinglish, intent: none, reply: hinglish, text: "kal subah 9 baje yaad dilana"}
+  - {id: remind-hinglish, language: hinglish, intent: none, reply: hinglish, text: "kal subah 9 baje yaad dilana", devanagari: "कल सुबह 9 बजे याद दिलाना"}
   - {id: remind-hindi, language: hi, intent: none, reply: hi, text: "कल सुबह 9 बजे याद दिलाना"}
-  - {id: vague-hinglish, language: hinglish, intent: none, reply: hinglish, text: "woh wala"}
+  - {id: vague-hinglish, language: hinglish, intent: none, reply: hinglish, text: "woh wala", devanagari: "वो वाला"}
   - {id: hello-english, language: en, intent: none, reply: en, text: "Thanks, that's all for now."}
-  - {id: hello-hinglish, language: hinglish, intent: none, reply: hinglish, text: "theek hai, shukriya"}
+  - {id: hello-hinglish, language: hinglish, intent: none, reply: hinglish, text: "theek hai, shukriya", devanagari: "ठीक है, शुक्रिया"}
   - {id: hello-hindi, language: hi, intent: none, reply: hi, text: "ठीक है, धन्यवाद"}

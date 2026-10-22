@@ -76,13 +76,43 @@ requests once; models are not deterministic, so runs differ.
 | 2 | ask when unsure | 86% / 90% / 100% | 100% / 80% / 100% | 1.8 s |
 | 3 | look first, then ask | 100% / 100% / 100% | 100% / 100% / 100% | 2.2 s |
 | 4 | look first, then ask | 100% / 100% / 100% | 100% / 100% / 86% | 2.8 s |
+| 5, deployed | look first, then ask; Ira for Mac's tools | 86% / 90% / 100% | 86% / 100% / 100% | 1.8 s |
+| 6, deployed | look first, then ask; Ira for Mac's tools | 100% / 100% / 100% | 100% / 90% / 100% | 1.8 s |
 
 Runs 1 to 4 used stand-ins for the old Chrome extension (list, read and
 watch a tab). On 23 Oct 2026 the set moved to Ira for Mac's own tools: a
 tab's progress is now read by bringing it to the front and reading the
 screen, and the three "tell me when the upload finishes" requests, which
-have no tool any more, became "what is on my screen?". **The new set has
-not been run yet**; its rows go here when it has.
+have no tool any more, became "what is on my screen?". Runs 5 and 6 are
+that set on the server as deployed that day (fda306a), with
+`qwen.qwen3-235b-a22b-2507` added to the chain. In run 5, Kimi once wrote
+its tool call as text ("<invoke name=\"screen_read\">") instead of making
+it, and "woh wala" made it list the tabs four times instead of asking
+which one. Ira now runs a call written as text.
+
+### Heard: spoken by Polly, transcribed by Amazon Transcribe
+
+The first speech numbers, on 23 Oct 2026, on the same deployed server:
+each request spoken by Polly's Kajal, transcribed by Transcribe streaming in
+`ap-south-1` (Hindi preferred, then Indian English), then asked.
+
+| Run | Heard (hi / hinglish / en) | Intent | Reply language |
+| --- | --- | --- | --- |
+| 1 | 95% / 92% / 86% | 100% / 80% / 100% | 86% / 80% / 100% |
+
+- **Hinglish comes back in Devanagari** ("Chrome mein kaunse tabs khule
+  hain?" is heard as "क्रोम में कौन से टैब्स खुले हैं?"). That is the right
+  words in the other script, so **heard** also scores each Hinglish request
+  against its Devanagari spelling, and the nukta (ख़ or ख) is not counted.
+  Ira answers a request heard in Devanagari in Devanagari Hindi, which
+  sounds the same spoken.
+- **Real mishearings:** "tab" heard as "तब" (twice); "mein kya naya hai,
+  web pe dhundo" heard as "miyanayahe"; and the short English "Thanks,
+  that's all for now." heard as Hindi ("थैंक्स, था"), because with Hindi
+  preferred, Transcribe picks one language per utterance and a short one
+  can go the wrong way. "9" came back as "नौ", the same word.
+- The intent misses were a call written as text (now run) and "I'll check"
+  with no check (the prompt now says to call the tool at once).
 
 What the misses were:
 
