@@ -17,6 +17,14 @@ switch it on.
   Telegram chats and their Android devices. Limits: 1 MB frames, 25-second
   calls, 4 in flight, 30 tools, one event per 30 seconds, one connection per
   device. Revoking a device disconnects it at once.
+- **Ira for iPhone** (`clients/ios`), a native app paired as device kind
+  `ios`: typing, a live call with barge-in or the iPhone's own speech
+  recognition when the server has no live voice, "Hey Siri, Ask Ira", "Tell
+  Ira" and "Talk to Ira" as App Shortcuts, Yes or No and the typed PIN for
+  proposals, Report, and the tools iOS allows (contacts, calendar,
+  reminders, location, a call after the person's yes and tap). CI builds it
+  for the simulator and tests it there against a local Ira; TestFlight
+  steps are in the iPhone guide. A database from before keeps its devices.
 - **Downloads**: `/v1/downloads` names Ira for Mac (`Ira.dmg`) on the
   project's latest release, where a macOS runner attaches it for each `v*`
   tag. It is signed ad hoc until there is a Developer ID.

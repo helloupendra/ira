@@ -1,7 +1,8 @@
 # Devices
 
 A **device** is something a person pairs with their own Ira: a Mac running
-[Ira for Mac](clients/macos.md), or an Android phone. A device connects to
+[Ira for Mac](clients/macos.md), an Android phone, or an iPhone running
+[Ira for iPhone](clients/iphone.md) (kind `ios`). A device connects to
 the server over one WebSocket, offers tools, runs them when Ira calls, and
 announces events ("the coding task is done").
 
@@ -67,7 +68,8 @@ devices, once the review is over. Making such a code goes into the change log.
   headers may use `?token=`; IRA masks the value in every log line it writes,
   but a proxy in front may log it, so prefer the header.
 - Ira for Mac keeps it in the macOS Keychain, the Android app in the
-  Android Keystore. Neither writes it to a file or a log.
+  Android Keystore, Ira for iPhone in the iPhone's Keychain (this device
+  only, after first unlock). None writes it to a file or a log.
 - **Revoking** a device (`DELETE /v1/me/devices/{id}`, or an admin's
   `DELETE /v1/admin/devices/{id}`) stops the token at once and closes the
   device's connection with code 4403. Removing a person's account revokes all
@@ -191,5 +193,6 @@ Any program that speaks the protocol can be a device. In outline:
    with a growing delay when the connection drops.
 5. Keep events to one per 30 seconds; queue the rest.
 
-Ira for Mac in `clients/macos/` (Swift) and the Android app in
-`clients/android/` (Kotlin) are complete examples.
+Ira for Mac in `clients/macos/` (Swift), the Android app in
+`clients/android/` (Kotlin) and Ira for iPhone in `clients/ios/` (Swift)
+are complete examples.
