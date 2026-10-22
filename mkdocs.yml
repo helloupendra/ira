@@ -86,6 +86,7 @@ nav:
       - Security: security.md
   - Design notes:
       - "Phase 1: devices, Chrome and search": design/phase-1-devices.md
+      - "Learning your routines": design/learning.md
   - Examples:
       - Sunrise Dental Clinic: examples/clinic.md
 
