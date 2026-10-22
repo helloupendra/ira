@@ -231,3 +231,22 @@ def test_info_says_whether_the_browser_may_recognise_speech(registry):
         assert client.get("/v1/info", headers=headers).json()["mic_language"] == "en-IN"
         runtime.settings.voice.browser_stt = "off"
         assert client.get("/v1/info", headers=headers).json()["browser_stt"] == "off"
+
+
+def test_info_says_whether_a_live_call_works_here(registry):
+    from ira.voice.providers import FakeSTT, FakeTTS
+
+    runtime = make_runtime(registry=registry)
+    user = runtime.accounts.create_first_owner("owner@example.com", PASSWORD)
+    voice, _ = runtime.accounts.create_token(user, "phone", ["ask", "voice"])
+    typing, _ = runtime.accounts.create_token(user, "script", ["ask"])
+    with TestClient(create_app(runtime, start_channels=False)) as client:
+
+        def live(token: str) -> bool:
+            headers = {"Authorization": f"Bearer {token}"}
+            return client.get("/v1/info", headers=headers).json()["live"]
+
+        assert live(voice) is False  # no speech-to-text or voice on this server
+        runtime.stt, runtime.tts = FakeSTT(), FakeTTS()
+        assert live(voice) is True
+        assert live(typing) is False  # a token without voice

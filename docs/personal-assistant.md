@@ -116,6 +116,13 @@ delete it.
 ![What Ira did: each tool, the device, and when](images/personal-activity-phone-light.png){ width="300" }
 ![Your data: export, or delete with your password](images/personal-data-phone-light.png){ width="300" }
 
+## Talk to Ira like a phone call
+
+When the server has a streaming speech-to-text and a voice set up, the Ira
+app shows a phone button next to the text box. Tap it and just talk: Ira
+answers as soon as you stop, and stops talking the moment you speak. Tap
+**End call** when you are done. See [Real-time voice](realtime.md).
+
 ## Let Ira learn your routine (optional)
 
 Off until you switch it on. Ira can notice when you leave the office or

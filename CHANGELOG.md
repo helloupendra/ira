@@ -97,8 +97,11 @@ switch it on.
   written. Speaking while Ira talks stops it. Calls get short spoken
   answers, and "Ek second" when a tool is needed first. `ira eval live`
   measures end of speech to first word: p50 1.7 to 2.2 s, p95 5.1 to 5.6 s
-  on the first server. Macs can now be offered the `files` and `screen`
-  skills, for the native Mac app.
+  on the first server. The Ira app has a live call (the phone button):
+  its voice detector runs in the browser, and audio goes up only while
+  you speak. On a call, a proposed action is read back with its exact
+  target. Macs can now be offered the `files` and `screen` skills, for
+  the native Mac app.
 - **Tasks on your Mac** (the `tasks` skill): Ira hands a job to a coding
   agent configured on the Mac, in a new git worktree and branch of a
   repository the person allowed there. It runs in macOS's sandbox, its git

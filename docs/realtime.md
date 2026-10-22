@@ -5,9 +5,10 @@ speaking a moment after you stop, and stops the moment you speak. The Ira
 app (in the browser and on the phone), the Mac app and the Android app all
 use the same connection, described here.
 
-Status: **protocol version 1** (22 Oct 2026). The server side answers; the
-Ira app's live mode is next. Fields may still be added; none will change
-meaning without a new version.
+Status: **protocol version 1** (22 Oct 2026). The server answers, and the
+Ira app has a live call: the phone button next to the text box starts it,
+**End call** stops it, and typing during a call goes into the call. Fields
+may still be added; none will change meaning without a new version.
 
 ## How a turn flows
 
