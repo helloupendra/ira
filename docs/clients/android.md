@@ -84,9 +84,10 @@ leaves it in `clients/android/build/`. Then either:
 3. If Play Protect warns about an unknown app, choose **More details →
    Install anyway**. The debug build is signed with a development key.
 
-Apps installed through `adb` need no developer verification. Google's
-verification of sideloaded apps starts on 30 September 2026 only in Brazil,
-Indonesia, Singapore and Thailand, and comes to other countries in 2027
+Apps installed through `adb` never need developer verification. Google's
+developer verification began on 30 September 2026 in Brazil, Indonesia,
+Singapore and Thailand for apps from participating stores, does not cover
+sideloaded apps yet, and widens to other countries in 2027
 ([Android developer verification](https://developer.android.com/developer-verification)).
 
 ## Pair it with your Ira
@@ -427,7 +428,8 @@ listing** ([help](https://support.google.com/googleplay/android-developer/answer
     - **Contacts**, **Calendar events**, **Approximate location** (precise
       too for the personal build if it is ever on Play);
     - App activity → **Other user-generated content** (notifications Ira
-      reads for you), and call history as the closest type your form offers.
+      reads for you). Call history has no type of its own: declare it under
+      the closest one the form offers, and name it in the privacy policy.
 
     **Encrypted in transit**: yes (the app refuses plain HTTP except to the
     phone itself). **Deletion**: yes: remove the phone, and "Delete my data"
