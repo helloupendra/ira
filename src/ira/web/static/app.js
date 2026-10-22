@@ -172,6 +172,7 @@ function enterChat() {
     state.pendingText = null;
   }
   if (canAsk && matchMedia("(hover: hover)").matches) $("#text").focus({ preventScroll: true });
+  if (typeof IraPersonal !== "undefined") IraPersonal.entered(); // your devices' events
 }
 
 function updateBanner() {
@@ -322,6 +323,7 @@ function sessionExpired(text) {
 $("#logout").addEventListener("click", async () => {
   $("#menu").close();
   stopSpeaking();
+  if (typeof IraPersonal !== "undefined") IraPersonal.left();
   try {
     await api("/v1/auth/logout", { method: "POST" });
   } catch {

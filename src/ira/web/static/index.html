@@ -16,6 +16,7 @@
   <link rel="stylesheet" href="/tokens.css">
   <link rel="stylesheet" href="/style.css">
   <script src="/app.js" defer></script>
+  <script src="/personal.js" defer></script>
 </head>
 <body>
   <main id="app">
@@ -135,8 +136,28 @@
         <p class="error" role="alert"></p>
       </form>
     </div>
+    <nav class="menu-nav" aria-label="Your Ira">
+      <p class="menu-label">Your Ira</p>
+      <button type="button" class="menu-link" data-panel="devices">Your devices</button>
+      <button type="button" class="menu-link" data-panel="assistant">Your assistant: name, languages, web search</button>
+      <button type="button" class="menu-link" data-panel="activity">What Ira did</button>
+      <button type="button" class="menu-link" data-panel="data">Your data: export or delete</button>
+    </nav>
     <a id="menu-admin" class="menu-link" href="/admin/" hidden>Open the admin console</a>
     <button id="logout" type="button" class="btn btn-ghost">Sign out</button>
+  </dialog>
+
+  <dialog id="panel" class="menu panel" aria-labelledby="panel-title">
+    <div class="menu-head">
+      <button id="panel-back" type="button" class="icon-btn" aria-label="Back to the menu">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 6l-6 6 6 6"/></svg>
+      </button>
+      <h2 id="panel-title">Your Ira</h2>
+      <button id="panel-close" type="button" class="icon-btn" aria-label="Close">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg>
+      </button>
+    </div>
+    <div id="panel-body" class="panel-body"></div>
   </dialog>
 
   <template id="turn-user">
