@@ -219,6 +219,20 @@ CREATE TABLE IF NOT EXISTS device_events (
 CREATE INDEX IF NOT EXISTS device_events_user ON device_events (user_id, id);
 
 -- "What Ira did": every tool call, without its arguments or results.
+-- Answers people reported (Play asks every AI app for this): which answer, why, when.
+CREATE TABLE IF NOT EXISTS reports (
+    id         TEXT PRIMARY KEY,
+    user_id    INTEGER NOT NULL,
+    message_id INTEGER NOT NULL,
+    reason     TEXT NOT NULL,
+    note       TEXT,
+    status     TEXT NOT NULL DEFAULT 'open',
+    created_at REAL NOT NULL,
+    closed_at  REAL,
+    closed_by  TEXT
+);
+CREATE INDEX IF NOT EXISTS reports_created ON reports (created_at);
+
 -- A person's connections to other services (MCP servers). The secret is sealed with
 -- AES-GCM under a key kept outside this database; tools is the list last fetched.
 CREATE TABLE IF NOT EXISTS connections (

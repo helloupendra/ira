@@ -19,6 +19,7 @@ export const NAV: readonly NavItem[] = [
   { href: '/users', label: 'Users & roles', icon: 'users', needs: 'users' },
   { href: '/tokens', label: 'Tokens & security', icon: 'tokens', needs: 'admin.read' },
   { href: '/audit', label: 'Audit & cost', icon: 'audit', needs: 'admin.read' },
+  { href: '/reports', label: 'Reported answers', icon: 'alert', needs: 'admin.read' },
 ];
 
 // The four items that fit a phone's bottom bar; the rest go in "More".

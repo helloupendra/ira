@@ -89,6 +89,10 @@ switch it on.
   with their password again; an owner sets someone's password or email from
   Users & roles; `ira user password` and `ira user email` do it from the
   server. All go to the change log.
+- **Report an answer.** Every answer in the Ira app has **Report** (wrong,
+  harmful, offensive, private, other, and a note); the phone and Mac apps
+  use the same `POST /v1/me/reports`. Owners and admins read them under
+  **Reported answers** in the console and mark them dealt with.
 - **A paired device may talk to Ira for its person**, over HTTP too: ask,
   stream, voice and confirm actions, with at most those permissions of the
   person's role. It still never changes settings, pairs or manages

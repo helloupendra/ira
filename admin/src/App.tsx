@@ -20,6 +20,7 @@ const Tools = lazy(() => import('./pages/Tools'));
 const Models = lazy(() => import('./pages/Models'));
 const Channels = lazy(() => import('./pages/Channels'));
 const Devices = lazy(() => import('./pages/Devices'));
+const Reports = lazy(() => import('./pages/Reports'));
 const Users = lazy(() => import('./pages/Users'));
 const Tokens = lazy(() => import('./pages/Tokens'));
 const Audit = lazy(() => import('./pages/Audit'));
@@ -128,6 +129,7 @@ function Console() {
           <Route path="/tools" component={Tools} />
           <Route path="/models" component={Models} />
           <Route path="/channels" component={Channels} />
+          <Route path="/reports" component={Reports} />
           <Route path="/devices">
             <Guard needs="ask" title="Devices">
               <Devices />

@@ -423,3 +423,6 @@ select { font: inherit; min-height: var(--tap); padding: 0 var(--s-2); border: 1
 .thumbs { margin-top: var(--s-2); }
 .tool-row { align-items: center; justify-content: space-between; gap: var(--s-2); }
 .tool-row span { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.report { margin-top: var(--s-1); }
+.report-form { flex-wrap: wrap; gap: var(--s-2); }
+.report-form input { flex: 1; min-width: 10rem; }

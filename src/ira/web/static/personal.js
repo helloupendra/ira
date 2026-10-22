@@ -1157,7 +1157,17 @@ const IraPersonal = (() => {
   }
 
   // Thumbs on an answer, when you let Ira learn from them.
+  const REPORT_REASONS = {
+    wrong: "It is wrong",
+    harmful: "It is harmful or dangerous",
+    offensive: "It is offensive",
+    private: "It shows something private",
+    other: "Something else",
+  };
+
+  // Every answer can be reported; thumbs only when you let Ira learn from them.
   function answered(li, messageId) {
+    li.append(reportControl(messageId));
     if (!learning || !learning.on || !learning.sources.some((source) => source.name === "feedback" && source.on)) return;
     const row = el("div", { className: "row thumbs" });
     const rate = (rating) => async () => {
@@ -1173,6 +1183,40 @@ const IraPersonal = (() => {
       el("button", { type: "button", className: "text-btn", text: "Not good", onClick: rate("down") }),
     );
     li.append(row);
+  }
+
+  function reportControl(messageId) {
+    const holder = el("div", { className: "report" });
+    const open = el("button", {
+      type: "button",
+      className: "text-btn small",
+      text: "Report",
+      "aria-label": "Report this answer",
+      onClick: () => {
+        const reason = el("select", { "aria-label": "Why" }, Object.entries(REPORT_REASONS).map(([value, text]) => el("option", { value, text })));
+        const note = el("input", { maxlength: "500", placeholder: "What was wrong (optional)", "aria-label": "What was wrong" });
+        const form = el(
+          "form",
+          { className: "row report-form" },
+          reason,
+          note,
+          el("button", { type: "submit", className: "btn btn-ghost", text: "Send" }),
+        );
+        form.addEventListener("submit", async (event) => {
+          event.preventDefault();
+          try {
+            await call("/v1/me/reports", { method: "POST", json: { message_id: messageId, reason: reason.value, note: note.value || undefined } });
+            holder.replaceChildren(el("span", { className: "muted small", text: "Reported. Thank you: the people who run this Ira will look at it." }));
+          } catch (problem) {
+            holder.replaceChildren(el("span", { className: "error small", text: problem.message }));
+          }
+        });
+        holder.replaceChildren(form);
+        reason.focus();
+      },
+    });
+    holder.append(open);
+    return holder;
   }
 
   // Your time zone, from this browser, the first time: routines and reminders use it.

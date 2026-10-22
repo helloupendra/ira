@@ -1719,6 +1719,57 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/me/reports": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Report one of Ira's answers to you (wrong, harmful, offensive, private, other) */
+        post: operations["report_answer"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/reports": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Reported answers, newest first (owners and admins) */
+        get: operations["list_reports"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/reports/{report_id}/close": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Mark a report as dealt with */
+        post: operations["close_report"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -2706,7 +2757,7 @@ export interface components {
             at: number;
             /**
              * Event
-             * @description From a device: watch_done, task_done or task_failed. From Ira: reminder, nudge, or learning_question (data.learning_id: answer it with approve or reject).
+             * @description From a device: watch_done, task_progress, task_done or task_failed. From Ira: reminder, nudge, or learning_question (data.learning_id: answer it with approve or reject).
              */
             event: string;
             /** Title */
@@ -3653,6 +3704,75 @@ export interface components {
             created_at: number;
             /** Done At */
             done_at?: number | null;
+        };
+        /** ReportIn */
+        ReportIn: {
+            /**
+             * Message Id
+             * @description The answer's message_id, from ask or the done event.
+             */
+            message_id: number;
+            /**
+             * Reason
+             * @description wrong (not true), harmful (dangerous advice), offensive, private (it showed something it should not), or other.
+             * @enum {string}
+             */
+            reason: "wrong" | "harmful" | "offensive" | "private" | "other";
+            /** Note */
+            note?: string | null;
+        };
+        /** ReportMade */
+        ReportMade: {
+            /** Id */
+            id: string;
+            /**
+             * Status
+             * @default open
+             * @constant
+             */
+            status: "open";
+        };
+        /** ReportRow */
+        ReportRow: {
+            /** Id */
+            id: string;
+            /** Created At */
+            created_at: number;
+            /**
+             * Email
+             * @description Who reported it.
+             */
+            email: string | null;
+            /**
+             * Reason
+             * @enum {string}
+             */
+            reason: "wrong" | "harmful" | "offensive" | "private" | "other";
+            /** Note */
+            note?: string | null;
+            /** Message Id */
+            message_id: number;
+            /** Conversation Id */
+            conversation_id?: string | null;
+            /**
+             * Answer
+             * @description The reported answer, up to 2,000 characters.
+             */
+            answer: string;
+            /**
+             * Model
+             * @description The model that wrote it.
+             */
+            model?: string | null;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "open" | "closed";
+            /** Closed At */
+            closed_at?: number | null;
+            /** Closed By */
+            closed_by?: string | null;
         };
         /** RoleChange */
         RoleChange: {
@@ -10536,6 +10656,102 @@ export interface operations {
                 };
                 content: {
                     "text/html": string;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    report_answer: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReportIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReportMade"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_reports: {
+        parameters: {
+            query?: {
+                status?: string | null;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReportRow"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    close_report: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                report_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OkResponse"];
                 };
             };
             /** @description Validation Error */

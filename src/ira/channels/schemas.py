@@ -1347,6 +1347,38 @@ class FeedbackIn(BaseModel):
     note: str | None = Field(default=None, max_length=300, description="What would be better.")
 
 
+ReportReason = Literal["wrong", "harmful", "offensive", "private", "other"]
+
+
+class ReportIn(BaseModel):
+    message_id: int = Field(description="The answer's message_id, from ask or the done event.")
+    reason: ReportReason = Field(
+        description="wrong (not true), harmful (dangerous advice), offensive, private (it "
+        "showed something it should not), or other."
+    )
+    note: str | None = Field(default=None, max_length=500)
+
+
+class ReportMade(BaseModel):
+    id: str
+    status: Literal["open"] = "open"
+
+
+class ReportRow(BaseModel):
+    id: str
+    created_at: float
+    email: str | None = Field(description="Who reported it.")
+    reason: ReportReason
+    note: str | None = None
+    message_id: int
+    conversation_id: str | None = None
+    answer: str = Field(description="The reported answer, up to 2,000 characters.")
+    model: str | None = Field(default=None, description="The model that wrote it.")
+    status: Literal["open", "closed"]
+    closed_at: float | None = None
+    closed_by: str | None = None
+
+
 class FeedbackKept(BaseModel):
     learned: bool = Field(
         description="True when it was kept: learning and its feedback source are on."

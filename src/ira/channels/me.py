@@ -433,6 +433,7 @@ async def delete_my_data(
         events = store.execute("DELETE FROM device_events WHERE user_id = ?", (user_id,)).rowcount
         activity = store.execute("DELETE FROM tool_log WHERE user_id = ?", (user_id,)).rowcount
         store.execute("DELETE FROM voice_turns WHERE user_id = ?", (user_id,))
+        store.execute("DELETE FROM reports WHERE user_id = ?", (user_id,))
         store.execute("DELETE FROM device_pairings WHERE user_id = ?", (user_id,))
         devices = store.execute("DELETE FROM devices WHERE user_id = ?", (user_id,)).rowcount
         settings = store.execute("DELETE FROM user_settings WHERE user_id = ?", (user_id,)).rowcount

@@ -8390,6 +8390,170 @@
                     }
                 }
             }
+        },
+        "/v1/me/reports": {
+            "post": {
+                "tags": [
+                    "reports"
+                ],
+                "summary": "Report one of Ira's answers to you (wrong, harmful, offensive, private, other)",
+                "operationId": "report_answer",
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/ReportIn"
+                            }
+                        }
+                    },
+                    "required": true
+                },
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ReportMade"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "HTTPBearer": []
+                    }
+                ]
+            }
+        },
+        "/v1/admin/reports": {
+            "get": {
+                "tags": [
+                    "reports"
+                ],
+                "summary": "Reported answers, newest first (owners and admins)",
+                "operationId": "list_reports",
+                "security": [
+                    {
+                        "HTTPBearer": []
+                    }
+                ],
+                "parameters": [
+                    {
+                        "name": "status",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "anyOf": [
+                                {
+                                    "type": "string",
+                                    "pattern": "^(open|closed)$"
+                                },
+                                {
+                                    "type": "null"
+                                }
+                            ],
+                            "title": "Status"
+                        }
+                    },
+                    {
+                        "name": "limit",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "type": "integer",
+                            "maximum": 500,
+                            "minimum": 1,
+                            "default": 100,
+                            "title": "Limit"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "array",
+                                    "items": {
+                                        "$ref": "#/components/schemas/ReportRow"
+                                    },
+                                    "title": "Response List Reports"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/v1/admin/reports/{report_id}/close": {
+            "post": {
+                "tags": [
+                    "reports"
+                ],
+                "summary": "Mark a report as dealt with",
+                "operationId": "close_report",
+                "security": [
+                    {
+                        "HTTPBearer": []
+                    }
+                ],
+                "parameters": [
+                    {
+                        "name": "report_id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "title": "Report Id"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/OkResponse"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
         }
     },
     "components": {
@@ -10505,7 +10669,7 @@
                     "event": {
                         "type": "string",
                         "title": "Event",
-                        "description": "From a device: watch_done, task_done or task_failed. From Ira: reminder, nudge, or learning_question (data.learning_id: answer it with approve or reject)."
+                        "description": "From a device: watch_done, task_progress, task_done or task_failed. From Ira: reminder, nudge, or learning_question (data.learning_id: answer it with approve or reject)."
                     },
                     "title": {
                         "type": "string",
@@ -12662,6 +12826,183 @@
                     "created_at"
                 ],
                 "title": "ReminderView"
+            },
+            "ReportIn": {
+                "properties": {
+                    "message_id": {
+                        "type": "integer",
+                        "title": "Message Id",
+                        "description": "The answer's message_id, from ask or the done event."
+                    },
+                    "reason": {
+                        "type": "string",
+                        "enum": [
+                            "wrong",
+                            "harmful",
+                            "offensive",
+                            "private",
+                            "other"
+                        ],
+                        "title": "Reason",
+                        "description": "wrong (not true), harmful (dangerous advice), offensive, private (it showed something it should not), or other."
+                    },
+                    "note": {
+                        "anyOf": [
+                            {
+                                "type": "string",
+                                "maxLength": 500
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Note"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "message_id",
+                    "reason"
+                ],
+                "title": "ReportIn"
+            },
+            "ReportMade": {
+                "properties": {
+                    "id": {
+                        "type": "string",
+                        "title": "Id"
+                    },
+                    "status": {
+                        "type": "string",
+                        "const": "open",
+                        "title": "Status",
+                        "default": "open"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "id"
+                ],
+                "title": "ReportMade"
+            },
+            "ReportRow": {
+                "properties": {
+                    "id": {
+                        "type": "string",
+                        "title": "Id"
+                    },
+                    "created_at": {
+                        "type": "number",
+                        "title": "Created At"
+                    },
+                    "email": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Email",
+                        "description": "Who reported it."
+                    },
+                    "reason": {
+                        "type": "string",
+                        "enum": [
+                            "wrong",
+                            "harmful",
+                            "offensive",
+                            "private",
+                            "other"
+                        ],
+                        "title": "Reason"
+                    },
+                    "note": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Note"
+                    },
+                    "message_id": {
+                        "type": "integer",
+                        "title": "Message Id"
+                    },
+                    "conversation_id": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Conversation Id"
+                    },
+                    "answer": {
+                        "type": "string",
+                        "title": "Answer",
+                        "description": "The reported answer, up to 2,000 characters."
+                    },
+                    "model": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Model",
+                        "description": "The model that wrote it."
+                    },
+                    "status": {
+                        "type": "string",
+                        "enum": [
+                            "open",
+                            "closed"
+                        ],
+                        "title": "Status"
+                    },
+                    "closed_at": {
+                        "anyOf": [
+                            {
+                                "type": "number"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Closed At"
+                    },
+                    "closed_by": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Closed By"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "id",
+                    "created_at",
+                    "email",
+                    "reason",
+                    "message_id",
+                    "answer",
+                    "status"
+                ],
+                "title": "ReportRow"
             },
             "RoleChange": {
                 "properties": {

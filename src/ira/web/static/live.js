@@ -303,6 +303,7 @@ const IraLive = (() => {
         const li = bubble(message.turn);
         if (message.text) $(".turn-text", li).textContent = message.text;
         remember({ role: "ira", text: message.text, how: { model: null, tools: [] } });
+        if (message.message_id && typeof IraPersonal !== "undefined") IraPersonal.answered(li, message.message_id);
         announce(message.text);
         if (!call.sources.length && !call.speaking) label("Listening…");
         break;

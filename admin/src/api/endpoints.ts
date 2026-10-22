@@ -9,6 +9,7 @@ export type Status = Schemas['StatusResponse'];
 export type User = Schemas['UserView'];
 export type UserView = Schemas['UserView'];
 export type AdminUserRow = Schemas['AdminUserRow'];
+export type ReportRow = Schemas['ReportRow'];
 export type RoleView = Schemas['RoleView'];
 export type Overview = Schemas['Overview'];
 export type ModelUsage = Schemas['ModelUsage'];
@@ -133,6 +134,9 @@ export const downloads = {
 export const admin = {
   // Reads (admin.read).
   overview: (signal?: AbortSignal) => request<Overview>('/v1/admin/overview', { signal }),
+  reports: (query: { status?: 'open' | 'closed' } = {}, signal?: AbortSignal) =>
+    request<ReportRow[]>('/v1/admin/reports', { query, signal }),
+  closeReport: (id: string) => request<OkResponse>(`/v1/admin/reports/${enc(id)}/close`, { method: 'POST' }),
   calls: (query: CallsQuery = {}, signal?: AbortSignal) =>
     request<CallRow[]>('/v1/admin/calls', { query, signal }),
   conversations: (query: ConversationsQuery = {}, signal?: AbortSignal) =>

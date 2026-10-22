@@ -22,7 +22,17 @@ from starlette.types import Scope
 
 from ira import __version__, web
 from ira.accounts import Principal
-from ira.channels import account, admin, admin_write, connectors, devices, learning, live, me
+from ira.channels import (
+    account,
+    admin,
+    admin_write,
+    connectors,
+    devices,
+    learning,
+    live,
+    me,
+    reports,
+)
 from ira.channels.account import claim_setup
 from ira.channels.deps import (
     SESSION_COOKIE,
@@ -579,6 +589,7 @@ def create_app(runtime: Runtime, *, start_channels: bool = True) -> FastAPI:
     app.include_router(live.router)
     app.include_router(connectors.router)
     app.include_router(connectors.callback)
+    app.include_router(reports.router)
     devices.mask_tokens_in_logs()
 
     @app.get("/pair", include_in_schema=False)

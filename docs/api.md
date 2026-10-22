@@ -305,6 +305,18 @@ Each tool's `min_tier` comes from its annotations: read-only is 0, unmarked
 or writing is 2, destructive or about sending, paying, sharing, deleting,
 merging or pushing is 3. See [Your connections](connectors.md).
 
+### Reporting an answer
+
+| Route | Who | Does |
+| --- | --- | --- |
+| `POST /v1/me/reports` | `ask` (a session, an API token or a paired device) | `ReportIn`: `message_id` of one of Ira's answers to you, `reason` (`wrong`, `harmful`, `offensive`, `private`, `other`) and an optional `note`. `404` for an answer that is not yours |
+| `GET /v1/admin/reports?status=open` | `admin.read` | `ReportRow[]`, newest first: who, why, the note, the answer (2,000 characters) and its model |
+| `POST /v1/admin/reports/{id}/close` | a session with `admin.write` | marks it dealt with, in the change log |
+
+The Ira app has **Report** under every answer; the Android and Mac apps
+offer the same. App stores ask every app that shows AI-written content for
+this.
+
 ## Devices
 
 The protocol, limits and security are in [Devices](devices.md). The routes:
