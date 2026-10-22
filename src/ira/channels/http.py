@@ -61,7 +61,7 @@ from ira.models.base import ProviderError
 from ira.runtime import Runtime
 from ira.voice.audio import AudioError, check_wav, to_mono16k
 from ira.voice.shorten import speakable
-from ira.web import STATIC_DIR, setup_page
+from ira.web import STATIC_DIR
 
 log = logging.getLogger("ira.http")
 
@@ -505,10 +505,8 @@ def create_app(runtime: Runtime, *, start_channels: bool = True) -> FastAPI:
         code = runtime.ensure_setup_code()
         if code and not runtime.setup_code_shown:
             log.warning(
-                "No account exists yet. Open %s%s#code=%s to create the owner, or run `ira setup`.",
-                runtime.public_url or "",
-                setup_page(),
-                code,
+                "No account exists yet. Open %s to create the owner, or run `ira setup`.",
+                runtime.setup_link(code),
             )
         tasks: list[asyncio.Task] = []
         if start_channels and runtime.learner is not None:

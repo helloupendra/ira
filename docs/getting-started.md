@@ -55,8 +55,9 @@ Ira is listening on http://127.0.0.1:8765  (API docs: /v1/docs)
 
         http://127.0.0.1:8765/admin/setup#code=7F3A-91C2-0B4E
 
-    or enter the setup code 7F3A-91C2-0B4E on that page. It works once, and only
-    until the owner exists. (`ira setup` in a terminal does the same.)
+    or enter the setup code 7F3A-91C2-0B4E on that page. It works once, for 24
+    hours, and a restart keeps it. `ira setup --new-code` replaces it;
+    `ira setup` in a terminal creates the owner here instead.
 ```
 
 The link opens the console's setup wizard with the code already filled in.
@@ -84,6 +85,10 @@ remembers where you were. The code itself is only used in step 1.
   `journalctl -u ira` under systemd), so someone who merely reaches an
   exposed server cannot claim it.
 - It works once. As soon as the owner exists, the setup routes answer `409`.
+- It lasts 24 hours, and a restart keeps it: the server prints the same link
+  again. After 24 hours the next start (or the next try) makes a new one and
+  logs it. `ira setup --new-code` replaces it at once, and the old link stops
+  working.
 - Wrong codes are throttled: five from one address lock that address out
   for 15 minutes.
 - On a server bound to `0.0.0.0`, the printed link uses `127.0.0.1`; open the

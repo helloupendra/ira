@@ -60,11 +60,20 @@ def _pick_user(accounts: Accounts, email: str | None) -> User:
 
 
 def cmd_setup(args: argparse.Namespace) -> int:
+    from ira import setupcode
+
     settings = _settings(args)
-    accounts = Accounts(_store(settings))
+    store = _store(settings)
+    accounts = Accounts(store)
     if accounts.count() > 0:
         print("Setup is already done. Sign in with your existing account.")
         return 1
+    if args.new_code:
+        http = settings.channels.http
+        code = setupcode.renew(store)
+        print(setup_banner(code, http.host, http.port, http.public_url))
+        print("    The earlier link no longer works.")
+        return 0
     email = args.email or input("Owner email: ").strip()
     password = _secret_input("Password (10+ characters): ", confirm=True)
     try:
@@ -126,8 +135,9 @@ def setup_banner(code: str, host: str, port: int, public_url: str | None = None)
     return (
         "\n    No account exists yet. To create the owner account, open:\n\n"
         f"        {base}{page}#code={code}\n\n"
-        f"    or enter the setup code {code} on that page. It works once, and only\n"
-        "    until the owner exists. (`ira setup` in a terminal does the same.)\n"
+        f"    or enter the setup code {code} on that page. It works once, for 24\n"
+        "    hours, and a restart keeps it. `ira setup --new-code` replaces it;\n"
+        "    `ira setup` in a terminal creates the owner here instead.\n"
     )
 
 
@@ -345,6 +355,9 @@ def build_parser() -> argparse.ArgumentParser:
 
     p = add("setup", cmd_setup, "create the owner account")
     p.add_argument("--email")
+    p.add_argument(
+        "--new-code", action="store_true", help="replace the setup link instead (24 hours)"
+    )
 
     p = add("serve", cmd_serve, "run the API, web chat and enabled channels")
     p.add_argument("--host")

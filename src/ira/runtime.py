@@ -3,11 +3,10 @@
 from __future__ import annotations
 
 import logging
-import secrets
 from dataclasses import dataclass, field
 from typing import Any
 
-from ira import overrides
+from ira import overrides, setupcode
 from ira.accounts import Accounts
 from ira.assistant import Assistant
 from ira.config import ConfigError, ProviderConfig, Settings, secret
@@ -63,7 +62,6 @@ class Runtime:
     tts: TextToSpeech | None = None
     http_clients: list[HttpClient] = field(default_factory=list)
     channel_state: dict[str, dict[str, Any]] = field(default_factory=dict)
-    setup_code: str | None = None
     setup_code_shown: bool = False
     # What `ira serve` bound, which --host and --port can change from ira.yaml.
     bound_host: str | None = None
@@ -134,17 +132,32 @@ class Runtime:
         """Where to open this server: public_url when set, else the address it listens on."""
         return self.public_url or local_url(self.host, self.port)
 
+    @property
+    def setup_code(self) -> str | None:
+        """The setup code in force, if any; never makes one."""
+        return setupcode.current(self.store) if self.accounts.needs_owner() else None
+
     def ensure_setup_code(self) -> str | None:
         """While no account exists, a one-time code guards the web setup form.
 
         The code is printed by ``ira serve`` (and logged), so only someone who
-        can see the server's output can claim a freshly exposed install.
+        can see the server's output can claim a freshly exposed install. It is
+        kept in the database: a restart prints the same link again.
         """
         if not self.accounts.needs_owner():
-            self.setup_code = None
-        elif self.setup_code is None:
-            self.setup_code = "-".join(secrets.token_hex(2).upper() for _ in range(3))
-        return self.setup_code
+            setupcode.retire(self.store)
+            return None
+        code = setupcode.current(self.store)
+        if code is None:
+            code = setupcode.renew(self.store)
+            if self.setup_code_shown:  # the printed one expired while running
+                log.warning("The setup code expired. A new link: %s", self.setup_link(code))
+        return code
+
+    def setup_link(self, code: str) -> str:
+        from ira.web import setup_page
+
+        return f"{self.public_url or ''}{setup_page()}#code={code}"
 
     async def aclose(self) -> None:
         for client in self.http_clients:

@@ -59,6 +59,9 @@ switch it on.
 - **Half sentences**: when a tool that only reads can settle what was meant,
   Ira looks first and asks only when looking would not help.
 - `GET /admin` without a trailing slash redirects to the console.
+- **The setup link survives restarts.** The setup code is kept in the
+  database for 24 hours, so a link already handed out keeps working after a
+  restart; `ira setup --new-code` replaces it.
 
 - **`ira init <folder>`** makes a new business folder from templates in the
   package: a commented `ira.yaml`, a placeholder `tools.py` (one read tool,

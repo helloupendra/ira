@@ -12,7 +12,7 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 
-from ira import __version__, changes
+from ira import __version__, changes, setupcode
 from ira.accounts import AccountError, Principal
 from ira.channels.deps import (
     SESSION_COOKIE,
@@ -75,7 +75,7 @@ def claim_setup(
         # Lost a race to another setup: the other request created the owner.
         status = 409 if not runtime.accounts.needs_owner() else 400
         raise HTTPException(status, detail=str(exc)) from None
-    runtime.setup_code = None
+    setupcode.retire(runtime.store)
     changes.record(runtime.store, user.email, "setup.owner", user.email, channel="web")
     return start_browser_session(runtime, request, response, user.id)
 

@@ -3,14 +3,17 @@
 from __future__ import annotations
 
 import threading
+import time
 
 import pytest
 from fastapi.testclient import TestClient
 
+from ira import setupcode
 from ira.accounts import AccountError, Accounts
 from ira.channels.http import create_app
-from ira.cli import setup_banner
+from ira.cli import main, setup_banner
 from ira.store import Store
+from ira.web import setup_page
 
 from .conftest import make_runtime
 
@@ -119,3 +122,50 @@ def test_serve_prints_the_setup_link_with_the_code(tmp_path, monkeypatch):
     (tmp_path / "index.html").write_text("<!doctype html>", encoding="utf-8")
     banner = setup_banner("7F3A-91C2-0B4E", "192.0.2.10", 9000)
     assert "http://192.0.2.10:9000/admin/setup#code=7F3A-91C2-0B4E" in banner
+
+
+def test_a_restart_keeps_the_link_already_handed_out(tmp_path):
+    path = tmp_path / "ira.db"
+    first = make_runtime(store=Store(path))
+    with TestClient(create_app(first, start_channels=False)):
+        handed_out = first.setup_code
+    assert handed_out
+    # The server restarts: a new process, the same database.
+    second = make_runtime(store=Store(path))
+    with TestClient(create_app(second, start_channels=False)) as client:
+        assert second.setup_code == handed_out
+        assert client.post("/v1/setup/owner", json=owner_body(handed_out)).status_code == 200
+        again = client.post("/v1/setup/owner", json=owner_body(handed_out, "b@example.com"))
+        assert again.status_code == 409
+    assert second.setup_code is None
+    assert Store(path).get_setting(setupcode.KEY) is None
+
+
+def test_the_code_expires_after_a_day_and_a_new_one_is_logged(tmp_path, caplog):
+    store = Store(tmp_path / "ira.db")
+    old = setupcode.renew(store, clock=lambda: time.time() - setupcode.TTL_SECONDS - 1)
+    assert setupcode.current(store) is None
+    runtime = make_runtime(store=store)
+    runtime.setup_code_shown = True
+    fresh = runtime.ensure_setup_code()
+    assert fresh and fresh != old
+    assert f"#code={fresh}" in caplog.text
+    assert runtime.ensure_setup_code() == fresh
+
+
+def test_ira_setup_new_code_replaces_the_link(tmp_path, capsys):
+    config = tmp_path / "ira.yaml"
+    config.write_text(
+        "data_dir: ./data\nchannels:\n  http:\n    public_url: https://ira.example.com\n",
+        encoding="utf-8",
+    )
+    store = Store(tmp_path / "data" / "ira.db")
+    old = setupcode.renew(store)
+    assert main(["--config", str(config), "setup", "--new-code"]) == 0
+    new = setupcode.current(store)
+    assert new and new != old
+    printed = capsys.readouterr().out
+    assert f"https://ira.example.com{setup_page()}#code={new}" in printed
+    assert "The earlier link no longer works." in printed
+    Accounts(store).create_first_owner("owner@example.com", PASSWORD)
+    assert main(["--config", str(config), "setup", "--new-code"]) == 1

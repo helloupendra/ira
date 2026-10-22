@@ -399,7 +399,8 @@ The link opens the console's setup wizard with the code filled in: the
 owner's email and password, the assistant's name and voice, the providers
 (Bedrock needs no key here), the owner's action PIN, and channels. The code
 rides after `#`, so the browser never sends it to Cloudflare or to IRA's
-logs. It works once, and only until the owner exists. Then check everything:
+logs. It works once, for 24 hours, and survives restarts (`ira setup
+--new-code` replaces it). Then check everything:
 
 ```bash
 sudo -u ira ira doctor /srv/ira/clinic
