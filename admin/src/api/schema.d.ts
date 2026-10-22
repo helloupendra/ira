@@ -2088,6 +2088,23 @@ export interface components {
             /** Detail */
             detail: string | null;
         };
+        /** BuiltinOffer */
+        BuiltinOffer: {
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "google" | "imap";
+            /** Name */
+            name: string;
+            /** Description */
+            description: string;
+            /**
+             * Available
+             * @description False: this server's owner has not set it up.
+             */
+            available: boolean;
+        };
         /** CallRow */
         CallRow: {
             /** Id */
@@ -2202,6 +2219,12 @@ export interface components {
              */
             server?: string | null;
             /**
+             * Builtin
+             * @description Or Google (sign in) or IMAP mail (with imap).
+             */
+            builtin?: ("google" | "imap") | null;
+            imap?: components["schemas"]["ImapLogin"] | null;
+            /**
              * Env
              * @description What a local server needs.
              */
@@ -2274,7 +2297,7 @@ export interface components {
              * Kind
              * @enum {string}
              */
-            kind: "mcp_http" | "mcp_stdio";
+            kind: "mcp_http" | "mcp_stdio" | "google" | "imap";
             /**
              * Url
              * @description A remote server's address; never its token.
@@ -2317,6 +2340,8 @@ export interface components {
             connections: components["schemas"]["ConnectionView"][];
             /** Servers */
             servers: components["schemas"]["ServerOffer"][];
+            /** Builtins */
+            builtins?: components["schemas"]["BuiltinOffer"][];
         };
         /** ConversationRow */
         ConversationRow: {
@@ -2743,6 +2768,26 @@ export interface components {
         HTTPValidationError: {
             /** Detail */
             detail?: components["schemas"]["ValidationError"][];
+        };
+        /** ImapLogin */
+        ImapLogin: {
+            /**
+             * Host
+             * @description imap.gmail.com, outlook.office365.com, ...
+             */
+            host: string;
+            /** User */
+            user: string;
+            /**
+             * Password
+             * @description An app password, kept sealed.
+             */
+            password: string;
+            /**
+             * Port
+             * @default 993
+             */
+            port: number;
         };
         /** InfoResponse */
         InfoResponse: {

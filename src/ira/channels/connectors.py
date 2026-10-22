@@ -19,6 +19,7 @@ from ira.accounts import Principal
 from ira.channels.deps import get_runtime, require_session
 from ira.channels.learning import check_pin
 from ira.channels.schemas import (
+    BuiltinOffer,
     ConnectionCreate,
     ConnectionsView,
     ConnectionUpdate,
@@ -69,10 +70,12 @@ def my_connections(
     available = runtime.connectors is not None and _available()
     connections = runtime.connectors.for_user(who.user.id) if available else []
     servers = runtime.connectors.servers() if available else []
+    builtins = runtime.connectors.builtins() if available else []
     return ConnectionsView(
         available=available,
         connections=[_view(c) for c in connections],
         servers=[ServerOffer(**s) for s in servers],
+        builtins=[BuiltinOffer(**b) for b in builtins],
     )
 
 
@@ -83,10 +86,26 @@ async def add_connection(
     runtime: Runtime = Depends(get_runtime),
 ) -> ConnectionView:
     service = _service(runtime)
-    if bool(body.url) == bool(body.server):
-        raise HTTPException(400, detail="give either a url or one of this server's local servers")
+    if sum(bool(x) for x in (body.url, body.server, body.builtin)) != 1:
+        raise HTTPException(
+            400, detail="give one of: a url, one of this server's local servers, or a built-in"
+        )
     await check_pin(runtime, who, body.pin, f"connecting {body.name}")
     try:
+        if body.builtin == "google":
+            connection = service.add_google(who.user.id, body.name)
+            address = await service.sign_in(who.user.id, connection.id)
+            view = _view(connection)
+            view.authorize_url = address
+            return view
+        if body.builtin == "imap":
+            if body.imap is None:
+                raise HTTPException(400, detail="give the mail server, address and app password")
+            login = body.imap
+            connection = await service.add_imap(
+                who.user.id, body.name, login.host, login.user, login.password, login.port
+            )
+            return _view(connection)
         if body.url:
             connection = service.add_remote(
                 who.user.id, body.name, body.url, body.headers, oauth=body.oauth
@@ -141,14 +160,14 @@ callback = APIRouter(tags=["your connections"])
     response_class=HTMLResponse,
     summary="Public: where a service sends you back after signing in",
 )
-def oauth_callback(
+async def oauth_callback(
     state: str = Query("", max_length=200),
     code: str | None = Query(None, max_length=2000),
     error: str | None = Query(None, max_length=200),
     runtime: Runtime = Depends(get_runtime),
 ) -> HTMLResponse:
     try:
-        name = _service(runtime).signed_in(state, code, error)
+        name = await _service(runtime).signed_in(state, code, error)
         title, text = "Connected", f"{name} is connected. You can close this window."
     except (ToolError, HTTPException) as exc:
         title, text = "Not connected", str(getattr(exc, "detail", exc))

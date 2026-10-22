@@ -99,7 +99,9 @@ switch it on.
   (the `connectors` extra). Tiers come from each tool's annotations and
   only get stricter; output is untrusted; tokens are sealed with AES-GCM
   and never shown again. Remote servers on private addresses are refused
-  unless allowed. Services that sign you in (OAuth) work too: Ira opens
+  unless allowed. Google (Gmail and Calendar, read-only, through the
+  owner's own OAuth client) and any mailbox over IMAP with an app password
+  are built in. Services that sign you in (OAuth) work too: Ira opens
   their page and finishes when the browser comes back. A confirmed Tier 2
   or 3 action of a connection runs through that person's own tool.
 - **A general assistant.** Ira plans across tools on any of the person's

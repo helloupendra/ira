@@ -1389,7 +1389,7 @@ class ConnectionView(BaseModel):
     id: str
     name: str
     slug: str
-    kind: Literal["mcp_http", "mcp_stdio"]
+    kind: Literal["mcp_http", "mcp_stdio", "google", "imap"]
     url: str | None = Field(description="A remote server's address; never its token.")
     server: str | None = Field(description="A local server this IRA offers, by name.")
     enabled: bool
@@ -1411,10 +1411,25 @@ class ServerOffer(BaseModel):
     needs: list[str] = Field(description="What you give it, such as a token, kept sealed.")
 
 
+class BuiltinOffer(BaseModel):
+    kind: Literal["google", "imap"]
+    name: str
+    description: str
+    available: bool = Field(description="False: this server's owner has not set it up.")
+
+
 class ConnectionsView(BaseModel):
     available: bool = Field(description="False: this server lacks the connectors extra.")
     connections: list[ConnectionView]
     servers: list[ServerOffer]
+    builtins: list[BuiltinOffer] = Field(default_factory=list)
+
+
+class ImapLogin(BaseModel):
+    host: str = Field(max_length=253, description="imap.gmail.com, outlook.office365.com, ...")
+    user: str = Field(max_length=254)
+    password: str = Field(max_length=200, description="An app password, kept sealed.")
+    port: int = Field(default=993, ge=1, le=65535)
 
 
 class ConnectionCreate(BaseModel):
@@ -1428,6 +1443,10 @@ class ConnectionCreate(BaseModel):
         default=False, description="Sign in with the service (OAuth) instead of a token."
     )
     server: str | None = Field(default=None, max_length=40, description="Or a local one, by name.")
+    builtin: Literal["google", "imap"] | None = Field(
+        default=None, description="Or Google (sign in) or IMAP mail (with imap)."
+    )
+    imap: ImapLogin | None = None
     env: dict[str, str] = Field(default_factory=dict, description="What a local server needs.")
     pin: str | None = Field(default=None, description="Your action PIN.")
 

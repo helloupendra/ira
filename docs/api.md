@@ -293,7 +293,7 @@ session with `ask`.
 | Route | Returns |
 | --- | --- |
 | `GET /v1/me/connections` | `ConnectionsView`: `available`, your `connections` (never a token) and the local `servers` this server offers |
-| `POST /v1/me/connections` | `ConnectionCreate`: `name`, and either `url` and `headers` (a remote MCP server; `https` and public unless the operator allows private ones) or `server` and `env` (a local one), and `pin`. Connects, fetches the tools, returns `ConnectionView` |
+| `POST /v1/me/connections` | `ConnectionCreate`: `name`, `pin`, and one of: `url` and `headers` or `oauth: true` (a remote MCP server; `https` and public unless the operator allows private ones), `server` and `env` (a local one), `builtin: "google"` (returns `authorize_url`), or `builtin: "imap"` with `imap` (`host`, `user`, `password`, `port`). Returns `ConnectionView` |
 | `POST /v1/me/connections/{id}/refresh` | fetches the tools again, keeping your choices |
 | `POST /v1/me/connections/{id}/sign-in` | for a service that signs you in (OAuth, `oauth: true` when adding): `ConnectionView` with `authorize_url` to open; the connection finishes when the browser comes back |
 | `GET /v1/connections/oauth/callback` | public: where the service sends the browser back; the one-time OAuth `state` is the proof, so no session is needed |

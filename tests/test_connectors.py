@@ -364,8 +364,8 @@ async def test_signing_in_to_a_service_with_oauth(store):
         assert location.startswith("https://ira.example.com/v1/connections/oauth/callback?")
         query = {k: v[0] for k, v in parse_qs(location.split("?", 1)[1]).items()}
         with pytest.raises(ToolError, match="expired"):
-            connectors.signed_in("not-the-state", query["code"])
-        assert connectors.signed_in(query["state"], query["code"]) == "Secured"
+            await connectors.signed_in("not-the-state", query["code"])
+        assert await connectors.signed_in(query["state"], query["code"]) == "Secured"
         await pending.task
         connection = connectors.get(1, added.id)
         assert connection.status == "ok" and [t["mcp_name"] for t in connection.tools] == ["whoami"]
@@ -381,3 +381,212 @@ async def test_signing_in_to_a_service_with_oauth(store):
     finally:
         server.should_exit = True
         await serving
+
+
+class StandInGoogle:
+    """Google's token, Gmail and Calendar endpoints, as far as Ira uses them."""
+
+    def __init__(self) -> None:
+        self.challenge = ""
+        self.seen: list[str] = []
+        self.refreshes = 0
+        self.refuse_refresh = False
+
+    def handler(self, request):
+        import base64
+        import hashlib
+
+        import httpx
+
+        url = str(request.url)
+        self.seen.append(url)
+        if url.startswith("https://oauth2.googleapis.com/token"):
+            form = dict(parse_qs(request.content.decode()))
+            form = {k: v[0] for k, v in form.items()}
+            if form["grant_type"] == "authorization_code":
+                digest = hashlib.sha256(form["code_verifier"].encode()).digest()
+                expected = base64.urlsafe_b64encode(digest).decode().rstrip("=")
+                if form["code"] != "good-code" or expected != self.challenge:
+                    return httpx.Response(400, json={"error": "invalid_grant"})
+                return httpx.Response(
+                    200, json={"access_token": "at1", "expires_in": 3600, "refresh_token": "rt1"}
+                )
+            if self.refuse_refresh:
+                return httpx.Response(400, json={"error": "invalid_grant"})
+            self.refreshes += 1
+            return httpx.Response(200, json={"access_token": "at2", "expires_in": 3600})
+        if request.headers.get("authorization") not in ("Bearer at1", "Bearer at2"):
+            return httpx.Response(401)
+        if "/messages/m1" in url and "format=metadata" in url:
+            headers = [
+                {"name": "From", "value": "Bank <alerts@bank.example>"},
+                {"name": "Subject", "value": "Your statement"},
+                {"name": "Date", "value": "Thu, 22 Oct 2026 09:00:00 +0530"},
+            ]
+            return httpx.Response(
+                200,
+                json={
+                    "id": "m1",
+                    "snippet": "Statement &amp; more",
+                    "labelIds": ["UNREAD"],
+                    "payload": {"headers": headers},
+                },
+            )
+        if "/messages/m1" in url:
+            body = base64.urlsafe_b64encode(b"Your statement is ready.").decode()
+            return httpx.Response(
+                200,
+                json={
+                    "id": "m1",
+                    "payload": {
+                        "headers": [{"name": "Subject", "value": "Your statement"}],
+                        "mimeType": "multipart/alternative",
+                        "parts": [{"mimeType": "text/plain", "body": {"data": body}}],
+                    },
+                },
+            )
+        if url.startswith("https://gmail.googleapis.com/gmail/v1/users/me/messages"):
+            return httpx.Response(200, json={"messages": [{"id": "m1"}]})
+        if "calendarList" in url:
+            return httpx.Response(200, json={"items": [{"id": "primary", "summary": "Me"}]})
+        if "/events" in url:
+            event = {
+                "summary": "Dentist",
+                "start": {"dateTime": "2026-10-23T10:00:00+05:30"},
+                "end": {"dateTime": "2026-10-23T10:30:00+05:30"},
+            }
+            return httpx.Response(200, json={"items": [event]})
+        return httpx.Response(404)
+
+
+async def test_google_mail_and_calendar_read_only(store):
+    from zoneinfo import ZoneInfo
+
+    import httpx
+
+    from ira.connectors.google import SCOPES, Google
+
+    fake = StandInGoogle()
+    http = httpx.AsyncClient(transport=httpx.MockTransport(fake.handler))
+    connectors = Connectors(
+        store,
+        lambda: Sealer(KEY),
+        ConnectorsConfig(),
+        google=lambda: Google("client-id", "client-secret", http),
+        callback_url=lambda: "https://ira.example.com",
+        zone_for=lambda user_id: ZoneInfo("Asia/Kolkata"),
+    )
+    assert connectors.builtins()[0] == {
+        "kind": "google",
+        "name": "Google",
+        "description": "Gmail and Google Calendar, read-only: you sign in with Google.",
+        "available": True,
+    }
+    added = connectors.add_google(1)
+    assert added.status == "needs_auth" and connectors.tools_for(1) == []
+    address = await connectors.sign_in(1, added.id)
+    params = {k: v[0] for k, v in parse_qs(address.split("?", 1)[1]).items()}
+    assert params["scope"] == " ".join(SCOPES) and params["access_type"] == "offline"
+    assert params["redirect_uri"] == "https://ira.example.com/v1/connections/oauth/callback"
+    fake.challenge = params["code_challenge"]
+    with pytest.raises(ToolError, match="did not sign you in"):
+        await connectors.signed_in(params["state"], None, "access_denied")
+    address = await connectors.sign_in(1, added.id)
+    params = {k: v[0] for k, v in parse_qs(address.split("?", 1)[1]).items()}
+    fake.challenge = params["code_challenge"]
+    assert await connectors.signed_in(params["state"], "good-code") == "Google"
+    raw = bytes(store.one("SELECT secret FROM connections WHERE id = ?", (added.id,))["secret"])
+    assert b"at1" not in raw and b"rt1" not in raw
+    tools = {t.name: t for t in connectors.tools_for(1)}
+    assert set(tools) == {"google_mail_search", "google_mail_read", "google_calendar_events"}
+    assert all(t.tier == 0 and t.source == "connector" for t in tools.values())
+    found = await tools["google_mail_search"].run({"query": "from:bank"})
+    assert found == {
+        "messages": [
+            {
+                "id": "m1",
+                "from": "Bank <alerts@bank.example>",
+                "subject": "Your statement",
+                "date": "Thu, 22 Oct 2026 09:00:00 +0530",
+                "snippet": "Statement & more",
+                "unread": True,
+            }
+        ]
+    }
+    read = await tools["google_mail_read"].run({"id": "m1"})
+    assert read["text"] == "Your statement is ready."
+    events = await tools["google_calendar_events"].run({"start": "2026-10-23", "end": "2026-10-23"})
+    assert events["events"][0]["title"] == "Dentist"
+    assert any("timeMin=2026-10-23T00%3A00%3A00%2B05%3A30" in u for u in fake.seen)
+    # An expired token is refreshed and kept; a refused refresh asks for a new sign-in.
+    connection = connectors.get(1, added.id)
+    secret = connectors._secret(connection)
+    secret["tokens"]["expires_at"] = 0
+    store.execute(
+        "UPDATE connections SET secret = ? WHERE id = ?",
+        (Sealer(KEY).seal(secret, f"1:{added.id}"), added.id),
+    )
+    await tools["google_mail_search"].run({})
+    assert fake.refreshes == 1
+    assert connectors._secret(connection)["tokens"]["access_token"] == "at2"
+    secret = connectors._secret(connection)
+    secret["tokens"]["expires_at"] = 0
+    store.execute(
+        "UPDATE connections SET secret = ? WHERE id = ?",
+        (Sealer(KEY).seal(secret, f"1:{added.id}"), added.id),
+    )
+    fake.refuse_refresh = True
+    with pytest.raises(ToolError, match="sign in again"):
+        await tools["google_mail_search"].run({})
+    assert connectors.get(1, added.id).status == "needs_auth"
+    await http.aclose()
+
+
+def test_no_google_until_the_owner_sets_it_up(store):
+    connectors = service(store, [])
+    assert connectors.builtins()[0]["available"] is False
+    with pytest.raises(ToolError, match="owner sets it up"):
+        connectors.add_google(1)
+
+
+class StandInMailbox:
+    opened: list = []
+
+    def __init__(self, host, user, password, port):
+        self.login = (host, user, password, port)
+
+    def check(self):
+        if self.login[2] != "app-password":
+            raise ToolError("the mail server refused that address or app password")
+
+    async def call(self, name, args):
+        StandInMailbox.opened.append((name, args))
+        if name == "mail_search":
+            return {"messages": [{"id": "42", "from": "Rahul", "subject": "GST", "date": "today"}]}
+        return {"text": "Please send the invoices."}
+
+
+async def test_imap_mail_with_an_app_password(store):
+    from ira.connectors.imap import criteria
+
+    connectors = Connectors(
+        store, lambda: Sealer(KEY), ConnectorsConfig(allow_private=True), mailbox=StandInMailbox
+    )
+    with pytest.raises(ToolError, match="refused"):
+        await connectors.add_imap(1, "Mail", "imap.example.com", "me@example.com", "wrong")
+    added = await connectors.add_imap(
+        1, "Mail", "imap.example.com", "me@example.com", "app-password"
+    )
+    assert added.status == "ok" and added.server == "imap.example.com"
+    raw = bytes(store.one("SELECT secret FROM connections WHERE id = ?", (added.id,))["secret"])
+    assert b"app-password" not in raw
+    tools = {t.name: t for t in connectors.tools_for(1)}
+    assert set(tools) == {"mail_mail_search", "mail_mail_read"}
+    found = await tools["mail_mail_search"].run({"sender": "Rahul"})
+    assert found["messages"][0]["subject"] == "GST"
+    assert criteria({"words": 'say "hi"', "sender": "rahul@example.com", "days": 7})[:4] == [
+        "TEXT",
+        '"say  hi"',
+        "FROM",
+        '"rahul@example.com"',
+    ]

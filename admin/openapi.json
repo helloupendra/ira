@@ -9161,6 +9161,39 @@
                 ],
                 "title": "AuditRow"
             },
+            "BuiltinOffer": {
+                "properties": {
+                    "kind": {
+                        "type": "string",
+                        "enum": [
+                            "google",
+                            "imap"
+                        ],
+                        "title": "Kind"
+                    },
+                    "name": {
+                        "type": "string",
+                        "title": "Name"
+                    },
+                    "description": {
+                        "type": "string",
+                        "title": "Description"
+                    },
+                    "available": {
+                        "type": "boolean",
+                        "title": "Available",
+                        "description": "False: this server's owner has not set it up."
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "kind",
+                    "name",
+                    "description",
+                    "available"
+                ],
+                "title": "BuiltinOffer"
+            },
             "CallRow": {
                 "properties": {
                     "id": {
@@ -9422,6 +9455,32 @@
                         "title": "Server",
                         "description": "Or a local one, by name."
                     },
+                    "builtin": {
+                        "anyOf": [
+                            {
+                                "type": "string",
+                                "enum": [
+                                    "google",
+                                    "imap"
+                                ]
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Builtin",
+                        "description": "Or Google (sign in) or IMAP mail (with imap)."
+                    },
+                    "imap": {
+                        "anyOf": [
+                            {
+                                "$ref": "#/components/schemas/ImapLogin"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ]
+                    },
                     "env": {
                         "additionalProperties": {
                             "type": "string"
@@ -9581,7 +9640,9 @@
                         "type": "string",
                         "enum": [
                             "mcp_http",
-                            "mcp_stdio"
+                            "mcp_stdio",
+                            "google",
+                            "imap"
                         ],
                         "title": "Kind"
                     },
@@ -9704,6 +9765,13 @@
                         },
                         "type": "array",
                         "title": "Servers"
+                    },
+                    "builtins": {
+                        "items": {
+                            "$ref": "#/components/schemas/BuiltinOffer"
+                        },
+                        "type": "array",
+                        "title": "Builtins"
                     }
                 },
                 "type": "object",
@@ -10550,6 +10618,41 @@
                 },
                 "type": "object",
                 "title": "HTTPValidationError"
+            },
+            "ImapLogin": {
+                "properties": {
+                    "host": {
+                        "type": "string",
+                        "maxLength": 253,
+                        "title": "Host",
+                        "description": "imap.gmail.com, outlook.office365.com, ..."
+                    },
+                    "user": {
+                        "type": "string",
+                        "maxLength": 254,
+                        "title": "User"
+                    },
+                    "password": {
+                        "type": "string",
+                        "maxLength": 200,
+                        "title": "Password",
+                        "description": "An app password, kept sealed."
+                    },
+                    "port": {
+                        "type": "integer",
+                        "maximum": 65535.0,
+                        "minimum": 1.0,
+                        "title": "Port",
+                        "default": 993
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "host",
+                    "user",
+                    "password"
+                ],
+                "title": "ImapLogin"
             },
             "InfoResponse": {
                 "properties": {

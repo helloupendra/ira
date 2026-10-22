@@ -117,7 +117,11 @@ class Runtime:
                 return sealer[0]
 
             self.connectors = Connectors(
-                self.store, seal, self.settings.connectors, callback_url=self.base_url
+                self.store,
+                seal,
+                self.settings.connectors,
+                callback_url=self.base_url,
+                zone_for=lambda user_id: self.learner.zone(user_id) if self.learner else None,
             )
         self.hub.welcome_extra = self._welcome
 

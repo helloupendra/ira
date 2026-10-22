@@ -61,6 +61,12 @@ models:
   prices:
     openai:gpt-4o-mini: { input: 0.15, output: 0.60 }
 
+# Each person's connections (pip install "ira-assistant[connectors]").
+# connectors:
+#   google:                      # Gmail and Calendar, read-only; see docs/connectors.md
+#     client_id: 1234567890-abc.apps.googleusercontent.com
+#     client_secret_env: GOOGLE_CLIENT_SECRET
+
 voice:
   stt:
     # chat_audio: an OpenAI-compatible chat model that accepts input_audio.

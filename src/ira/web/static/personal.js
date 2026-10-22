@@ -956,6 +956,19 @@ const IraPersonal = (() => {
     const hint = el("p", { className: "muted small", text: "The token is sent as Authorization: Bearer, and kept sealed on this server; it is never shown again." });
     const server = el("select", { name: "server" }, el("option", { value: "", text: "A remote server, by its address" }), view.servers.map((s) => el("option", { value: s.name, text: `${s.name}: ${s.description || "on this server"}` })));
     const needs = el("div", { className: "stack-tight" });
+    // Mail over IMAP: the server, the address and an app password.
+    const imapHost = el("input", { name: "imap_host", maxlength: "253", placeholder: "imap.gmail.com" });
+    const imapUser = el("input", { name: "imap_user", type: "email", maxlength: "254", autocomplete: "off" });
+    const imapPassword = el("input", { name: "imap_password", type: "password", maxlength: "200", autocomplete: "off" });
+    const imapFields = el(
+      "div",
+      { className: "stack-tight", hidden: true },
+      el("label", {}, "Mail server", imapHost),
+      el("label", {}, "Your address", imapUser),
+      el("label", {}, "App password (from your mail provider, not your usual password)", imapPassword),
+    );
+    let mode = "mcp"; // mcp, google or imap
+    const google = (view.builtins || []).find((b) => b.kind === "google");
     const pin = pinField();
     const error = el("p", { className: "error", role: "alert" });
     const showNeeds = () => {
@@ -967,24 +980,54 @@ const IraPersonal = (() => {
     const form = el(
       "form",
       { className: "stack card" },
-      el("div", { className: "row" }, el("span", { className: "muted small", text: "Quick:" }), el("button", {
-        type: "button",
-        className: "text-btn",
-        text: "GitHub (read-only)",
-        onClick: () => {
-          name.value = PRESETS.github.name;
-          url.value = PRESETS.github.url;
-          server.value = "";
-          showNeeds();
-          hint.textContent = PRESETS.github.hint;
-          token.focus();
-        },
-      })),
+      el(
+        "div",
+        { className: "row" },
+        el("span", { className: "muted small", text: "Quick:" }),
+        el("button", {
+          type: "button",
+          className: "text-btn",
+          text: "GitHub (read-only)",
+          onClick: () => {
+            setMode("mcp");
+            name.value = PRESETS.github.name;
+            url.value = PRESETS.github.url;
+            server.value = "";
+            showNeeds();
+            hint.textContent = PRESETS.github.hint;
+            token.focus();
+          },
+        }),
+        google && google.available
+          ? el("button", {
+              type: "button",
+              className: "text-btn",
+              text: "Google (Gmail and Calendar)",
+              onClick: () => {
+                setMode("google");
+                name.value = "Google";
+                hint.textContent = "Read-only. You sign in with Google in a page that opens; Ira never sees your password.";
+              },
+            })
+          : null,
+        el("button", {
+          type: "button",
+          className: "text-btn",
+          text: "Mail (IMAP)",
+          onClick: () => {
+            setMode("imap");
+            name.value = "Mail";
+            hint.textContent = "Read-only, with an app password. Gmail: Google Account, Security, 2-Step Verification, App passwords.";
+            imapHost.focus();
+          },
+        }),
+      ),
       view.servers.length ? el("label", {}, "Where", server) : null,
       el("label", {}, "Name", name),
       el("label", {}, "Address of the MCP server", url),
       el("label", { className: "switch" }, oauth, el("span", { text: "Sign in with the service instead of a token" })),
       el("label", {}, "Token", token),
+      imapFields,
       hint,
       needs,
       pin,
@@ -992,6 +1035,12 @@ const IraPersonal = (() => {
       error,
     );
     server.addEventListener("change", showNeeds);
+    function setMode(next) {
+      mode = next;
+      for (const field of [url, token, oauth]) field.closest("label").hidden = mode !== "mcp";
+      if (server.closest("label")) server.closest("label").hidden = mode !== "mcp";
+      imapFields.hidden = mode !== "imap";
+    }
     form.addEventListener("submit", async (event) => {
       event.preventDefault();
       error.textContent = "";
@@ -999,12 +1048,16 @@ const IraPersonal = (() => {
       const env = {};
       for (const [key, value] of data.entries()) if (key.startsWith("env:")) env[key.slice(4)] = value;
       const payload = { name: name.value, pin: $("input", pin).value || undefined };
-      if (server.value) Object.assign(payload, { server: server.value, env });
+      if (mode === "google") Object.assign(payload, { builtin: "google" });
+      else if (mode === "imap") Object.assign(payload, { builtin: "imap", imap: { host: imapHost.value, user: imapUser.value, password: imapPassword.value } });
+      else if (server.value) Object.assign(payload, { server: server.value, env });
       else if (oauth.checked) Object.assign(payload, { url: url.value, oauth: true });
       else Object.assign(payload, { url: url.value, headers: token.value ? { Authorization: `Bearer ${token.value}` } : {} });
       token.value = "";
+      imapPassword.value = "";
       $("input", pin).value = "";
-      const popup = payload.oauth ? window.open("about:blank", "_blank") : null; // on the tap
+      const signsIn = payload.oauth || payload.builtin === "google";
+      const popup = signsIn ? window.open("about:blank", "_blank") : null; // on the tap
       try {
         const made = await call("/v1/me/connections", { method: "POST", json: payload });
         if (made.authorize_url) return signIn(made, body, popup);

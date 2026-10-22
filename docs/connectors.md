@@ -106,12 +106,56 @@ connection are offered at once; the rest start switched off.
 - **Remove** deletes the connection and its token. **Delete my data**
   deletes all of them; **Export my data** lists them, never their tokens.
 
+## Google: Gmail and Calendar, read-only
+
+Each person signs in with Google; Ira asks for `gmail.readonly` and
+`calendar.readonly` only, and offers three Tier 0 tools: search mail (with
+Gmail's own search words, such as `from:bank newer_than:7d`), read one
+message, and list calendar events between two dates, in the person's own
+time zone, across all their calendars.
+
+The server's owner sets it up once, with their own Google Cloud project:
+
+1. In the Google Cloud console, enable the **Gmail API** and the
+   **Google Calendar API**.
+2. Configure the **OAuth consent screen** (external), add the two scopes,
+   and add each person who will use it as a **test user**.
+3. Create an **OAuth client ID** of type *Web application*, with this
+   server's address plus `/v1/connections/oauth/callback` as an authorized
+   redirect URI (`https://ira.example.com/v1/connections/oauth/callback`,
+   or `http://127.0.0.1:8765/...` on your own computer).
+4. In `ira.yaml`, and the secret in `.env`:
+
+    ```yaml
+    connectors:
+      google:
+        client_id: 1234567890-abc.apps.googleusercontent.com
+        client_secret_env: GOOGLE_CLIENT_SECRET
+    ```
+
+People then tap **Google (Gmail and Calendar)** under **Your connections**.
+
+**Plainly:** Gmail's read scope is *restricted*. While the app stays in
+Testing, Google ends each sign-in after 7 days, and the connection then
+asks to sign in again. Publishing it for anyone needs Google's
+verification, and for restricted scopes possibly a paid security
+assessment. For one person or a family, Testing works; for mail without
+that, use IMAP below. Not yet checked against a live Google account here:
+the tests use a stand-in for Google's endpoints.
+
+## Mail over IMAP, with an app password
+
+Any mailbox (Gmail, Outlook, Zoho, your own), read-only, with no Google
+sign-in: tap **Mail (IMAP)** and give the mail server (`imap.gmail.com`,
+`outlook.office365.com`), your address and an **app password** made at
+your provider (Gmail: Google Account, Security, 2-Step Verification, App
+passwords). Ira opens the inbox read-only, so reading never marks a mail
+as read. The app password is sealed like a token. Calendar still needs
+Google's sign-in.
+
 ## Coming next
 
-Google mail and calendar (read-only first; Gmail's scopes need Google's
-verification for anything but test users, whose access lasts 7 days at a
-time, and mail can also come in over IMAP with an app password), a
-Telegram user client for reading and sending as you (opt-in), and a kit
+A Telegram user client for reading and sending as you (opt-in), and a kit
 for connecting any business's API. There is no official WhatsApp API for
 personal accounts, and Ira will not use an unofficial one: the WhatsApp
 Business Cloud API, for a business number, is the only way it will offer.

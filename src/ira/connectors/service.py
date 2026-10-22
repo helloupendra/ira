@@ -34,6 +34,16 @@ SIGN_IN_SECONDS = 600.0  # the person has ten minutes to finish signing in
 
 
 @dataclass
+class GoogleSignIn:
+    """A Google sign-in in progress: the PKCE verifier waits for the code."""
+
+    connection_id: str
+    user_id: int
+    verifier: str
+    redirect_uri: str
+
+
+@dataclass
 class SignIn:
     """One OAuth sign-in in progress: the address to open, then the code that comes back."""
 
@@ -50,7 +60,7 @@ class Connection:
     user_id: int
     name: str
     slug: str
-    kind: str  # "mcp_http" or "mcp_stdio"
+    kind: str  # "mcp_http", "mcp_stdio", "google" or "imap"
     url: str | None
     server: str | None
     tools: list[dict[str, Any]] = field(default_factory=list)
@@ -116,6 +126,9 @@ class Connectors:
         *,
         target_factory: Callable[[Connection, dict[str, Any]], Any] | None = None,
         callback_url: Callable[[], str] = lambda: "http://127.0.0.1:8765",
+        google: Callable[[], Any] | None = None,
+        mailbox: Callable[..., Any] | None = None,
+        zone_for: Callable[[int], Any] | None = None,
         clock: Callable[[], float] = time.time,
     ) -> None:
         self.store = store
@@ -127,7 +140,10 @@ class Connectors:
         # Where a service sends the browser back after sign-in (this server's own address).
         self.callback_url = callback_url
         self.sign_ins: dict[str, SignIn] = {}  # by connection
-        self.by_state: dict[str, SignIn] = {}  # by the OAuth state the service echoes back
+        self.by_state: dict[str, SignIn | GoogleSignIn] = {}  # by the state echoed back
+        self._google = google
+        self._mailbox = mailbox
+        self.zone_for = zone_for
 
     def sealer(self) -> Sealer:
         return self._sealer()
@@ -147,6 +163,43 @@ class Connectors:
         if row is None:
             raise ConnectionError_("no such connection")
         return _row(row)
+
+    def google(self) -> Any:
+        """The operator's Google client, or None when this server offers no Google."""
+        if self._google is not None:
+            return self._google()
+        import os
+
+        from ira.connectors.google import Google
+
+        cfg = self.config.google
+        secret = os.environ.get(cfg.client_secret_env, "")
+        return Google(cfg.client_id, secret) if cfg.client_id and secret else None
+
+    def mailbox(self, host: str, user: str, password: str, port: int = 993) -> Any:
+        if self._mailbox is not None:
+            return self._mailbox(host, user, password, port)
+        from ira.connectors.imap import Mailbox
+
+        return Mailbox(host, user, password, port)
+
+    def builtins(self) -> list[dict[str, Any]]:
+        """Services Ira connects to itself, beside MCP servers."""
+        return [
+            {
+                "kind": "google",
+                "name": "Google",
+                "description": "Gmail and Google Calendar, read-only: you sign in with Google.",
+                "available": self.google() is not None,
+            },
+            {
+                "kind": "imap",
+                "name": "Mail (IMAP)",
+                "description": "Any mailbox, read-only, with an app password from your mail "
+                "provider. No Google sign-in needed.",
+                "available": True,
+            },
+        ]
 
     def servers(self) -> list[dict[str, Any]]:
         """The local MCP servers the operator allows, and what each person must give them."""
@@ -227,6 +280,58 @@ class Connectors:
         return self._insert(
             user_id, name or server, "mcp_stdio", url=None, server=server, secret={"env": given}
         )
+
+    def _builtin_tools(self, slug: str, definitions: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        return [
+            {
+                "name": mcp.tool_name(slug, d["mcp_name"]),
+                "mcp_name": d["mcp_name"],
+                "description": d["description"],
+                "schema": d["schema"],
+                "min_tier": 0,
+                "tier": 0,
+                "enabled": True,
+            }
+            for d in definitions
+        ]
+
+    def add_google(self, user_id: int, name: str = "Google") -> Connection:
+        from ira.connectors.google import TOOLS
+
+        if self.google() is None:
+            raise ConnectionError_("this server offers no Google sign-in: its owner sets it up")
+        connection = self._insert(user_id, name, "google", url=None, server=None, secret={})
+        tools = self._builtin_tools(connection.slug, TOOLS)
+        self.store.execute(
+            "UPDATE connections SET tools = ?, status = 'needs_auth' WHERE id = ?",
+            (json.dumps(tools), connection.id),
+        )
+        return self.get(user_id, connection.id)
+
+    async def add_imap(
+        self, user_id: int, name: str, host: str, user: str, password: str, port: int = 993
+    ) -> Connection:
+        from ira.connectors.imap import TOOLS
+
+        host = host.strip()
+        if not re.fullmatch(r"[A-Za-z0-9.-]{3,253}", host) or not user.strip() or not password:
+            raise ConnectionError_("give the mail server, your address and an app password")
+        mcp.check_url(f"https://{host}:{port}/", self.config.allow_private)
+        await asyncio.to_thread(self.mailbox(host, user.strip(), password, port).check)
+        connection = self._insert(
+            user_id,
+            name or "Mail",
+            "imap",
+            url=None,
+            server=host,
+            secret={"host": host, "port": port, "user": user.strip(), "password": password},
+        )
+        tools = self._builtin_tools(connection.slug, TOOLS)
+        self.store.execute(
+            "UPDATE connections SET tools = ?, status = 'ok' WHERE id = ?",
+            (json.dumps(tools), connection.id),
+        )
+        return self.get(user_id, connection.id)
 
     async def remove(self, user_id: int, connection_id: str) -> None:
         connection = self.get(user_id, connection_id)
@@ -366,6 +471,19 @@ class Connectors:
         """Start signing in to a connection's service: the address to open, or None if it is
         already signed in. Signing in finishes in the background, when the browser comes back."""
         connection = self.get(user_id, connection_id)
+        if connection.kind == "google":
+            from ira.connectors.google import pkce
+
+            google = self.google()
+            if google is None:
+                raise ConnectionError_("this server offers no Google sign-in")
+            verifier, challenge = pkce()
+            state = secrets.token_urlsafe(32)
+            redirect = f"{self.callback_url().rstrip('/')}/v1/connections/oauth/callback"
+            self.by_state[state] = GoogleSignIn(connection.id, user_id, verifier, redirect)
+            return google.authorize_url(redirect, state, challenge)
+        if connection.kind != "mcp_http":
+            raise ConnectionError_(f"{connection.name} does not sign in")
         loop = asyncio.get_running_loop()
         old = self.sign_ins.pop(connection.id, None)
         if old is not None and old.task is not None:
@@ -391,11 +509,13 @@ class Connectors:
             return pending.url.result()
         return None
 
-    def signed_in(self, state: str, code: str | None, error: str | None = None) -> str:
+    async def signed_in(self, state: str, code: str | None, error: str | None = None) -> str:
         """The browser came back from the service: hand the code to the waiting sign-in."""
+        pending = self.by_state.pop(state, None)
+        if isinstance(pending, GoogleSignIn):
+            return await self._google_signed_in(pending, code, error)
         from mcp.shared.auth import AuthorizationCodeResult
 
-        pending = self.by_state.pop(state, None)
         if pending is None or pending.code.done():
             raise ConnectionError_("this sign-in has expired: start it again from Your connections")
         if error or not code:
@@ -404,9 +524,86 @@ class Connectors:
         pending.code.set_result(AuthorizationCodeResult(code=code, state=state))
         return self.get(pending.user_id, pending.connection_id).name
 
+    async def _google_signed_in(
+        self, pending: GoogleSignIn, code: str | None, error: str | None
+    ) -> str:
+        connection = self.get(pending.user_id, pending.connection_id)
+        google = self.google()
+        if error or not code or google is None:
+            raise ConnectionError_(f"Google did not sign you in ({error or 'no code'})")
+        tokens = await google.exchange(code, pending.redirect_uri, pending.verifier)
+        secret = {"tokens": tokens}
+        sealed = self.sealer().seal(secret, f"{connection.user_id}:{connection.id}")
+        self.store.execute(
+            "UPDATE connections SET secret = ?, status = 'ok', error = NULL, checked_at = ? "
+            "WHERE id = ?",
+            (sealed, self.clock(), connection.id),
+        )
+        return connection.name
+
+    async def _builtin_call(self, connection: Connection, name: str, args: dict[str, Any]) -> Any:
+        secret = self._secret(connection)
+        if connection.kind == "imap":
+            box = self.mailbox(secret["host"], secret["user"], secret["password"], secret["port"])
+            return await box.call(name, args)
+        google = self.google()
+        if google is None:
+            raise ConnectionError_("this server no longer offers Google")
+        tokens = secret.get("tokens") or {}
+        if not tokens:
+            raise NeedsSignIn("sign in to Google first")
+
+        def save(fresh: dict[str, Any]) -> None:
+            secret["tokens"] = fresh
+            sealed = self.sealer().seal(secret, f"{connection.user_id}:{connection.id}")
+            self.store.execute(
+                "UPDATE connections SET secret = ? WHERE id = ?", (sealed, connection.id)
+            )
+
+        try:
+            token = await google.access(tokens, save)
+        except ToolError as exc:
+            self.store.execute(
+                "UPDATE connections SET status = 'needs_auth', error = ? WHERE id = ?",
+                (str(exc), connection.id),
+            )
+            raise
+        if name == "mail_search":
+            limit = max(1, min(int(args.get("max") or 10), 20))
+            return await google.mail_search(token, str(args.get("query") or ""), limit)
+        if name == "mail_read":
+            return await google.mail_read(token, str(args.get("id") or ""))
+        if name == "calendar_events":
+            import datetime as dt
+
+            zone = (self.zone_for(connection.user_id) if self.zone_for else None) or dt.UTC
+            return await google.calendar_events(
+                token, args.get("start"), args.get("end"), args.get("query"), zone
+            )
+        raise ConnectionError_(f"no tool {name}")
+
     async def refresh(self, user_id: int, connection_id: str) -> Connection:
         """Fetch the server's tools again, keeping the person's choices for known ones."""
         connection = self.get(user_id, connection_id)
+        if connection.kind in ("google", "imap"):
+            secret = self._secret(connection)
+            if connection.kind == "google":
+                status = "ok" if secret.get("tokens") else "needs_auth"
+                error = None if status == "ok" else "sign in with Google"
+            else:
+                try:
+                    box = self.mailbox(
+                        secret["host"], secret["user"], secret["password"], secret["port"]
+                    )
+                    await asyncio.to_thread(box.check)
+                    status, error = "ok", None
+                except ToolError as exc:
+                    status, error = "error", str(exc)
+            self.store.execute(
+                "UPDATE connections SET status = ?, error = ?, checked_at = ? WHERE id = ?",
+                (status, error, self.clock(), connection.id),
+            )
+            return self.get(user_id, connection_id)
         before = {t["mcp_name"]: t for t in connection.tools}
         try:
             listed = await self._worker(connection).request("list")
@@ -447,6 +644,8 @@ class Connectors:
         connection = self.get(user_id, connection_id)
         if not connection.enabled:
             raise ConnectionError_(f"{connection.name} is switched off")
+        if connection.kind in ("google", "imap"):
+            return await self._builtin_call(connection, mcp_name, arguments)
         result = await self._worker(connection).request("call", (mcp_name, arguments))
         return mcp.result_text(result)
 

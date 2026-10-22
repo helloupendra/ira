@@ -193,6 +193,13 @@ class McpServerConfig(_Strict):
     description: str = ""
 
 
+class GoogleConfig(_Strict):
+    """The operator's own Google OAuth client, for Gmail and Calendar, read-only."""
+
+    client_id: str | None = None
+    client_secret_env: str = "GOOGLE_CLIENT_SECRET"
+
+
 class ConnectorsConfig(_Strict):
     # Local MCP servers people may connect; a person can never add a command themselves.
     mcp_servers: dict[str, McpServerConfig] = Field(default_factory=dict)
@@ -200,6 +207,7 @@ class ConnectorsConfig(_Strict):
     # true: otherwise a person could make this server reach machines on its own network.
     allow_private: bool = False
     max_tools: int = 40  # per connection, offered to the model
+    google: GoogleConfig = Field(default_factory=GoogleConfig)
 
 
 class SearchConfig(_Strict):
