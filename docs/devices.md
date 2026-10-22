@@ -148,6 +148,7 @@ a hello: the server revokes its token and closes the connection.
 | Events | 1 per 30 seconds per device | an `error` frame; send it again later |
 | Silence | 90 seconds | the connection closes with 4408 |
 | Connections | 1 per device | a new one replaces the old (4000), whose calls fail |
+| A restart | | the server closes every device with 1001 (going away) as it stops: reconnect at once, with backoff, to the next one |
 
 ## Security
 

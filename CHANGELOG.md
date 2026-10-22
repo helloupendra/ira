@@ -86,6 +86,11 @@ switch it on.
   with their password again; an owner sets someone's password or email from
   Users & roles; `ira user password` and `ira user email` do it from the
   server. All go to the change log.
+- **Restarts are quick.** As it stops, the server closes devices and live
+  calls with 1001 (going away) and ends event streams, and waits 5 seconds
+  at most for the rest; the service unit stops within 15. A restart no
+  longer hangs for 90 seconds. A phone hanging up mid-answer is logged as
+  information, not an error.
 - **No stray Chinese.** Chinese, Japanese and Korean characters are taken
   out of an answer to someone who does not write them; a mostly Chinese
   answer is asked for again, or excused in the person's language.

@@ -22,6 +22,8 @@ Environment=PYTHONUNBUFFERED=1
 ExecStart=/opt/ira/app/.venv/bin/ira serve
 Restart=on-failure
 RestartSec=5
+# Ira tells its devices and calls to reconnect, then waits 5 seconds at most for the rest.
+TimeoutStopSec=15
 
 # Several businesses share one small server: cap each one.
 MemoryMax=400M

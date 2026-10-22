@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import logging
 from dataclasses import dataclass, field
 from typing import Any
@@ -172,6 +173,15 @@ class Runtime:
         if self.connectors is not None:
             tools += self.connectors.tools_for(user_id)
         return tools
+
+    async def going_away(self) -> None:
+        """The server was asked to stop: tell devices and live calls first (1001, going away)
+        so their apps reconnect to the next server at once, instead of holding it open."""
+        if self.hub is not None:
+            await self.hub.going_away()
+        for call in list(self.live_calls.values()):
+            with contextlib.suppress(Exception):
+                await call.hang_up()
 
     async def continue_after(self, outcome: Any, *, actor: str) -> dict[str, Any] | None:
         """After an action ran from its card (a PIN, or a yes), carry its conversation on with

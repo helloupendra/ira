@@ -56,7 +56,9 @@ Sign-in, one of:
 
 The person needs the `voice` and `ask` permissions (owner, admin, staff),
 and the server needs speech-to-text of type `transcribe` and text-to-speech.
-Otherwise the server sends an `error` with `fatal: true` and closes.
+Otherwise the server sends an `error` with `fatal: true` and closes. When
+the server is stopping (a restart or a deploy), it closes the call with
+1001 (going away): call again in a moment.
 
 Messages are JSON text frames, except audio, which goes in binary frames.
 

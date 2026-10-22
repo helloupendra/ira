@@ -99,6 +99,9 @@ class Connection:
             await self.socket.close(code, reason)
 
 
+CLOSE_GOING_AWAY = 1001  # the server is stopping: reconnect at once, to the next one
+
+
 class DeviceHub:
     def __init__(
         self,
@@ -379,6 +382,16 @@ class DeviceHub:
             queues.discard(queue)
             if not queues:
                 del self.listeners[user_id]
+
+    async def going_away(self, reason: str = "the server is restarting") -> None:
+        """The server is stopping: close every device with 1001 (going away) so its app
+        reconnects to the next server at once, and end every event stream."""
+        for connection in list(self.connections.values()):
+            await connection.close(CLOSE_GOING_AWAY, reason)
+        for queues in list(self.listeners.values()):
+            for queue in list(queues):
+                with contextlib.suppress(asyncio.QueueFull):
+                    queue.put_nowait(None)  # type: ignore[arg-type]  # the end of the stream
 
     # Tools.
 

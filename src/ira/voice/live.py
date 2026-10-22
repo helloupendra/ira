@@ -122,6 +122,7 @@ class LiveCall:
         *,
         conversation_key: Callable[[str], str],
         action_view: Callable[[dict[str, Any]], Any] | None = None,
+        close_socket: Callable[[int], Awaitable[None]] | None = None,
         max_spoken_chars: int = 600,
         clock: Callable[[], float] = time.monotonic,
     ) -> None:
@@ -131,6 +132,7 @@ class LiveCall:
         self._send_bytes = send_bytes
         self.conversation_key = conversation_key
         self.action_view = action_view
+        self.close_socket = close_socket
         self.max_spoken_chars = max_spoken_chars
         self.clock = clock
         self.conversation_id = ""
@@ -293,6 +295,11 @@ class LiveCall:
         self.current = turn
         self.answer = asyncio.ensure_future(self.run_turn(turn))
 
+    async def hang_up(self, code: int = 1001) -> None:
+        """The server is stopping: end the call (1001, going away); the app calls again."""
+        if self.close_socket is not None:
+            await self.close_socket(code)
+
     def follow_up(self) -> None:
         """An action asked for in this call was confirmed on its card (a PIN, a yes): Ira
         carries on, with what it returned, as a turn of its own in the call."""
@@ -389,7 +396,13 @@ class LiveCall:
                         message_id = event.get("message_id")
             for sentence in sentences.flush():
                 self._queue(turn, speech, sentence)
-        except Exception:
+        except Exception as exc:
+            if hung_up(exc):  # the app closed the call while Ira was answering: nothing to say
+                log.info("the app hung up during a turn")
+                speech.put_nowait(None)
+                with contextlib.suppress(Exception):
+                    await speaker
+                return
             log.exception("a live turn failed")
             await self.send(
                 {
@@ -488,6 +501,23 @@ class LiveCall:
         if self.answer is not None:
             with contextlib.suppress(Exception):
                 await asyncio.wait_for(asyncio.shield(self.answer), 30)
+
+
+HUNG_UP = {"ClientDisconnected", "WebSocketDisconnect", "ConnectionClosed"} | {
+    "ConnectionClosedOK",
+    "ConnectionClosedError",
+}
+
+
+def hung_up(exc: BaseException) -> bool:
+    """The other end closed the socket (uvicorn's ClientDisconnected, Starlette's
+    WebSocketDisconnect, websockets' ConnectionClosed): an ending, not a failure."""
+    seen: BaseException | None = exc
+    while seen is not None:
+        if type(seen).__name__ in HUNG_UP or "after sending 'websocket.close'" in str(seen):
+            return True
+        seen = seen.__cause__ or seen.__context__
+    return False
 
 
 def read_back(summary: str) -> str:

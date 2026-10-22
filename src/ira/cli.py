@@ -21,6 +21,7 @@ import getpass
 import logging
 import sys
 from collections.abc import Callable
+from typing import Any
 
 from ira import __version__
 from ira.accounts import ROLES, TOKEN_SCOPES, AccountError, Accounts, User, parse_scopes
@@ -113,15 +114,45 @@ def cmd_serve(args: argparse.Namespace) -> int:
         runtime.setup_code_shown = True
     from ira.devices.protocol import MAX_FRAME_BYTES
 
-    uvicorn.run(
+    config = uvicorn.Config(
         create_app(runtime),
         host=host,
         port=port,
         log_level="info",
         # Device frames are 1 MB at most; the WebSocket refuses bigger ones before reading them.
         ws_max_size=MAX_FRAME_BYTES + 1024,
+        # Open streams and calls are told to go first; what is left gets a few seconds.
+        timeout_graceful_shutdown=GRACEFUL_SECONDS,
     )
+    going_away_server(config, runtime).run()
     return 0
+
+
+GRACEFUL_SECONDS = 5
+
+
+def going_away_server(config: Any, runtime: Any) -> Any:
+    """uvicorn's server, which tells devices and live calls the server is going away the
+    moment it is asked to stop: they reconnect to the next one, instead of holding a
+    restart open until the service manager kills it."""
+    import asyncio
+
+    import uvicorn
+
+    class Server(uvicorn.Server):
+        going: asyncio.Task[None] | None = None
+
+        def handle_exit(self, sig: int, frame: Any) -> None:
+            if self.going is None:
+                try:
+                    loop = asyncio.get_running_loop()
+                except RuntimeError:
+                    loop = None
+                if loop is not None:
+                    self.going = loop.create_task(runtime.going_away())
+            super().handle_exit(sig, frame)
+
+    return Server(config)
 
 
 def setup_banner(code: str, host: str, port: int, public_url: str | None = None) -> str:

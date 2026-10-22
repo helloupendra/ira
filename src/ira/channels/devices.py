@@ -464,6 +464,8 @@ async def my_event_stream(
                         return
                     yield ": keepalive\n\n"
                     continue
+                if row is None:  # the server is stopping: the app reconnects
+                    return
                 data = EventView(**row).model_dump(mode="json")
                 yield f"data: {json.dumps(data, ensure_ascii=False)}\n\n"
         finally:

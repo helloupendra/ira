@@ -39,6 +39,7 @@ def test_the_service_template_runs_one_business_unprivileged():
         "Service.WorkingDirectory": "/srv/ira/%i",
         "Service.ExecStart": "/opt/ira/app/.venv/bin/ira serve",
         "Service.Restart": "on-failure",
+        "Service.TimeoutStopSec": "15",
         "Service.EnvironmentFile": "-/srv/ira/%i/.env",
         "Service.MemoryMax": "400M",
         "Service.CPUQuota": "50%",

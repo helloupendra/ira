@@ -6,6 +6,7 @@ import pytest
 import uvicorn
 from fastapi.testclient import TestClient
 
+import ira.cli
 from ira.channels.http import create_app
 from ira.cli import main
 from ira.config import ConfigError, Settings, load_settings
@@ -37,7 +38,14 @@ def serve(config: str, monkeypatch, *flags: str) -> dict:
             ).json()
         seen.update(bound=(host, port), channels={c["name"]: c for c in channels})
 
-    monkeypatch.setattr(uvicorn, "run", fake_run)
+    class Server:  # what `ira serve` starts, without binding anything
+        def __init__(self, config: uvicorn.Config, runtime) -> None:
+            self.config = config
+
+        def run(self) -> None:
+            fake_run(self.config.app, self.config.host, self.config.port)
+
+    monkeypatch.setattr(ira.cli, "going_away_server", Server)
     assert main(["--config", config, "serve", *flags]) == 0
     return seen
 

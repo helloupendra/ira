@@ -89,6 +89,7 @@ async def live_voice(websocket: WebSocket) -> None:
         websocket.send_bytes,
         conversation_key=lambda client_id: _conversation_key(principal, client_id),
         action_view=lambda action: action_view(runtime, principal, action),
+        close_socket=lambda code: websocket.close(code=code),
         max_spoken_chars=max(runtime.settings.voice.max_spoken_chars, 600),
     )
     pinger = asyncio.ensure_future(_ping(websocket, call))
