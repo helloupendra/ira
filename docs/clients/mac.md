@@ -27,8 +27,13 @@ these (the zip from GitHub Releases), the companion asks for the address; it
 never guesses. A pasted link always names its own server.
 
 The installer needs Python 3.9 or newer, which macOS offers to install with
-its Command Line Tools (`xcode-select --install`). It downloads one library
-(`websockets`) from the Python Package Index. It never asks for your
+its Command Line Tools (`xcode-select --install`); it prefers Homebrew's or
+Apple's Python and says which one it used. It downloads three small
+libraries from the Python Package Index: `websockets`, and `truststore` and
+`certifi` so the companion checks certificates against macOS's own list,
+even with python.org's Python before its "Install Certificates" step. A
+connection that fails says why ("certificate verify failed", "connection
+refused") and what to do. It never asks for your
 administrator password.
 
 ## What it sets up

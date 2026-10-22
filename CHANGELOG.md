@@ -89,6 +89,10 @@ switch it on.
   with their password again; an owner sets someone's password or email from
   Users & roles; `ira user password` and `ira user email` do it from the
   server. All go to the change log.
+- **The Mac companion checks certificates on any Python.** It uses macOS's
+  own trust store (`truststore`), else a bundle, so python.org's Python no
+  longer fails to pair with "could not reach"; failures now say why. The
+  installer prefers Homebrew's or Apple's Python and names the one it used.
 - **A typed pairing code finds its server.** A Mac zip downloaded from an
   IRA server carries that server's address, so typing the code works; with
   no address known the companion asks instead of trying this Mac. The

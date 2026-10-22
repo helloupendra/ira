@@ -7,6 +7,7 @@ import io
 import json
 import logging
 import shutil
+import ssl
 import subprocess
 import sys
 import tempfile
@@ -16,7 +17,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from ira_mac import config
+from ira_mac import __version__, config, tls
 from ira_mac.keychain import Keychain, KeychainError
 from ira_mac.logs import RedactingFormatter, redact
 from ira_mac.pair import PairError, check_server, choose, exchange, parse
@@ -171,9 +172,11 @@ class FakeResponse(io.BytesIO):
 def test_exchange_posts_the_code_and_reads_the_token():
     seen = {}
 
-    def opener(request, timeout):
+    def opener(request, timeout, context=None):
         seen["url"] = request.full_url
         seen["body"] = json.loads(request.data)
+        seen["agent"] = request.get_header("User-agent")  # Cloudflare refuses Python's own
+        seen["checks"] = context.verify_mode == ssl.CERT_REQUIRED
         body = {"device_id": 3, "token": TOKEN, "label": "Office Mac", "skills": ["chrome"]}
         return FakeResponse(json.dumps(body).encode())
 
@@ -181,14 +184,33 @@ def test_exchange_posts_the_code_and_reads_the_token():
     assert seen == {
         "url": "https://ira.example.com/v1/devices/pair",
         "body": {"code": "ABCD-EFGH", "kind": "mac"},
+        "agent": f"ira-mac/{__version__}",
+        "checks": True,
     }
     assert (paired.token, paired.device_id, paired.skills) == (TOKEN, 3, ["chrome"])
 
-    def gone(request, timeout):
+    def gone(request, timeout, context=None):
         raise urllib.error.HTTPError(request.full_url, 410, "Gone", {}, None)
 
     with pytest.raises(PairError, match="expired or mistyped"):
         exchange("https://ira.example.com", "ABCD-EFGH", opener=gone)
+
+    def untrusted(request, timeout, context=None):
+        failure = ssl.SSLCertVerificationError(
+            1, "[SSL: CERTIFICATE_VERIFY_FAILED] certificate verify failed"
+        )
+        raise urllib.error.URLError(failure)
+
+    with pytest.raises(PairError, match=r"certificate verify failed.*Run ./install.sh again"):
+        exchange("https://ira.example.com", "ABCD-EFGH", opener=untrusted)
+
+    def refused(request, timeout, context=None):
+        raise urllib.error.URLError(ConnectionRefusedError(61, "Connection refused"))
+
+    with pytest.raises(
+        PairError, match="could not reach https://ira.example.com: Connection refused"
+    ):
+        exchange("https://ira.example.com", "ABCD-EFGH", opener=refused)
 
 
 def test_a_typed_code_uses_the_first_known_server_or_asks():
@@ -224,3 +246,42 @@ def test_the_downloads_server_txt_is_the_default(tmp_path, monkeypatch):
     assert unpaired.server == ""
     with pytest.raises(ValueError, match="not paired"):
         unpaired.websocket_url()
+
+
+def test_certificates_come_from_somewhere_even_on_a_bare_python(monkeypatch):
+    real = ssl.create_default_context
+    calls = []
+
+    def bare(*args, **kwargs):
+        calls.append(kwargs.get("cafile"))
+        if kwargs.get("cafile"):
+            return real(*args, **kwargs)
+        return ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)  # no authorities, like python.org's
+
+    monkeypatch.setitem(sys.modules, "truststore", None)  # not installed
+    monkeypatch.setattr(tls.ssl, "create_default_context", bare)
+    context = tls.context()
+    assert context.verify_mode == ssl.CERT_REQUIRED and context.check_hostname
+    assert context.cert_store_stats()["x509_ca"] > 0
+    assert calls[0] is None and calls[1]  # the default first, then a bundle
+
+
+def test_the_websocket_checks_certificates_only_for_wss(monkeypatch):
+    from websockets.asyncio import client
+
+    from ira_mac.daemon import websocket_connect
+
+    seen = []
+
+    async def connect(url, **kwargs):
+        seen.append((url, "ssl" in kwargs, kwargs["user_agent_header"]))
+        return object()
+
+    monkeypatch.setattr(client, "connect", connect)
+    asyncio.run(websocket_connect("wss://ira.example.com/v1/devices/ws", TOKEN))
+    asyncio.run(websocket_connect("ws://127.0.0.1:8765/v1/devices/ws", TOKEN))
+    agent = f"ira-mac/{__version__}"
+    assert seen == [
+        ("wss://ira.example.com/v1/devices/ws", True, agent),
+        ("ws://127.0.0.1:8765/v1/devices/ws", False, agent),
+    ]

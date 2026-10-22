@@ -15,7 +15,7 @@ from dataclasses import dataclass
 from typing import Callable
 from urllib.parse import urlsplit
 
-from ira_mac import __version__
+from ira_mac import __version__, tls
 
 LINK = re.compile(r"^(https?://[^#\s]+?)/pair#code=([A-Za-z0-9-]{8,20})$")
 CODE = re.compile(r"^[A-Za-z0-9-]{8,20}$")
@@ -84,7 +84,7 @@ def exchange(
         headers={"Content-Type": "application/json", "User-Agent": f"ira-mac/{__version__}"},
     )
     try:
-        with opener(request, timeout=timeout) as response:
+        with opener(request, timeout=timeout, context=tls.context()) as response:
             data = json.loads(response.read().decode())
     except urllib.error.HTTPError as exc:
         if exc.code == 410:
@@ -92,8 +92,10 @@ def exchange(
         if exc.code == 429:
             raise PairError("too many wrong codes; wait 15 minutes") from None
         raise PairError(f"the server answered HTTP {exc.code}") from None
-    except (urllib.error.URLError, OSError, ValueError) as exc:
-        raise PairError(f"could not reach {server} ({type(exc).__name__})") from None
+    except (urllib.error.URLError, OSError) as exc:
+        raise PairError(f"could not reach {server}: {tls.reason(exc)}") from None
+    except ValueError:
+        raise PairError(f"{server} did not answer like an Ira server") from None
     try:
         return Paired(
             server=server,

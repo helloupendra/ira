@@ -37,10 +37,11 @@ if [ "$(uname -s)" != "Darwin" ] && [ -z "${IRA_MAC_ANY_OS:-}" ]; then
     fail "the Ira companion is for macOS"
 fi
 
-# Python 3.9 or newer: Homebrew's, python.org's, or the Command Line Tools' own.
+# Python 3.9 or newer: Homebrew's, the Command Line Tools' own, or python.org's (last:
+# it has no certificates until its "Install Certificates" step; the companion copes).
 PYTHON=""
-for candidate in "${IRA_PYTHON:-}" /opt/homebrew/bin/python3 /usr/local/bin/python3 \
-    /Library/Frameworks/Python.framework/Versions/Current/bin/python3 /usr/bin/python3; do
+for candidate in "${IRA_PYTHON:-}" /opt/homebrew/bin/python3 /usr/local/bin/python3 /usr/bin/python3 \
+    /Library/Frameworks/Python.framework/Versions/Current/bin/python3; do
     [ -n "$candidate" ] && [ -x "$candidate" ] || continue
     if [ "$candidate" = /usr/bin/python3 ] && ! xcode-select -p >/dev/null 2>&1; then
         continue  # only a stub that offers to install the Command Line Tools
@@ -51,6 +52,7 @@ for candidate in "${IRA_PYTHON:-}" /opt/homebrew/bin/python3 /usr/local/bin/pyth
     fi
 done
 [ -n "$PYTHON" ] || fail "Python 3.9 or newer is needed. Run: xcode-select --install"
+say "Using $PYTHON (Python $("$PYTHON" -c 'import sys; print(sys.version.split()[0])'))"
 
 say "Installing the Ira companion in $APP"
 mkdir -p "$APP/app" "$APP/run" "$APP/logs"
@@ -83,7 +85,9 @@ if [ ! -x "$APP/venv/bin/python" ]; then
     "$PYTHON" -m venv "$APP/venv"
 fi
 if [ -z "${IRA_MAC_NO_PIP:-}" ]; then
-    "$APP/venv/bin/python" -m pip install --quiet --disable-pip-version-check "websockets>=13,<18"
+    # truststore: macOS's own certificates; certifi: a bundle for Python 3.9.
+    "$APP/venv/bin/python" -m pip install --quiet --disable-pip-version-check \
+        "websockets>=13,<18" "certifi" "truststore; python_version >= '3.10'"
 fi
 
 companion() { PYTHONPATH="$APP/app" "$APP/venv/bin/python" -m ira_mac "$@"; }

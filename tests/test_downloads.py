@@ -59,3 +59,10 @@ def test_the_mac_zip_from_a_server_knows_that_server(registry):
         assert not any(n.endswith("server.txt") for n in names(chrome))
     # The releases' copy names no server: the installer asks for it.
     assert "ira-mac/server.txt" not in names(clients.build("ira-mac.zip"))
+
+
+def test_every_companion_module_is_in_the_mac_zip():
+    base = clients.root()
+    assert base is not None
+    modules = {f"ira_mac/{p.name}" for p in (base / "mac" / "ira_mac").glob("*.py")}
+    assert modules <= set(clients.MAC_FILES), modules - set(clients.MAC_FILES)

@@ -23,7 +23,7 @@ import time
 from collections.abc import Awaitable, Callable
 from typing import Any
 
-from ira_mac import __version__
+from ira_mac import __version__, tls
 from ira_mac.tools import Toolbox, ToolFailed
 
 log = logging.getLogger("ira_mac.daemon")
@@ -47,13 +47,15 @@ async def websocket_connect(url: str, token: str) -> Any:
     """Open the device WebSocket with the token in a header (never in the URL)."""
     from websockets.asyncio.client import connect
 
+    secure = {"ssl": tls.context()} if url.startswith("wss://") else {}
     return await connect(
         url,
         additional_headers={"Authorization": f"Bearer {token}"},
         max_size=MAX_FRAME,
         ping_interval=None,  # the protocol's own ping frames keep it alive
-        user_agent_header=f"ira-mac/{__version__}",
+        user_agent_header=f"ira-mac/{__version__}",  # Cloudflare refuses Python's default
         open_timeout=20,
+        **secure,
     )
 
 
@@ -181,7 +183,7 @@ class Daemon:
             ws = await self.connect(self.url, token)
         except Exception as exc:
             code = close_code(exc)
-            log.warning("could not connect: %s", type(exc).__name__)
+            log.warning("could not connect: %s", tls.reason(exc))
             return code
         self._ws = ws
         if self._stop.is_set():

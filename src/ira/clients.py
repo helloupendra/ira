@@ -45,6 +45,7 @@ MAC_FILES = (
     "ira_mac/pair.py",
     "ira_mac/routine.py",
     "ira_mac/tabs.py",
+    "ira_mac/tls.py",
     "ira_mac/tools.py",
     "ira_mac/watch.py",
 )
