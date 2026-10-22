@@ -90,6 +90,9 @@ switch it on.
   or a video, and Ira opens its watch link on the phone or Mac, which
   plays it. YouTube's own search API (with a key) or Brave's, never its
   pages.
+- **Trusted apps.** A person may name apps on a device (YouTube) where Ira
+  taps and types without asking while that app is in front; adding one
+  takes the PIN.
 - **A fingerprint instead of the PIN.** A phone or Mac enrols a key that
   only the person's fingerprint or face unlocks, once, with the PIN; it
   then confirms an action by signing it. A wrong signature counts as a

@@ -1876,6 +1876,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/me/approvals/apps": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Apps Ira may tap and type in */
+        put: operations["set_trusted_apps"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/me/approvals/minutes": {
         parameters: {
             query?: never;
@@ -2309,6 +2326,8 @@ export interface components {
             minutes: number;
             /** Windows */
             windows: components["schemas"]["ApprovalWindowView"][];
+            /** Trusted Apps */
+            trusted_apps?: components["schemas"]["TrustedAppsView"][];
         };
         /** AskRequest */
         AskRequest: {
@@ -4797,6 +4816,33 @@ export interface components {
             text: string;
             /** Seconds */
             seconds: number;
+        };
+        /** TrustedAppsIn */
+        TrustedAppsIn: {
+            /** Device Id */
+            device_id: number;
+            /**
+             * Apps
+             * @description The whole list for that device.
+             */
+            apps: string[];
+            /**
+             * Pin
+             * @description Needed to add an app.
+             */
+            pin?: string | null;
+        };
+        /** TrustedAppsView */
+        TrustedAppsView: {
+            /** Device Id */
+            device_id: number;
+            /** Device */
+            device: string;
+            /**
+             * Apps
+             * @description Android packages or macOS bundle ids.
+             */
+            apps: string[];
         };
         /** UserView */
         UserView: {
@@ -11369,6 +11415,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["OkResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    set_trusted_apps: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TrustedAppsIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApprovalsView"];
                 };
             };
             /** @description Validation Error */

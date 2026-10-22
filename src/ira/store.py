@@ -234,6 +234,15 @@ CREATE TABLE IF NOT EXISTS approval_windows (
 );
 CREATE INDEX IF NOT EXISTS approval_windows_user ON approval_windows (user_id, device_id);
 
+-- Apps on a device where Ira may tap and type without asking (docs/security.md).
+CREATE TABLE IF NOT EXISTS trusted_apps (
+    user_id   INTEGER NOT NULL,
+    device_id INTEGER NOT NULL,
+    app       TEXT NOT NULL,
+    added_at  REAL NOT NULL,
+    PRIMARY KEY (user_id, device_id, app)
+);
+
 -- Each device's approval key: a public key whose private half only the person's
 -- fingerprint or face unlocks, so it may confirm instead of the PIN.
 CREATE TABLE IF NOT EXISTS approval_keys (

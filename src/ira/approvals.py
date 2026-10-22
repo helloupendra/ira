@@ -26,6 +26,8 @@ NEVER = re.compile(
     r"(^|_)(send|reply|call|place|pay|payment|buy|transfer|delete|remove|push|grant|pair)(_|$)"
 )
 MINUTES_CHOICES = (0, 5, 10, 15, 20, 30, 45, 60)
+# An app as a device names it: an Android package or a macOS bundle id.
+APP_ID = re.compile(r"[A-Za-z][A-Za-z0-9_]*(\.[A-Za-z0-9_-]+){1,8}")
 
 
 def covered(tool: str, skill: str | None) -> bool:
@@ -150,6 +152,51 @@ class Approvals:
             (self.clock(), why, *params, self.clock()),
         )
         return cursor.rowcount
+
+    # Trusted apps: screen control there runs without asking, while the app is in front.
+
+    def trusted(self, user_id: int, device_id: int) -> set[str]:
+        rows = self.store.query(
+            "SELECT app FROM trusted_apps WHERE user_id = ? AND device_id = ?",
+            (user_id, device_id),
+        )
+        return {r["app"] for r in rows}
+
+    def trusted_by_device(self, user_id: int) -> dict[int, list[str]]:
+        rows = self.store.query(
+            "SELECT device_id, app FROM trusted_apps WHERE user_id = ? ORDER BY device_id, app",
+            (user_id,),
+        )
+        found: dict[int, list[str]] = {}
+        for row in rows:
+            found.setdefault(row["device_id"], []).append(row["app"])
+        return found
+
+    def set_trusted(self, user_id: int, device_id: int, apps: list[str]) -> list[str]:
+        clean = sorted({a.strip() for a in apps if APP_ID.fullmatch(a.strip())})
+        with self.store.transaction():
+            self.store.execute(
+                "DELETE FROM trusted_apps WHERE user_id = ? AND device_id = ?",
+                (user_id, device_id),
+            )
+            for app in clean:
+                self.store.execute(
+                    "INSERT INTO trusted_apps (user_id, device_id, app, added_at) "
+                    "VALUES (?, ?, ?, ?)",
+                    (user_id, device_id, app, self.clock()),
+                )
+        return clean
+
+    def trusts(
+        self, user_id: int | None, device_id: int | None, front: str | None, tool: str,
+        skill: str | None,
+    ) -> bool:  # fmt: skip
+        """Whether a screen action may run at once because the app in front is trusted."""
+        if user_id is None or device_id is None or not front:
+            return False
+        if (skill or "") not in COVERED_SKILLS or not covered(tool, skill):
+            return False
+        return self.connected(device_id) and front in self.trusted(user_id, device_id)
 
     def prompt_lines(self, user_id: int | None, label: Callable[[int], str]) -> list[str]:
         if user_id is None:

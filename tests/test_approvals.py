@@ -182,5 +182,64 @@ async def test_stop_disconnect_and_minutes():
         )
         runtime.approvals.open(owner.id, phone.id)
         off = client.put("/v1/me/approvals/minutes", json={"minutes": 0}, headers=me).json()
-        assert off == {"minutes": 0, "windows": []}
+        assert off == {"minutes": 0, "windows": [], "trusted_apps": []}
+
+        # Trusting an app takes the PIN; trusting fewer does not.
+        apps = {"device_id": phone.id, "apps": ["com.google.android.youtube"]}
+        assert client.put("/v1/me/approvals/apps", json=apps, headers=me).status_code == 403
+        trusted = client.put("/v1/me/approvals/apps", json={**apps, "pin": PIN}, headers=me)
+        assert trusted.json()["trusted_apps"] == [
+            {"device_id": phone.id, "device": "Pixel 7 (Android)", "apps": apps["apps"]}
+        ]
+        assert client.put(
+            "/v1/me/approvals/apps", json={**apps, "pin": PIN}, headers=device
+        ).status_code in (401, 403)
+        fewer = {"device_id": phone.id, "apps": []}
+        assert (
+            client.put("/v1/me/approvals/apps", json=fewer, headers=me).json()["trusted_apps"] == []
+        )
     assert runtime.approvals.open(owner.id, phone.id) is None  # off: a PIN opens nothing
+
+
+async def test_a_trusted_app_in_front_lets_screen_steps_run():
+    runtime, provider, owner, phone, _, ran, _ = phone_world([])
+    youtube = "com.google.android.youtube"
+    assert runtime.approvals.set_trusted(owner.id, phone.id, [youtube, "not an app;rm"]) == [
+        youtube
+    ]
+    front: dict = {"app": youtube}
+
+    async def screen(arguments):
+        ran.append("screen_act")
+        return {"done": True, **front}
+
+    tools = runtime.assistant.personal_tools(owner.id)
+    act_tool = next(t for t in tools if t.name == "screen_act")
+    act_tool.run = screen
+    runtime.assistant.personal_tools = lambda uid: [act_tool] if uid == owner.id else []
+
+    provider.script = [act("screen_act"), "Your PIN.", act("screen_act"), act("screen_act"), "ok"]
+    first = await runtime.assistant.ask("search tap karo", conversation_id="t", user_id=owner.id)
+    assert first.action is not None and ran == []  # nothing in this turn says what is in front
+    assert "com.google.android.youtube" in provider.calls[0]["messages"][0].text
+
+    await runtime.guard.confirm(first.action.id, PIN, user_id=owner.id, role="owner")
+    runtime.approvals.stop(owner.id)  # no window: only the trusted app may let it run
+    ran.clear()
+    front["app"] = youtube
+    second = await runtime.assistant.ask("aur tap karo", conversation_id="u", user_id=owner.id)
+    assert second.action is not None  # the first step still asks: no app reported yet
+    # Once a step reports YouTube in front, the next one runs; another app ends it.
+    runtime.assistant._front["v"] = {phone.id: youtube}
+    provider.script = [act("screen_act"), act("screen_act"), "ok"]
+    front["app"] = "com.android.messaging"
+    third = await runtime.assistant._run_personal(
+        act_tool, ToolCall("c1", "screen_act", "{}"), "v", "api", "o", owner.id, False
+    )
+    assert third.outcome == "trusted_app" and runtime.assistant._front["v"][phone.id] == (
+        "com.android.messaging"
+    )
+    fourth = await runtime.assistant._run_personal(
+        act_tool, ToolCall("c2", "screen_act", "{}"), "v", "api", "o", owner.id, False
+    )
+    assert fourth.outcome == "proposed"  # Messages is not trusted: it asks again

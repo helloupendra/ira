@@ -15,6 +15,7 @@ const IraPersonal = (() => {
     refused: "refused",
     executed: "done after you confirmed",
     approved: "done within your approval",
+    trusted_app: "done in an app you trust",
     failed: "failed after you confirmed",
   };
   let events = null;
@@ -360,7 +361,7 @@ const IraPersonal = (() => {
   // --- your assistant ---------------------------------------------------------------
 
   async function renderAssistant(body) {
-    const [settings, grants, approvals] = await Promise.all([call("/v1/me/settings"), call("/v1/me/grants"), call("/v1/me/approvals")]);
+    const [settings, grants, approvals, devices] = await Promise.all([call("/v1/me/settings"), call("/v1/me/grants"), call("/v1/me/approvals"), call("/v1/me/devices")]);
     const error = el("p", { className: "error", role: "alert" });
     const saved = el("p", { className: "muted small", role: "status" });
     const languages = settings.language_options.map((code) =>
@@ -399,7 +400,54 @@ const IraPersonal = (() => {
         error.textContent = problem.message;
       }
     });
-    body.replaceChildren(form, webSearch(settings.web_search, body), approvalsCard(approvals, body), grantList(grants, body));
+    body.replaceChildren(form, webSearch(settings.web_search, body), approvalsCard(approvals, body), trustedAppsCard(approvals, devices, body), grantList(grants, body));
+  }
+
+  // Apps on a device where Ira may tap and type without asking, while the app is in front.
+  function trustedAppsCard(approvals, devices, body) {
+    const error = el("p", { className: "error", role: "alert" });
+    const put = async (device_id, apps, pin) => {
+      await call("/v1/me/approvals/apps", { method: "PUT", json: { device_id, apps, pin: pin || undefined } });
+      await renderAssistant(body);
+    };
+    const rows = approvals.trusted_apps.flatMap((entry) =>
+      entry.apps.map((app) =>
+        el(
+          "li",
+          { className: "row" },
+          el("span", {}, el("strong", { text: app }), el("span", { className: "muted small", text: ` on ${entry.device}` })),
+          el("button", {
+            type: "button",
+            className: "btn btn-ghost",
+            text: "Remove",
+            onClick: () => put(entry.device_id, entry.apps.filter((a) => a !== app)).catch((problem) => (error.textContent = problem.message)),
+          }),
+        ),
+      ),
+    );
+    const device = el("select", { name: "device", "aria-label": "Device" }, devices.map((d) => el("option", { value: String(d.id), text: d.label })));
+    const app = el("input", { name: "app", placeholder: "com.google.android.youtube", maxlength: "200", required: true, "aria-label": "The app's id" });
+    const form = el(
+      "form",
+      { className: "stack card" },
+      el("h3", { text: "Trusted apps" }),
+      el("p", { className: "muted small", text: "Ira may tap and type in these apps without asking, while the app is in front. Sending, calls, payments and deleting still ask." }),
+      rows.length ? el("ul", { className: "stack-tight" }, rows) : el("p", { className: "muted small", text: "None yet." }),
+      devices.length ? el("div", { className: "stack-tight" }, el("label", {}, "Device", device), el("label", {}, "App (Android package, or Mac bundle id)", app), pinField(), el("button", { type: "submit", className: "btn btn-ghost", text: "Trust this app" })) : null,
+      error,
+    );
+    form.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      error.textContent = "";
+      const id = Number(device.value);
+      const current = (approvals.trusted_apps.find((t) => t.device_id === id) || { apps: [] }).apps;
+      try {
+        await put(id, [...current, app.value.trim()], form.elements.pin.value);
+      } catch (problem) {
+        error.textContent = problem.message;
+      }
+    });
+    return form;
   }
 
   // One PIN on screen control lets the next steps on that device run, for a few minutes.

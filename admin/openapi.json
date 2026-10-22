@@ -8946,6 +8946,52 @@
                 }
             }
         },
+        "/v1/me/approvals/apps": {
+            "put": {
+                "tags": [
+                    "actions"
+                ],
+                "summary": "Apps Ira may tap and type in",
+                "operationId": "set_trusted_apps",
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/TrustedAppsIn"
+                            }
+                        }
+                    },
+                    "required": true
+                },
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ApprovalsView"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "HTTPBearer": []
+                    }
+                ]
+            }
+        },
         "/v1/me/approvals/minutes": {
             "put": {
                 "tags": [
@@ -9891,6 +9937,13 @@
                         },
                         "type": "array",
                         "title": "Windows"
+                    },
+                    "trusted_apps": {
+                        "items": {
+                            "$ref": "#/components/schemas/TrustedAppsView"
+                        },
+                        "type": "array",
+                        "title": "Trusted Apps"
                     }
                 },
                 "type": "object",
@@ -15418,6 +15471,69 @@
                     "seconds"
                 ],
                 "title": "TranscribeResponse"
+            },
+            "TrustedAppsIn": {
+                "properties": {
+                    "device_id": {
+                        "type": "integer",
+                        "title": "Device Id"
+                    },
+                    "apps": {
+                        "items": {
+                            "type": "string"
+                        },
+                        "type": "array",
+                        "maxItems": 20,
+                        "title": "Apps",
+                        "description": "The whole list for that device."
+                    },
+                    "pin": {
+                        "anyOf": [
+                            {
+                                "type": "string",
+                                "maxLength": 20
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Pin",
+                        "description": "Needed to add an app."
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "device_id",
+                    "apps"
+                ],
+                "title": "TrustedAppsIn"
+            },
+            "TrustedAppsView": {
+                "properties": {
+                    "device_id": {
+                        "type": "integer",
+                        "title": "Device Id"
+                    },
+                    "device": {
+                        "type": "string",
+                        "title": "Device"
+                    },
+                    "apps": {
+                        "items": {
+                            "type": "string"
+                        },
+                        "type": "array",
+                        "title": "Apps",
+                        "description": "Android packages or macOS bundle ids."
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "device_id",
+                    "device",
+                    "apps"
+                ],
+                "title": "TrustedAppsView"
             },
             "UserView": {
                 "properties": {

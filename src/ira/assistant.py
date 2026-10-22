@@ -236,6 +236,8 @@ class Assistant:
         self.switched_off: Callable[[int | None], list[str]] | None = None
         # Approval windows: after a PIN on screen control, its next steps run without asking.
         self.approvals: Any = None
+        # The app each device last said was in front, per conversation, for this turn.
+        self._front: dict[str, dict[int, str]] = {}
         self.device_label: Callable[[int], str] = lambda device_id: f"device {device_id}"
         # Told each finished turn, without delaying it: (person, their message). Learning.
         self.after_turn = after_turn
@@ -298,6 +300,16 @@ class Assistant:
                 + "".join(f"  - {line}\n" for line in known)
             )
         approved = self.approvals.prompt_lines(user_id, self.device_label) if self.approvals else []
+        trusted = self.approvals.trusted_by_device(user_id) if self.approvals and user_id else {}
+        if trusted:
+            prompt += (
+                "- Apps where the person lets you tap and type without asking, while that app "
+                "is in front (read the screen first to see which app is): "
+                + "; ".join(
+                    f"{self.device_label(d)}: {', '.join(apps)}" for d, apps in trusted.items()
+                )
+                + ". Sending, calls, payments and deleting still ask.\n"
+            )
         if approved:
             prompt += (
                 "- The person approved screen and app control with their PIN, on:\n"
@@ -488,6 +500,7 @@ class Assistant:
         history already ends with the action's result."""
         history = self.history(conversation_id)
         start = len(history)
+        self._front.pop(conversation_id, None)  # what was in front last turn may not be now
         if text is not None:
             history.append(Message(role="user", content=text))
         asked = text if text is not None else _last_user_text(history)
@@ -788,6 +801,46 @@ class Assistant:
             return ToolRun(content, True, safe_call, untrusted=True)
         return ToolRun(_result(value), True, safe_call)
 
+    async def _run_now(
+        self,
+        extra: PersonalTool,
+        arguments: dict[str, Any],
+        safe_call: ToolCall,
+        conversation_id: str,
+        target: int | None,
+        outcome: str,
+    ) -> ToolRun:
+        """A device action the person allowed ahead (a window, a trusted app): run it."""
+        try:
+            value = await extra.run(arguments)
+        except ToolError as exc:
+            content = wrap_untrusted(extra.source, extra.label, _result({"error": str(exc)}))
+            return ToolRun(content, False, safe_call, private=True, outcome="error")
+        self._note_front(conversation_id, extra, arguments, value)
+        content = wrap_untrusted(extra.source, extra.label, _result(value, PERSONAL_RESULT_CHARS))
+        return ToolRun(
+            content, True, safe_call, untrusted=taints(extra), private=True, outcome=outcome
+        )
+
+    def _note_front(
+        self, conversation_id: str, extra: PersonalTool, arguments: dict[str, Any], value: Any
+    ) -> None:
+        """The app a device says is in front (its "app"), for trusted apps, for this turn."""
+        if extra.source != "device" or not isinstance(value, dict):
+            return
+        try:
+            target, _ = extra.target(arguments)
+        except ToolError:
+            return
+        if target is None:
+            return
+        app = value.get("app")
+        seen = self._front.setdefault(conversation_id, {})
+        if isinstance(app, str) and app:
+            seen[target] = app
+        elif (extra.skill or "") in ("screen", "control", "apps"):
+            seen.pop(target, None)  # it may have moved to another app: trust it no more
+
     async def _run_personal(
         self,
         extra: PersonalTool,
@@ -806,22 +859,17 @@ class Assistant:
             except ToolError:
                 target = None
             window = self.approvals.covers(user_id, target, extra.name, extra.skill)
+            front = self._front.get(conversation_id, {}).get(target or 0)
             if window is not None:  # approved with a PIN for a few minutes: run it now
-                try:
-                    value = await extra.run(arguments)
-                except ToolError as exc:
-                    content = wrap_untrusted(
-                        extra.source, extra.label, _result({"error": str(exc)})
-                    )
-                    return ToolRun(content, False, safe_call, private=True, outcome="error")
                 self.approvals.step(window)
-                content = wrap_untrusted(
-                    extra.source, extra.label, _result(value, PERSONAL_RESULT_CHARS)
+                return await self._run_now(
+                    extra, arguments, safe_call, conversation_id, target, "approved"
                 )
-                return ToolRun(
-                    content, True, safe_call, untrusted=taints(extra), private=True,
-                    outcome="approved",
-                )  # fmt: skip
+            if self.approvals.trusts(user_id, target, front, extra.name, extra.skill):
+                # The app in front is one the person trusts: tap and type there at once.
+                return await self._run_now(
+                    extra, arguments, safe_call, conversation_id, target, "trusted_app"
+                )
         if extra.tier >= 2:
             # The tier is the device's or the skill's, from code; the model cannot lower it.
             if tainted:
@@ -858,6 +906,7 @@ class Assistant:
             return _proposed(pending, safe_call)
         try:
             value = await extra.run(arguments)
+            self._note_front(conversation_id, extra, arguments, value)
         except ToolError as exc:
             if extra.source != "device":
                 return _failed(str(exc), safe_call)

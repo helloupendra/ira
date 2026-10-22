@@ -24,9 +24,22 @@ class ApprovalWindowView(BaseModel):
     steps: int = Field(description="Actions it has run so far.")
 
 
+class TrustedAppsView(BaseModel):
+    device_id: int
+    device: str
+    apps: list[str] = Field(description="Android packages or macOS bundle ids.")
+
+
 class ApprovalsView(BaseModel):
     minutes: int = Field(description="How long a PIN on screen control covers; 0 is off.")
     windows: list[ApprovalWindowView]
+    trusted_apps: list[TrustedAppsView] = Field(default_factory=list)
+
+
+class TrustedAppsIn(BaseModel):
+    device_id: int
+    apps: list[str] = Field(max_length=20, description="The whole list for that device.")
+    pin: str | None = Field(default=None, max_length=20, description="Needed to add an app.")
 
 
 class ApprovalMinutes(BaseModel):
@@ -47,6 +60,10 @@ def _view(runtime: Runtime, user_id: int) -> ApprovalsView:
                 steps=w.steps,
             )
             for w in runtime.approvals.for_user(user_id)
+        ],
+        trusted_apps=[
+            TrustedAppsView(device_id=d, device=runtime.device_label(d), apps=apps)
+            for d, apps in runtime.approvals.trusted_by_device(user_id).items()
         ],
     )
 
@@ -75,6 +92,22 @@ def stop_one(
     if not runtime.approvals.stop(who.user.id, window_id):
         raise HTTPException(404, detail="no such open approval")
     return OkResponse()
+
+
+@router.put("/apps", response_model=ApprovalsView, summary="Apps Ira may tap and type in")
+async def set_trusted_apps(
+    body: TrustedAppsIn,
+    who: Principal = Depends(require_session("actions")),
+    runtime: Runtime = Depends(get_runtime),
+) -> ApprovalsView:
+    device = runtime.hub.devices.get(body.device_id) if runtime.hub is not None else None
+    if device is None or device.user_id != who.user.id:
+        raise HTTPException(404, detail="no such device of yours")
+    added = {a.strip() for a in body.apps} - runtime.approvals.trusted(who.user.id, device.id)
+    if added:  # more trust: the PIN
+        await _check_pin(runtime, who, body.pin, f"let Ira tap and type in {', '.join(added)}")
+    runtime.approvals.set_trusted(who.user.id, device.id, body.apps)
+    return _view(runtime, who.user.id)
 
 
 @router.put("/minutes", response_model=ApprovalsView, summary="How long an approval lasts")

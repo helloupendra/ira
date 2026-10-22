@@ -232,14 +232,21 @@ typed PIN:
    approve; `DELETE /v1/me/approval-keys/{device_id}` removes a key, and a
    removed device's key no longer works.
 
-### 3. Trusted apps (designed)
+### 3. Trusted apps (built)
 
 A person may name apps on a device where Ira may tap and type without
-asking (YouTube, for example): `PUT /v1/me/approvals/apps` with the PIN,
-`{"device_id": 4, "apps": ["com.google.android.youtube"]}`. A `screen_act`
-there runs as Tier 1 (done, then said). The device reports the app in front
-with each screen action (`"app"` in its result), and a step that lands in
-any other app ends the trust for that turn. The never-list still applies.
+asking (YouTube, for example), under **Your assistant**, **Trusted apps**,
+or `PUT /v1/me/approvals/apps` with the device's whole list,
+`{"device_id": 4, "apps": ["com.google.android.youtube"], "pin": "..."}`.
+Adding an app needs the PIN; taking one off does not. `GET
+/v1/me/approvals` lists them under `trusted_apps`.
+
+Each screen result from the device says which app is in front (`"app"`,
+its package or bundle id). Once a result in the current turn says a
+trusted app is in front, the next screen action there runs at once and is
+logged as "done in an app you trust". A result that names another app, or
+none, ends it, and so does the next turn: Ira reads the screen again first.
+The never-list still applies.
 
 ## What it does not do (yet)
 
