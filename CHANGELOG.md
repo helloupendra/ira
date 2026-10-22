@@ -89,6 +89,10 @@ switch it on.
   with their password again; an owner sets someone's password or email from
   Users & roles; `ira user password` and `ira user email` do it from the
   server. All go to the change log.
+- **Real-time voice, protocol draft** ([Real-time voice](docs/realtime.md)):
+  the connection the Ira app, the Mac app and the Android app use for a
+  live call, with barge-in and measured latency. Macs can now be offered
+  the `files` and `screen` skills, for the native Mac app.
 - **Tasks on your Mac** (the `tasks` skill): Ira hands a job to a coding
   agent configured on the Mac, in a new git worktree and branch of a
   repository the person allowed there. It runs in macOS's sandbox, its git

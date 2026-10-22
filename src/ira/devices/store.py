@@ -39,6 +39,10 @@ SKILLS: dict[str, str] = {
     "Pushing needs your PIN.",
     "routine": "Routine: when this Mac locks, sleeps and wakes, and which of your named "
     "networks it is on, so Ira can learn your day. Never what you do on it.",
+    "files": "Files: find files by name, kind, date or what is in them, read the one you ask "
+    "about (PDF, Word, text) and open it. Only in folders you allow, only when you ask.",
+    "screen": "Screen: read the text of the window in front of you, only when you ask. Only "
+    "the text leaves the Mac, never a picture.",
 }
 DEFAULT_LABELS = {"mac": "My Mac", "android": "My Android phone"}
 

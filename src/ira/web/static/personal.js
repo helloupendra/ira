@@ -56,6 +56,10 @@ const IraPersonal = (() => {
     chrome_list_tabs: "Listed your Chrome tabs",
     chrome_read_tab: "Read a Chrome tab",
     chrome_watch_tab: "Watched a Chrome tab",
+    files_find: "Looked for files",
+    file_read: "Read a file",
+    file_open: "Opened a file",
+    screen_read: "Read your screen",
     web_search: "Searched the web",
     news_search: "Searched the news",
   };
