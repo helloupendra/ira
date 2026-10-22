@@ -15,9 +15,7 @@ public final class AppSettings: @unchecked Sendable {
         static let deviceLabel = "deviceLabel"
         static let assistant = "assistantName"
         static let conversationID = "conversationID"
-        static let speakTypedReplies = "speakTypedReplies"
         static let setupDone = "setupDone"
-        static let skillsAsked = "skillsAsked"
     }
 
     /// The paired server, e.g. `https://ira.example.com`. Empty until paired.
@@ -66,23 +64,10 @@ public final class AppSettings: @unchecked Sendable {
         if ConversationID.isValid(id) { defaults.set(id, forKey: Key.conversationID) }
     }
 
-    /// Speak answers to typed questions too (off: only answers to speech are spoken).
-    public var speakTypedReplies: Bool {
-        get { defaults.bool(forKey: Key.speakTypedReplies) }
-        set { defaults.set(newValue, forKey: Key.speakTypedReplies) }
-    }
-
     /// The person finished "Get Ira ready" once (it stays reachable in Settings).
     public var setupDone: Bool {
         get { defaults.bool(forKey: Key.setupDone) }
         set { defaults.set(newValue, forKey: Key.setupDone) }
-    }
-
-    /// Skills whose permission the app has asked iOS for, so a "no" shows
-    /// "Open Settings" instead of asking again.
-    public var skillsAsked: Set<String> {
-        get { Set(defaults.stringArray(forKey: Key.skillsAsked) ?? []) }
-        set { defaults.set(newValue.sorted(), forKey: Key.skillsAsked) }
     }
 
     /// Forget the server and this iPhone's name (the key is the Keychain's).

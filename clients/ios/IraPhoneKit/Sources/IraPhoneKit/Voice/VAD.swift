@@ -139,6 +139,19 @@ public enum PCM {
         return data
     }
 
+    /// 16-bit little-endian PCM back to samples (for the iPhone's own recognition).
+    public static func floats(_ data: Data) -> [Float] {
+        var samples: [Float] = []
+        samples.reserveCapacity(data.count / 2)
+        var index = data.startIndex
+        while index + 1 < data.endIndex {
+            let value = Int16(bitPattern: UInt16(data[index]) | UInt16(data[index + 1]) << 8)
+            samples.append(Float(value) / Float(Int16.max))
+            index += 2
+        }
+        return samples
+    }
+
     /// A WAV file around 16-bit mono PCM.
     public static func wav(_ pcm: Data, sampleRate: Int = 16_000) -> Data {
         var data = Data()
