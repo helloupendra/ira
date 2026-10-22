@@ -1806,6 +1806,41 @@ export interface paths {
         patch: operations["change_business"];
         trace?: never;
     };
+    "/v1/me/tokens": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Your API tokens (never their values) */
+        get: operations["list_my_tokens"];
+        put?: never;
+        /** Make a token that may only ask, for a Siri Shortcut (needs your PIN; shown once) */
+        post: operations["make_my_token"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/me/tokens/{token_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Stop one of your tokens */
+        delete: operations["revoke_my_token"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -3429,6 +3464,32 @@ export interface components {
              * @description Your action PIN; needed only to switch web search on.
              */
             pin?: string | null;
+        };
+        /** MyToken */
+        MyToken: {
+            /** Id */
+            id: string;
+            /** Label */
+            label: string;
+            /** Scopes */
+            scopes: string[];
+            /** Created At */
+            created_at: number;
+            /** Last Used At */
+            last_used_at: number | null;
+        };
+        /** MyTokenCreate */
+        MyTokenCreate: {
+            /**
+             * Label
+             * @default Siri on iPhone
+             */
+            label: string;
+            /**
+             * Pin
+             * @description Your action PIN.
+             */
+            pin: string;
         };
         /** NetworkName */
         NetworkName: {
@@ -10966,6 +11027,90 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["BusinessView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_my_tokens: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MyToken"][];
+                };
+            };
+        };
+    };
+    make_my_token: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MyTokenCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TokenCreated"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    revoke_my_token: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                token_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OkResponse"];
                 };
             };
             /** @description Validation Error */

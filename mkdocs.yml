@@ -73,6 +73,7 @@ nav:
       - "Start in 15 minutes": personal-assistant.md
       - Ira for Mac: clients/macos.md
       - Ira for Android: clients/android.md
+      - Ira on iPhone: clients/iphone.md
       - What Ira learns: learning.md
       - Real-time voice: realtime.md
       - Your connections: connectors.md

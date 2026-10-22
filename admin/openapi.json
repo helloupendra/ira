@@ -8730,6 +8730,127 @@
                     }
                 }
             }
+        },
+        "/v1/me/tokens": {
+            "get": {
+                "tags": [
+                    "account"
+                ],
+                "summary": "Your API tokens (never their values)",
+                "operationId": "list_my_tokens",
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "items": {
+                                        "$ref": "#/components/schemas/MyToken"
+                                    },
+                                    "type": "array",
+                                    "title": "Response List My Tokens"
+                                }
+                            }
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "HTTPBearer": []
+                    }
+                ]
+            },
+            "post": {
+                "tags": [
+                    "account"
+                ],
+                "summary": "Make a token that may only ask, for a Siri Shortcut (needs your PIN; shown once)",
+                "operationId": "make_my_token",
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/MyTokenCreate"
+                            }
+                        }
+                    },
+                    "required": true
+                },
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/TokenCreated"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "HTTPBearer": []
+                    }
+                ]
+            }
+        },
+        "/v1/me/tokens/{token_id}": {
+            "delete": {
+                "tags": [
+                    "account"
+                ],
+                "summary": "Stop one of your tokens",
+                "operationId": "revoke_my_token",
+                "security": [
+                    {
+                        "HTTPBearer": []
+                    }
+                ],
+                "parameters": [
+                    {
+                        "name": "token_id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "title": "Token Id"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/OkResponse"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
         }
     },
     "components": {
@@ -12316,6 +12437,71 @@
                 "type": "object",
                 "title": "MySettingsUpdate",
                 "description": "Send only what changes; null goes back to the default."
+            },
+            "MyToken": {
+                "properties": {
+                    "id": {
+                        "type": "string",
+                        "title": "Id"
+                    },
+                    "label": {
+                        "type": "string",
+                        "title": "Label"
+                    },
+                    "scopes": {
+                        "items": {
+                            "type": "string"
+                        },
+                        "type": "array",
+                        "title": "Scopes"
+                    },
+                    "created_at": {
+                        "type": "number",
+                        "title": "Created At"
+                    },
+                    "last_used_at": {
+                        "anyOf": [
+                            {
+                                "type": "number"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Last Used At"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "id",
+                    "label",
+                    "scopes",
+                    "created_at",
+                    "last_used_at"
+                ],
+                "title": "MyToken"
+            },
+            "MyTokenCreate": {
+                "properties": {
+                    "label": {
+                        "type": "string",
+                        "maxLength": 60,
+                        "title": "Label",
+                        "default": "Siri on iPhone"
+                    },
+                    "pin": {
+                        "type": "string",
+                        "maxLength": 20,
+                        "minLength": 1,
+                        "title": "Pin",
+                        "description": "Your action PIN."
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "pin"
+                ],
+                "title": "MyTokenCreate"
             },
             "NetworkName": {
                 "properties": {

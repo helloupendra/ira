@@ -32,6 +32,7 @@ from ira.channels import (
     learning,
     live,
     me,
+    my_tokens,
     reports,
 )
 from ira.channels.account import claim_setup
@@ -592,6 +593,7 @@ def create_app(runtime: Runtime, *, start_channels: bool = True) -> FastAPI:
     app.include_router(connectors.callback)
     app.include_router(reports.router)
     app.include_router(businesses.router)
+    app.include_router(my_tokens.router)
     devices.mask_tokens_in_logs()
 
     @app.get("/pair", include_in_schema=False)

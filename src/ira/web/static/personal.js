@@ -129,6 +129,7 @@ const IraPersonal = (() => {
     knows: { title: "What Ira knows about you", render: renderKnows },
     connections: { title: "Your connections", render: renderConnections },
     businesses: { title: "Your businesses", render: renderBusinesses },
+    siri: { title: "Siri on iPhone", render: renderSiri },
   };
 
   function open(name) {
@@ -882,6 +883,77 @@ const IraPersonal = (() => {
   const PRESETS = {
     github: { name: "GitHub", url: "https://api.githubcopilot.com/mcp/readonly", hint: "A fine-grained personal access token from github.com/settings/tokens. This address is read-only." },
   };
+
+  // --- Siri on iPhone -----------------------------------------------------------------
+
+  async function renderSiri(body) {
+    const tokens = await call("/v1/me/tokens");
+    const ask = `${location.origin}/v1/ask`;
+    const list = el("ul", { className: "cards" });
+    for (const token of tokens) {
+      const used = token.last_used_at ? `last used ${when(token.last_used_at)}` : "not used yet";
+      list.append(
+        el(
+          "li",
+          { className: "card row" },
+          el("span", {}, el("strong", { text: token.label }), el("span", { className: "muted small", text: ` ${used}` })),
+          el("button", {
+            type: "button",
+            className: "btn btn-ghost",
+            text: "Stop it",
+            onClick: async () => {
+              await call(`/v1/me/tokens/${encodeURIComponent(token.id)}`, { method: "DELETE" });
+              await renderSiri(body);
+            },
+          }),
+        ),
+      );
+    }
+    const label = el("input", { name: "label", maxlength: "60", value: "Siri on iPhone" });
+    const error = el("p", { className: "error", role: "alert" });
+    const form = el(
+      "form",
+      { className: "stack-tight" },
+      el("label", {}, "Its name", label),
+      pinField(),
+      el("button", { type: "submit", className: "btn btn-primary", text: "Make a token" }),
+      error,
+    );
+    form.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      try {
+        const made = await call("/v1/me/tokens", { method: "POST", json: { label: label.value, pin: form.elements.pin.value } });
+        form.replaceWith(
+          el(
+            "div",
+            { className: "stack-tight" },
+            el("p", { text: "Your token, shown this once. In the Shortcut's header, write Bearer, a space, then this:" }),
+            el("code", { className: "breakable", text: made.token }),
+            el("div", { className: "row" }, copyButton(made.token, "Copy the token"), copyButton(ask, "Copy the address")),
+          ),
+        );
+      } catch (problem) {
+        error.textContent = problem.message;
+      }
+    });
+    body.replaceChildren(
+      el("p", { className: "muted small", text: "Say \"Hey Siri, Ask Ira\" and talk: a Shortcut sends what you said to your Ira and speaks the answer. Its token can only ask: it cannot say yes to anything, so actions wait for you in this app." }),
+      el(
+        "ol",
+        { className: "steps" },
+        el("li", { text: "Make a token below, and copy it." }),
+        el("li", { text: "In the Shortcuts app, make a new shortcut called Ask Ira." }),
+        el("li", { text: "Add Dictate Text. Set its language to English (India) or Hindi (India)." }),
+        el("li", {}, "Add Get Contents of URL with ", el("code", { className: "breakable", text: ask }), ". Method: POST. Header: Authorization, Bearer and your token. Request body: JSON, a text field set to Dictated Text."),
+        el("li", { text: "Add Get Dictionary Value: the value for text in Contents of URL." }),
+        el("li", { text: "Add Speak Text, with that Dictionary Value." }),
+      ),
+      el("p", { className: "small" }, el("a", { href: "https://helloupendra.github.io/ira/docs/clients/iphone/", target: "_blank", rel: "noopener", text: "The full guide, with a Tell Ira shortcut for notes and reminders" })),
+      el("h3", { text: "Your tokens" }),
+      tokens.length ? list : el("p", { className: "muted", text: "None yet." }),
+      form,
+    );
+  }
 
   // --- your businesses ---------------------------------------------------------------
 

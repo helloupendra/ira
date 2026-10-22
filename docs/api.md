@@ -305,6 +305,17 @@ Each tool's `min_tier` comes from its annotations: read-only is 0, unmarked
 or writing is 2, destructive or about sending, paying, sharing, deleting,
 merging or pushing is 3. See [Your connections](connectors.md).
 
+### Your tokens, for Siri and shortcuts
+
+| Route | Who | Does |
+| --- | --- | --- |
+| `GET /v1/me/tokens` | a session with `ask` | `MyToken[]`: your API tokens that still work, never their values |
+| `POST /v1/me/tokens` | a session with `ask` | `MyTokenCreate` (`label`, `pin`): a token whose only scope is `ask`, shown once (`TokenCreated`). Your PIN, as for a new device. 10 at most |
+| `DELETE /v1/me/tokens/{id}` | a session with `ask` | stops one of your tokens |
+
+A Siri Shortcut sends what was said to `POST /v1/ask` with one
+([Ira on iPhone](clients/iphone.md)).
+
 ### Your businesses
 
 | Route | Who | Does |

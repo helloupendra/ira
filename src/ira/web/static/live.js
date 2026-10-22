@@ -61,18 +61,55 @@ const IraLive = (() => {
     return out;
   }
 
+  // Safari 17 and later: say this page plays and records, or the iPhone's silent switch
+  // mutes Ira's voice (Web Audio counts as "ambient" sound otherwise).
+  function audioSession(type) {
+    try {
+      if (navigator.audioSession) navigator.audioSession.type = type;
+    } catch {
+      /* not this browser */
+    }
+  }
+
+  // Keep the screen on during a call where the browser allows it (Safari 16.4+, Chrome).
+  async function keepAwake() {
+    const current = call;
+    if (!current || current.wakeLock || !("wakeLock" in navigator)) return;
+    try {
+      const lock = await navigator.wakeLock.request("screen");
+      if (call !== current) return lock.release().catch(() => {});
+      current.wakeLock = lock;
+      lock.addEventListener("release", () => (current.wakeLock = null));
+    } catch {
+      /* not allowed now: the screen may dim */
+    }
+  }
+
+  // Back from the lock screen or another app: the screen lock and the sound come back too.
+  document.addEventListener("visibilitychange", () => {
+    if (!call || document.visibilityState !== "visible") return;
+    keepAwake();
+    if (call.context.state !== "running") call.context.resume().catch(() => {});
+  });
+
   async function start() {
     if (call || !available()) return;
+    // iOS starts sound only inside the tap: the context is made here, before anything waits.
+    const context = new AudioContext();
+    context.resume().catch(() => {});
+    audioSession("play-and-record");
     let stream;
     try {
       stream = await navigator.mediaDevices.getUserMedia({
         audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true, autoGainControl: true },
       });
     } catch (error) {
+      context.close().catch(() => {});
+      audioSession("auto");
       return setStatus(micMessage(error));
     }
-    const context = new AudioContext();
     await context.audioWorklet.addModule("/recorder-worklet.js");
+    if (context.state !== "running") await context.resume().catch(() => {});
     const source = context.createMediaStreamSource(stream);
     const node = new AudioWorkletNode(context, "recorder");
     const scheme = location.protocol === "https:" ? "wss" : "ws";
@@ -101,7 +138,9 @@ const IraLive = (() => {
       stopped: new Set(), // turns whose audio was cut off
       turns: new Map(), // turn number -> its Ira bubble
       ready: false,
+      wakeLock: null,
     };
+    keepAwake();
     ws.addEventListener("open", () =>
       send({ type: "start", protocol: 1, client: "ira-pwa/0.2", conversation_id: state.conversationId || undefined }),
     );
@@ -139,6 +178,8 @@ const IraLive = (() => {
     ending.node.disconnect();
     ending.stream.getTracks().forEach((track) => track.stop());
     ending.context.close();
+    if (ending.wakeLock) ending.wakeLock.release().catch(() => {});
+    audioSession("auto");
     $("#call-bar").hidden = true;
     $("#composer").classList.remove("in-call");
     $("#call").setAttribute("aria-pressed", "false");

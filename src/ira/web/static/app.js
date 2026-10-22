@@ -986,10 +986,49 @@ async function speak(text) {
   }
 }
 
+// iPhone and iPad: Safari plays a spoken reply only from an audio element that a tap
+// started once. One element is started, silent, on the first tap and reused for every
+// reply. It plays straight out, not through Web Audio, which iOS may keep suspended.
+const IOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+let unlockedAudio = null;
+
+function silentWav() {
+  const samples = 800; // 50 ms at 16 kHz
+  const view = new DataView(new ArrayBuffer(44 + samples * 2));
+  const text = (offset, value) => [...value].forEach((c, i) => view.setUint8(offset + i, c.charCodeAt(0)));
+  text(0, "RIFF");
+  view.setUint32(4, 36 + samples * 2, true);
+  text(8, "WAVEfmt ");
+  view.setUint32(16, 16, true);
+  view.setUint16(20, 1, true);
+  view.setUint16(22, 1, true);
+  view.setUint32(24, 16000, true);
+  view.setUint32(28, 32000, true);
+  view.setUint16(32, 2, true);
+  view.setUint16(34, 16, true);
+  text(36, "data");
+  view.setUint32(40, samples * 2, true);
+  return new Blob([view], { type: "audio/wav" });
+}
+
+function unlockAudio() {
+  if (!IOS || unlockedAudio) return;
+  const audio = new Audio();
+  audio.src = URL.createObjectURL(silentWav());
+  audio.play().then(
+    () => (unlockedAudio = audio),
+    () => {},
+  );
+  if ("speechSynthesis" in window) speechSynthesis.speak(new SpeechSynthesisUtterance(""));
+}
+document.addEventListener("pointerdown", unlockAudio, { capture: true });
+document.addEventListener("keydown", unlockAudio, { capture: true });
+
 function playBlob(blob) {
   return new Promise((resolve) => {
     const url = URL.createObjectURL(blob);
-    const audio = new Audio(url);
+    const audio = unlockedAudio || new Audio();
+    audio.src = url;
     let context = null;
     let analyser = null;
     let data = null;
@@ -1010,6 +1049,7 @@ function playBlob(blob) {
     };
     state.player = player;
     try {
+      if (IOS) throw new Error("the element plays straight out"); // the meter is skipped
       context = new AudioContext();
       const source = context.createMediaElementSource(audio);
       analyser = context.createAnalyser();
@@ -1020,8 +1060,8 @@ function playBlob(blob) {
     } catch {
       /* no meter, but the reply still plays */
     }
-    audio.addEventListener("ended", done);
-    audio.addEventListener("error", done);
+    audio.addEventListener("ended", done, { once: true });
+    audio.addEventListener("error", done, { once: true });
     if (analyser) {
       animateMeter(
         () => {
@@ -1170,11 +1210,19 @@ async function listen() {
 }
 
 async function startRecording() {
-  const stream = await navigator.mediaDevices.getUserMedia({
-    audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true },
-  });
-  const context = new AudioContext();
+  const context = new AudioContext(); // made before waiting, while the tap still counts (iOS)
+  context.resume().catch(() => {});
+  let stream;
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({
+      audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true },
+    });
+  } catch (error) {
+    context.close().catch(() => {});
+    throw error;
+  }
   await context.audioWorklet.addModule("/recorder-worklet.js");
+  if (context.state !== "running") await context.resume().catch(() => {});
   const source = context.createMediaStreamSource(stream);
   const node = new AudioWorkletNode(context, "recorder");
   const rec = { stream, context, node, chunks: [], started: Date.now(), lastLoud: 0, spoke: false, level: 0 };

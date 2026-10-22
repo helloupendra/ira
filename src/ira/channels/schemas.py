@@ -792,6 +792,19 @@ class TokenCreateRequest(BaseModel):
     scopes: list[str] = Field(min_length=1)
 
 
+class MyTokenCreate(BaseModel):
+    label: str = Field(default="Siri on iPhone", max_length=60)
+    pin: str = Field(min_length=1, max_length=20, description="Your action PIN.")
+
+
+class MyToken(BaseModel):
+    id: str
+    label: str
+    scopes: list[str]
+    created_at: float
+    last_used_at: float | None
+
+
 class TokenCreated(BaseModel):
     id: str
     label: str

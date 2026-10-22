@@ -86,6 +86,11 @@ switch it on.
   with their password again; an owner sets someone's password or email from
   Users & roles; `ira user password` and `ira user email` do it from the
   server. All go to the change log.
+- **Ira on iPhone.** The web app installs to the Home Screen and its live
+  call works in Safari: sound starts on the tap, the silent switch does not
+  mute a call, and the screen stays on. "Hey Siri, Ask Ira" is a Shortcut
+  with a token that can only ask, made under **Siri on iPhone** with the
+  PIN. See Ira on iPhone in the docs.
 - **Your businesses.** A profile for each business a person works with:
   what it is, its people, its terms, and what Ira may do for it. Ira keeps
   them in mind, and updates one when told ("Sunrise pays in 30 days").
