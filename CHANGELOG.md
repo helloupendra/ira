@@ -55,7 +55,12 @@ switch it on.
   durations and answer preferences, writes each as a sentence whose every
   number is in its evidence, and asks once; only a yes puts it in the
   assistant's context. Reminders by time or place (`remind_me`), and an
-  optional nudge 15 minutes before a routine. Each person has a time zone.
+  optional nudge 15 minutes before a routine. Each person has a time zone,
+  set from their browser. The Ira app's **What Ira knows about you** holds
+  the switches, named places, learnings (yes, no, reword, forget),
+  reminders and an iPhone Shortcuts key; a question in the chat has Yes and
+  No buttons, and answers get thumbs when that source is on. See [What Ira
+  learns](docs/learning.md).
 - New docs: [Your own Ira in 15 minutes](docs/personal-assistant.md), [the Mac
   companion](docs/clients/mac.md), [Privacy](docs/privacy.md),
   [Devices](docs/devices.md), and a design note.

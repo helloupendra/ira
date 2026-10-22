@@ -96,6 +96,7 @@ const IraPersonal = (() => {
     assistant: { title: "Your assistant", render: renderAssistant },
     activity: { title: "What Ira did", render: renderActivity },
     data: { title: "Your data", render: renderData },
+    knows: { title: "What Ira knows about you", render: renderKnows },
   };
 
   function open(name) {
@@ -504,6 +505,8 @@ const IraPersonal = (() => {
 
   function startEvents() {
     if (events || !state.info || !state.info.permissions.includes("ask")) return;
+    loadLearning();
+    ensureTimezone();
     events = new EventSource("/v1/me/events/stream");
     events.addEventListener("message", (message) => {
       let event;
@@ -512,17 +515,350 @@ const IraPersonal = (() => {
       } catch {
         return;
       }
-      const text = event.text && event.text !== event.title ? `${event.title}. ${event.text}` : event.title;
+      const joint = /[.?!:]$/.test(event.title) ? " " : ". ";
+      const text = event.text && event.text !== event.title ? `${event.title}${joint}${event.text}` : event.title;
       remember({ role: "note", text });
-      addTurn("note", text);
+      const li = addTurn("note", text);
+      if (event.event === "learning_question" && event.data && event.data.learning_id) askAbout(li, event.data.learning_id);
       announce(text);
       if (speakOn() && (state.mode === "idle" || state.mode === "answering")) speak(text);
     });
   }
 
+  // A learning question in the chat: answer it there.
+  function askAbout(li, learningId) {
+    const path = `/v1/me/learnings/${encodeURIComponent(learningId)}`;
+    const row = el("div", { className: "row" });
+    const answer = (what, said) => async () => {
+      try {
+        await call(`${path}/${what}`, { method: "POST" });
+        row.replaceChildren(el("span", { className: "muted small", text: said }));
+      } catch (problem) {
+        row.replaceChildren(el("span", { className: "error small", text: problem.message }));
+      }
+    };
+    row.append(
+      el("button", { type: "button", className: "btn btn-primary", text: "Yes, remember", onClick: answer("approve", "Remembered.") }),
+      el("button", { type: "button", className: "btn btn-ghost", text: "No", onClick: answer("reject", "I won't ask again.") }),
+    );
+    li.append(row);
+  }
+
   function stopEvents() {
     if (events) events.close();
     events = null;
+  }
+
+  // --- what Ira knows about you ---------------------------------------------------
+
+  const SOURCE_NAMES = {
+    phone: "My phone, when it says I reached or left a place I named",
+    conversation: "What I tell Ira about where I'm going",
+    feedback: "My thumbs on Ira's answers",
+  };
+  const STATUS_NAMES = {
+    proposed: "still checking",
+    ready: "waiting for your answer",
+    asked: "waiting for your answer",
+    changed: "seems to have changed",
+    active: "remembered",
+    rejected: "you said no",
+    faded: "not seen lately",
+  };
+  const KEEP_DAYS = [30, 60, 90, 180, 365];
+  let learning = null; // your learning settings, for thumbs on answers
+
+  async function loadLearning() {
+    try {
+      learning = await call("/v1/me/learning");
+    } catch {
+      learning = null;
+    }
+    return learning;
+  }
+
+  async function renderKnows(body) {
+    const view = await loadLearning();
+    if (!view) throw new Error("Learning isn't available on this server.");
+    body.replaceChildren(
+      learningSwitches(view, body),
+      learningsList(view, body),
+      placesList(view, body),
+      remindersList(view, body),
+      phoneSection(view, body),
+    );
+  }
+
+  function learningSwitches(view, body) {
+    const on = el("input", { type: "checkbox", name: "on", checked: view.on });
+    const sources = view.sources.map((source) =>
+      el("label", { className: "switch" }, el("input", { type: "checkbox", name: "sources", value: source.name, checked: source.on }), el("span", { text: SOURCE_NAMES[source.name] || source.description })),
+    );
+    const macs = view.macs.length
+      ? view.macs.map((mac) => el("li", { text: `${mac.label}: ${mac.on ? "its lock, sleep and network are noticed" : "off (switch its routine on under Your devices)"}` }))
+      : [el("li", { className: "muted", text: "No Mac paired. A Mac's routine is switched on under Your devices." })];
+    const days = el("select", { name: "days" }, KEEP_DAYS.map((n) => el("option", { value: String(n), text: `${n} days` })));
+    days.value = String(view.days);
+    const nudges = el("input", { type: "checkbox", name: "nudges", checked: view.nudges });
+    const pin = pinField("Your PIN, to switch something on");
+    const error = el("p", { className: "error", role: "alert" });
+    const saved = el("p", { className: "muted small", role: "status" });
+    const form = el(
+      "form",
+      { className: "stack card" },
+      el("p", { className: "muted small", text: "Off until you switch it on. Ira only notices what you choose here, keeps it for as long as you say, and asks you before it remembers anything." }),
+      el("label", { className: "switch" }, on, el("span", { text: "Let Ira learn my routine" })),
+      el("fieldset", { className: "stack-tight" }, el("legend", { text: "From" }), sources, el("ul", { className: "small" }, macs)),
+      el("label", {}, "Keep what it noticed for", days),
+      el("label", { className: "switch" }, nudges, el("span", { text: "Nudge me 15 minutes before a routine I approved" })),
+      pin,
+      el("button", { type: "submit", className: "btn btn-primary", text: "Save" }),
+      saved,
+      error,
+    );
+    form.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      error.textContent = "";
+      const data = new FormData(form);
+      const value = $("input", pin).value;
+      $("input", pin).value = "";
+      try {
+        await call("/v1/me/learning", {
+          method: "PATCH",
+          json: { on: on.checked, sources: data.getAll("sources"), days: Number(data.get("days")), nudges: nudges.checked, pin: value || undefined },
+        });
+        await renderKnows(body);
+        body.prepend(el("p", { className: "note ok", role: "status", text: "Saved." }));
+      } catch (problem) {
+        error.textContent = problem.message;
+      }
+    });
+    return el("section", { className: "stack" }, el("h3", { text: "What Ira may notice" }), form);
+  }
+
+  function learningsList(view, body) {
+    const list = el("ul", { className: "cards" });
+    const shown = view.learnings.filter((item) => item.status !== "rejected");
+    if (!shown.length) list.append(el("li", { className: "muted", text: view.on ? "Nothing yet. Ira needs at least 8 days over two weeks before it suggests a routine." : "Nothing: learning is off." }));
+    const act = async (path, method = "POST", json) => {
+      await call(path, { method, json });
+      await renderKnows(body);
+    };
+    for (const item of shown) {
+      const path = `/v1/me/learnings/${encodeURIComponent(item.id)}`;
+      const evidence = item.evidence || {};
+      const facts = evidence.days ? `Seen on ${evidence.days} days` : "";
+      const error = el("p", { className: "error", role: "alert" });
+      const guard = (work) => () => work().catch((problem) => (error.textContent = problem.message));
+      const actions = el("div", { className: "row" });
+      if (["ready", "asked", "changed"].includes(item.status)) {
+        actions.append(
+          el("button", { type: "button", className: "btn btn-primary", text: "Yes, remember", onClick: guard(() => act(`${path}/approve`)) }),
+          el("button", { type: "button", className: "btn btn-ghost", text: "No", onClick: guard(() => act(`${path}/reject`)) }),
+        );
+      }
+      if (item.status === "active") {
+        actions.append(
+          el("button", {
+            type: "button",
+            className: "btn btn-ghost",
+            text: "Reword",
+            onClick: () => {
+              const input = el("input", { value: item.text, maxlength: "300", "aria-label": "Reword it" });
+              const save = el("button", { type: "button", className: "btn btn-primary", text: "Save", onClick: guard(() => act(path, "PATCH", { text: input.value })) });
+              actions.replaceChildren(input, save);
+              input.focus();
+            },
+          }),
+        );
+      }
+      actions.append(
+        el("button", {
+          type: "button",
+          className: "text-btn danger",
+          text: "Forget it",
+          onClick: guard(async () => {
+            if (!confirm("Forget this, and what Ira noticed for it?")) return;
+            await act(path, "DELETE");
+          }),
+        }),
+      );
+      list.append(
+        el(
+          "li",
+          { className: "card" },
+          el("p", { text: item.text }),
+          el("p", { className: "muted small", text: [STATUS_NAMES[item.status] || item.status, facts].filter(Boolean).join(" · ") }),
+          actions,
+          error,
+        ),
+      );
+    }
+    const look = el("button", {
+      type: "button",
+      className: "btn btn-ghost",
+      text: "Look for patterns now",
+      disabled: !view.on,
+      onClick: async () => {
+        await call("/v1/me/learning/refresh", { method: "POST" });
+        await renderKnows(body);
+      },
+    });
+    return el("section", { className: "stack" }, el("h3", { text: "What Ira knows" }), list, look);
+  }
+
+  function placesList(view, body) {
+    const list = el("ul", { className: "cards" });
+    if (!view.networks.length) list.append(el("li", { className: "muted", text: "No networks yet. With a Mac's routine on, the networks it joins show up here, as codes only, for you to name." }));
+    for (const network of view.networks) {
+      const path = `/v1/me/networks/${encodeURIComponent(network.fingerprint)}`;
+      const input = el("input", { value: network.label || "", maxlength: "40", placeholder: "Office, Home", "aria-label": "Name this network" });
+      const error = el("p", { className: "error", role: "alert" });
+      const form = el(
+        "form",
+        { className: "row" },
+        input,
+        el("button", { type: "submit", className: "btn btn-ghost", text: "Name it" }),
+        el("button", {
+          type: "button",
+          className: "text-btn danger",
+          text: "Forget",
+          onClick: async () => {
+            await call(path, { method: "DELETE" });
+            await renderKnows(body);
+          },
+        }),
+      );
+      form.addEventListener("submit", async (event) => {
+        event.preventDefault();
+        try {
+          await call(path, { method: "PUT", json: { label: input.value } });
+          await renderKnows(body);
+        } catch (problem) {
+          error.textContent = problem.message;
+        }
+      });
+      list.append(
+        el(
+          "li",
+          { className: "card" },
+          el("p", {}, el("strong", { text: network.label || "A network without a name" })),
+          el("p", { className: "muted small", text: `Code ${network.fingerprint.slice(0, 8)}${network.device ? `, from ${network.device}` : ""}, last seen ${when(network.last_seen)}` }),
+          form,
+          error,
+        ),
+      );
+    }
+    return el("section", { className: "stack" }, el("h3", { text: "Places" }), list);
+  }
+
+  function remindersList(view, body) {
+    const list = el("ul", { className: "cards" });
+    if (!view.reminders.length) list.append(el("li", { className: "muted", text: 'None. Ask Ira: "kal subah 9 baje yaad dilana".' }));
+    for (const reminder of view.reminders) {
+      const due =
+        reminder.trigger === "time"
+          ? new Date(reminder.due_at * 1000).toLocaleString([], { weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })
+          : `when you ${reminder.trigger === "arrive" ? "reach" : "leave"} ${reminder.place}`;
+      list.append(
+        el(
+          "li",
+          { className: "card" },
+          el("p", { text: reminder.text }),
+          el("p", { className: "muted small", text: due }),
+          el("button", {
+            type: "button",
+            className: "text-btn danger",
+            text: "Cancel",
+            onClick: async () => {
+              await call(`/v1/me/reminders/${encodeURIComponent(reminder.id)}`, { method: "DELETE" });
+              await renderKnows(body);
+            },
+          }),
+        ),
+      );
+    }
+    return el("section", { className: "stack" }, el("h3", { text: "Reminders" }), list);
+  }
+
+  function phoneSection(view, body) {
+    const section = el("section", { className: "stack" }, el("h3", { text: "Your iPhone" }));
+    section.append(el("p", { className: "muted small", text: "An iPhone Shortcut can tell Ira when you reach or leave a place you name. It gets a key that can do nothing else." }));
+    for (const token of view.phone_tokens) {
+      section.append(
+        el(
+          "div",
+          { className: "card row" },
+          el("span", { text: `${token.label}, made ${when(token.created_at)}, last used ${when(token.last_used_at)}` }),
+          el("button", {
+            type: "button",
+            className: "text-btn danger",
+            text: "Revoke",
+            onClick: async () => {
+              await call("/v1/me/learning/phone-token", { method: "DELETE" });
+              await renderKnows(body);
+            },
+          }),
+        ),
+      );
+    }
+    const pin = pinField();
+    const error = el("p", { className: "error", role: "alert" });
+    const form = el("form", { className: "stack card" }, pin, el("button", { type: "submit", className: "btn btn-ghost", text: view.phone_tokens.length ? "Make a new key" : "Make a key for Shortcuts" }), error);
+    form.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const value = $("input", pin).value;
+      $("input", pin).value = "";
+      try {
+        const made = await call("/v1/me/learning/phone-token", { method: "POST", json: { pin: value } });
+        form.replaceWith(
+          el(
+            "div",
+            { className: "stack card" },
+            el("p", { text: "Shown once. In the Shortcut, post to:" }),
+            el("code", { text: made.url }),
+            el("p", { text: "with the header Authorization: Bearer and this key:" }),
+            el("code", { className: "breakable", text: made.token }),
+            el("div", { className: "row" }, copyButton(made.token, "Copy the key"), copyButton(made.url, "Copy the address")),
+            el("p", { className: "muted small", text: 'The body is {"event": "arrive", "place": "Office"} (or "leave"). The docs page "Learning" has the steps.' }),
+          ),
+        );
+      } catch (problem) {
+        error.textContent = problem.message;
+      }
+    });
+    section.append(form);
+    return section;
+  }
+
+  // Thumbs on an answer, when you let Ira learn from them.
+  function answered(li, messageId) {
+    if (!learning || !learning.on || !learning.sources.some((source) => source.name === "feedback" && source.on)) return;
+    const row = el("div", { className: "row thumbs" });
+    const rate = (rating) => async () => {
+      try {
+        await call("/v1/me/feedback", { method: "POST", json: { message_id: messageId, rating } });
+        row.replaceChildren(el("span", { className: "muted small", text: "Thanks, noted." }));
+      } catch (problem) {
+        row.replaceChildren(el("span", { className: "error small", text: problem.message }));
+      }
+    };
+    row.append(
+      el("button", { type: "button", className: "text-btn", text: "Good answer", onClick: rate("up") }),
+      el("button", { type: "button", className: "text-btn", text: "Not good", onClick: rate("down") }),
+    );
+    li.append(row);
+  }
+
+  // Your time zone, from this browser, the first time: routines and reminders use it.
+  async function ensureTimezone() {
+    try {
+      const settings = await call("/v1/me/settings");
+      const zone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+      if (!settings.timezone && zone) await call("/v1/me/settings", { method: "PATCH", json: { timezone: zone } });
+    } catch {
+      /* not now: it is asked again next time */
+    }
   }
 
   // --- wiring -------------------------------------------------------------------------
@@ -542,5 +878,5 @@ const IraPersonal = (() => {
 
   if (state.info) startEvents(); // app.js may have entered the chat already
 
-  return { entered: startEvents, left: stopEvents, open };
+  return { entered: startEvents, left: stopEvents, open, answered };
 })();

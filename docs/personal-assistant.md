@@ -116,6 +116,13 @@ delete it.
 ![What Ira did: each tool, the device, and when](images/personal-activity-phone-light.png){ width="300" }
 ![Your data: export, or delete with your password](images/personal-data-phone-light.png){ width="300" }
 
+## Let Ira learn your routine (optional)
+
+Off until you switch it on. Ira can notice when you leave the office or
+start on your Mac, and after two weeks or more asks: "Shall I remember
+this?" Only a yes makes it stick. See [What Ira learns](learning.md),
+which also has the steps for an iPhone Shortcut.
+
 ## If something does not work
 
 | You see | Do this |

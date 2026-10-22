@@ -724,9 +724,11 @@ async function send(text, { voice = false, retry = false } = {}) {
         if (event.text) full = event.text;
         textEl.textContent = full;
         how.model = event.model || null;
+        how.messageId = event.message_id || null;
       }
     }
     explain(li, how);
+    if (typeof IraPersonal !== "undefined" && how.messageId) IraPersonal.answered(li, how.messageId);
     remember({ role: "user", text });
     remember({ role: "ira", text: full, how });
     announce(full);

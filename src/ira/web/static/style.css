@@ -411,3 +411,7 @@ select { font: inherit; min-height: var(--tap); padding: 0 var(--s-2); border: 1
   font-weight: 600;
 }
 .pair-steps { display: grid; gap: var(--s-2); padding-left: var(--s-4); }
+
+/* What Ira knows: a key shown once wraps anywhere; thumbs sit under an answer. */
+.breakable { word-break: break-all; }
+.thumbs { margin-top: var(--s-2); }

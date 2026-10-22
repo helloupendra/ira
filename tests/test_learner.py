@@ -210,7 +210,8 @@ async def test_ready_learnings_are_asked_once_then_used_once_approved(store):
     (learning,) = await learner.run(user.id)
     assert learning.status == "asked"
     assert len(told) == 1 and told[0][1] == "learning_question"
-    assert told[0][3].startswith("I noticed this: You leave Office at about 18:34 on weekdays")
+    assert told[0][2] == "Shall I remember this?"
+    assert told[0][3].startswith("You leave Office at about 18:34 on weekdays")
     assert told[0][4] == {"learning_id": learning.id}
     await learner.run(user.id)
     assert len(told) == 1  # asked once
@@ -240,7 +241,7 @@ async def test_active_learnings_fade_or_change(store):
     clock.now = at("2026-10-31", "10:00")
     (changed,) = await learner.run(user.id)
     assert changed.status == "asked" and len(told) == 2
-    assert told[1][3].startswith("This seems to have changed.")
+    assert told[1][2].startswith("This seems to have changed.")
     learner.approve(user.id, changed.id)
     clock.now = at("2026-12-01", "10:00")  # nothing seen for over 21 days
     (faded,) = await learner.run(user.id)

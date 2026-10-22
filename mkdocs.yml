@@ -72,6 +72,7 @@ nav:
   - Your own Ira:
       - "Start in 15 minutes": personal-assistant.md
       - The Mac companion: clients/mac.md
+      - What Ira learns: learning.md
       - Privacy: privacy.md
       - "Hindi, English and Hinglish": language.md
   - Guide:

@@ -2429,7 +2429,7 @@ export interface components {
             at: number;
             /**
              * Event
-             * @description watch_done, task_done or task_failed.
+             * @description From a device: watch_done, task_done or task_failed. From Ira: reminder, nudge, or learning_question (data.learning_id: answer it with approve or reject).
              */
             event: string;
             /** Title */

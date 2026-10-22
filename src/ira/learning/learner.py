@@ -55,11 +55,11 @@ def _local_zone() -> ZoneInfo:
         return ZoneInfo("UTC")
 
 
-def question(learning: Learning) -> str:
-    """How Ira asks: once, in plain words, with the numbers from the evidence."""
+def question(learning: Learning) -> tuple[str, str]:
+    """How Ira asks, once: (title, text), with the numbers from the evidence."""
     if learning.status == "changed":
-        return f"This seems to have changed. {learning.text} Shall I remember the new times?"
-    return f"I noticed this: {learning.text} Shall I remember that?"
+        return "This seems to have changed. Shall I remember the new times?", learning.text
+    return "Shall I remember this?", learning.text
 
 
 class Learner:
@@ -140,16 +140,11 @@ class Learner:
         for learning in self.data.learnings(user_id, ("ready", "changed")):
             if learning.asked_at is not None and learning.status != "changed":
                 continue
-            text = question(learning)
+            title, text = question(learning)
             self.data.set_status(user_id, learning.id, "asked", asked_at=self.clock())
             asked += 1
             if self.service.notify is not None:
-                event = Event(
-                    "learning_question",
-                    "Shall I remember this?",
-                    text,
-                    {"learning_id": learning.id},
-                )
+                event = Event("learning_question", title, text, {"learning_id": learning.id})
                 try:
                     await self.service.notify(user_id, event)
                 except Exception:

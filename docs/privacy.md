@@ -15,6 +15,8 @@ Ira keeps, who can see it, and how to take it away.
 | **What Ira did**: which tool, which device, when, how long, and whether it worked | the server's database | until you delete your data |
 | Your settings: the assistant's name, wake phrase, languages, web search on or off | the server's database | until you change or delete them |
 | A device's own key | the Mac's Keychain (later, the phone's Keystore) | until you remove the device |
+| If you switched learning on: what Ira noticed (left, reached, locked..., the time, a place name you gave, the device), and your thumbs on answers | the server's database | as long as you chose: 30 to 365 days (90 by default) |
+| Routines you said yes to, and your reminders | the server's database | until you forget them, they go off, or you delete your data |
 
 Ira never keeps:
 

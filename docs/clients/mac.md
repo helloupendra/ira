@@ -83,6 +83,24 @@ an owner or admin reading the conversation sees "private" in its place.
 text. The companion's own logs (`~/Library/Application Support/ira-mac/logs`)
 hold tool names, tab numbers and timings, never page text or full addresses.
 
+## Its routine
+
+Only if you switch the **routine** skill on for this Mac (under **Your
+devices**, with your PIN), and only while learning is on for you, the
+companion tells Ira, every 30 seconds at most:
+
+- when the screen **locks** and **unlocks**;
+- when the Mac **sleeps** and **wakes** (a gap between the wall clock and
+  the Mac's own uptime clock is a sleep);
+- the first keyboard or mouse use of the day;
+- **which network** it is on, as a code: a hash of the router's hardware
+  address with a salt that never leaves this Mac. Neither the network's
+  name nor any address leaves the Mac; you name the network (Office, Home)
+  on your Ira page.
+
+It never reads what is on the screen, which apps run, your location or any
+file. What Ira does with this is in [What Ira learns](../learning.md).
+
 ## Remove it
 
 - **Stop Ira using it now:** remove the Mac on **Your devices** (or switch
