@@ -44,6 +44,8 @@ public final class DeviceClient: @unchecked Sendable {
         public var refusedWait: Double = 300
         public var stable: Double = 60
         public var jitter = true
+        /// The server takes one event per 30 seconds; a second to spare.
+        public var eventSpacing: Double = 31
         public init() {}
     }
 
@@ -62,6 +64,9 @@ public final class DeviceClient: @unchecked Sendable {
     private var pauses = 0
     private var stopped = false
     private var current: WebSocketChannel?
+    private var outbox: [JSONValue] = []
+    private var lastEvent: Date?
+    private var outboxWake: CheckedContinuation<Void, Never>?
 
     public init(
         url: URL,
@@ -90,6 +95,64 @@ public final class DeviceClient: @unchecked Sendable {
             headers["Authorization"] = "Bearer \(token)"
         }
         return headers
+    }
+
+    // MARK: Events
+
+    /// Announce something the person should hear ("task t1 is done"). Events wait
+    /// in an outbox while offline and go out at most one per 30 seconds.
+    public func announce(event: String, title: String, text: String, data: JSONValue = .object([:])) {
+        let frame: JSONValue = ["type": "event", "event": .string(event), "title": .string(title), "text": .string(text), "data": data]
+        let wake: CheckedContinuation<Void, Never>? = lock.locked {
+            outbox.append(frame)
+            if outbox.count > 50 { outbox.removeFirst(outbox.count - 50) }
+            let wake = outboxWake
+            outboxWake = nil
+            return wake
+        }
+        wake?.resume()
+    }
+
+    private func waitForEvent() async {
+        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+            let ready: Bool = lock.locked {
+                if !outbox.isEmpty { return true }
+                outboxWake = continuation
+                return false
+            }
+            if ready { continuation.resume() }
+        }
+    }
+
+    private func eventSender(_ sender: FrameSender) async {
+        while !Task.isCancelled {
+            await waitForEvent()
+            if Task.isCancelled { return }
+            if let last = lock.locked({ lastEvent }) {
+                let wait = timing.eventSpacing - Date().timeIntervalSince(last)
+                if wait > 0 { try? await Task.sleep(nanoseconds: UInt64(wait * 1_000_000_000)) }
+            }
+            guard let frame = lock.locked({ outbox.first }) else { continue }
+            do {
+                try await sender.send(frame.encoded())
+            } catch {
+                return  // still in the outbox for the next connection
+            }
+            lock.locked {
+                if !outbox.isEmpty { outbox.removeFirst() }
+                lastEvent = Date()
+            }
+            log.info("sent event \(frame["event"]?.stringValue ?? "")")
+        }
+    }
+
+    private func cancelEventWait() {
+        let wake: CheckedContinuation<Void, Never>? = lock.locked {
+            let wake = outboxWake
+            outboxWake = nil
+            return wake
+        }
+        wake?.resume()
     }
 
     // MARK: Running
@@ -251,9 +314,12 @@ public final class DeviceClient: @unchecked Sendable {
                 try? await sender.send(DeviceProtocol.ping.encoded())
             }
         }
+        let events = Task { await self.eventSender(sender) }
         var calls: [Task<Void, Never>] = []
         defer {
             pinger.cancel()
+            events.cancel()
+            cancelEventWait()
             calls.forEach { $0.cancel() }
         }
         var skills = skills

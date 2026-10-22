@@ -205,3 +205,29 @@ struct DeviceClientTests {
         #expect(states.all.contains(.waiting(seconds: 0.05, reason: "connection refused")))
     }
 }
+
+@Suite("Device events")
+struct DeviceEventTests {
+    @Test func eventsWaitForTheConnectionAndKeepTheirPace() async throws {
+        let channel = FakeChannel()
+        var timing = DeviceClient.Timing()
+        timing.eventSpacing = 0.3
+        timing.silence = 5
+        let client = DeviceClient(
+            url: URL(string: "wss://ira.example.com/v1/devices/ws")!, token: { "irad_test" }, tools: ScriptedTools(),
+            label: "Mac", connector: FakeConnector(channel: channel), timing: timing, log: IraLog(directory: nil))
+        client.announce(event: "task_done", title: "Task t1 is done", text: "2 files changed.", data: ["id": "t1"])
+        client.announce(event: "task_failed", title: "Task t2 failed", text: "tests failed.")
+        let run = Task { await client.runOnce(token: "irad_test") }
+        #expect(await channel.waitFor { $0.count == 1 })
+        channel.push(["type": "welcome", "deviceId": 1, "skills": ["tasks"]])
+        #expect(await channel.waitFor { sent in sent.contains { $0["event"] == "task_done" } })
+        let first = Date()
+        #expect(await channel.waitFor { sent in sent.contains { $0["event"] == "task_failed" } })
+        #expect(Date().timeIntervalSince(first) >= 0.2)
+        let done = try #require(channel.sentJSON.first { $0["event"] == "task_done" })
+        #expect(done == ["type": "event", "event": "task_done", "title": "Task t1 is done", "text": "2 files changed.", "data": ["id": "t1"]])
+        channel.close(code: 1000)
+        _ = await run.value
+    }
+}
