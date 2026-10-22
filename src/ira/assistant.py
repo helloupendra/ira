@@ -192,6 +192,8 @@ class Assistant:
         self.memory = memory
         # The businesses the person works with, as they described them.
         self.businesses: Callable[[int | None], list[str]] | None = None
+        # What the person's devices can do but they have not switched on, one line a device.
+        self.switched_off: Callable[[int | None], list[str]] | None = None
         # Told each finished turn, without delaying it: (person, their message). Learning.
         self.after_turn = after_turn
         self._background: set[asyncio.Task[Any]] = set()
@@ -251,6 +253,16 @@ class Assistant:
                 "- What you know about this person and the people in their life, which they "
                 "told you or approved; use it only when it helps:\n"
                 + "".join(f"  - {line}\n" for line in known)
+            )
+        off = self.switched_off(user_id) if self.switched_off is not None else []
+        if off:
+            prompt += (
+                "- Skills the person's devices have but they have NOT switched on, so their "
+                "tools are not offered to you:\n"
+                + "".join(f"  - {line}\n" for line in off)
+                + "  When a request needs one of these, do not look for it anywhere else: "
+                "say which skill is off on which device, and that they can switch it on under "
+                "Your devices with their PIN, then ask again.\n"
             )
         businesses = self.businesses(user_id) if self.businesses is not None else []
         if businesses:

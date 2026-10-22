@@ -154,7 +154,10 @@ a hello: the server revokes its token and closes the connection.
 - **Grants.** A device's tools are offered only while their skill is
   switched on, by the device's own person, with their PIN. Anyone may switch
   a skill off without a PIN; an owner or admin can switch off anyone's,
-  never switch one on.
+  never switch one on. Ira knows which skills each device has but are off
+  (from what it last reported), never their tools: asked for missed calls
+  with **calls** off, it says the skill is off on that phone and where to
+  switch it on, instead of looking somewhere else.
 - **Tiers.** Tier 0 and 1 tools run when Ira calls them. A Tier 2 or 3 tool
   becomes a proposal: Ira reads it back, and it runs on the device only after
   the person's "yes" (Tier 2) or PIN (Tier 3). The tier comes from the

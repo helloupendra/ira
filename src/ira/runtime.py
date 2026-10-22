@@ -50,6 +50,10 @@ DEFAULT_BASE_URLS = {
 }
 
 
+DEVICE_KINDS = {"mac": "Mac", "android": "Android", "ios": "iPhone"}
+MAX_DEVICES_IN_PROMPT = 6
+
+
 @dataclass
 class Runtime:
     settings: Settings
@@ -102,6 +106,8 @@ class Runtime:
         self.businesses = Businesses(self.store)
         if self.assistant.businesses is None:
             self.assistant.businesses = self.businesses.lines
+        if self.assistant.switched_off is None:
+            self.assistant.switched_off = self.switched_off
         if self.assistant.after_turn is None:
             self.assistant.after_turn = self._learn_from
         if self.assistant.personal_tools is None:
@@ -164,6 +170,23 @@ class Runtime:
         if self.connectors is not None:
             tools += self.connectors.tools_for(user_id)
         return tools
+
+    def switched_off(self, user_id: int | None) -> list[str]:
+        """For each of the person's devices, the skills its tools need that are not switched
+        on: "Pixel 7 (Android): calls, contacts". From what the device last reported, so a
+        phone that is offline still counts."""
+        if user_id is None or self.hub is None:
+            return []
+        lines = []
+        for device in self.hub.devices.for_user(user_id)[:MAX_DEVICES_IN_PROMPT]:
+            offered = {
+                str(t.get("skill") or str(t.get("name", "")).split("_", 1)[0]) for t in device.tools
+            } - {""}
+            off = sorted(offered - set(device.skills))
+            if off:
+                kind = DEVICE_KINDS.get(device.kind, device.kind)
+                lines.append(f"{device.label} ({kind}): {', '.join(off[:12])}")
+        return lines
 
     def _welcome(self, user_id: int) -> dict[str, Any]:
         prefs = self.assistant.user_settings.get(user_id)

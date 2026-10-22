@@ -86,6 +86,12 @@ switch it on.
   with their password again; an owner sets someone's password or email from
   Users & roles; `ira user password` and `ira user email` do it from the
   server. All go to the change log.
+- **Skills that are off are named.** Ira knows which skills a device has
+  but the person has not switched on, and says so ("Calls is off on Pixel
+  7: switch it on under Your devices") instead of looking elsewhere.
+- **A tool call written as text runs.** Some models write their call into
+  the answer; it now runs when it names an offered tool, and is never shown
+  or spoken.
 - **Out of steps, still an answer.** When a request uses up its tool rounds
   (now 8 by default, from 6), Ira says what it tried, what it found and
   what to do next, in the person's language. And it searches for a file,
