@@ -511,6 +511,11 @@ def create_app(runtime: Runtime, *, start_channels: bool = True) -> FastAPI:
                 code,
             )
         tasks: list[asyncio.Task] = []
+        if start_channels and runtime.learner is not None:
+            from ira.learning.scheduler import LearningScheduler
+
+            scheduler = LearningScheduler(runtime.learner)
+            tasks.append(asyncio.create_task(scheduler.run(), name="ira-learning"))
         if start_channels and runtime.settings.channels.telegram.enabled:
             from ira.channels.telegram import event_notifier, start_telegram
 

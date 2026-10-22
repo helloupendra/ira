@@ -11,6 +11,7 @@
 
 from __future__ import annotations
 
+import datetime as dt
 import json
 from dataclasses import dataclass, field
 from typing import Any
@@ -50,10 +51,32 @@ class Prefs:
     learning_sources: list[str] = field(default_factory=list)
     learning_days: int = 90
     nudges: bool = False
+    timezone: str | None = None  # an IANA name, such as Asia/Kolkata; None: the server's
 
 
 def clean_name(value: str, limit: int) -> str:
     return " ".join(value.split())[:limit]
+
+
+def today_for(prefs: Prefs) -> dt.date:
+    """Today in the person's own time zone, else the server's."""
+    from zoneinfo import ZoneInfo
+
+    if prefs.timezone and valid_timezone(prefs.timezone):
+        return dt.datetime.now(ZoneInfo(prefs.timezone)).date()
+    return dt.date.today()
+
+
+def valid_timezone(name: str) -> bool:
+    from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
+
+    if not name or "/" not in name and name != "UTC":
+        return False
+    try:
+        ZoneInfo(name)
+    except (ZoneInfoNotFoundError, ValueError):
+        return False
+    return True
 
 
 def check_languages(values: list[str]) -> list[str]:
@@ -127,6 +150,8 @@ class UserSettings:
         if isinstance(days, int) and MIN_LEARNING_DAYS <= days <= MAX_LEARNING_DAYS:
             prefs.learning_days = days
         prefs.nudges = raw.get("nudges") is True
+        if isinstance(raw.get("timezone"), str) and valid_timezone(raw["timezone"]):
+            prefs.timezone = raw["timezone"]
         return prefs
 
     def overridden(self, user_id: int) -> set[str]:

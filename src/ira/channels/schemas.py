@@ -963,6 +963,11 @@ class MySettings(BaseModel):
     language_options: list[str]
     reply_language_options: list[str]
     web_search: WebSearchState
+    timezone: str | None = Field(
+        default=None,
+        description="Your time zone (IANA, such as Asia/Kolkata), for your routines and "
+        "reminders; null: the server's.",
+    )
 
 
 class WebSearchState(BaseModel):
@@ -985,6 +990,7 @@ class MySettingsUpdate(BaseModel):
     web_search: bool | None = Field(
         default=None, description="Switch web and news search on (needs pin) or off."
     )
+    timezone: str | None = Field(default=None, max_length=64, description="An IANA name.")
     pin: str | None = Field(
         default=None,
         min_length=PIN_MIN_LENGTH,
@@ -1288,6 +1294,18 @@ class ObservationIn(BaseModel):
 
 class ObservationOut(BaseModel):
     recorded: bool = Field(description="False when learning or the phone source is off.")
+
+
+class LearningEdit(BaseModel):
+    text: str = Field(
+        min_length=1,
+        max_length=300,
+        description="The sentence, reworded. Its numbers must still be in the evidence.",
+    )
+
+
+class LearningForgotten(BaseModel):
+    observations: int = Field(description="How many observations behind it were deleted too.")
 
 
 class ObservationRow(BaseModel):

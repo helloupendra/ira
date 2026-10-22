@@ -17,7 +17,8 @@ from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from typing import Any, Literal
 
-Source = Literal["device", "web"]
+# device and web results were written by others; "ira" results are Ira's own (reminders).
+Source = Literal["device", "web", "ira"]
 
 WRAPPERS: dict[str, str] = {"device": "device_output", "web": "web_results"}
 

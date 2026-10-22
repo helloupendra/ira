@@ -7155,6 +7155,378 @@
                     }
                 }
             }
+        },
+        "/v1/me/learning/refresh": {
+            "post": {
+                "tags": [
+                    "learning"
+                ],
+                "summary": "Look for patterns now (the learner also runs every night)",
+                "operationId": "refresh_my_learning",
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/LearningView"
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Bad input",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ErrorDetail"
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "No credential, or an invalid one",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ErrorDetail"
+                                }
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "Not allowed: role, token, or a missing CSRF header",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ErrorDetail"
+                                }
+                            }
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "HTTPBearer": []
+                    }
+                ]
+            }
+        },
+        "/v1/me/learnings/{learning_id}/approve": {
+            "post": {
+                "tags": [
+                    "learning"
+                ],
+                "summary": "Yes: remember this (it goes into your assistant's context)",
+                "operationId": "approve_learning",
+                "security": [
+                    {
+                        "HTTPBearer": []
+                    }
+                ],
+                "parameters": [
+                    {
+                        "name": "learning_id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "title": "Learning Id"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/LearningItem"
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Bad input",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ErrorDetail"
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "No credential, or an invalid one",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ErrorDetail"
+                                }
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "Not allowed: role, token, or a missing CSRF header",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ErrorDetail"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/v1/me/learnings/{learning_id}/reject": {
+            "post": {
+                "tags": [
+                    "learning"
+                ],
+                "summary": "No: do not remember this, and do not ask again",
+                "operationId": "reject_learning",
+                "security": [
+                    {
+                        "HTTPBearer": []
+                    }
+                ],
+                "parameters": [
+                    {
+                        "name": "learning_id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "title": "Learning Id"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/LearningItem"
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Bad input",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ErrorDetail"
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "No credential, or an invalid one",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ErrorDetail"
+                                }
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "Not allowed: role, token, or a missing CSRF header",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ErrorDetail"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/v1/me/learnings/{learning_id}": {
+            "patch": {
+                "tags": [
+                    "learning"
+                ],
+                "summary": "Reword a learning (its numbers must stay those of the evidence)",
+                "operationId": "edit_learning",
+                "security": [
+                    {
+                        "HTTPBearer": []
+                    }
+                ],
+                "parameters": [
+                    {
+                        "name": "learning_id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "title": "Learning Id"
+                        }
+                    }
+                ],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/LearningEdit"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/LearningItem"
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Bad input",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ErrorDetail"
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "No credential, or an invalid one",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ErrorDetail"
+                                }
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "Not allowed: role, token, or a missing CSRF header",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ErrorDetail"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            "delete": {
+                "tags": [
+                    "learning"
+                ],
+                "summary": "Forget a learning and the observations behind it",
+                "operationId": "forget_learning",
+                "security": [
+                    {
+                        "HTTPBearer": []
+                    }
+                ],
+                "parameters": [
+                    {
+                        "name": "learning_id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "title": "Learning Id"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/LearningForgotten"
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Bad input",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ErrorDetail"
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "No credential, or an invalid one",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ErrorDetail"
+                                }
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "Not allowed: role, token, or a missing CSRF header",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ErrorDetail"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
         }
     },
     "components": {
@@ -9144,6 +9516,36 @@
                 ],
                 "title": "KeyView"
             },
+            "LearningEdit": {
+                "properties": {
+                    "text": {
+                        "type": "string",
+                        "maxLength": 300,
+                        "minLength": 1,
+                        "title": "Text",
+                        "description": "The sentence, reworded. Its numbers must still be in the evidence."
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "text"
+                ],
+                "title": "LearningEdit"
+            },
+            "LearningForgotten": {
+                "properties": {
+                    "observations": {
+                        "type": "integer",
+                        "title": "Observations",
+                        "description": "How many observations behind it were deleted too."
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "observations"
+                ],
+                "title": "LearningForgotten"
+            },
             "LearningItem": {
                 "properties": {
                     "id": {
@@ -9844,6 +10246,18 @@
                     },
                     "web_search": {
                         "$ref": "#/components/schemas/WebSearchState"
+                    },
+                    "timezone": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Timezone",
+                        "description": "Your time zone (IANA, such as Asia/Kolkata), for your routines and reminders; null: the server's."
                     }
                 },
                 "type": "object",
@@ -9923,6 +10337,19 @@
                         ],
                         "title": "Web Search",
                         "description": "Switch web and news search on (needs pin) or off."
+                    },
+                    "timezone": {
+                        "anyOf": [
+                            {
+                                "type": "string",
+                                "maxLength": 64
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Timezone",
+                        "description": "An IANA name."
                     },
                     "pin": {
                         "anyOf": [

@@ -15,7 +15,6 @@ Every call is written to "What Ira did", without its arguments or result.
 from __future__ import annotations
 
 import asyncio
-import datetime as dt
 import inspect
 import json
 import logging
@@ -35,7 +34,7 @@ from ira.store import Store
 from ira.tools.actions import ActionGuard, PendingAction
 from ira.tools.personal import UNTRUSTED_RULE, PersonalTool, is_no, is_yes, wrap_untrusted
 from ira.tools.registry import Tool, ToolError, ToolRegistry, validation_message
-from ira.usersettings import UserSettings, language_rule
+from ira.usersettings import UserSettings, language_rule, today_for
 
 log = logging.getLogger("ira.assistant")
 
@@ -145,6 +144,7 @@ class Assistant:
         personal_tools: PersonalTools | None = None,
         user_settings: UserSettings | None = None,
         tool_calls_per_minute: int = 30,
+        memory: Callable[[int | None], list[str]] | None = None,
     ) -> None:
         self.gateway = gateway
         self.registry = registry
@@ -160,6 +160,8 @@ class Assistant:
         self.personal_tools = personal_tools
         self.user_settings = user_settings or UserSettings(store)
         self.tool_limit = ToolRateLimit(tool_calls_per_minute)
+        # What the person let Ira learn about them and approved, for their prompt.
+        self.memory = memory
         self._locks: dict[str, asyncio.Lock] = {}
 
     # Identity.
@@ -188,8 +190,8 @@ class Assistant:
         rule that it is data goes in. ``tier_one``: tools that change something
         small, after which Ira says what it did.
         """
-        today = dt.date.today()
         prefs = self.user_settings.get(user_id)
+        today = today_for(prefs)
         prompt = SYSTEM_PROMPT.format(
             name=prefs.assistant_name or self.name,
             business=self.business,
@@ -202,6 +204,12 @@ class Assistant:
             prompt += (
                 "- These tools change something small and run at once: "
                 f"{', '.join(tier_one)}. After using one, say in a few words what you did.\n"
+            )
+        known = self.memory(user_id) if self.memory is not None else []
+        if known:
+            prompt += (
+                "- What you know about this person, which they approved; use it only when "
+                "it helps:\n" + "".join(f"  - {line}\n" for line in known)
             )
         if self.instructions:
             prompt += "\n" + self.instructions + "\n"
@@ -575,6 +583,8 @@ class Assistant:
         except Exception as exc:
             log.exception("tool %s raised", call.name)
             return _failed(f"the tool failed ({type(exc).__name__})", safe_call)
+        if extra.source == "ira":  # Ira's own data, such as reminders: not untrusted
+            return ToolRun(_result(value), True, safe_call)
         content = wrap_untrusted(extra.source, extra.label, _result(value, PERSONAL_RESULT_CHARS))
         return ToolRun(content, True, safe_call, untrusted=True, private=extra.private)
 

@@ -238,9 +238,9 @@ async def test_tier_one_runs_and_the_prompt_says_to_report_it(tiered):
     runtime = make_runtime(provider=provider, registry=tiered)
     user = owner(runtime)
     await runtime.assistant.ask("note: call back", conversation_id="t", user_id=user.id)
-    assert "add_note. After using one, say in a few words what you did" in (
-        provider.calls[0]["messages"][0].text
-    )
+    prompt = provider.calls[0]["messages"][0].text
+    assert "run at once: add_note" in prompt
+    assert "After using one, say in a few words what you did" in prompt
     row = runtime.store.one("SELECT * FROM tool_log")
     assert (row["tool"], row["tier"], row["outcome"], row["user_id"]) == (
         "add_note",

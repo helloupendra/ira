@@ -41,6 +41,7 @@ from ira.usersettings import (
     check_languages,
     check_reply_language,
     clean_name,
+    valid_timezone,
 )
 
 router = APIRouter(tags=["your assistant"], responses=ERRORS)
@@ -72,6 +73,7 @@ def my_settings(runtime: Runtime, user_id: int) -> MySettings:
             web_ready=runtime.search.web_ready if runtime.search else False,
             news_ready=runtime.search.news_ready if runtime.search else False,
         ),
+        timezone=prefs.timezone,
     )
 
 
@@ -105,6 +107,10 @@ async def update_my_settings(
         if "languages" in sent:
             languages = None if body.languages is None else check_languages(body.languages)
             settings.set(user_id, "languages", languages)
+        if "timezone" in sent:
+            if body.timezone is not None and not valid_timezone(body.timezone):
+                raise SettingsError(f"unknown time zone '{body.timezone}'")
+            settings.set(user_id, "timezone", body.timezone)
         if "reply_language" in sent:
             reply = (
                 None if body.reply_language is None else check_reply_language(body.reply_language)

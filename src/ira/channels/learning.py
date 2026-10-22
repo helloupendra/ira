@@ -19,6 +19,8 @@ from ira.accounts import Principal
 from ira.channels.deps import get_runtime, require, require_session
 from ira.channels.schemas import (
     ERRORS,
+    LearningEdit,
+    LearningForgotten,
     LearningItem,
     LearningSource,
     LearningUpdate,
@@ -35,6 +37,7 @@ from ira.channels.schemas import (
     PinOnly,
     ReminderView,
 )
+from ira.learning.learner import Learner
 from ira.learning.service import LearningService
 from ira.learning.store import LearningError
 from ira.runtime import Runtime
@@ -56,6 +59,11 @@ SOURCE_WORDS = {
 def learning_of(runtime: Runtime) -> LearningService:
     assert runtime.learning is not None
     return runtime.learning
+
+
+def learner_of(runtime: Runtime) -> Learner:
+    assert runtime.learner is not None
+    return runtime.learner
 
 
 async def check_pin(runtime: Runtime, who: Principal, pin: str | None, what: str) -> None:
@@ -291,3 +299,93 @@ def cancel_my_reminder(
     if not learning_of(runtime).data.cancel_reminder(who.user.id, reminder_id):
         raise HTTPException(404, detail="no such reminder")
     return OkResponse()
+
+
+# Learnings: what Ira found, and the person's answers.
+
+
+@router.post(
+    "/v1/me/learning/refresh",
+    response_model=LearningView,
+    summary="Look for patterns now (the learner also runs every night)",
+)
+async def refresh_my_learning(
+    who: Principal = Depends(your_session), runtime: Runtime = Depends(get_runtime)
+) -> LearningView:
+    await learner_of(runtime).run(who.user.id)
+    return learning_view(runtime, who.user.id)
+
+
+def _answer(runtime: Runtime, who: Principal, learning_id: str, what: str) -> LearningItem:
+    learner = learner_of(runtime)
+    try:
+        if what == "approve":
+            learning = learner.approve(who.user.id, learning_id)
+        else:
+            learning = learner.reject(who.user.id, learning_id)
+    except LearningError as exc:
+        status = 404 if "no such" in str(exc) else 409
+        raise HTTPException(status, detail=str(exc)) from None
+    return LearningItem(**learning.public())
+
+
+@router.post(
+    "/v1/me/learnings/{learning_id}/approve",
+    response_model=LearningItem,
+    summary="Yes: remember this (it goes into your assistant's context)",
+)
+def approve_learning(
+    learning_id: str,
+    who: Principal = Depends(your_session),
+    runtime: Runtime = Depends(get_runtime),
+) -> LearningItem:
+    return _answer(runtime, who, learning_id, "approve")
+
+
+@router.post(
+    "/v1/me/learnings/{learning_id}/reject",
+    response_model=LearningItem,
+    summary="No: do not remember this, and do not ask again",
+)
+def reject_learning(
+    learning_id: str,
+    who: Principal = Depends(your_session),
+    runtime: Runtime = Depends(get_runtime),
+) -> LearningItem:
+    return _answer(runtime, who, learning_id, "reject")
+
+
+@router.patch(
+    "/v1/me/learnings/{learning_id}",
+    response_model=LearningItem,
+    summary="Reword a learning (its numbers must stay those of the evidence)",
+)
+def edit_learning(
+    learning_id: str,
+    body: LearningEdit,
+    who: Principal = Depends(your_session),
+    runtime: Runtime = Depends(get_runtime),
+) -> LearningItem:
+    try:
+        learning = learner_of(runtime).edit(who.user.id, learning_id, body.text)
+    except LearningError as exc:
+        status = 404 if "no such" in str(exc) else 400
+        raise HTTPException(status, detail=str(exc)) from None
+    return LearningItem(**learning.public())
+
+
+@router.delete(
+    "/v1/me/learnings/{learning_id}",
+    response_model=LearningForgotten,
+    summary="Forget a learning and the observations behind it",
+)
+def forget_learning(
+    learning_id: str,
+    who: Principal = Depends(your_session),
+    runtime: Runtime = Depends(get_runtime),
+) -> LearningForgotten:
+    try:
+        deleted = learner_of(runtime).forget(who.user.id, learning_id)
+    except LearningError as exc:
+        raise HTTPException(404, detail=str(exc)) from None
+    return LearningForgotten(observations=deleted)

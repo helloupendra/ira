@@ -13,6 +13,8 @@ from ira.assistant import Assistant
 from ira.config import ConfigError, ProviderConfig, Settings, secret
 from ira.conversations import Conversations
 from ira.devices import DeviceHub, Devices
+from ira.learning.learner import Learner
+from ira.learning.reminders import reminder_tools
 from ira.learning.service import LearningService
 from ira.models.anthropic import AnthropicProvider
 from ira.models.base import ChatProvider
@@ -74,6 +76,7 @@ class Runtime:
     search: Search | None = None
     # What each person let Ira notice about their day, and what it learned.
     learning: LearningService | None = None
+    learner: Learner | None = None
 
     def __post_init__(self) -> None:
         if self.hub is None:
@@ -88,6 +91,10 @@ class Runtime:
                 notify=lambda user_id, event: hub.publish(user_id, None, event),
             )
         self.hub.observer = self.learning.from_device
+        if self.learner is None:
+            self.learner = Learner(self.learning)
+        if self.assistant.memory is None:
+            self.assistant.memory = self.learner.memory
         if self.assistant.personal_tools is None:
             self.assistant.personal_tools = self.personal_tools
         if self.guard.device_runner is None:
@@ -99,8 +106,12 @@ class Runtime:
         and web and news search if they switched them on."""
         assert self.hub is not None and self.search is not None
         tools = self.hub.tools_for(user_id)
-        if user_id is not None and self.assistant.user_settings.get(user_id).web_search:
+        if user_id is None:
+            return tools
+        if self.assistant.user_settings.get(user_id).web_search:
             tools += self.search.tools()
+        if self.learning is not None and self.learner is not None:
+            tools += reminder_tools(self.learning, user_id, self.learner.zone(user_id))
         return tools
 
     def _welcome(self, user_id: int) -> dict[str, Any]:
