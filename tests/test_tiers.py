@@ -442,3 +442,32 @@ def test_language_rule_and_the_polly_language_code():
     assert language_for("hello", "hi-IN") == "en-IN"
     assert language_for("नमस्ते", "en-US") == "en-US"
     assert language_for("नमस्ते", None) is None
+
+
+async def test_one_tool_is_limited_per_person_per_minute(tiered):
+    from ira.assistant import ToolRateLimit
+
+    from .conftest import Clock
+
+    clock = Clock()
+    provider = ScriptedProvider(
+        [
+            call("order_status", {"order_id": "A1"}),
+            "ok",
+            call("order_status", {"order_id": "A1"}),
+            "no",
+        ]
+    )
+    runtime = make_runtime(provider=provider, registry=tiered)
+    runtime.assistant.tool_limit = ToolRateLimit(1, clock)
+    me = owner(runtime)
+    first = await runtime.assistant.ask("status A1", conversation_id="t", user_id=me.id)
+    assert first.tool_calls[0]["ok"] is True
+    second = await runtime.assistant.ask("again", conversation_id="t", user_id=me.id)
+    assert "at most 1 calls of order_status a minute" in second.tool_calls[0]["result"]
+    outcomes = [
+        r["outcome"] for r in runtime.store.query("SELECT outcome FROM tool_log ORDER BY id")
+    ]
+    assert outcomes == ["ok", "refused"]
+    clock.advance(61)
+    assert runtime.assistant.tool_limit.allow(me.id, "order_status")

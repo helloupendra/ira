@@ -35,6 +35,9 @@ on its own it can never change anything.
   short yes or no ("haan", "theek hai", "nahi") itself, only from the person
   who asked, in the same conversation, within 120 seconds.
 - "What Ira did" logs every tool call without its arguments or result.
+- One person's turns may call one tool at most 30 times a minute
+  (`assistant.tool_calls_per_minute`), so a model stuck in a loop stops;
+  web search has its own 30 an hour, and devices their call limits.
 - A device's output is the person's own: an admin reading their conversation
   sees a placeholder, and the parameters of an action on their device are
   hidden from everyone else.

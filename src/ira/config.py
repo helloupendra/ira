@@ -155,6 +155,8 @@ class AssistantConfig(_Strict):
     # one they spoke). Each person can change both for themselves.
     languages: list[LanguageCode] = Field(default_factory=lambda: ["hinglish", "en", "hi"])
     reply_language: Literal["auto", "en", "hi", "hinglish"] = "auto"
+    # How often one person's turns may call one tool, so a model stuck in a loop stops.
+    tool_calls_per_minute: int = 30
 
 
 class FeedConfig(_Strict):

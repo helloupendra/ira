@@ -255,6 +255,7 @@ def build_runtime(
             languages=list(settings.assistant.languages),
             reply_language=settings.assistant.reply_language,
         ),
+        tool_calls_per_minute=settings.assistant.tool_calls_per_minute,
     )
     runtime = Runtime(
         settings=settings,
