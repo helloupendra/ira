@@ -373,3 +373,12 @@ code { font-family: var(--mono); font-size: 0.9em; background: var(--bg-sunken);
   .status { padding-left: var(--s-6); }
   .menu { width: 24rem; margin: auto; border-radius: var(--radius-l); padding-bottom: var(--s-4); }
 }
+
+/* The pairing page: the one-time code, big enough to read across a desk. */
+.pair-code {
+  font-family: var(--mono);
+  font-size: var(--text-xxl);
+  letter-spacing: 0.08em;
+  font-weight: 600;
+}
+.pair-steps { display: grid; gap: var(--s-2); padding-left: var(--s-4); }

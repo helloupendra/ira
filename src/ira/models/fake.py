@@ -5,8 +5,9 @@ what it was sent, so tests can assert on the exact conversation.
 
 ``RouterProvider`` lets the demo run with no API key at all. It is not a
 language model: it picks a tool by matching words of the tool's name against
-the message, pulls arguments out with simple patterns (``key=value``, ISO
-dates, ``for <Name>``, numbers), and reads tool results back as text.
+the message (and a few Hindi and Hinglish words: "kaunse", "kitna", "batana"),
+pulls arguments out with simple patterns (``key=value``, ISO dates, ``for
+<Name>``, numbers, "<word> tab"), and reads tool results back as text.
 """
 
 from __future__ import annotations
@@ -26,6 +27,7 @@ from ira.models.base import (
     ToolCall,
     Usage,
 )
+from ira.tools.personal import unwrap
 
 
 def _estimate_tokens(messages: list[Message]) -> int:
@@ -94,10 +96,111 @@ _DATE = re.compile(r"\b\d{4}-\d{2}-\d{2}\b")
 _INT = re.compile(r"(?<![\d:-])\b(\d{1,9})\b(?![\d:-])")
 _FOR_NAME = re.compile(r"\b(?:for|named|called)\s+([A-Z][\w'-]*(?:\s+[A-Z][\w'-]*)*)")
 _WORD = re.compile(r"[a-z]+")
+# "<word> tab", "<word> wale tab": the tab someone means.
+_TAB_NAME = re.compile(r"\b([a-z0-9][\w.-]*)\s+(?:wale\s+|waale\s+|vale\s+)?tabs?\b", re.I)
+
+# Words people use, in English, Hindi and Hinglish, for the words in tool names.
+SYNONYMS = {
+    "kaunse": "list",
+    "konse": "list",
+    "kaun": "list",
+    "khule": "list",
+    "khula": "list",
+    "open": "list",
+    "saare": "list",
+    "sab": "list",
+    "kitna": "read",
+    "kitni": "read",
+    "hua": "read",
+    "progress": "read",
+    "status": "read",
+    "padho": "read",
+    "batana": "watch",
+    "khatam": "watch",
+    "jab": "watch",
+    "notify": "watch",
+    "finish": "watch",
+    "finishes": "watch",
+    "khabar": "news",
+    "khabren": "news",
+    "samachar": "news",
+    "headlines": "news",
+    "dhundo": "search",
+    "khojo": "search",
+    "google": "search",
+}
+# Words that never name a tab or make up a search query.
+_FILLER = frozenset(
+    [
+        "a",
+        "an",
+        "the",
+        "that",
+        "this",
+        "us",
+        "is",
+        "it",
+        "my",
+        "me",
+        "mera",
+        "mere",
+        "meri",
+        "wo",
+        "woh",
+        "yeh",
+        "ye",
+        "mein",
+        "main",
+        "ka",
+        "ki",
+        "ke",
+        "ko",
+        "par",
+        "pe",
+        "hai",
+        "hain",
+        "ho",
+        "kya",
+        "kaunse",
+        "konse",
+        "chrome",
+        "open",
+        "khule",
+        "sab",
+        "saare",
+        "batao",
+        "bata",
+        "please",
+        "about",
+        "for",
+        "on",
+        "of",
+        "in",
+        "search",
+        "dhundo",
+        "khojo",
+        "web",
+        "google",
+        "news",
+        "khabar",
+        "khabren",
+        "samachar",
+        "aaj",
+        "latest",
+        "abhi",
+        "tab",
+        "tabs",
+    ]
+)
 
 
 def _stem(word: str) -> str:
     return word[:-1] if len(word) > 3 and word.endswith("s") else word
+
+
+def _words(text: str) -> set[str]:
+    words = {_stem(w) for w in _WORD.findall(text.lower())}
+    return words | {_stem(SYNONYMS[w]) for w in words if w in SYNONYMS}
 
 
 class RouterProvider:
@@ -158,7 +261,7 @@ class RouterProvider:
         return ChatResponse(text="", tool_calls=[ToolCall(call_id, tool["name"], json.dumps(args))])
 
     def _pick_tool(self, text: str, tools: list[dict[str, Any]]) -> dict[str, Any] | None:
-        words = {_stem(w) for w in _WORD.findall(text.lower())}
+        words = _words(text)
         explicit = {k.lower() for k, _ in _KV.findall(text)}
         best, best_score = None, 0.0
         for spec in tools:
@@ -202,6 +305,12 @@ class RouterProvider:
             elif kind == "string" and "name" in name:
                 match = _FOR_NAME.search(text)
                 value = match.group(1) if match else None
+            elif kind == "string" and name == "match":
+                names = [m for m in _TAB_NAME.findall(text) if m.lower() not in _FILLER]
+                value = names[0] if names else None
+            elif kind == "string" and name == "query":
+                kept = [w for w in re.findall(r"[\w.-]+", text) if w.lower() not in _FILLER]
+                value = " ".join(kept) or None
             else:
                 value = None
             if value is None:
@@ -223,6 +332,7 @@ class RouterProvider:
             results.append(message.text)
         lines: list[str] = []
         for raw in reversed(results):
+            raw = unwrap(raw)  # a device's or the web's result, wrapped as data
             try:
                 value = json.loads(raw)
             except ValueError:
@@ -249,6 +359,8 @@ def _describe(value: Any) -> str:
             )
         if "error" in value:
             return f"That did not work: {value['error']}"
+        if isinstance(value.get("summary"), str):
+            return value["summary"]
         return "\n".join(f"{k.replace('_', ' ')}: {_inline(v)}" for k, v in value.items())
     if isinstance(value, list):
         if not value:

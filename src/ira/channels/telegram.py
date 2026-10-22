@@ -463,6 +463,52 @@ class TelegramBot:
             log.warning("could not delete message %s: %s", message_id, exc)
 
 
+def event_message(event: dict[str, Any]) -> str:
+    """A device's event as one chat message: its title (and device), then its text."""
+    head = event.get("title") or "Ira"
+    if event.get("device"):
+        head = f"{head} ({event['device']})"
+    text = (event.get("text") or "").strip()
+    return f"{head}\n{text}" if text and text != event.get("title") else head
+
+
+def event_notifier(runtime: Runtime, api: Any = None) -> Any:
+    """Send a person's device events to their own paired chats, and nobody else's.
+
+    Text always; voice too when text-to-speech is set up and voice replies are not off.
+    """
+
+    async def notify(user_id: int, event: dict[str, Any]) -> None:
+        client = api or telegram_api(runtime)
+        if client is None:
+            return
+        rows = runtime.store.query(
+            "SELECT t.chat_id FROM telegram_chats t JOIN users u ON u.id = t.user_id "
+            "WHERE t.user_id = ? AND u.disabled_at IS NULL",
+            (user_id,),
+        )
+        if not rows:
+            return
+        text = event_message(event)
+        audio = None
+        if runtime.tts is not None and runtime.settings.channels.telegram.voice_replies != "off":
+            spoken = speakable(text, runtime.settings.voice.max_spoken_chars)
+            try:
+                audio = await runtime.tts.speak(spoken) if spoken else None
+            except ProviderError as exc:
+                log.warning("voice for an event failed: %s", exc)
+        for row in rows:
+            chat_id = int(row["chat_id"])
+            try:
+                await client.send_message(chat_id, text[:MAX_MESSAGE])
+                if audio:
+                    await client.send_voice(chat_id, audio)
+            except TelegramError as exc:
+                log.warning("sending an event failed: %s", exc)
+
+    return notify
+
+
 def start_telegram(runtime: Runtime) -> asyncio.Task:
     cfg = runtime.settings.channels.telegram
     secret(cfg.token_env, purpose="the Telegram channel")  # fails, naming the variable, if unset

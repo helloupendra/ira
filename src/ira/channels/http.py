@@ -15,14 +15,14 @@ from collections.abc import AsyncIterator
 from typing import Any
 
 from fastapi import APIRouter, Depends, FastAPI, HTTPException, Query, Request, Response
-from fastapi.responses import HTMLResponse, RedirectResponse, StreamingResponse
+from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.types import Scope
 
 from ira import __version__, web
 from ira.accounts import Principal
-from ira.channels import account, admin, admin_write, me
+from ira.channels import account, admin, admin_write, devices, me
 from ira.channels.account import claim_setup
 from ira.channels.deps import (
     SESSION_COOKIE,
@@ -512,9 +512,11 @@ def create_app(runtime: Runtime, *, start_channels: bool = True) -> FastAPI:
             )
         tasks: list[asyncio.Task] = []
         if start_channels and runtime.settings.channels.telegram.enabled:
-            from ira.channels.telegram import start_telegram
+            from ira.channels.telegram import event_notifier, start_telegram
 
             tasks.append(start_telegram(runtime))
+            if runtime.hub is not None:
+                runtime.hub.notifiers.append(event_notifier(runtime))
         try:
             yield
         finally:
@@ -561,6 +563,13 @@ def create_app(runtime: Runtime, *, start_channels: bool = True) -> FastAPI:
     app.include_router(admin.router)
     app.include_router(admin_write.router)
     app.include_router(me.router)
+    app.include_router(devices.router)
+    devices.mask_tokens_in_logs()
+
+    @app.get("/pair", include_in_schema=False)
+    def pair_page() -> FileResponse:
+        """Where a pairing QR code leads: it shows the code to type on the device."""
+        return FileResponse(STATIC_DIR / "pair.html")
 
     if (web.ADMIN_DIR / "index.html").is_file():
         # The mount below only matches "/admin/...", and the catch-all "/" mount would

@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="color-scheme" content="light dark">
+  <meta name="robots" content="noindex">
+  <title>Pair a device with Ira</title>
+  <link rel="icon" href="/icon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/tokens.css">
+  <link rel="stylesheet" href="/style.css">
+  <script src="/pair.js" defer></script>
+</head>
+<body>
+  <main id="app">
+    <section class="view gate">
+      <div class="gate-card stack">
+        <svg class="mark" viewBox="0 0 32 32" aria-hidden="true"><use href="/icon.svg#mark"></use></svg>
+        <h1>Pair a device</h1>
+        <p class="muted" id="pair-intro">This link pairs one of your devices with Ira. Type the code below on that device.</p>
+        <p class="pair-code" id="pair-code" aria-live="polite">No code in this link.</p>
+        <ul class="pair-steps muted">
+          <li><strong>Mac:</strong> the installer asks for this code. Run <code>./install.sh</code> in the folder you unzipped.</li>
+          <li><strong>Android:</strong> open the Ira app and scan the QR code instead.</li>
+        </ul>
+        <p class="muted">The code works once, within 10 minutes of making it. Make a new one on the Devices page of the Ira app.</p>
+        <a class="btn btn-ghost" href="/">Open Ira</a>
+      </div>
+    </section>
+  </main>
+</body>
+</html>

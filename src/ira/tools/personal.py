@@ -44,6 +44,14 @@ class PersonalTool:
     run: Callable[[dict[str, Any]], Awaitable[Any]]
     device_id: int | None = None
     skill: str | None = None
+    # A tool several devices offer: picks the device from the arguments (raises ToolError).
+    route: Callable[[dict[str, Any]], tuple[int, dict[str, Any]]] | None = None
+
+    def target(self, arguments: dict[str, Any]) -> tuple[int | None, dict[str, Any]]:
+        """The device a call goes to, and the arguments it gets."""
+        if self.route is not None:
+            return self.route(arguments)
+        return self.device_id, arguments
 
     def schema(self) -> dict[str, Any]:
         return {"name": self.name, "description": self.description, "parameters": self.parameters}

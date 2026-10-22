@@ -41,6 +41,8 @@ log = logging.getLogger("ira.assistant")
 
 NAME_SETTING = "assistant.name"
 MAX_TOOL_RESULT_CHARS = 8000
+# A page a device read can be longer: its reader returns up to 20,000 characters of text.
+PERSONAL_RESULT_CHARS = 24_000
 # A tool's result in the event stream and the ask response: enough to show, not to page.
 RESULT_PREVIEW_CHARS = 500
 CUT_MARK = "…"
@@ -518,14 +520,18 @@ class Assistant:
             # The tier is the device's or the skill's, from code; the model cannot lower it.
             if tainted:
                 return _refused(safe_call)
-            if extra.device_id is None or user_id is None:
+            try:
+                device_id, params = extra.target(arguments)
+            except ToolError as exc:
+                return _failed(str(exc), safe_call)
+            if device_id is None or user_id is None:
                 return _failed("this tool cannot wait for a confirmation", safe_call)
             pending = self.guard.propose_on_device(
                 extra.name,
-                arguments,
+                params,
                 extra.summary(arguments),
                 extra.tier,
-                device_id=extra.device_id,
+                device_id=device_id,
                 user_id=user_id,
                 conversation_id=conversation_id,
                 channel=channel,
@@ -535,13 +541,15 @@ class Assistant:
         try:
             value = await extra.run(arguments)
         except ToolError as exc:
-            run = _failed(str(exc), safe_call)
-            run.untrusted = extra.source == "device"  # a device's own error text is its output
-            return run
+            if extra.source != "device":
+                return _failed(str(exc), safe_call)
+            # A device's own error text is its output: wrapped, private, and it taints the turn.
+            content = wrap_untrusted(extra.source, extra.label, _result({"error": str(exc)}))
+            return ToolRun(content, False, safe_call, untrusted=True, private=True, outcome="error")
         except Exception as exc:
             log.exception("tool %s raised", call.name)
             return _failed(f"the tool failed ({type(exc).__name__})", safe_call)
-        content = wrap_untrusted(extra.source, extra.label, _result(value))
+        content = wrap_untrusted(extra.source, extra.label, _result(value, PERSONAL_RESULT_CHARS))
         return ToolRun(content, True, safe_call, untrusted=True, private=extra.private)
 
 
@@ -572,10 +580,10 @@ def _safe(call: ToolCall) -> ToolCall:
     return ToolCall(call.id, call.name, call.replay_arguments())
 
 
-def _result(value: Any) -> str:
-    text = value if isinstance(value, str) else json.dumps(value, default=str)
-    if len(text) > MAX_TOOL_RESULT_CHARS:
-        text = text[:MAX_TOOL_RESULT_CHARS] + "... (truncated)"
+def _result(value: Any, limit: int = MAX_TOOL_RESULT_CHARS) -> str:
+    text = value if isinstance(value, str) else json.dumps(value, default=str, ensure_ascii=False)
+    if len(text) > limit:
+        text = text[:limit] + "... (truncated)"
     return text
 
 

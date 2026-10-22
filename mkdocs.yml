@@ -74,6 +74,7 @@ nav:
       - Concepts: concepts.md
       - Admin guide: admin-guide.md
       - Deployment: deployment.md
+      - Devices: devices.md
   - Reference:
       - API: api.md
       - Architecture: architecture.md

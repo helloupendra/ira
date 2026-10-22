@@ -140,14 +140,21 @@ def change_role(
 
 
 @router.delete("/users/{user_id}", response_model=OkResponse, summary="Remove a user")
-def remove_user(
+async def remove_user(
     user_id: int, who: Principal = Depends(owner), runtime: Runtime = Depends(get_runtime)
 ) -> OkResponse:
     _user_or_404(runtime, user_id)
+    connected = [
+        c.device.id
+        for c in (runtime.hub.connections.values() if runtime.hub else ())
+        if c.device.user_id == user_id
+    ]
     try:
         user = runtime.accounts.remove_user(user_id)
     except LastOwnerError as exc:
         raise HTTPException(409, detail=str(exc)) from None
+    for device_id in connected:  # their devices were revoked with the account
+        await runtime.hub.disconnect(device_id, "the account was removed")  # type: ignore[union-attr]
     _log(runtime, who, "user.removed", user.email, before=user.role)
     return OkResponse()
 

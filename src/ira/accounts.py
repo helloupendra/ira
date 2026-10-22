@@ -306,7 +306,7 @@ class Accounts:
         return updated, user.role
 
     def remove_user(self, user_id: int) -> User:
-        """Disable an account and end everything it holds: sessions, tokens, paired chats.
+        """Disable an account and end everything it holds: sessions, tokens, chats, devices.
 
         The row stays so that conversations and the audit log keep their author.
         """
@@ -330,6 +330,10 @@ class Accounts:
                 (now, user_id),
             )
             self.store.execute("DELETE FROM telegram_chats WHERE user_id = ?", (user_id,))
+            self.store.execute(
+                "UPDATE devices SET revoked_at = ? WHERE user_id = ? AND revoked_at IS NULL",
+                (now, user_id),
+            )
         return user
 
     # Invitations.

@@ -4859,6 +4859,1012 @@
                     }
                 }
             }
+        },
+        "/v1/devices/pair": {
+            "post": {
+                "tags": [
+                    "devices"
+                ],
+                "summary": "Public: a device exchanges its one-time pairing code for its own token",
+                "operationId": "pair_device",
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/PairRequest"
+                            }
+                        }
+                    },
+                    "required": true
+                },
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/DevicePaired"
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Bad input",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ErrorDetail"
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "No credential, or an invalid one",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ErrorDetail"
+                                }
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "Not allowed: role, token, or a missing CSRF header",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ErrorDetail"
+                                }
+                            }
+                        }
+                    },
+                    "410": {
+                        "description": "Unknown, used or expired code"
+                    },
+                    "429": {
+                        "description": "Too many wrong codes from this address; wait 15 minutes"
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/v1/me/devices": {
+            "get": {
+                "tags": [
+                    "devices"
+                ],
+                "summary": "Your paired devices",
+                "operationId": "my_devices",
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "items": {
+                                        "$ref": "#/components/schemas/DeviceView"
+                                    },
+                                    "type": "array",
+                                    "title": "Response My Devices"
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Bad input",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ErrorDetail"
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "No credential, or an invalid one",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ErrorDetail"
+                                }
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "Not allowed: role, token, or a missing CSRF header",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ErrorDetail"
+                                }
+                            }
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "HTTPBearer": []
+                    }
+                ]
+            }
+        },
+        "/v1/me/skills": {
+            "get": {
+                "tags": [
+                    "devices"
+                ],
+                "summary": "Skills a device can offer",
+                "operationId": "skills",
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "items": {
+                                        "$ref": "#/components/schemas/SkillView"
+                                    },
+                                    "type": "array",
+                                    "title": "Response Skills"
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Bad input",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ErrorDetail"
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "No credential, or an invalid one",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ErrorDetail"
+                                }
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "Not allowed: role, token, or a missing CSRF header",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ErrorDetail"
+                                }
+                            }
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "HTTPBearer": []
+                    }
+                ]
+            }
+        },
+        "/v1/me/devices/pairing": {
+            "post": {
+                "tags": [
+                    "devices"
+                ],
+                "summary": "Pair a new device: a one-time code and QR code (needs your PIN)",
+                "operationId": "create_my_pairing",
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/PairingCreate"
+                            }
+                        }
+                    },
+                    "required": true
+                },
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/PairingView"
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Bad input",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ErrorDetail"
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "No credential, or an invalid one",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ErrorDetail"
+                                }
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "Not allowed: role, token, or a missing CSRF header",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ErrorDetail"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "HTTPBearer": []
+                    }
+                ]
+            }
+        },
+        "/v1/me/devices/pairings/{pairing_id}": {
+            "get": {
+                "tags": [
+                    "devices"
+                ],
+                "summary": "Whether a device has used your pairing code yet",
+                "operationId": "my_pairing",
+                "security": [
+                    {
+                        "HTTPBearer": []
+                    }
+                ],
+                "parameters": [
+                    {
+                        "name": "pairing_id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "title": "Pairing Id"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/PairingState"
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Bad input",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ErrorDetail"
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "No credential, or an invalid one",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ErrorDetail"
+                                }
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "Not allowed: role, token, or a missing CSRF header",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ErrorDetail"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/v1/me/devices/{device_id}": {
+            "patch": {
+                "tags": [
+                    "devices"
+                ],
+                "summary": "Rename a device, or switch its skills (on needs your PIN, off never does)",
+                "operationId": "update_my_device",
+                "security": [
+                    {
+                        "HTTPBearer": []
+                    }
+                ],
+                "parameters": [
+                    {
+                        "name": "device_id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "integer",
+                            "title": "Device Id"
+                        }
+                    }
+                ],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/DeviceUpdate"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/DeviceView"
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Bad input",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ErrorDetail"
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "No credential, or an invalid one",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ErrorDetail"
+                                }
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "Not allowed: role, token, or a missing CSRF header",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ErrorDetail"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            "delete": {
+                "tags": [
+                    "devices"
+                ],
+                "summary": "Revoke one of your devices: its token stops working and it disconnects now",
+                "operationId": "revoke_my_device",
+                "security": [
+                    {
+                        "HTTPBearer": []
+                    }
+                ],
+                "parameters": [
+                    {
+                        "name": "device_id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "integer",
+                            "title": "Device Id"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/OkResponse"
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Bad input",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ErrorDetail"
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "No credential, or an invalid one",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ErrorDetail"
+                                }
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "Not allowed: role, token, or a missing CSRF header",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ErrorDetail"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/v1/me/events": {
+            "get": {
+                "tags": [
+                    "devices"
+                ],
+                "summary": "What your devices announced in the last seven days, newest first",
+                "operationId": "my_events",
+                "security": [
+                    {
+                        "HTTPBearer": []
+                    }
+                ],
+                "parameters": [
+                    {
+                        "name": "limit",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "type": "integer",
+                            "maximum": 200,
+                            "minimum": 1,
+                            "default": 50,
+                            "title": "Limit"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "array",
+                                    "items": {
+                                        "$ref": "#/components/schemas/EventView"
+                                    },
+                                    "title": "Response My Events"
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Bad input",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ErrorDetail"
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "No credential, or an invalid one",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ErrorDetail"
+                                }
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "Not allowed: role, token, or a missing CSRF header",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ErrorDetail"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            "delete": {
+                "tags": [
+                    "devices"
+                ],
+                "summary": "Forget your devices' events",
+                "operationId": "clear_my_events",
+                "security": [
+                    {
+                        "HTTPBearer": []
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/OkResponse"
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Bad input",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ErrorDetail"
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "No credential, or an invalid one",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ErrorDetail"
+                                }
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "Not allowed: role, token, or a missing CSRF header",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ErrorDetail"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/v1/me/events/stream": {
+            "get": {
+                "tags": [
+                    "devices"
+                ],
+                "summary": "Your devices' events as server-sent events, as they happen",
+                "operationId": "my_event_stream",
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "text/event-stream": {
+                                "schema": {
+                                    "type": "object"
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Bad input",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ErrorDetail"
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "No credential, or an invalid one",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ErrorDetail"
+                                }
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "Not allowed: role, token, or a missing CSRF header",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ErrorDetail"
+                                }
+                            }
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "HTTPBearer": []
+                    }
+                ]
+            }
+        },
+        "/v1/admin/devices": {
+            "get": {
+                "tags": [
+                    "devices",
+                    "admin"
+                ],
+                "summary": "Every paired device and its skills (never what a device returned)",
+                "operationId": "all_devices",
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "items": {
+                                        "$ref": "#/components/schemas/DeviceView"
+                                    },
+                                    "type": "array",
+                                    "title": "Response All Devices"
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Bad input",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ErrorDetail"
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "No credential, or an invalid one",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ErrorDetail"
+                                }
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "Not allowed: role, token, or a missing CSRF header",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ErrorDetail"
+                                }
+                            }
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "HTTPBearer": []
+                    }
+                ]
+            },
+            "post": {
+                "tags": [
+                    "devices",
+                    "admin: changes"
+                ],
+                "summary": "Pair a device for yourself: a one-time code (needs your PIN)",
+                "operationId": "create_device",
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/PairingCreate"
+                            }
+                        }
+                    },
+                    "required": true
+                },
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/PairingView"
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Bad input",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ErrorDetail"
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "No credential, or an invalid one",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ErrorDetail"
+                                }
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "Not allowed: role, token, or a missing CSRF header",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ErrorDetail"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "HTTPBearer": []
+                    }
+                ]
+            }
+        },
+        "/v1/admin/devices/{device_id}": {
+            "patch": {
+                "tags": [
+                    "devices",
+                    "admin: changes"
+                ],
+                "summary": "Switch a device's skills off (only its owner switches them on)",
+                "operationId": "update_any_device",
+                "security": [
+                    {
+                        "HTTPBearer": []
+                    }
+                ],
+                "parameters": [
+                    {
+                        "name": "device_id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "integer",
+                            "title": "Device Id"
+                        }
+                    }
+                ],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/DeviceUpdate"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/DeviceView"
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Bad input",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ErrorDetail"
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "No credential, or an invalid one",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ErrorDetail"
+                                }
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "Not allowed: role, token, or a missing CSRF header",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ErrorDetail"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            "delete": {
+                "tags": [
+                    "devices",
+                    "admin: changes"
+                ],
+                "summary": "Revoke any device: its token stops working and it disconnects now",
+                "operationId": "revoke_any_device",
+                "security": [
+                    {
+                        "HTTPBearer": []
+                    }
+                ],
+                "parameters": [
+                    {
+                        "name": "device_id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "integer",
+                            "title": "Device Id"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/OkResponse"
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Bad input",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ErrorDetail"
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "No credential, or an invalid one",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ErrorDetail"
+                                }
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "Not allowed: role, token, or a missing CSRF header",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ErrorDetail"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
         }
     },
     "components": {
@@ -6054,6 +7060,239 @@
                 "title": "DeltaEvent",
                 "description": "More answer text."
             },
+            "DevicePaired": {
+                "properties": {
+                    "device_id": {
+                        "type": "integer",
+                        "title": "Device Id"
+                    },
+                    "token": {
+                        "type": "string",
+                        "title": "Token",
+                        "description": "irad_ and 32 random bytes. Keep it in the Keychain or Keystore."
+                    },
+                    "kind": {
+                        "type": "string",
+                        "enum": [
+                            "mac",
+                            "android"
+                        ],
+                        "title": "Kind"
+                    },
+                    "label": {
+                        "type": "string",
+                        "title": "Label"
+                    },
+                    "skills": {
+                        "items": {
+                            "type": "string"
+                        },
+                        "type": "array",
+                        "title": "Skills"
+                    },
+                    "name": {
+                        "type": "string",
+                        "title": "Name",
+                        "description": "What its user calls the assistant."
+                    },
+                    "websocket": {
+                        "type": "string",
+                        "title": "Websocket",
+                        "description": "The WebSocket's path: /v1/devices/ws."
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "device_id",
+                    "token",
+                    "kind",
+                    "label",
+                    "skills",
+                    "name",
+                    "websocket"
+                ],
+                "title": "DevicePaired",
+                "description": "The device's own token, shown once. It works on the device WebSocket only."
+            },
+            "DeviceToolView": {
+                "properties": {
+                    "name": {
+                        "type": "string",
+                        "title": "Name"
+                    },
+                    "description": {
+                        "type": "string",
+                        "title": "Description"
+                    },
+                    "skill": {
+                        "type": "string",
+                        "title": "Skill"
+                    },
+                    "tier": {
+                        "type": "integer",
+                        "title": "Tier",
+                        "description": "0 read, 1 small and undoable, 2 needs a yes, 3 needs a PIN."
+                    },
+                    "on": {
+                        "type": "boolean",
+                        "title": "On",
+                        "description": "Its skill is switched on, so Ira may use it."
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "name",
+                    "description",
+                    "skill",
+                    "tier",
+                    "on"
+                ],
+                "title": "DeviceToolView"
+            },
+            "DeviceUpdate": {
+                "properties": {
+                    "label": {
+                        "anyOf": [
+                            {
+                                "type": "string",
+                                "maxLength": 60
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Label"
+                    },
+                    "skills": {
+                        "anyOf": [
+                            {
+                                "items": {
+                                    "type": "string"
+                                },
+                                "type": "array",
+                                "maxItems": 20
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Skills",
+                        "description": "The skills to have on: the whole list."
+                    },
+                    "pin": {
+                        "anyOf": [
+                            {
+                                "type": "string",
+                                "maxLength": 12,
+                                "minLength": 4
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Pin",
+                        "description": "Your action PIN; needed only to switch a skill on."
+                    }
+                },
+                "type": "object",
+                "title": "DeviceUpdate"
+            },
+            "DeviceView": {
+                "properties": {
+                    "id": {
+                        "type": "integer",
+                        "title": "Id"
+                    },
+                    "kind": {
+                        "type": "string",
+                        "enum": [
+                            "mac",
+                            "android"
+                        ],
+                        "title": "Kind"
+                    },
+                    "label": {
+                        "type": "string",
+                        "title": "Label"
+                    },
+                    "user_id": {
+                        "type": "integer",
+                        "title": "User Id"
+                    },
+                    "email": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Email",
+                        "description": "Its owner's email."
+                    },
+                    "created_at": {
+                        "type": "number",
+                        "title": "Created At"
+                    },
+                    "last_seen_at": {
+                        "anyOf": [
+                            {
+                                "type": "number"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Last Seen At"
+                    },
+                    "connected": {
+                        "type": "boolean",
+                        "title": "Connected",
+                        "description": "Holding its WebSocket now."
+                    },
+                    "version": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Version",
+                        "description": "The client's version, from its hello."
+                    },
+                    "tools": {
+                        "items": {
+                            "$ref": "#/components/schemas/DeviceToolView"
+                        },
+                        "type": "array",
+                        "title": "Tools",
+                        "description": "The tools its last hello offered (kept while it is offline)."
+                    },
+                    "skills": {
+                        "items": {
+                            "$ref": "#/components/schemas/SkillState"
+                        },
+                        "type": "array",
+                        "title": "Skills"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "id",
+                    "kind",
+                    "label",
+                    "user_id",
+                    "created_at",
+                    "connected",
+                    "tools",
+                    "skills"
+                ],
+                "title": "DeviceView",
+                "description": "A paired device. Never its token, and never anything it returned."
+            },
             "DoneEvent": {
                 "properties": {
                     "type": {
@@ -6138,6 +7377,69 @@
                 ],
                 "title": "ErrorEvent",
                 "description": "No model could answer. A done event follows."
+            },
+            "EventView": {
+                "properties": {
+                    "id": {
+                        "type": "integer",
+                        "title": "Id"
+                    },
+                    "at": {
+                        "type": "number",
+                        "title": "At"
+                    },
+                    "event": {
+                        "type": "string",
+                        "title": "Event",
+                        "description": "watch_done, task_done or task_failed."
+                    },
+                    "title": {
+                        "type": "string",
+                        "title": "Title"
+                    },
+                    "text": {
+                        "type": "string",
+                        "title": "Text"
+                    },
+                    "device_id": {
+                        "anyOf": [
+                            {
+                                "type": "integer"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Device Id"
+                    },
+                    "device": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Device",
+                        "description": "The device's name."
+                    },
+                    "data": {
+                        "additionalProperties": true,
+                        "type": "object",
+                        "title": "Data"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "id",
+                    "at",
+                    "event",
+                    "title",
+                    "text"
+                ],
+                "title": "EventView",
+                "description": "Something a device announced, such as a watched tab that finished."
             },
             "HTTPValidationError": {
                 "properties": {
@@ -6984,6 +8286,188 @@
                 "title": "Overview",
                 "description": "Today at a glance. \"Today\" starts at the server's local midnight: see since."
             },
+            "PairRequest": {
+                "properties": {
+                    "code": {
+                        "type": "string",
+                        "maxLength": 20,
+                        "minLength": 8,
+                        "title": "Code",
+                        "description": "The pairing code."
+                    },
+                    "kind": {
+                        "anyOf": [
+                            {
+                                "type": "string",
+                                "enum": [
+                                    "mac",
+                                    "android"
+                                ]
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Kind",
+                        "description": "The device's kind; must match the code's."
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "code"
+                ],
+                "title": "PairRequest"
+            },
+            "PairingCreate": {
+                "properties": {
+                    "kind": {
+                        "type": "string",
+                        "enum": [
+                            "mac",
+                            "android"
+                        ],
+                        "title": "Kind"
+                    },
+                    "label": {
+                        "anyOf": [
+                            {
+                                "type": "string",
+                                "maxLength": 60
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Label"
+                    },
+                    "skills": {
+                        "items": {
+                            "type": "string"
+                        },
+                        "type": "array",
+                        "maxItems": 20,
+                        "title": "Skills",
+                        "description": "Skills to switch on once it pairs."
+                    },
+                    "pin": {
+                        "type": "string",
+                        "maxLength": 12,
+                        "minLength": 4,
+                        "title": "Pin",
+                        "description": "Your action PIN: pairing a device is a new grant."
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "kind",
+                    "pin"
+                ],
+                "title": "PairingCreate"
+            },
+            "PairingState": {
+                "properties": {
+                    "id": {
+                        "type": "string",
+                        "title": "Id"
+                    },
+                    "state": {
+                        "type": "string",
+                        "enum": [
+                            "waiting",
+                            "paired",
+                            "expired"
+                        ],
+                        "title": "State"
+                    },
+                    "device_id": {
+                        "anyOf": [
+                            {
+                                "type": "integer"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Device Id"
+                    },
+                    "expires_at": {
+                        "type": "number",
+                        "title": "Expires At"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "id",
+                    "state",
+                    "expires_at"
+                ],
+                "title": "PairingState"
+            },
+            "PairingView": {
+                "properties": {
+                    "id": {
+                        "type": "string",
+                        "title": "Id"
+                    },
+                    "code": {
+                        "type": "string",
+                        "title": "Code",
+                        "description": "Eight characters, shown as ABCD-EFGH; type it on the device."
+                    },
+                    "expires_at": {
+                        "type": "number",
+                        "title": "Expires At"
+                    },
+                    "kind": {
+                        "type": "string",
+                        "enum": [
+                            "mac",
+                            "android"
+                        ],
+                        "title": "Kind"
+                    },
+                    "label": {
+                        "type": "string",
+                        "title": "Label"
+                    },
+                    "skills": {
+                        "items": {
+                            "type": "string"
+                        },
+                        "type": "array",
+                        "title": "Skills"
+                    },
+                    "server": {
+                        "type": "string",
+                        "title": "Server",
+                        "description": "The address the device connects to."
+                    },
+                    "pair_url": {
+                        "type": "string",
+                        "title": "Pair Url",
+                        "description": "The link in the QR code: server + /pair#code=..."
+                    },
+                    "qr_svg": {
+                        "type": "string",
+                        "title": "Qr Svg",
+                        "description": "The QR code of pair_url, as an SVG data: URI."
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "id",
+                    "code",
+                    "expires_at",
+                    "kind",
+                    "label",
+                    "skills",
+                    "server",
+                    "pair_url",
+                    "qr_svg"
+                ],
+                "title": "PairingView",
+                "description": "A one-time pairing code. Shown once; it works for 10 minutes."
+            },
             "PinSetRequest": {
                 "properties": {
                     "password": {
@@ -7692,6 +9176,64 @@
                     "version"
                 ],
                 "title": "SetupStatus"
+            },
+            "SkillState": {
+                "properties": {
+                    "name": {
+                        "type": "string",
+                        "title": "Name",
+                        "description": "A grant, such as \"chrome\": the tools that belong to it."
+                    },
+                    "description": {
+                        "type": "string",
+                        "title": "Description"
+                    },
+                    "on": {
+                        "type": "boolean",
+                        "title": "On",
+                        "description": "Switched on by the device's user: its tools are offered."
+                    },
+                    "offered": {
+                        "type": "boolean",
+                        "title": "Offered",
+                        "description": "The device offers tools for this skill now."
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "name",
+                    "description",
+                    "on",
+                    "offered"
+                ],
+                "title": "SkillState"
+            },
+            "SkillView": {
+                "properties": {
+                    "name": {
+                        "type": "string",
+                        "title": "Name"
+                    },
+                    "description": {
+                        "type": "string",
+                        "title": "Description"
+                    },
+                    "kinds": {
+                        "items": {
+                            "type": "string"
+                        },
+                        "type": "array",
+                        "title": "Kinds",
+                        "description": "Which devices offer it."
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "name",
+                    "description",
+                    "kinds"
+                ],
+                "title": "SkillView"
             },
             "SpeakRequest": {
                 "properties": {

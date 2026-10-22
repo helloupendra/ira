@@ -101,7 +101,16 @@ def cmd_serve(args: argparse.Namespace) -> int:
     if code:
         print(setup_banner(code, host, port, runtime.public_url), flush=True)
         runtime.setup_code_shown = True
-    uvicorn.run(create_app(runtime), host=host, port=port, log_level="info")
+    from ira.devices.protocol import MAX_FRAME_BYTES
+
+    uvicorn.run(
+        create_app(runtime),
+        host=host,
+        port=port,
+        log_level="info",
+        # Device frames are 1 MB at most; the WebSocket refuses bigger ones before reading them.
+        ws_max_size=MAX_FRAME_BYTES + 1024,
+    )
     return 0
 
 

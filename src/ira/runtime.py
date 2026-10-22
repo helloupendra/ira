@@ -12,6 +12,7 @@ from ira.accounts import Accounts
 from ira.assistant import Assistant
 from ira.config import ConfigError, ProviderConfig, Settings, secret
 from ira.conversations import Conversations
+from ira.devices import DeviceHub, Devices
 from ira.models.anthropic import AnthropicProvider
 from ira.models.base import ChatProvider
 from ira.models.fake import RouterProvider
@@ -22,6 +23,7 @@ from ira.overrides import DEFAULT_VOICES
 from ira.store import Store
 from ira.tools.actions import ActionGuard
 from ira.tools.loader import load_tool_modules
+from ira.tools.personal import PersonalTool
 from ira.tools.registry import ToolContext, ToolRegistry, default_registry
 from ira.usersettings import UserSettings
 from ira.voice.providers import (
@@ -64,6 +66,26 @@ class Runtime:
     bound_port: int | None = None
     # The Telegram Bot API client, shared by the bot and the console; tests put a fake here.
     telegram_api: Any = None
+    # People's paired devices, live.
+    hub: DeviceHub | None = None
+
+    def __post_init__(self) -> None:
+        if self.hub is None:
+            self.hub = DeviceHub(Devices(self.store))
+        if self.assistant.personal_tools is None:
+            self.assistant.personal_tools = self.personal_tools
+        if self.guard.device_runner is None:
+            self.guard.device_runner = self.hub.run_action
+        self.hub.welcome_extra = self._welcome
+
+    def personal_tools(self, user_id: int | None) -> list[PersonalTool]:
+        """One person's own tools for a turn: their devices' tools whose skill is on."""
+        assert self.hub is not None
+        return self.hub.tools_for(user_id)
+
+    def _welcome(self, user_id: int) -> dict[str, Any]:
+        prefs = self.assistant.user_settings.get(user_id)
+        return {"assistant": self.assistant.name_for(user_id), "wakePhrase": prefs.wake_phrase}
 
     @property
     def host(self) -> str:

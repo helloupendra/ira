@@ -32,6 +32,11 @@ field errors on `422`).
 | `POST /v1/actions/{id}/approve` | `ask`, and being the person who asked (Tier 2 only) |
 | `GET /v1/me/settings`, `GET /v1/me/activity` | `ask` |
 | `PATCH /v1/me/settings` | a session with `ask` |
+| `POST /v1/devices/pair` | nothing (the one-time pairing code) |
+| `GET /v1/devices/ws` | a device token (`irad_...`), and nothing else |
+| `GET /v1/me/devices`, `GET /v1/me/skills`, `GET /v1/me/devices/pairings/{id}`, `GET /v1/me/events`, `GET /v1/me/events/stream` | `ask` |
+| `POST /v1/me/devices/pairing`, `PATCH`/`DELETE /v1/me/devices/{id}`, `DELETE /v1/me/events` | a session with `ask` (and your PIN to pair or switch a skill on) |
+| `GET`, `POST /v1/admin/devices`, `PATCH`/`DELETE /v1/admin/devices/{id}` | a session with `admin.write` |
 | `GET /v1/admin/*` | `admin.read` (`GET /v1/admin/users/invites` and `GET /v1/admin/sessions`: `users`) |
 | `POST`, `PUT`, `PATCH`, `DELETE` under `/v1/admin` | a session with `admin.write`, or `users` for users, invitations and sessions |
 
@@ -211,6 +216,33 @@ it, with no PIN: `executed`, `failed`, `not_allowed` (403, someone else's),
 
 `GET /v1/info` returns the name you chose. Nobody reads another person's
 settings or activity through these routes.
+
+## Devices
+
+The protocol, limits and security are in [Devices](devices.md). The routes:
+
+| Route | Body | Returns |
+| --- | --- | --- |
+| `POST /v1/me/devices/pairing` | `PairingCreate`: `kind` (`mac`, `android`), `label`, `skills`, `pin` | `PairingView`: the one-time `code` (`ABCD-EFGH`, 10 minutes), `server`, `pair_url` and `qr_svg` (a `data:` URI of its QR code) |
+| `GET /v1/me/devices/pairings/{id}` | | `PairingState`: `waiting`, `paired` (with `device_id`) or `expired` |
+| `POST /v1/devices/pair` | `PairRequest`: `code`, `kind` | `DevicePaired`: the device's `token`, once; `410` for a bad code, `429` after five |
+| `GET /v1/me/devices` | | `DeviceView[]`: your devices, `connected`, the tools of their last hello and their skills (`on`, `offered`). Never a token, never output |
+| `PATCH /v1/me/devices/{id}` | `DeviceUpdate`: `label`, `skills` (the whole list), `pin` (to switch one on) | `DeviceView` |
+| `DELETE /v1/me/devices/{id}` | | `OkResponse`: the token stops working and the device disconnects |
+| `GET /v1/me/skills` | | `SkillView[]`: the skills IRA's clients offer, in words |
+| `GET /v1/me/events?limit=` | | `EventView[]`: your devices' events of the last seven days |
+| `GET /v1/me/events/stream` | | server-sent events, one `EventView` per `data:` line, as they happen |
+| `DELETE /v1/me/events` | | `OkResponse` |
+| `GET /v1/admin/devices` | | `DeviceView[]` for everyone, with `email` |
+| `POST /v1/admin/devices` | `PairingCreate` | `PairingView`: a device for yourself |
+| `PATCH /v1/admin/devices/{id}` | `DeviceUpdate` | switch someone's skills off (`403` to switch one on) |
+| `DELETE /v1/admin/devices/{id}` | | revoke anyone's device |
+
+Pairing writes `device.pairing_started` (never the code) and `device.paired`
+to the change log; switching skills writes `device.skills`, renaming
+`device.renamed`, and revoking `device.revoked`. A wrong PIN counts towards
+the same lock as actions: `403` with the attempts left, `423` when locked,
+`409` with no PIN set.
 
 **Expiry is the same everywhere.** A proposal past its `expires_at` is
 marked `expired` before any list, count or transcript is read (its

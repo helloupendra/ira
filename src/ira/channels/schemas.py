@@ -989,3 +989,128 @@ class ActivityRow(BaseModel):
         "the confirmation)."
     )
     seconds: float | None = None
+
+
+# Devices: a person's own Mac or Android phone, paired with a one-time code.
+
+DeviceKind = Literal["mac", "android"]
+
+
+class SkillState(BaseModel):
+    name: str = Field(description='A grant, such as "chrome": the tools that belong to it.')
+    description: str
+    on: bool = Field(description="Switched on by the device's user: its tools are offered.")
+    offered: bool = Field(description="The device offers tools for this skill now.")
+
+
+class DeviceToolView(BaseModel):
+    name: str
+    description: str
+    skill: str
+    tier: int = Field(description="0 read, 1 small and undoable, 2 needs a yes, 3 needs a PIN.")
+    on: bool = Field(description="Its skill is switched on, so Ira may use it.")
+
+
+class DeviceView(BaseModel):
+    """A paired device. Never its token, and never anything it returned."""
+
+    id: int
+    kind: DeviceKind
+    label: str
+    user_id: int
+    email: str | None = Field(default=None, description="Its owner's email.")
+    created_at: float
+    last_seen_at: float | None = None
+    connected: bool = Field(description="Holding its WebSocket now.")
+    version: str | None = Field(default=None, description="The client's version, from its hello.")
+    tools: list[DeviceToolView] = Field(
+        description="The tools its last hello offered (kept while it is offline)."
+    )
+    skills: list[SkillState]
+
+
+class PairingCreate(BaseModel):
+    kind: DeviceKind
+    label: str | None = Field(default=None, max_length=60)
+    skills: list[str] = Field(
+        default_factory=list, max_length=20, description="Skills to switch on once it pairs."
+    )
+    pin: str = Field(
+        min_length=PIN_MIN_LENGTH,
+        max_length=PIN_MAX_LENGTH,
+        description="Your action PIN: pairing a device is a new grant.",
+    )
+
+
+class PairingView(BaseModel):
+    """A one-time pairing code. Shown once; it works for 10 minutes."""
+
+    id: str
+    code: str = Field(description="Eight characters, shown as ABCD-EFGH; type it on the device.")
+    expires_at: float
+    kind: DeviceKind
+    label: str
+    skills: list[str]
+    server: str = Field(description="The address the device connects to.")
+    pair_url: str = Field(description="The link in the QR code: server + /pair#code=...")
+    qr_svg: str = Field(description="The QR code of pair_url, as an SVG data: URI.")
+
+
+class PairingState(BaseModel):
+    id: str
+    state: Literal["waiting", "paired", "expired"]
+    device_id: int | None = None
+    expires_at: float
+
+
+class PairRequest(BaseModel):
+    code: str = Field(min_length=8, max_length=20, description="The pairing code.")
+    kind: DeviceKind | None = Field(
+        default=None, description="The device's kind; must match the code's."
+    )
+
+
+class DevicePaired(BaseModel):
+    """The device's own token, shown once. It works on the device WebSocket only."""
+
+    device_id: int
+    token: str = Field(
+        description="irad_ and 32 random bytes. Keep it in the Keychain or Keystore."
+    )
+    kind: DeviceKind
+    label: str
+    skills: list[str]
+    name: str = Field(description="What its user calls the assistant.")
+    websocket: str = Field(description="The WebSocket's path: /v1/devices/ws.")
+
+
+class DeviceUpdate(BaseModel):
+    label: str | None = Field(default=None, max_length=60)
+    skills: list[str] | None = Field(
+        default=None, max_length=20, description="The skills to have on: the whole list."
+    )
+    pin: str | None = Field(
+        default=None,
+        min_length=PIN_MIN_LENGTH,
+        max_length=PIN_MAX_LENGTH,
+        description="Your action PIN; needed only to switch a skill on.",
+    )
+
+
+class EventView(BaseModel):
+    """Something a device announced, such as a watched tab that finished."""
+
+    id: int
+    at: float
+    event: str = Field(description="watch_done, task_done or task_failed.")
+    title: str
+    text: str
+    device_id: int | None = None
+    device: str | None = Field(default=None, description="The device's name.")
+    data: dict[str, Any] = Field(default_factory=dict)
+
+
+class SkillView(BaseModel):
+    name: str
+    description: str
+    kinds: list[str] = Field(description="Which devices offer it.")
