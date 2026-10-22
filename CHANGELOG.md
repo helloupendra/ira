@@ -133,6 +133,19 @@ switch it on.
   iMessage, apps, web pages, VS Code, the clipboard, Shortcuts, and coding
   tasks in a sandboxed git worktree with VS Code open on it, whose branch is
   pushed only after the PIN and never to a protected default branch.
+- **Ira for Android** (`clients/android/`, [guide](docs/clients/android.md)):
+  Kotlin and Compose, Android 10 and later. Pairs with a link or a code and
+  keeps its key encrypted with an Android Keystore key. Live voice over
+  `/v1/voice/live` with an on-phone voice detector, sentence-by-sentence
+  playback and barge-in, in a microphone foreground service on only during
+  a call; typing works too. Becomes the digital assistant (a long press of
+  the power button). Offers the phone to Ira as a device: calls, contacts,
+  SMS, notifications and direct reply, alarms, timers, reminders, calendar,
+  apps, maps, media, location and settings, each behind a skill and a tier.
+  Two builds: one for Google Play, with SMS and call log only while it is
+  the default assistant and no Accessibility service, and a sideloaded
+  personal build that adds them; the docs give the policy matrix and a
+  Play Console guide. CI runs its unit tests and builds both debug APKs.
 - **Tasks on your Mac** (the `tasks` skill): Ira hands a job to a coding
   agent configured on the Mac, in a new git worktree and branch of a
   repository the person allowed there. It runs in macOS's sandbox, its git
