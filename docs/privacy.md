@@ -81,8 +81,43 @@ not train on what you send. Check their pages yourself: terms change.
   the records a business keeps (the actions you asked its tools to take, and
   its audit log); the owner can remove the account.
 
+## The Ira app for Android
+
+The Android app is a window onto your own Ira server. It sends that server,
+and nothing else:
+
+- **your voice, only during a call** that you started: the audio of what you
+  say, while you speak, streamed to your server and from there to its
+  speech-to-text (Amazon Transcribe, which keeps nothing). There is no wake
+  word yet; the microphone never starts on its own;
+- **what a phone tool returns, only when Ira uses it for you** and only
+  with that tool's skill switched on, with your PIN: a few recent calls, a
+  contact, some text messages, the notifications showing at that moment, a
+  calendar event, or the phone's location once. Nothing is read in the
+  background, and none of it is copied anywhere but your conversation;
+- **what you type**, and your taps on Yes, No and the PIN card.
+
+On the phone, it keeps its own device key (encrypted, in the Android
+Keystore), your server's address, which skills are on, and reminders that
+have not gone off. No audio, transcript, message, contact or location stays
+on the phone. Every phone tool and its permission is listed in
+[the Android app](clients/android.md#what-ira-can-do-on-your-phone).
+
+**To delete your data**: **Delete my data** in the app's menu (or the web
+app's **Your data**) removes your conversations and what Ira did; removing
+the phone under **Your devices** stops its key at once; uninstalling the app
+removes everything it kept on the phone.
+
 ## On a shared server
 
 The person who runs the server can read its database and its backups, as
 with any self-hosted software. Use a server run by someone you trust, or run
 your own: the [quick start](personal-assistant.md) does it in 15 minutes.
+
+## Contact
+
+Questions about privacy, or a problem to report: open an issue at
+[github.com/helloupendra/ira/issues](https://github.com/helloupendra/ira/issues)
+(mark it **privacy**; leave out anything personal, and we will ask how to
+reach you privately if needed). The people who run your Ira server are the
+ones who hold your data: ask them first about anything stored there.

@@ -220,7 +220,7 @@ const IraPersonal = (() => {
   }
 
   function addDeviceForm(body, downloads) {
-    const kind = el("select", { name: "kind" }, el("option", { value: "mac", text: "Mac (reads Chrome tabs)" }), el("option", { value: "android", text: "Android phone (the ear, coming later)" }));
+    const kind = el("select", { name: "kind" }, el("option", { value: "mac", text: "Mac (reads Chrome tabs)" }), el("option", { value: "android", text: "Android phone" }));
     const chrome = el("input", { type: "checkbox", name: "skill-chrome", checked: true });
     const chromeRow = el("label", { className: "switch" }, chrome, el("span", { text: "Chrome: list your tabs, read the one you ask about, and tell you when it finishes" }));
     kind.addEventListener("change", () => (chromeRow.hidden = kind.value !== "mac"));
