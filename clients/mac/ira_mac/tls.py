@@ -18,6 +18,11 @@ import ssl
 from pathlib import Path
 
 MAC_BUNDLE = Path("/etc/ssl/cert.pem")
+# The same list where Linux keeps it (Debian and Ubuntu, then Fedora), for tests and CI.
+OTHER_BUNDLES = (
+    Path("/etc/ssl/certs/ca-certificates.crt"),
+    Path("/etc/pki/tls/certs/ca-bundle.crt"),
+)
 
 
 def _has_certificates(context: ssl.SSLContext) -> bool:
@@ -42,8 +47,7 @@ def context() -> ssl.SSLContext:
         bundles.append(certifi.where())
     except ImportError:
         pass
-    if MAC_BUNDLE.is_file():
-        bundles.append(str(MAC_BUNDLE))
+    bundles += [str(path) for path in (MAC_BUNDLE, *OTHER_BUNDLES) if path.is_file()]
     for bundle in bundles:
         try:
             return ssl.create_default_context(cafile=bundle)

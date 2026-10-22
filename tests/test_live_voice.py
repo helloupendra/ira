@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import asyncio
+
 import pytest
 from fastapi.testclient import TestClient
 from starlette.websockets import WebSocketDisconnect
@@ -93,10 +95,18 @@ def test_a_spoken_turn_is_heard_answered_and_spoken_sentence_by_sentence():
     assert [r["role"] for r in stored] == ["user", "assistant"]
 
 
+class SlowTTS(FakeTTS):
+    """A voice that takes a moment per sentence, so a turn is still speaking when cut off."""
+
+    async def speak(self, text: str) -> bytes:
+        await asyncio.sleep(0.05)
+        return await super().speak(text)
+
+
 def test_speaking_while_ira_talks_stops_its_audio():
     long_answer = " ".join(f"Sentence number {n}." for n in range(40))
     provider = ScriptedProvider([long_answer, "Okay."], delay=0.0)
-    runtime = runtime_with(provider=provider)
+    runtime = runtime_with(provider=provider, tts=SlowTTS())
     client = app(runtime)
     with client, client.websocket_connect("/v1/voice/live", headers=session(client)) as ws:
         ws.send_json({"type": "start", "protocol": 1})
