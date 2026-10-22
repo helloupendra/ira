@@ -22,7 +22,8 @@ command -v security >/dev/null || { echo "This script stores the password in the
 
 mkdir -p "$dir"
 chmod 700 "$dir"
-IRA_KEY_PASSWORD="$(LC_ALL=C tr -dc 'A-Za-z0-9' </dev/urandom | head -c 32)"
+# 48 random bytes as letters and digits (no early-closing pipe: pipefail would stop here).
+IRA_KEY_PASSWORD="$(head -c 48 /dev/urandom | base64 | LC_ALL=C tr -dc 'A-Za-z0-9' | cut -c1-32)"
 export IRA_KEY_PASSWORD
 
 # The password goes to the Keychain first, so a key never exists without it. (It is on
