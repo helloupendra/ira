@@ -5,11 +5,15 @@ import android.content.pm.PackageManager
 import android.os.Build
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.lifecycle.compose.LifecycleResumeEffect
+import io.github.helloupendra.ira.approvals.DeviceKey
+import io.github.helloupendra.ira.approvals.Fingerprint
 import io.github.helloupendra.ira.core.Actions
+import io.github.helloupendra.ira.core.Approvals
 import io.github.helloupendra.ira.core.Checklist
 import io.github.helloupendra.ira.core.Permissions
 import io.github.helloupendra.ira.net.Net
@@ -189,6 +193,16 @@ fun TalkScreen(app: IraApp, talkRequests: Int, onSkills: () -> Unit, onSettings:
                 },
             )
         }
+        // An open trust window, while the approvals API exists.
+        val trustUntil by app.trustUntil.collectAsState()
+        var now by remember { mutableLongStateOf(System.currentTimeMillis() / 1000) }
+        LaunchedEffect(trustUntil) {
+            while (trustUntil > now) {
+                delay(15_000)
+                now = System.currentTimeMillis() / 1000
+            }
+        }
+        if (Approvals.ENABLED && trustUntil > now) TrustBanner(app, trustUntil - now)
         Conversation(ui, lines, Modifier.weight(1f), onReport = { reporting = it })
         val card = ui.action
         // Only the newest pending action is shown: a new one replaces the card and any result.
@@ -205,10 +219,37 @@ fun TalkScreen(app: IraApp, talkRequests: Int, onSkills: () -> Unit, onSettings:
         if (card != null) {
             // The PIN's outcome belongs to this card only.
             var outcome by remember(card.id) { mutableStateOf<String?>(null) }
+            val activity = context as? android.app.Activity
+            val fingerprint =
+                if (Approvals.ENABLED && card.needsPin && activity != null && app.settings.approvalsEnrolled && DeviceKey.exists()) {
+                    {
+                        val payload = Approvals.payload(app.settings.deviceId, card.id, System.currentTimeMillis() / 1000 + (card.expiresIn ?: 120))
+                        Fingerprint.approve(activity, card.summary, payload) { signature, problem ->
+                            if (signature == null) {
+                                outcome = problem
+                            } else {
+                                confirming = true
+                                scope.launch {
+                                    val refused = withContext(Dispatchers.IO) { app.approvals.approve(card.id, Approvals.base64(payload), signature) }
+                                    confirming = false
+                                    if (refused == null) {
+                                        if (session?.ui?.value?.action?.id == card.id) session?.dismissAction()
+                                        result = "Done: approved with your fingerprint" to null
+                                    } else {
+                                        outcome = refused
+                                    }
+                                }
+                            }
+                        }
+                    }
+                } else {
+                    null
+                }
             ActionCardView(
                 card = card,
                 busy = confirming,
                 outcome = outcome,
+                onFingerprint = fingerprint,
                 onYes = { session?.answer(true) },
                 onNo = { session?.answer(false) },
                 onPin = { pin ->
@@ -226,6 +267,12 @@ fun TalkScreen(app: IraApp, talkRequests: Int, onSkills: () -> Unit, onSettings:
                             val title = if (confirmed.status == "executed") "Done: ${confirmed.message}" else confirmed.message
                             result = title to confirmed.detail
                             session?.note(listOfNotNull(title, confirmed.detail).joinToString(" "))
+                            // Ira carries on after the action: her answer as her next message, unless
+                            // the open live call already spoke it as its own turn.
+                            val reply = confirmed.reply
+                            if (reply != null && !confirmed.continuedInCall) {
+                                app.transcript.add(Transcript.Line("reply:${card.id}", true, reply, messageId = confirmed.replyMessageId))
+                            }
                         } else {
                             outcome = confirmed.message
                         }
@@ -546,6 +593,7 @@ private fun ActionCardView(
     onNo: () -> Unit,
     onPin: (String) -> Unit,
     onDismiss: () -> Unit,
+    onFingerprint: (() -> Unit)? = null,
 ) {
     var pin by remember(card.id) { mutableStateOf("") }
     Card(
@@ -556,6 +604,10 @@ private fun ActionCardView(
             Text(if (card.needsPin) "Needs your PIN" else "Needs your yes", fontWeight = FontWeight.SemiBold)
             Text(card.summary, style = MaterialTheme.typography.bodyLarge)
             if (card.needsPin) {
+                onFingerprint?.let { approve ->
+                    Button(onClick = approve, enabled = !busy) { Text("Approve with fingerprint") }
+                    Text("Or type your PIN:", style = MaterialTheme.typography.bodySmall)
+                }
                 Text("Type your action PIN to confirm. Never say a PIN aloud.", style = MaterialTheme.typography.bodySmall)
                 OutlinedTextField(
                     value = pin,

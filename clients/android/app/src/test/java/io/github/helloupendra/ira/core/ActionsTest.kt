@@ -2,6 +2,7 @@ package io.github.helloupendra.ira.core
 
 import java.io.IOException
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -34,6 +35,19 @@ class ActionsTest {
         // Expired and gone take their card away too.
         assertTrue(Actions.parse(HttpReply(410, """{"status": "expired"}""")).done)
         assertTrue(Actions.parse(HttpReply(404, """{"status": "not_found"}""")).done)
+    }
+
+    @Test
+    fun `after the action runs, Ira's next answer comes back, or was spoken in the call`() {
+        val shown = Actions.parse(HttpReply(200, """{"status": "executed", "message": "Done.", "reply": "YouTube par Hindi news chal rahi hai.", "reply_message_id": 901, "continued_in_call": false}"""))
+        assertEquals("YouTube par Hindi news chal rahi hai.", shown.reply)
+        assertEquals(901L, shown.replyMessageId)
+        assertFalse(shown.continuedInCall)
+        val spoken = Actions.parse(HttpReply(200, """{"status": "executed", "message": "Done.", "reply": null, "continued_in_call": true}"""))
+        assertTrue(spoken.continuedInCall)
+        assertEquals(null, spoken.reply)
+        // An older server sends none of these.
+        assertEquals(null, Actions.parse(HttpReply(200, """{"status": "executed", "message": "Done."}""")).reply)
     }
 
     @Test

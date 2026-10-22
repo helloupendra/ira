@@ -19,6 +19,11 @@ object Actions {
         val done: Boolean,
         /** A short form of what the action returned, for the result card. */
         val detail: String? = null,
+        /** Ira's answer after the action ran (the model carries on), to show as its next message. */
+        val reply: String? = null,
+        val replyMessageId: Long? = null,
+        /** The answer was spoken in the open live call instead, as its own turn: no bubble here. */
+        val continuedInCall: Boolean = false,
     )
 
     /** What an action returned, short: its `summary`, its text, or its JSON cut to 200 characters. */
@@ -57,17 +62,24 @@ object Actions {
         val server = (body?.string("message") ?: body?.string("detail"))?.takeIf { it.isNotBlank() }
         val left = body?.int("attempts_left")
         val lockedSeconds = body?.int("locked_seconds")
+        val after = { outcome: Outcome ->
+            outcome.copy(
+                reply = body?.string("reply")?.takeIf { it.isNotBlank() },
+                replyMessageId = body?.long("reply_message_id"),
+                continuedInCall = body?.bool("continued_in_call") == true,
+            )
+        }
         return when {
             reply.status == 401 || (reply.status == 403 && status.isEmpty()) ->
                 Outcome("refused", "Your Ira did not accept this phone. Pair it again in Settings.", false)
-            status == "executed" -> Outcome(status, server ?: "Done.", true, detail(body?.get("result")))
+            status == "executed" -> after(Outcome(status, server ?: "Done.", true, detail(body?.get("result"))))
             status == "wrong_pin" ->
                 Outcome(status, "That PIN is not right." + (left?.let { " $it tries left before actions lock for 15 minutes." } ?: ""), false)
             status == "locked" ->
                 Outcome(status, "Actions are locked after wrong PINs." + (lockedSeconds?.let { " Try again in ${(it + 59) / 60} min." } ?: ""), false)
             status == "no_pin" -> Outcome(status, "Set an action PIN on your Ira first (Your account), then try again.", false)
             status == "expired" -> Outcome(status, "That request expired. Ask Ira again.", true)
-            status == "failed" -> Outcome(status, server ?: "It did not work.", true, detail(body?.get("result")))
+            status == "failed" -> after(Outcome(status, server ?: "It did not work.", true, detail(body?.get("result"))))
             status == "already_done" -> Outcome(status, "That was already done.", true)
             status == "cancelled" -> Outcome(status, "That was cancelled.", true)
             status == "not_allowed" || status == "needs_pin" ->
