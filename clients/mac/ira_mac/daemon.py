@@ -7,6 +7,8 @@
   revoked or unknown token it waits 5 minutes between tries and says why.
 * Events (a watched tab finished) wait in an outbox and go out at most one per
   30 seconds, the server's limit; a reconnect does not lose them.
+* Observations (the routine skill: lock, sleep, wake, network) wait in their
+  own queue while offline and go out as soon as it is connected again.
 """
 
 from __future__ import annotations
@@ -97,6 +99,7 @@ class Daemon:
         self.refused_wait = refused_wait
         self.clock = clock
         self.outbox: collections.deque[dict[str, Any]] = collections.deque(maxlen=50)
+        self.observations: collections.deque[dict[str, Any]] = collections.deque(maxlen=500)
         self._outbox_ready = asyncio.Event()
         self._last_event: float | None = None
         self.device_id: int | None = None
@@ -113,6 +116,13 @@ class Daemon:
             {"type": "event", "event": event, "title": title, "text": text, "data": data}
         )
         self._outbox_ready.set()
+
+    def observe(self, frame: dict[str, Any]) -> None:
+        """Queue an observation (from any thread); it goes out when connected."""
+        self.observations.append(frame)
+        loop = getattr(self, "_loop", None)
+        if loop is not None:
+            loop.call_soon_threadsafe(self._outbox_ready.set)
 
     # The connection.
 
@@ -132,6 +142,7 @@ class Daemon:
             self._closing = asyncio.ensure_future(self._ws.close())
 
     async def run_forever(self) -> None:
+        self._loop = asyncio.get_running_loop()
         attempt = 0
         while not self._stop.is_set():
             token = self.token()
@@ -241,8 +252,13 @@ class Daemon:
 
         async def sender() -> None:
             while True:
+                while self.observations:
+                    await send(self.observations[0])
+                    self.observations.popleft()
                 if not self.outbox:
                     self._outbox_ready.clear()
+                    if self.observations:
+                        continue
                     await self._outbox_ready.wait()
                     continue
                 if self._last_event is not None:
@@ -274,6 +290,9 @@ class Daemon:
                     task.add_done_callback(calls.discard)
                 elif kind == "ping":
                     await send({"type": "pong"})
+                elif kind == "skills":
+                    self.skills = [str(s) for s in frame.get("skills") or []]
+                    log.info("skills now %s", self.skills)
                 elif kind == "error":
                     log.warning("the server said: %s", str(frame.get("error"))[:200])
         finally:

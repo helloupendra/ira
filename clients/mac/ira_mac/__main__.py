@@ -51,6 +51,7 @@ def cmd_pair(args: argparse.Namespace) -> int:
 async def _run() -> int:
     from ira_mac.bridge import ChromeBridge
     from ira_mac.daemon import Daemon
+    from ira_mac.routine import MacProbe, Routine
     from ira_mac.tools import Toolbox
 
     settings = config.load()
@@ -61,6 +62,8 @@ async def _run() -> int:
     toolbox = Toolbox(bridge, lambda *event: announce[0](*event))
     daemon = Daemon(settings.websocket_url(), keychain.load, toolbox, label=settings.label)
     announce.append(daemon.announce)
+    routine = Routine(daemon.observe, MacProbe(), config.salt(settings))
+    watcher = asyncio.create_task(routine.run(lambda: "routine" in daemon.skills))
     loop = asyncio.get_running_loop()
     for signum in (signal.SIGTERM, signal.SIGINT):
         loop.add_signal_handler(signum, daemon.stop)
@@ -68,6 +71,7 @@ async def _run() -> int:
     try:
         await daemon.run_forever()
     finally:
+        watcher.cancel()
         await toolbox.stop()
         await bridge.stop()
         log.info("ira-mac stopped")

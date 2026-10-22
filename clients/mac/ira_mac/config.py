@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import os
+import secrets
 from dataclasses import asdict, dataclass
 from pathlib import Path
 
@@ -40,6 +41,8 @@ class Config:
     server: str = "http://127.0.0.1:8765"
     device_id: int | None = None
     label: str = "My Mac"
+    # Salts this Mac's network hashes, so the server can only tell networks apart.
+    network_salt: str = ""
 
     def websocket_url(self) -> str:
         base = self.server.rstrip("/")
@@ -60,7 +63,16 @@ def load(path: Path | None = None) -> Config:
         server=str(data.get("server") or Config.server),
         device_id=data.get("device_id"),
         label=str(data.get("label") or Config.label),
+        network_salt=str(data.get("network_salt") or ""),
     )
+
+
+def salt(config: Config, path: Path | None = None) -> str:
+    """This Mac's network salt, made and kept on first use."""
+    if not config.network_salt:
+        config.network_salt = secrets.token_hex(16)
+        save(config, path)
+    return config.network_salt
 
 
 def save(config: Config, path: Path | None = None) -> None:

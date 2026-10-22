@@ -43,6 +43,7 @@ MAC_FILES = (
     "ira_mac/keychain.py",
     "ira_mac/logs.py",
     "ira_mac/pair.py",
+    "ira_mac/routine.py",
     "ira_mac/tabs.py",
     "ira_mac/tools.py",
     "ira_mac/watch.py",
