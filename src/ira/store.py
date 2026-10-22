@@ -385,6 +385,7 @@ class Store:
         ("pending_actions", "tier", "INTEGER"),
         ("pending_actions", "user_id", "INTEGER"),
         ("pending_actions", "device_id", "INTEGER"),
+        ("device_pairings", "uses_left", "INTEGER"),
     )
 
     def _add_missing_columns(self) -> None:

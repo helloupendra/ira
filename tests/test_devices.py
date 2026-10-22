@@ -29,7 +29,7 @@ from ira.devices.protocol import (
     parse_event,
     parse_hello,
 )
-from ira.devices.store import PAIRING_SECONDS
+from ira.devices.store import PAIRING_SECONDS, DeviceError
 from ira.models.base import ChatResponse, ToolCall
 from ira.models.fake import ScriptedProvider
 from ira.security import sha256_hex
@@ -149,6 +149,26 @@ def test_a_pairing_code_works_once_and_keeps_only_hashes(store):
     assert devices.redeem(late) is None
     assert devices.by_token(token).id == device.id
     assert devices.by_token("ira_t_" + token[5:]) is None
+
+
+def test_a_long_code_for_reviewers_lasts_days_and_pairs_a_few_devices(store):
+    clock = Clock()
+    devices = Devices(store, clock=clock)
+    user = person(store)
+    with pytest.raises(DeviceError):
+        devices.start_pairing(user.id, "android", None, [], seconds=15 * 86400)
+    with pytest.raises(DeviceError):
+        devices.start_pairing(user.id, "android", None, [], uses=11)
+    code, pairing = devices.start_pairing(user.id, "android", None, [], seconds=7 * 86400, uses=2)
+    assert pairing.expires_at == clock() + 7 * 86400
+    clock.advance(6 * 86400)
+    first = devices.redeem(code, "android")
+    second = devices.redeem(code, "android")
+    assert first and second and first[1].id != second[1].id
+    assert devices.redeem(code, "android") is None  # two uses, then done
+    other, _ = devices.start_pairing(user.id, "android", None, [], seconds=86400, uses=3)
+    clock.advance(86400 + 1)
+    assert devices.redeem(other) is None
 
 
 def test_a_device_token_talks_for_its_person_but_never_pairs(registry):

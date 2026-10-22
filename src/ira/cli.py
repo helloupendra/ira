@@ -299,6 +299,43 @@ def cmd_user_email(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_device_code(args: argparse.Namespace) -> int:
+    """A pairing code that lasts days, for someone far away (an app store's reviewers)."""
+    from ira import changes
+    from ira.devices.store import DeviceError, Devices
+    from ira.runtime import local_url
+
+    settings = _settings(args)
+    store = _store(settings)
+    user = Accounts(store).find_user(args.email)
+    if user is None:
+        print(f"No account {args.email}. Add one first: ira user add", file=sys.stderr)
+        return 1
+    skills = [s.strip() for s in (args.skills or "").split(",") if s.strip()]
+    try:
+        code, pairing = Devices(store).start_pairing(
+            user.id, args.kind, args.label, skills, seconds=args.days * 86400, uses=args.uses
+        )
+    except DeviceError as exc:
+        print(f"Error: {exc}", file=sys.stderr)
+        return 1
+    changes.record(
+        store,
+        "cli",
+        "device.long_pairing",
+        user.email,
+        channel="cli",
+        after={"kind": args.kind, "days": args.days, "uses": args.uses},
+    )
+    http = settings.channels.http
+    base = (http.public_url or local_url(http.host, http.port)).rstrip("/")
+    print(f"Pairing code for {user.email} ({args.kind}): {code[:4]}-{code[4:]}")
+    print(f"Or the link: {base}/pair#code={code[:4]}-{code[4:]}")
+    skills_on = ", ".join(pairing.skills) or "none"
+    print(f"It works for {args.days} days, for {args.uses} device(s). Skills on: {skills_on}.")
+    return 0
+
+
 def cmd_user_list(args: argparse.Namespace) -> int:
     settings = _settings(args)
     for user in Accounts(_store(settings)).users():
@@ -475,6 +512,16 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--email", required=True)
     p.add_argument("--role", required=True, choices=[r for r in ROLES if r != "owner"])
     add("list", cmd_user_list, "list accounts", user)
+    device = sub.add_parser("device", help="devices").add_subparsers(
+        dest="device_command", required=True
+    )
+    p = add("code", cmd_device_code, "a pairing code that lasts days (app reviewers)", device)
+    p.add_argument("--email", required=True, help="the account the device will speak for")
+    p.add_argument("--kind", choices=["android", "mac"], default="android")
+    p.add_argument("--days", type=int, default=7, help="1 to 14 (default 7)")
+    p.add_argument("--uses", type=int, default=3, help="devices it may pair (default 3)")
+    p.add_argument("--label", help="the device's name (default: Android phone / Mac)")
+    p.add_argument("--skills", help="skills to switch on, comma-separated")
     p = add("password", cmd_user_password, "set an account's password (signs it out)", user)
     p.add_argument("email")
     p = add("email", cmd_user_email, "change the email an account signs in with", user)

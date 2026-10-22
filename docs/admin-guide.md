@@ -206,7 +206,11 @@ ira user add --email accountant@example.com --role viewer
 ira user list
 ira user password desk@example.com       # a new password; their sessions end
 ira user email desk@example.com front@example.com
+ira device code --email desk@example.com --days 7   # a pairing code for app reviewers
 ```
+
+[A code for app reviewers](devices.md#a-code-for-app-reviewers) says when to
+use the last one.
 
 The console's Users & roles screen does the same, and more: invitations by
 link, role changes, new passwords and emails, removals and PIN resets, each

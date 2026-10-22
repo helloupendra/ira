@@ -89,6 +89,9 @@ switch it on.
   with their password again; an owner sets someone's password or email from
   Users & roles; `ira user password` and `ira user email` do it from the
   server. All go to the change log.
+- **A pairing code for app reviewers.** `ira device code --email ... --days 7
+  --uses 3` makes a code that lasts up to 14 days and pairs up to 10
+  devices, from the server's command line only.
 - **Report an answer.** Every answer in the Ira app has **Report** (wrong,
   harmful, offensive, private, other, and a note); the phone and Mac apps
   use the same `POST /v1/me/reports`. Owners and admins read them under

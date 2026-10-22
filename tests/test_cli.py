@@ -44,6 +44,14 @@ def test_setup_pin_users_and_tokens(config, capsys):
     listing = capsys.readouterr().out
     assert "owner@example.com" in listing and "desk@example.com" in listing and "staff" in listing
 
+    assert run(config, "device", "code", "--email", "nobody@example.com") == 1
+    assert run(config, "device", "code", "--email", "desk@example.com", "--days", "30") == 1
+    capsys.readouterr()
+    assert run(config, "device", "code", "--email", "desk@example.com", "--uses", "2") == 0
+    printed = capsys.readouterr().out
+    assert "for desk@example.com (android)" in printed and "/pair#code=" in printed
+    assert "7 days, for 2 device(s)" in printed
+
     assert run(config, "token", "create", "--label", "phone") == 0
     token = capsys.readouterr().out.strip().splitlines()[-1]
     assert token.startswith("ira_t_")

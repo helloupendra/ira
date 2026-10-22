@@ -34,6 +34,26 @@ POST /v1/devices/pair
 Five wrong codes from one address in 15 minutes give `429` for 15 minutes. A
 used, expired or unknown code gives `410`.
 
+### A code for app reviewers
+
+An app store's reviewers are far away and test days later, so a 10-minute
+code will not do. The server's operator, on the server's own command line
+(no web route makes one), can make a code that lasts up to 14 days and pairs
+up to 10 devices:
+
+```bash
+ira user add --email reviewer@example.com --role staff   # a demo account; asks a password
+ira pin set --user reviewer@example.com                  # its action PIN
+ira device code --email reviewer@example.com --kind android --days 7 --uses 3 \
+    --skills calls,contacts,messages,reminders
+```
+
+It prints the code and its `https://<server>/pair#code=...` link. Give the
+reviewers both, with the demo account's email, password and PIN, under the
+store's **App access** instructions. Use an account with nothing real in it
+(the Sunrise Dental Clinic demo data is made for this), and remove it, and its
+devices, once the review is over. Making such a code goes into the change log.
+
 ## Tokens
 
 - A device token opens `GET /v1/devices/ws`, and lets the device talk to Ira

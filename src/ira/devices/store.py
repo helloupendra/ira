@@ -24,6 +24,10 @@ from ira.store import Store
 
 TOKEN_PREFIX = "irad_"
 PAIRING_SECONDS = 600
+# A code the server's operator makes for someone far away (an app store's reviewers): up to
+# two weeks and a few devices. Made only on the server's own command line.
+LONG_PAIRING_SECONDS = 14 * 24 * 3600
+MAX_USES = 10
 # No 0/O or 1/I to misread.
 CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"  # pragma: allowlist secret
 CODE_LENGTH = 8
@@ -184,10 +188,21 @@ class Devices:
     # Pairing.
 
     def start_pairing(
-        self, user_id: int, kind: str, label: str | None, skills: list[str]
+        self,
+        user_id: int,
+        kind: str,
+        label: str | None,
+        skills: list[str],
+        *,
+        seconds: int = PAIRING_SECONDS,
+        uses: int = 1,
     ) -> tuple[str, Pairing]:
         """Return (code, pairing). The code is shown once; only its hash is kept."""
         kind = check_kind(kind)
+        if not 60 <= seconds <= LONG_PAIRING_SECONDS:
+            raise DeviceError("a pairing code lasts between a minute and 14 days")
+        if not 1 <= uses <= MAX_USES:
+            raise DeviceError(f"a pairing code pairs between 1 and {MAX_USES} devices")
         code = "".join(secrets.choice(CODE_ALPHABET) for _ in range(CODE_LENGTH))
         now = self.clock()
         pairing = Pairing(
@@ -197,11 +212,11 @@ class Devices:
             label=clean_label(label, kind),
             skills=check_skills(skills),
             created_at=now,
-            expires_at=now + PAIRING_SECONDS,
+            expires_at=now + seconds,
         )
         self.store.execute(
             "INSERT INTO device_pairings (id, code_hash, user_id, kind, label, skills, "
-            "created_at, expires_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            "created_at, expires_at, uses_left) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (
                 pairing.id,
                 sha256_hex(code),
@@ -211,6 +226,7 @@ class Devices:
                 json.dumps(pairing.skills),
                 now,
                 pairing.expires_at,
+                uses if uses > 1 else None,
             ),
         )
         return code, pairing
@@ -245,10 +261,17 @@ class Devices:
                 (row["user_id"], row["kind"], row["label"], sha256_hex(token), now, row["skills"]),
             )
             device_id = int(cursor.lastrowid or 0)
-            self.store.execute(
-                "UPDATE device_pairings SET used_at = ?, device_id = ? WHERE id = ?",
-                (now, device_id, row["id"]),
-            )
+            if (row["uses_left"] or 0) > 1:  # a code for several devices: one fewer left
+                self.store.execute(
+                    "UPDATE device_pairings SET uses_left = uses_left - 1, device_id = ? "
+                    "WHERE id = ?",
+                    (device_id, row["id"]),
+                )
+            else:
+                self.store.execute(
+                    "UPDATE device_pairings SET used_at = ?, device_id = ? WHERE id = ?",
+                    (now, device_id, row["id"]),
+                )
         device = self.get(device_id)
         assert device is not None
         return token, device
