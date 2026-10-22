@@ -155,7 +155,15 @@ class DeviceHub:
         """Serve one accepted WebSocket for ``device`` until it closes."""
         try:
             text = await asyncio.wait_for(socket.receive_text(), self.hello_seconds)
-            hello = parse_hello(decode(text), device.kind)
+            frame = decode(text)
+            if frame.get("type") == "bye":
+                # The device is being removed from its machine: it revokes its own token.
+                self.devices.revoke(device.id)
+                log.info("device %s said goodbye and was revoked", device.id)
+                with contextlib.suppress(Exception):
+                    await socket.close(1000, "goodbye")
+                return
+            hello = parse_hello(frame, device.kind)
         except TimeoutError:
             with contextlib.suppress(Exception):
                 await socket.close(CLOSE_SILENT, "no hello")

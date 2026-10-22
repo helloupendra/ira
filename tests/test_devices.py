@@ -737,3 +737,14 @@ async def test_the_demo_router_understands_the_quick_start_phrases():
     )
     messages = [Message(role="user", content="?"), Message(role="tool", content=result)]
     assert router._respond(messages, tools).text == "Upload shows 63%"
+
+
+async def test_a_device_that_says_goodbye_is_revoked(store):
+    hub = DeviceHub(Devices(store))
+    user = person(store)
+    token, device = paired(hub.devices, user.id)
+    socket = FakeSocket()
+    socket.say({"type": "bye"})
+    await hub.run(socket, device)
+    assert socket.closed[0] == 1000
+    assert hub.devices.by_token(token) is None

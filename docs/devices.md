@@ -108,6 +108,9 @@ out, and helps a model too.
 **Keepalive.** Either side sends `{"type": "ping"}` every 30 seconds and the
 other answers `{"type": "pong"}`.
 
+**Goodbye.** A device being uninstalled may send `{"type": "bye"}` instead of
+a hello: the server revokes its token and closes the connection.
+
 ## Limits
 
 | Limit | Value | What happens |
