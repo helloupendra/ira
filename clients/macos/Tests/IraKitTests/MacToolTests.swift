@@ -1,3 +1,4 @@
+import AppKit
 import Foundation
 import Testing
 @testable import IraKit
@@ -43,6 +44,7 @@ struct CatalogTests {
         }
         #expect(table == [
             "files_find": "files 0", "file_read": "files 0", "file_open": "files 1", "screen_read": "screen 0",
+            "browser_tabs": "browser 0", "browser_show_tab": "browser 1",
             "contacts_lookup": "contacts 0",
             "calendar_read": "calendar 0", "calendar_add": "calendar 2",
             "reminders_list": "reminders 0", "reminders_add": "reminders 1", "reminders_done": "reminders 1",
@@ -176,6 +178,49 @@ struct PersonalToolTests {
         }
         await #expect(throws: ToolFailure("that is not an email id from mail_search")) {
             try await AppleScriptTools.mailRead(["id": "42"])
+        }
+    }
+}
+
+@Suite("Browsers")
+struct BrowserToolTests {
+    @Test func tabsFromTheScriptsOutput() {
+        let chrome = BrowserTools.browsers[0]
+        let output = "1\u{1F}1\u{1F}Inbox\u{1F}https://mail.example.com/u/0/?tab=rm#inbox\u{1F}false\u{1E}"
+            + "1\u{1F}2\u{1F}Upload: 63%\u{1F}https://upload.example.com/files?id=9\u{1F}true\u{1E}"
+            + "2\u{1F}1\u{1F}Docs\u{1F}https://docs.example.com/\u{1F}true\u{1E}"
+        let tabs = BrowserTools.parse(output, browser: chrome)
+        #expect(tabs.count == 3)
+        #expect(tabs[0].url == "https://mail.example.com/u/0/")  // no query, no fragment
+        #expect(tabs[1].id == "chrome:1:2")
+        #expect(tabs[1].active)
+        #expect(BrowserTools.best(tabs, matching: "upload")?.id == "chrome:1:2")
+        #expect(BrowserTools.best(tabs, matching: "example")?.id == "chrome:1:2")  // the front window's active tab first
+        #expect(BrowserTools.best(tabs, matching: "docs example")?.id == "chrome:2:1")
+        #expect(BrowserTools.best(tabs, matching: "nothing here") == nil)
+    }
+
+    /// The scripts of the browsers installed here compile (none is started).
+    @Test func scriptsCompile() async throws {
+        for browser in BrowserTools.browsers {
+            let installed = await MainActor.run { NSWorkspace.shared.urlForApplication(withBundleIdentifier: browser.bundleID) != nil }
+            guard installed else { continue }
+            for script in [BrowserTools.listScript(browser), BrowserTools.showScript(browser)] {
+                let folder = try temporaryFolder()
+                let source = folder.appendingPathComponent("tool.applescript")
+                try script.write(to: source, atomically: true, encoding: .utf8)
+                let result = try await Command.run(["/usr/bin/osacompile", "-o", folder.appendingPathComponent("t.scpt").path, source.path], timeout: 30)
+                #expect(result.status == 0, "\(browser.name): \(result.stderr)")
+            }
+        }
+    }
+
+    @Test func unknownBrowsersAreRefused() async {
+        await #expect(throws: ToolFailure("I can read Chrome, Safari, Arc, Edge and Brave, not Netscape")) {
+            try await BrowserTools.listTabs(["browser": "Netscape"])
+        }
+        await #expect(throws: ToolFailure("that is not a tab id from browser_tabs")) {
+            try await BrowserTools.showTab(["id": "chrome; do shell script"])
         }
     }
 }

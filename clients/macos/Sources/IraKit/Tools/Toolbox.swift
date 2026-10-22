@@ -28,6 +28,8 @@ public struct Activity: Equatable, Identifiable, Sendable {
         case "file_read": return "Read a file"
         case "file_open": return "Opened a file"
         case "screen_read": return "Read your screen"
+        case "browser_tabs": return "Listed your browser tabs"
+        case "browser_show_tab": return "Switched to a tab"
         case "contacts_lookup": return "Looked up a contact"
         case "calendar_read": return "Read your calendar"
         case "calendar_add": return "Added an event"
@@ -121,6 +123,8 @@ public final class Toolbox: ToolRunner, @unchecked Sendable {
                 let read = try await readScreen(args.objectValue!)
                 target = read.target
                 content = read.content
+            case "browser_tabs": content = try await BrowserTools.listTabs(args)
+            case "browser_show_tab": content = try await BrowserTools.showTab(args)
             case "contacts_lookup":
                 let query = try ToolArgs(args, allowed: ["query"]).required("query", limit: 200, what: "who: a name, number or email")
                 content = try await ContactsTool.lookup(query)
@@ -166,6 +170,8 @@ public final class Toolbox: ToolRunner, @unchecked Sendable {
         switch name {
         case "files_find": return describeSearch(args.objectValue ?? [:])
         case "file_read", "file_open", "vscode_open": return shown(args["path"]?.stringValue.map { String($0.prefix(1000)) })
+        case "browser_tabs": return text("browser") ?? "all browsers"
+        case "browser_show_tab": return text("match") ?? text("id") ?? ""
         case "contacts_lookup": return text("query") ?? ""
         case "calendar_read": return text("from") ?? "today"
         case "calendar_add", "reminders_add", "notes_add": return text("title") ?? ""

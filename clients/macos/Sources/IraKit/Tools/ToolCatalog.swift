@@ -55,6 +55,21 @@ public enum ToolCatalog {
              "Read the text of the window in front on this Mac, in any app, only when the person asks what is on their screen. Returns the app's name, the window's title and the text, read on the Mac; no picture is sent."),
     ]
 
+    // MARK: Browsers
+
+    public static let browser: [JSONValue] = [
+        tool("browser_tabs", skill: "browser", tier: 0,
+             "List the tabs open in the browsers on this Mac (Chrome, Safari, Arc, Edge, Brave): each tab's title and address (without its query), which is in front, and an id. Only titles and addresses, never page contents. Use it for 'what is open in Chrome?'.",
+             properties: ["browser": text("Only this browser: chrome, safari, arc, edge or brave.")]),
+        tool("browser_show_tab", skill: "browser", tier: 1,
+             "Bring one browser tab to the front, by words from its title or address or by its id from browser_tabs. To answer what a tab shows ('how far is that upload?'), bring it to the front, then use screen_read. Say that you switched to it.",
+             properties: [
+                "match": text("Words from the tab's title or address, e.g. 'upload' or 'github'."),
+                "id": text("The tab's id from browser_tabs."),
+                "browser": text("Only this browser: chrome, safari, arc, edge or brave."),
+             ]),
+    ]
+
     // MARK: People, time and messages
 
     public static let personal: [JSONValue] = [
@@ -190,6 +205,6 @@ public enum ToolCatalog {
 
     /// The hello's tools: everything, and the coding tasks only when this Mac has them set up.
     public static func all(tasksConfigured: Bool) -> [JSONValue] {
-        files + personal + apps + (tasksConfigured ? tasks : [])
+        files + browser + personal + apps + (tasksConfigured ? tasks : [])
     }
 }

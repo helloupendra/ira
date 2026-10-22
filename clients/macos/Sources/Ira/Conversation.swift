@@ -338,6 +338,8 @@ final class Conversation: ObservableObject {
         case "file_read": return "Reading the file…"
         case "file_open": return "Opening it…"
         case "screen_read": return "Reading your screen…"
+        case "browser_tabs": return "Looking at your browser tabs…"
+        case "browser_show_tab": return "Switching to the tab…"
         case "contacts_lookup": return "Looking in your contacts…"
         case "calendar_read", "calendar_add": return "Checking your calendar…"
         case "reminders_list", "reminders_add", "reminders_done": return "Checking your reminders…"
