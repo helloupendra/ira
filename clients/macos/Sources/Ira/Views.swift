@@ -4,8 +4,14 @@ import IraKit
 import SwiftUI
 
 extension Color {
-    /// The repository's green.
+    /// The repository's green, for fills under white.
     static let ira = Color(red: 0x1f / 255, green: 0x6f / 255, blue: 0x5c / 255)
+    /// The same green for text and icons: lighter in dark mode, so it stays readable.
+    static let iraText = Color(nsColor: NSColor(name: nil) { appearance in
+        appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+            ? NSColor(red: 0.42, green: 0.78, blue: 0.67, alpha: 1)
+            : NSColor(red: 0x1f / 255, green: 0x6f / 255, blue: 0x5c / 255, alpha: 1)
+    })
 }
 
 struct MainView: View {
@@ -208,7 +214,7 @@ struct PermissionRow: View {
         HStack(alignment: .top, spacing: 12) {
             Image(systemName: icon)
                 .font(.title2)
-                .foregroundStyle(Color.ira)
+                .foregroundStyle(Color.iraText)
                 .frame(width: 28)
             VStack(alignment: .leading, spacing: 4) {
                 HStack {
@@ -470,7 +476,7 @@ struct ActionCard: View {
         VStack(alignment: .leading, spacing: 8) {
             Text(action.tier == 2 ? "Needs your yes" : "Needs your PIN")
                 .font(.caption.weight(.semibold))
-                .foregroundStyle(Color.ira)
+                .foregroundStyle(Color.iraText)
             Text(action.summary)
             if action.status == "pending" {
                 if action.tier == 2 {
