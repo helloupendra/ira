@@ -2896,7 +2896,7 @@ export interface components {
              * Kind
              * @enum {string}
              */
-            kind: "mac" | "android";
+            kind: "mac" | "android" | "ios";
             /** Label */
             label: string;
             /** Skills */
@@ -2957,7 +2957,7 @@ export interface components {
              * Kind
              * @enum {string}
              */
-            kind: "mac" | "android";
+            kind: "mac" | "android" | "ios";
             /** Label */
             label: string;
             /** User Id */
@@ -3842,7 +3842,7 @@ export interface components {
              * Kind
              * @description The device's kind; must match the code's.
              */
-            kind?: ("mac" | "android") | null;
+            kind?: ("mac" | "android" | "ios") | null;
         };
         /** PairingCreate */
         PairingCreate: {
@@ -3850,7 +3850,7 @@ export interface components {
              * Kind
              * @enum {string}
              */
-            kind: "mac" | "android";
+            kind: "mac" | "android" | "ios";
             /** Label */
             label?: string | null;
             /**
@@ -3896,7 +3896,7 @@ export interface components {
              * Kind
              * @enum {string}
              */
-            kind: "mac" | "android";
+            kind: "mac" | "android" | "ios";
             /** Label */
             label: string;
             /** Skills */

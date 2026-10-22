@@ -51,6 +51,10 @@ def test_setup_pin_users_and_tokens(config, capsys):
     printed = capsys.readouterr().out
     assert "for desk@example.com (android)" in printed and "/pair#code=" in printed
     assert "7 days, for 2 device(s)" in printed
+    assert run(config, "device", "code", "--email", "desk@example.com", "--kind", "ios",
+               "--skills", "contacts,location") == 0  # fmt: skip
+    printed = capsys.readouterr().out
+    assert "(ios)" in printed and "Skills on: contacts, location." in printed
 
     assert run(config, "token", "create", "--label", "phone") == 0
     token = capsys.readouterr().out.strip().splitlines()[-1]

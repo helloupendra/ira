@@ -7,4 +7,11 @@
   if (!match) return;
   const code = match[1].replace(/-/g, "").toUpperCase();
   document.getElementById("pair-code").textContent = `${code.slice(0, 4)}-${code.slice(4)}`;
+  // Ira for iPhone opens ira:// links; the code stays out of any request to a server.
+  const open = document.getElementById("open-iphone");
+  if (open && /iPhone|iPad/.test(navigator.userAgent)) {
+    const query = new URLSearchParams({ server: location.origin, code });
+    open.href = `ira://pair?${query}`;
+    open.hidden = false;
+  }
 })();

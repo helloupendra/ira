@@ -107,6 +107,9 @@ KIND_SKILLS: dict[str, tuple[str, ...]] = {
         "tasks",
     ),
     "android": (),
+    # What iOS lets an app do: no call log, SMS or other apps' notifications, and a call
+    # only through the phone's own "Call?" prompt.
+    "ios": ("contacts", "calendar", "reminders", "location", "calls"),
 }
 STREAM_KEEPALIVE = 20.0
 PIN_STATUS = {"wrong_pin": 403, "locked": 423, "no_pin": 409}

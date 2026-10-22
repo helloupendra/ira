@@ -8,6 +8,7 @@ columns added since v0.1 are added to an older file in place.
 from __future__ import annotations
 
 import contextlib
+import re
 import sqlite3
 import threading
 import time
@@ -175,11 +176,11 @@ CREATE TABLE IF NOT EXISTS telegram_chats (
     name      TEXT  -- the chat's name as Telegram gives it, for the console
 );
 
--- A person's own devices (a Mac, an Android phone). Only the token's hash is kept.
+-- A person's own devices (a Mac, an Android phone, an iPhone). Only the token's hash is kept.
 CREATE TABLE IF NOT EXISTS devices (
     id           INTEGER PRIMARY KEY AUTOINCREMENT,
     user_id      INTEGER NOT NULL REFERENCES users (id),
-    kind         TEXT NOT NULL CHECK (kind IN ('mac', 'android')),
+    kind         TEXT NOT NULL CHECK (kind IN ('mac', 'android', 'ios')),
     label        TEXT NOT NULL,
     token_hash   TEXT NOT NULL UNIQUE,
     created_at   REAL NOT NULL,
@@ -418,6 +419,7 @@ class Store:
             self._conn.execute("PRAGMA foreign_keys=ON")
             self._conn.executescript(SCHEMA)
             self._add_missing_columns()
+            self._widen_device_kinds()
         self.adopt_shared_pin()
 
     # Columns added after v0.1: (table, column, declaration).
@@ -445,6 +447,55 @@ class Store:
                 added.add((table, column))
         if ("messages", "action_id") in added:
             self._link_old_proposals()
+
+    def _widen_device_kinds(self) -> None:
+        """Let a database made before iPhones were a device kind keep one.
+
+        SQLite cannot change a CHECK constraint in place, so the devices table is
+        copied into one made with today's schema, as SQLite's documentation
+        describes, keeping every row, its id and the id counter.
+        """
+        row = self._conn.execute(
+            "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'devices'"
+        ).fetchone()
+        if row is None or "'ios'" in row["sql"]:
+            return
+        create = re.search(r"CREATE TABLE IF NOT EXISTS devices \(.*?\n\);", SCHEMA, re.S)
+        assert create is not None
+        columns = ", ".join(r["name"] for r in self._conn.execute("PRAGMA table_info(devices)"))
+        counter = self._conn.execute(
+            "SELECT seq FROM sqlite_sequence WHERE name = 'devices'"
+        ).fetchone()
+        # SQLite's recipe: foreign keys off (outside the transaction) while the table moves.
+        self._conn.execute("PRAGMA foreign_keys=OFF")
+        try:
+            self._conn.execute("BEGIN IMMEDIATE")
+            try:
+                self._copy_devices(create.group(0), columns, counter)
+            except BaseException:
+                self._conn.execute("ROLLBACK")
+                raise
+            self._conn.execute("COMMIT")
+        finally:
+            self._conn.execute("PRAGMA foreign_keys=ON")
+
+    def _copy_devices(self, create: str, columns: str, counter: sqlite3.Row | None) -> None:
+        self._conn.execute(create.replace("IF NOT EXISTS devices", "devices_new"))
+        self._conn.execute(f"INSERT INTO devices_new ({columns}) SELECT {columns} FROM devices")
+        self._conn.execute("DROP TABLE devices")
+        self._conn.execute("ALTER TABLE devices_new RENAME TO devices")
+        self._conn.execute("CREATE INDEX IF NOT EXISTS devices_user ON devices (user_id)")
+        if counter is None:
+            return
+        # Dropping the table dropped its counter: an id is never given out twice.
+        self._conn.execute(
+            "UPDATE sqlite_sequence SET seq = MAX(seq, ?) WHERE name = 'devices'", (counter["seq"],)
+        )
+        self._conn.execute(
+            "INSERT INTO sqlite_sequence (name, seq) SELECT 'devices', ? "
+            "WHERE NOT EXISTS (SELECT 1 FROM sqlite_sequence WHERE name = 'devices')",
+            (counter["seq"],),
+        )
 
     def _link_old_proposals(self) -> None:
         """Point tool results stored before ``messages.action_id`` at the actions they proposed.

@@ -5,6 +5,8 @@ import { Dialog } from '../../ui/Dialog';
 import { failure } from '../tokens/text';
 import { FIRST_SKILLS, remaining, setupSteps } from './text';
 
+const PLACEHOLDERS: Record<string, string> = { mac: 'My Mac', android: 'My Android phone', ios: 'My iPhone' };
+
 // Add a device: kind, name, the skills it may use, and your PIN (a new device is a new
 // grant). The answer is a one-time pairing code with its QR code, good for 10 minutes;
 // the dialog waits for the device to use it.
@@ -78,6 +80,7 @@ function PairForm({ onMade, onCancel }: { onMade: (p: PairingView) => void; onCa
         <select id="device-kind" value={kind} onChange={(e) => setKind(e.target.value)}>
           <option value="mac">Mac: Ira for Mac</option>
           <option value="android">Android phone: the always-on ear (its app comes later)</option>
+          <option value="ios">iPhone: Ira for iPhone</option>
         </select>
       </div>
       <div className="field">
@@ -87,7 +90,7 @@ function PairForm({ onMade, onCancel }: { onMade: (p: PairingView) => void; onCa
           type="text"
           maxLength={60}
           autoComplete="off"
-          placeholder={kind === 'mac' ? 'My Mac' : 'My Android phone'}
+          placeholder={PLACEHOLDERS[kind] ?? 'My device'}
           value={label}
           onChange={(e) => setLabel(e.target.value)}
         />

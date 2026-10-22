@@ -11,6 +11,7 @@ export function tierWord(tier: number): string {
 export function kindWord(kind: string): string {
   if (kind === 'mac') return 'Mac';
   if (kind === 'android') return 'Android phone';
+  if (kind === 'ios') return 'iPhone';
   return kind;
 }
 
@@ -58,6 +59,13 @@ export function setupSteps(kind: string): string[] {
       'Open Ira. The first time, right-click it and choose Open (on macOS 15 and later: Open Anyway in System Settings, Privacy & Security).',
       'Ira opens on its pairing page and finds the link you copied: press Pair. Or type the code.',
       'Allow what it asks for, then ask Ira: "Chrome mein kya chal raha hai?"',
+    ];
+  }
+  if (kind === 'ios') {
+    return [
+      'On the iPhone, scan the QR code with the Camera and tap Open in Ira for iPhone.',
+      'Or, in Ira for iPhone, paste the pairing link, or type the code and your Ira\'s address.',
+      'Follow Get Ira ready, then ask Ira: "kal ka schedule kya hai?"',
     ];
   }
   return ['Open the Ira app on the phone and scan the QR code.'];

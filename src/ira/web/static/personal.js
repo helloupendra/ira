@@ -285,7 +285,13 @@ const IraPersonal = (() => {
   const FIRST_SKILLS = ["files", "screen", "browser"];
 
   function addDeviceForm(body, downloads, skills) {
-    const kind = el("select", { name: "kind" }, el("option", { value: "mac", text: "Mac (Ira for Mac)" }), el("option", { value: "android", text: "Android phone" }));
+    const kind = el(
+      "select",
+      { name: "kind" },
+      el("option", { value: "mac", text: "Mac (Ira for Mac)" }),
+      el("option", { value: "android", text: "Android phone" }),
+      el("option", { value: "ios", text: "iPhone (Ira for iPhone)" }),
+    );
     const boxes = el("fieldset", { className: "stack skills" }, el("legend", { text: "What it may do (you can change this later)" }));
     const showSkills = () => {
       const offered = skills.filter((skill) => (skill.kinds || []).includes(kind.value));
@@ -356,7 +362,16 @@ const IraPersonal = (() => {
             el("li", { text: "Allow what it asks for, then try it:" }),
             el("li", {}, "Ask Ira: ", el("q", { text: "Chrome mein kya chal raha hai?" })),
           )
-        : el("p", { className: "muted", text: "Open the Ira app on your phone and scan this code." });
+        : pairing.kind === "ios"
+          ? el(
+              "ol",
+              { className: "steps" },
+              el("li", { text: "On the iPhone, open this page's pairing link (scan the QR code with the Camera), then tap Open in Ira for iPhone." }),
+              el("li", { text: "Or, in Ira for iPhone, paste the copied link, or type the code and your Ira's address." }),
+              el("li", { text: "Follow Get Ira ready, allowing what you want Ira to use." }),
+              el("li", {}, "Ask Ira: ", el("q", { text: "kal ka schedule kya hai?" })),
+            )
+          : el("p", { className: "muted", text: "Open the Ira app on your phone and scan this code." });
     const card = el(
       "div",
       { className: "card pairing" },
