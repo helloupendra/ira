@@ -48,6 +48,15 @@ class ArgsTest {
     }
 
     @Test
+    fun `web addresses are http or https only`() {
+        assertEquals("https://www.youtube.com/results?search_query=hindi+news", Args.webUrl(" https://www.youtube.com/results?search_query=hindi+news "))
+        for (bad in listOf("javascript:alert(1)", "file:///sdcard/x", "intent://scan#Intent;end", "https://", "not a url")) {
+            assertThrows(bad, ToolFailure::class.java) { Args.webUrl(bad) }
+        }
+        assertEquals("https://www.youtube.com/results?search_query=Hindi+news+%E0%A4%86%E0%A4%9C", Args.youtubeSearch("Hindi news आज"))
+    }
+
+    @Test
     fun `local times`() {
         assertEquals(LocalDateTime.of(2026, 10, 23, 9, 0), Args.localDateTime("2026-10-23T09:00"))
         assertEquals(LocalDateTime.of(2026, 10, 23, 9, 0), Args.localDateTime("2026-10-23 09:00"))

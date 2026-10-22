@@ -64,12 +64,14 @@ class PhoneTools(private val context: Context) : ToolRunner {
                 "calendar_read" -> calendar.read(a)
                 "calendar_add" -> calendar.add(a)
                 "app_open" -> withContext(Dispatchers.Main) { apps.open(a) }
+                "url_open" -> withContext(Dispatchers.Main) { apps.url(a) }
+                "media_play" -> withContext(Dispatchers.Main) { apps.mediaPlay(a) }
                 "maps_navigate" -> withContext(Dispatchers.Main) { apps.navigate(a) }
                 "media_control" -> apps.media(a)
                 "location_now" -> location.now(a)
                 "settings_toggle" -> withContext(Dispatchers.Main) { settings.toggle(a) }
                 "screen_read" -> ScreenAccess.read(context, a)
-                "screen_act" -> withContext(Dispatchers.Main) { ScreenAccess.act(context, a) }
+                "screen_act" -> ScreenAccess.act(context, a)
                 else -> throw ToolFailure("this phone has no tool called $name")
             }
         }

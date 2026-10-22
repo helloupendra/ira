@@ -3,7 +3,9 @@ package io.github.helloupendra.ira.tools
 import android.content.Context
 import android.content.Intent
 import android.media.AudioManager
+import android.app.SearchManager
 import android.net.Uri
+import android.provider.MediaStore
 import android.os.SystemClock
 import android.view.KeyEvent
 import io.github.helloupendra.ira.core.Args
@@ -13,27 +15,65 @@ import kotlinx.serialization.json.JsonElement
 /** Opening apps, directions in the maps app, and what is playing. */
 class AppTools(private val context: Context) {
     fun open(args: Args): JsonElement {
-        val name = args.string("name", 60, required = true)!!
-        val pm = context.packageManager
-        // The apps on the home screen: visible through the manifest's <queries>, with no
-        // need for the broad QUERY_ALL_PACKAGES permission.
-        val launchable =
-            pm.queryIntentActivities(Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER), 0)
-                .map { it.loadLabel(pm).toString() to it.activityInfo.packageName }
-                .filter { it.second != context.packageName }
-                .distinctBy { it.second }
-        val wanted = name.lowercase()
-        val match =
-            launchable.firstOrNull { it.first.lowercase() == wanted }
-                ?: launchable.filter { it.first.lowercase().contains(wanted) }.minByOrNull { it.first.length }
-                ?: launchable.firstOrNull { wanted.contains(it.first.lowercase()) && it.first.length >= 3 }
-                ?: throw ToolFailure("no app called '$name' is on the phone")
-        val intent = pm.getLaunchIntentForPackage(match.second) ?: throw ToolFailure("${match.first} cannot be opened")
-        val started = Launcher.start(context, intent, "open ${match.first}")
+        val name = args.string("name", 60)
+        val pkg = args.string("package", 120)
+        val wanted = pkg ?: name ?: throw ToolFailure("say which app: its name or its package")
+        val app = Apps.find(context, wanted) ?: throw ToolFailure("no app called '$wanted' is on the phone")
+        val intent = context.packageManager.getLaunchIntentForPackage(app.pkg) ?: throw ToolFailure("${app.label} cannot be opened")
+        val started = Launcher.start(context, intent, "open ${app.label}")
         return Results.of(
-            "app" to match.first,
+            "app" to app.label,
+            "package" to app.pkg,
             "started" to started,
-            "summary" to if (started) "Opened ${match.first}." else "The phone shows a notification: tap it to open ${match.first}.",
+            "summary" to if (started) "Opened ${app.label}." else "The phone shows a notification: tap it to open ${app.label}.",
+        )
+    }
+
+    /** A web address, in the app that handles it (a YouTube link in YouTube), else the browser. */
+    fun url(args: Args): JsonElement {
+        val url = Args.webUrl(args.string("url", 2000, required = true)!!)
+        return openUrl(url, "open the link")
+    }
+
+    /** Music by name in the phone's music app; videos as a YouTube search. */
+    fun mediaPlay(args: Args): JsonElement {
+        val query = args.string("query", 200, required = true)!!
+        val kind = args.choice("kind", listOf("music", "video"), "music")!!
+        val appName = args.string("app", 60)
+        if (kind == "music") {
+            val intent =
+                Intent(MediaStore.INTENT_ACTION_MEDIA_PLAY_FROM_SEARCH)
+                    .putExtra(SearchManager.QUERY, query)
+                    .putExtra(MediaStore.EXTRA_MEDIA_FOCUS, "vnd.android.cursor.item/*")
+            appName?.let { name ->
+                val app = Apps.find(context, name) ?: throw ToolFailure("no app called '$name' is on the phone")
+                intent.setPackage(app.pkg)
+            }
+            val handler = intent.resolveActivity(context.packageManager)
+            if (handler != null) {
+                val label = Apps.label(context, handler.packageName) ?: "the music app"
+                val started = Launcher.start(context, intent, "play $query")
+                return Results.of(
+                    "app" to label,
+                    "started" to started,
+                    "summary" to if (started) "Playing \"$query\" in $label." else "The phone shows a notification: tap it to play \"$query\".",
+                )
+            }
+            if (appName != null) throw ToolFailure("$appName cannot play by name; try url_open or kind video")
+        }
+        return openUrl(Args.youtubeSearch(query), "search YouTube for $query")
+    }
+
+    private fun openUrl(url: String, tapToWhat: String): JsonElement {
+        val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url)).addCategory(Intent.CATEGORY_BROWSABLE)
+        val handler = intent.resolveActivity(context.packageManager) ?: throw ToolFailure("no app on the phone opens that address")
+        val label = Apps.label(context, handler.packageName) ?: "the browser"
+        val started = Launcher.start(context, intent, tapToWhat)
+        return Results.of(
+            "url" to url,
+            "app" to label,
+            "started" to started,
+            "summary" to if (started) "Opened in $label." else "The phone shows a notification: tap it to $tapToWhat.",
         )
     }
 

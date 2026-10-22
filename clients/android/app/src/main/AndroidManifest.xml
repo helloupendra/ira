@@ -46,6 +46,15 @@
             <action android:name="android.intent.action.VIEW" />
             <data android:scheme="google.navigation" />
         </intent>
+        <!-- Links, and music by name, open in the app that handles them. -->
+        <intent>
+            <action android:name="android.intent.action.VIEW" />
+            <category android:name="android.intent.category.BROWSABLE" />
+            <data android:scheme="https" />
+        </intent>
+        <intent>
+            <action android:name="android.media.action.MEDIA_PLAY_FROM_SEARCH" />
+        </intent>
         <!-- The phone's own speech recognition and voice, when a server has no live call. -->
         <intent>
             <action android:name="android.speech.RecognitionService" />

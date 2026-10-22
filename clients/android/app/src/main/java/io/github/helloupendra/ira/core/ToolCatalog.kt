@@ -308,10 +308,43 @@ object ToolCatalog {
             ),
             ToolSpec(
                 name = "app_open",
-                description = "Open an app on this phone by its name, for example YouTube or Camera.",
+                description =
+                    "Open an app on this phone by its name (YouTube, Camera, WhatsApp) or its package " +
+                        "(com.google.android.youtube). Use this, never screen_act, to open an app.",
                 skill = Skills.APPS,
                 tier = 1,
-                parameters = params("name" to text("The app's name as the phone shows it.", maxLength = 60), required = listOf("name")),
+                parameters =
+                    params(
+                        "name" to text("The app's name as the phone shows it.", maxLength = 60),
+                        "package" to text("Or the app's package name.", maxLength = 120),
+                    ),
+            ),
+            ToolSpec(
+                name = "url_open",
+                description =
+                    "Open a web address on this phone. A link an app handles opens in that app: a YouTube " +
+                        "link in YouTube, a Maps link in Maps. For a YouTube search use " +
+                        "https://www.youtube.com/results?search_query=WORDS. Use this, never screen_act, to " +
+                        "show a page, a search or a video.",
+                skill = Skills.APPS,
+                tier = 1,
+                parameters = params("url" to text("The http or https address.", maxLength = 2000), required = listOf("url")),
+            ),
+            ToolSpec(
+                name = "media_play",
+                description =
+                    "Play music, a podcast or videos by name on this phone: a song, an artist, an album, " +
+                        "\"Hindi news\". Music opens in the phone's music app (or the app named); videos open " +
+                        "as a YouTube search. Use this, never screen_act, to play something.",
+                skill = Skills.MEDIA,
+                tier = 1,
+                parameters =
+                    params(
+                        "query" to text("What to play, in the person's words.", maxLength = 200),
+                        "kind" to text("music (default) or video.", enum = listOf("music", "video")),
+                        "app" to text("A music app by name, for example Spotify or YouTube Music.", maxLength = 60),
+                        required = listOf("query"),
+                    ),
             ),
             ToolSpec(
                 name = "maps_navigate",
@@ -375,20 +408,22 @@ object ToolCatalog {
             ToolSpec(
                 name = "screen_read",
                 description =
-                    "Read the text on this phone's screen now (the app in front), as a person would see " +
-                        "it. For what no other tool can reach. The personal build only.",
+                    "Last resort: each use needs the person's PIN. Prefer a specific tool (app_open, " +
+                        "url_open, media_play, calls_recent, notifications_read...). Reads the text on this " +
+                        "phone's screen now (the app in front), for what no other tool can reach.",
                 skill = Skills.SCREEN,
                 tier = 3,
-                parameters = params(),
+                parameters = params("app" to text(APP_TO_FRONT, maxLength = 120)),
                 special = listOf(SpecialAccess.ACCESSIBILITY),
                 flavors = setOf(Flavor.PERSONAL),
             ),
             ToolSpec(
                 name = "screen_act",
                 description =
-                    "Use this phone like a person: tap a button or a text on the screen, type into the " +
-                        "focused field, scroll, or go back, home or to the recent apps. For what no other " +
-                        "tool can do. The personal build only.",
+                    "Last resort: each use needs the person's PIN. Prefer a specific tool (app_open, " +
+                        "url_open, media_play, call_place, sms_send...). Uses the phone like a person: taps a " +
+                        "button or a text on the screen, types into the focused field, scrolls, or goes back, " +
+                        "home or to the recent apps.",
                 skill = Skills.SCREEN,
                 tier = 3,
                 parameters =
@@ -398,7 +433,8 @@ object ToolCatalog {
                                 "What to do.",
                                 enum = listOf("tap", "type", "scroll_up", "scroll_down", "back", "home", "recents"),
                             ),
-                        "target" to text("For tap: the text or the button's label on the screen.", maxLength = 100),
+                        "app" to text(APP_TO_FRONT, maxLength = 120),
+                        "target" to text("For tap: the words, the icon's name (Search) or the field (search box) on the screen.", maxLength = 100),
                         "text" to text("For type: the exact text to type.", maxLength = 500),
                         required = listOf("action"),
                     ),
@@ -406,6 +442,9 @@ object ToolCatalog {
                 flavors = setOf(Flavor.PERSONAL),
             ),
         )
+
+    private const val APP_TO_FRONT =
+        "The app to use, by name or package (YouTube); Ira brings it to the front first. Ira never reads or uses its own screen."
 
     // A small JSON Schema builder.
 

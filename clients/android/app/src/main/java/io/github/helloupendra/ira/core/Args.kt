@@ -89,6 +89,26 @@ class Args(private val raw: JsonObject) {
             return (if (trimmed.startsWith("+")) "+" else "") + digits
         }
 
+        /** A web address to open: http or https with a host, 2,000 characters at most. */
+        fun webUrl(value: String): String {
+            val text = value.trim()
+            val uri =
+                try {
+                    java.net.URI(text)
+                } catch (_: Exception) {
+                    throw ToolFailure("'$value' is not a web address")
+                }
+            val scheme = uri.scheme?.lowercase()
+            if ((scheme != "http" && scheme != "https") || uri.host.isNullOrEmpty() || text.length > 2000) {
+                throw ToolFailure("only http and https addresses can be opened")
+            }
+            return text
+        }
+
+        /** YouTube's search page for some words: the YouTube app opens it when it is installed. */
+        fun youtubeSearch(query: String): String =
+            "https://www.youtube.com/results?search_query=" + java.net.URLEncoder.encode(query.trim(), "UTF-8")
+
         /** The last digits of a number, for matching "98100 00000" with "+919810000000". */
         fun numberKey(value: String, digits: Int = 10): String = value.filter { it.isDigit() }.takeLast(digits)
 

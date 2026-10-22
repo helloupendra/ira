@@ -96,9 +96,24 @@ class ToolCatalogTest {
     fun `tiers are 0 to read, 1 to open or play, 2 to call, send, reply or change the calendar, 3 for the screen`() {
         val tiers = personal.mapValues { it.value.tier }
         for (read in listOf("calls_recent", "contacts_lookup", "sms_read", "notifications_read", "calendar_read", "location_now")) assertEquals(read, 0, tiers[read])
-        for (small in listOf("app_open", "maps_navigate", "media_control", "alarm_set", "timer_set", "reminder_set", "settings_toggle")) assertEquals(small, 1, tiers[small])
+        for (small in listOf("app_open", "url_open", "media_play", "maps_navigate", "media_control", "alarm_set", "timer_set", "reminder_set", "settings_toggle")) {
+            assertEquals(small, 1, tiers[small])
+        }
         for (outward in listOf("call_place", "sms_send", "notification_reply", "calendar_add")) assertEquals(outward, 2, tiers[outward])
         for (screen in listOf("screen_read", "screen_act")) assertEquals(screen, 3, tiers[screen])
+    }
+
+    @Test
+    fun `the screen is the last resort, and direct tools say to use them instead`() {
+        for (screen in listOf("screen_read", "screen_act")) {
+            val description = personal.getValue(screen).description
+            assertTrue(description.startsWith("Last resort: each use needs the person's PIN. Prefer a specific tool"))
+        }
+        for (direct in listOf("app_open", "url_open", "media_play")) {
+            assertTrue(direct, personal.getValue(direct).description.contains("never screen_act"))
+            assertTrue(direct in play)
+        }
+        assertTrue(personal.getValue("url_open").description.contains("https://www.youtube.com/results?search_query="))
     }
 
     @Test
