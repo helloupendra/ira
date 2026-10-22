@@ -2,19 +2,29 @@ import AppKit
 import Foundation
 import IraKit
 
-/// The app's state: pairing, the device connection, the tools, and "What I read".
+/// The app's state: pairing, the device connection, the tools, "What I read",
+/// "Hey Ira", and taking over from the old companion.
 @MainActor
 final class AppModel: ObservableObject {
-    enum Screen { case pair, permissions, chat }
+    enum Screen { case setup, chat }
 
-    @Published var screen: Screen = .pair
+    @Published var screen: Screen = .setup
     @Published var deviceState: DeviceState = .stopped
     @Published var activity: [Activity] = []
     @Published var assistant: String
+    /// The old Python companion is still on this Mac (`clients/mac`, retired).
+    @Published var companion: Companion.Found?
+    @Published var companionPresent = false
+    @Published var wakeListening = false
+    @Published var wakeProblem: String?
 
     let settings: AppSettings
     let secrets: SecretStore
     let conversation: Conversation
+    let permissions = PermissionCenter()
+    let wake = WakeListener()
+    /// Called when "Hey Ira" is heard: the window opens and listens.
+    var onWake: (() -> Void)?
     private var device: DeviceClient?
     private var toolbox: Toolbox?
     private var routineTimer: Timer?
@@ -23,6 +33,7 @@ final class AppModel: ObservableObject {
     /// The app that was in front before Ira's window, for "what is on my screen".
     private var lastOtherApp: (pid: pid_t, name: String)?
     private var observers: [NSObjectProtocol] = []
+    private let oldCompanion = Companion()
 
     init(settings: AppSettings = AppSettings(), secrets: SecretStore = KeychainStore()) {
         self.settings = settings
@@ -30,8 +41,12 @@ final class AppModel: ObservableObject {
         self.assistant = settings.assistantName
         self.conversation = Conversation(settings: settings, secrets: secrets)
         trackFrontApp()
+        lookForCompanion()
         route()
         if paired { startDevice() }
+        wake.onWake = { [weak self] in self?.heardWakePhrase() }
+        conversation.onListeningEnded = { [weak self] in self?.resumeWake() }
+        if settings.wakeWord { Task { await self.setWakeWord(true) } }
     }
 
     var paired: Bool {
@@ -39,13 +54,7 @@ final class AppModel: ObservableObject {
     }
 
     func route() {
-        if !paired {
-            screen = .pair
-        } else if !settings.firstRunDone {
-            screen = .permissions
-        } else {
-            screen = .chat
-        }
+        screen = paired && settings.firstRunDone ? .chat : .setup
     }
 
     // MARK: Pairing
@@ -57,54 +66,87 @@ final class AppModel: ObservableObject {
         guard TokenShape.isDeviceToken(paired.token) else {
             throw Pairing.Failure("the server's answer did not hold a device token")
         }
-        stopDevice()
-        conversation.disconnect()
-        try secrets.save(paired.token, account: SecretAccount.device)
-        settings.server = paired.server
-        settings.deviceID = paired.deviceID
-        settings.deviceLabel = paired.label
+        try adopt(server: paired.server, token: paired.token, deviceID: paired.deviceID, label: paired.label)
         if let name = paired.assistant, !name.isEmpty {
             settings.assistantName = name
             assistant = name
         }
         IraLog.shared.info("paired as device \(paired.deviceID)")
-        startDevice()
-        route()
     }
 
-    /// Remove this Mac: the server revokes its token, and the app forgets it.
-    func forget() async {
+    private func adopt(server: String, token: String, deviceID: Int?, label: String) throws {
+        stopDevice()
+        conversation.disconnect()
+        try secrets.save(token, account: SecretAccount.device)
+        settings.server = server
+        settings.deviceID = deviceID
+        settings.deviceLabel = label
+        startDevice()
+    }
+
+    // MARK: The old companion
+
+    func lookForCompanion() {
+        companionPresent = oldCompanion.present
+        companion = companionPresent ? oldCompanion.settings() : nil
+    }
+
+    /// Take over the companion's pairing (its server, key and network salt, so
+    /// named networks keep their names), then remove it. Nothing changes on the
+    /// server: the same device goes on, now with the app's tools.
+    func takeOverCompanion() async throws {
+        guard let found = oldCompanion.settings(), !found.server.isEmpty else {
+            throw Pairing.Failure("the old companion was never paired; pair Ira for Mac with a new code")
+        }
+        guard let token = await oldCompanion.token() else {
+            throw Pairing.Failure("the old companion's key is not in your Keychain any more; pair Ira for Mac with a new code")
+        }
+        if !found.networkSalt.isEmpty { settings.networkSalt = found.networkSalt }
+        try adopt(server: found.server, token: token, deviceID: found.deviceID, label: found.label)
+        if let tasks = found.tasks, !FileManager.default.fileExists(atPath: TaskSettings.defaultPath.path) {
+            // The person's own task settings move with them, unchanged.
+            try? FileManager.default.createDirectory(at: TaskSettings.defaultPath.deletingLastPathComponent(), withIntermediateDirectories: true)
+            try? Data(tasks.encoded().utf8).write(to: TaskSettings.defaultPath)
+        }
+        await oldCompanion.remove()
+        lookForCompanion()
+        IraLog.shared.info("took over from the companion")
+    }
+
+    /// Remove the companion without taking over: it says goodbye to the server first.
+    func removeCompanion() async {
+        if let found = oldCompanion.settings(), let url = Pairing.websocketURL(server: found.server),
+            let token = await oldCompanion.token()
+        {
+            let goodbye = DeviceClient(url: url, token: { token }, tools: Toolbox.empty, label: found.label)
+            _ = await goodbye.sayGoodbye()
+        }
+        await oldCompanion.remove()
+        lookForCompanion()
+    }
+
+    // MARK: Leaving
+
+    /// Remove this Mac from Ira, as the companion's uninstall.sh did: the server
+    /// forgets the device (its key stops at once), and the app forgets
+    /// everything it kept here. The app itself goes to the Bin by hand.
+    func removeEverything() async {
         if let device { _ = await device.sayGoodbye() }
         stopDevice()
+        await setWakeWord(false)
         conversation.clear()
         secrets.delete(SecretAccount.device)
-        if let session = secrets.load(SecretAccount.session) {
-            await AskClient(server: settings.server, token: { session }).signOut()
-            secrets.delete(SecretAccount.session)
+        _ = LoginItem.set(false)
+        if oldCompanion.present { await removeCompanion() }
+        if let domain = Bundle.main.bundleIdentifier {
+            settings.defaults.removePersistentDomain(forName: domain)
         }
         settings.forgetPairing()
+        settings.firstRunDone = false
+        if let logs = IraLog.defaultDirectory { try? FileManager.default.removeItem(at: logs) }
         activity.removeAll()
         IraLog.shared.info("this Mac was removed")
         route()
-    }
-
-    /// Sign in for typing and recorded voice when live voice is not available.
-    func signIn(email: String, password: String) async throws {
-        let token = try await AskClient.signIn(server: settings.server, email: email, password: password)
-        try secrets.save(token, account: SecretAccount.session)
-        settings.signedInEmail = email
-        conversation.needsSignIn = false
-        conversation.notice = nil
-        conversation.disconnect()
-    }
-
-    func signOut() async {
-        if let session = secrets.load(SecretAccount.session) {
-            await AskClient(server: settings.server, token: { session }).signOut()
-        }
-        secrets.delete(SecretAccount.session)
-        settings.signedInEmail = nil
-        conversation.disconnect()
     }
 
     // MARK: The device connection
@@ -126,9 +168,19 @@ final class AppModel: ObservableObject {
             onState: { [weak self] state in
                 Task { @MainActor in self?.deviceState = state }
             })
+        client.onWelcome = { [weak self] assistant, phrase in
+            Task { @MainActor in
+                guard let self else { return }
+                if let assistant, !assistant.isEmpty {
+                    self.settings.assistantName = assistant
+                    self.assistant = assistant
+                }
+                if let phrase, !phrase.isEmpty { self.wake.phrase = phrase }
+            }
+        }
         device = client
         startRoutine(client)
-        // A coding task's "done" or "failed" reaches the person through the server.
+        // A coding task's progress, "done" or "failed" reaches the person through the server.
         toolbox.tasks.announce = { [weak client] event, title, text, data in
             client?.announce(event: event, title: title, text: text, data: data)
         }
@@ -143,6 +195,18 @@ final class AppModel: ObservableObject {
         device = nil
         toolbox = nil
     }
+
+    func reconnect() {
+        device?.reconnectNow()
+    }
+
+    /// Say hello again, so the server learns a changed tool list (tasks set up or removed).
+    func reloadTools() {
+        stopDevice()
+        startDevice()
+    }
+
+    var tasksConfigured: Bool { TaskSettings.load() != nil }
 
     /// The routine skill: read every 30 seconds, only while the skill is on.
     private func startRoutine(_ client: DeviceClient) {
@@ -163,21 +227,46 @@ final class AppModel: ObservableObject {
         }
     }
 
-    func reconnect() {
-        device?.reconnectNow()
-    }
-
-    /// Say hello again, so the server learns a changed tool list (tasks set up or removed).
-    func reloadTools() {
-        stopDevice()
-        startDevice()
-    }
-
-    var tasksConfigured: Bool { TaskSettings.load() != nil }
-
     private func remember(_ entry: Activity) {
         activity.insert(entry, at: 0)
         if activity.count > 50 { activity.removeLast(activity.count - 50) }
+    }
+
+    // MARK: "Hey Ira"
+
+    /// Switch "Hey Ira" on or off. On: the Mac listens for the phrase by itself.
+    func setWakeWord(_ on: Bool) async {
+        settings.wakeWord = on
+        wakeProblem = nil
+        if on {
+            do {
+                try await wake.start()
+            } catch {
+                wakeProblem = error.localizedDescription
+                settings.wakeWord = false
+            }
+        } else {
+            wake.stop()
+        }
+        wakeListening = wake.listening
+        permissions.refresh()
+    }
+
+    private func heardWakePhrase() {
+        wakeListening = false
+        onWake?()
+        conversation.startListening()
+    }
+
+    /// Listen for the phrase again once a conversation stops listening.
+    private func resumeWake() {
+        guard settings.wakeWord, !wake.listening else { return }
+        Task {
+            try? await Task.sleep(nanoseconds: 500_000_000)
+            guard !conversation.listening else { return }
+            try? await wake.start()
+            wakeListening = wake.listening
+        }
     }
 
     // MARK: The app in front
@@ -211,4 +300,14 @@ final class AppModel: ObservableObject {
         settings.firstRunDone = true
         route()
     }
+}
+
+extension Toolbox {
+    /// A toolbox with no tools, for saying goodbye on someone else's behalf.
+    static var empty: ToolRunner { NoTools() }
+}
+
+private struct NoTools: ToolRunner {
+    var definitions: [JSONValue] { [] }
+    func call(_ name: String, args: JSONValue) async throws -> JSONValue { throw ToolFailure("no tools") }
 }

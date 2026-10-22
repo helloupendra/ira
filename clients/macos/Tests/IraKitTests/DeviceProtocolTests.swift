@@ -7,7 +7,7 @@ struct DeviceFrameTests {
     @Test func welcome() throws {
         let frame = try DeviceProtocol.decode(
             #"{"type":"welcome","deviceId":3,"label":"Studio Mac","skills":["files"],"assistant":"Ira","wakePhrase":"Hey Ira"}"#)
-        #expect(frame == .welcome(deviceID: 3, label: "Studio Mac", skills: ["files"], assistant: "Ira"))
+        #expect(frame == .welcome(deviceID: 3, label: "Studio Mac", skills: ["files"], assistant: "Ira", wakePhrase: "Hey Ira"))
     }
 
     @Test func call() throws {

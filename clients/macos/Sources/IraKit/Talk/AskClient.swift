@@ -1,10 +1,11 @@
 import Foundation
 
-/// The IRA HTTP API, as a signed-in person: ask (streamed), transcribe, speak.
+/// The IRA HTTP API for this Mac's person: ask (streamed), transcribe, speak,
+/// and answer a proposed action.
 ///
-/// A device token works only on the device WebSocket (docs/api.md), so this
-/// client needs a session token from `POST /v1/auth/login` with
-/// `use_cookie: false`. The app uses it only when live voice is not available.
+/// It signs in with the device token: a paired device may talk to Ira for its
+/// person, with at most their ask, voice and actions permissions
+/// (docs/devices.md). The app uses it when live voice is not available.
 public final class AskClient: @unchecked Sendable {
     public struct Failure: LocalizedError, Equatable {
         public let message: String
@@ -66,17 +67,6 @@ public final class AskClient: @unchecked Sendable {
         return data
     }
 
-    /// Sign in; returns the session token (shown to nobody, kept in the Keychain).
-    public static func signIn(server: String, email: String, password: String, session: URLSession = .shared) async throws -> String {
-        let client = AskClient(server: server, session: session, token: { nil })
-        let body: JSONValue = ["email": .string(email), "password": .string(password), "use_cookie": false]
-        let data = try await client.send(try client.request("/v1/auth/login", method: "POST", json: body))
-        guard let token = JSONValue.parse(data)?["session_token"]?.stringValue else {
-            throw Failure("the server did not give a session")
-        }
-        return token
-    }
-
     /// `GET /v1/info`: the assistant's name, voice providers and the caller's permissions.
     public func info() async throws -> JSONValue {
         JSONValue.parse(try await send(try request("/v1/info"))) ?? .null
@@ -96,8 +86,23 @@ public final class AskClient: @unchecked Sendable {
         return JSONValue.parse(try await send(try request("/v1/actions/\(id)/approve", method: "POST", json: [:]))) ?? .null
     }
 
-    public func signOut() async {
-        _ = try? await send(try request("/v1/auth/logout", method: "POST", json: [:]))
+    /// Confirm a Tier 3 action with the person's PIN, typed in the app (never spoken).
+    /// Returns the outcome: `executed`, `failed`, `wrong_pin`, `locked`...
+    public func confirm(actionID: String, pin: String) async throws -> JSONValue {
+        let id = actionID.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? actionID
+        let request = try request("/v1/actions/\(id)/confirm", method: "POST", json: ["pin": .string(pin)])
+        let data: Data
+        let response: URLResponse
+        do {
+            (data, response) = try await session.data(for: request)
+        } catch {
+            throw Failure("could not reach \(server): \(Pairing.reason(error))")
+        }
+        let status = (response as? HTTPURLResponse)?.statusCode ?? 0
+        guard let outcome = JSONValue.parse(data), outcome["status"] != nil else {
+            throw Failure(AskClient.detail(data, status: status), status: status)
+        }
+        return outcome
     }
 
     /// `POST /v1/ask/stream`: each server-sent event as JSON, in order.

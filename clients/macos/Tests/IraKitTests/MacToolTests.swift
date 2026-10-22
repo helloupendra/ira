@@ -428,3 +428,105 @@ struct CodeTaskTests {
         #expect(list["repos"] == ["shop"])
     }
 }
+
+@Suite("Taking over from the old companion")
+struct CompanionTests {
+    final class Recorder: @unchecked Sendable {
+        private let lock = NSLock()
+        private var seen: [[String]] = []
+        func add(_ argv: [String]) { lock.withLock { seen.append(argv) } }
+        var all: [[String]] { lock.withLock { seen } }
+    }
+
+    func install(in home: URL, config: String) throws -> Companion {
+        let folder = home.appendingPathComponent("Library/Application Support/ira-mac")
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        try config.write(to: folder.appendingPathComponent("config.json"), atomically: true, encoding: .utf8)
+        let agents = home.appendingPathComponent("Library/LaunchAgents")
+        try FileManager.default.createDirectory(at: agents, withIntermediateDirectories: true)
+        try "<plist/>".write(to: agents.appendingPathComponent("in.ira.mac.plist"), atomically: true, encoding: .utf8)
+        let host = home.appendingPathComponent("Library/Application Support/Google/Chrome/NativeMessagingHosts")
+        try FileManager.default.createDirectory(at: host, withIntermediateDirectories: true)
+        try "{}".write(to: host.appendingPathComponent("in.ira.mac.json"), atomically: true, encoding: .utf8)
+        return Companion(home: home)
+    }
+
+    @Test func findsItsSettingsButNeverItsTokenInAFile() throws {
+        let home = try temporaryFolder()
+        #expect(!Companion(home: home).present)
+        let companion = try install(in: home, config: """
+            {"server": "https://ira.example.com", "device_id": 7, "label": "Studio Mac", "network_salt": "abc123", "tasks": {}}
+            """)
+        #expect(companion.present)
+        let found = try #require(companion.settings())
+        #expect(found == Companion.Found(server: "https://ira.example.com", deviceID: 7, label: "Studio Mac", networkSalt: "abc123", tasks: nil))
+    }
+
+    @Test func itsTokenComesFromItsOwnKeychainItem() async throws {
+        let recorder = Recorder()
+        let token = "irad_" + String(repeating: "k", count: 43)
+        let companion = Companion(home: try temporaryFolder()) { argv in
+            recorder.add(argv)
+            return Command.Result(status: 0, stdout: token + "\n")
+        }
+        #expect(await companion.token() == token)
+        #expect(recorder.all == [["/usr/bin/security", "find-generic-password", "-s", "ira-mac", "-a", "device", "-w"]])
+        // Ira for Mac's own item is another service, so the two never collide.
+        #expect(KeychainStore().service == "in.ira.mac")
+        #expect(Companion.keychainService != KeychainStore().service)
+        let bad = Companion(home: try temporaryFolder()) { _ in Command.Result(status: 0, stdout: "not a token") }
+        #expect(await bad.token() == nil)
+    }
+
+    @Test func removingItTakesEveryPart() async throws {
+        let home = try temporaryFolder()
+        let recorder = Recorder()
+        var companion = try install(in: home, config: #"{"server": "https://ira.example.com"}"#)
+        companion = Companion(home: home) { argv in
+            recorder.add(argv)
+            return Command.Result(status: 0, stdout: "")
+        }
+        await companion.remove()
+        #expect(!companion.present)
+        #expect(recorder.all.contains { $0.first == "/bin/launchctl" && $0.last == "gui/\(getuid())/in.ira.mac" })
+        #expect(recorder.all.contains(["/usr/bin/security", "delete-generic-password", "-s", "ira-mac", "-a", "device"]))
+    }
+}
+
+@Suite("Hey Ira")
+struct WakePhraseTests {
+    @Test(arguments: ["Hey Ira", "hey ira, what's on today", "Okay. Hey, Ira!", "hey eera", "Hi Ira", "hey Irah kya time hai"])
+    func heard(text: String) {
+        #expect(WakePhrase.heard(text))
+    }
+
+    @Test(arguments: ["Ira", "hey there", "pirate", "hey iran news", "they irate"])
+    func notHeard(text: String) {
+        #expect(!WakePhrase.heard(text))
+    }
+
+    @Test func aPhraseOfTheirOwn() {
+        #expect(WakePhrase.heard("ok so suno Jarvis please", phrase: "Suno Jarvis"))
+        #expect(!WakePhrase.heard("hey ira", phrase: "Suno Jarvis"))
+    }
+}
+
+@Suite("Confirming with a PIN", .serialized)
+struct ConfirmTests {
+    @Test func thePinGoesOnlyToTheConfirmStep() async throws {
+        let host = "confirm.example.com"
+        let session = StubProtocol.session(host: host) { request, body in
+            #expect(request.url?.path == "/v1/actions/act_1/confirm")
+            #expect(request.value(forHTTPHeaderField: "Authorization") == "Bearer irad_test")
+            let pin = body.flatMap(JSONValue.parse)?["pin"]?.stringValue
+            return pin == "4321"
+                ? .init(status: 200, body: Data(#"{"status": "executed", "result": {}}"#.utf8))
+                : .init(status: 403, body: Data(#"{"status": "wrong_pin", "attempts_left": 2}"#.utf8))
+        }
+        let client = AskClient(server: "https://\(host)", session: session, token: { "irad_test" })
+        #expect(try await client.confirm(actionID: "act_1", pin: "4321")["status"] == "executed")
+        let wrong = try await client.confirm(actionID: "act_1", pin: "1111")
+        #expect(wrong["status"] == "wrong_pin")
+        #expect(wrong["attempts_left"]?.intValue == 2)
+    }
+}

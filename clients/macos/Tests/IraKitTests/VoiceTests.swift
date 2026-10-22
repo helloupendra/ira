@@ -269,7 +269,7 @@ struct HTTPVoiceTests {
                 return .init(status: 404, body: Data())
             }
         }
-        let client = AskClient(server: "https://\(host)", session: session, token: { "ira_s_test" })
+        let client = AskClient(server: "https://\(host)", session: session, token: { "irad_test" })
         let http = HTTPVoiceTransport(client: client, speakReplies: { false })
         let events = EventLog<TalkEvent>()
         try await http.start(conversationID: nil) { events.add($0) }
@@ -288,14 +288,14 @@ struct HTTPVoiceTests {
         }
         #expect(audio == ["MP3:It is in your Downloads folder.", "MP3:Shall I open it?"])
         let authorization = StubProtocol.requests(host).map { $0.0.value(forHTTPHeaderField: "Authorization") }
-        #expect(authorization.allSatisfy { $0 == "Bearer ira_s_test" })
+        #expect(authorization.allSatisfy { $0 == "Bearer irad_test" })
         http.close()
     }
 
     @Test func aSignedOutSessionSaysSo() async {
         let host = "http-signed-out.example.com"
         let session = StubProtocol.session(host: host) { _, _ in .init(status: 401, body: Data(#"{"detail": "sign in"}"#.utf8)) }
-        let http = HTTPVoiceTransport(client: AskClient(server: "https://\(host)", session: session, token: { "ira_s_old" }), speakReplies: { true })
+        let http = HTTPVoiceTransport(client: AskClient(server: "https://\(host)", session: session, token: { "irad_old" }), speakReplies: { true })
         await #expect(throws: AskClient.Failure("sign in again to talk to Ira", status: 401)) {
             try await http.start(conversationID: nil) { _ in }
         }

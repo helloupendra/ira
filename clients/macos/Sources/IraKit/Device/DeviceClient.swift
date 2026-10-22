@@ -56,6 +56,8 @@ public final class DeviceClient: @unchecked Sendable {
     private let connector: WebSocketConnector
     private let timing: Timing
     private let onState: @Sendable (DeviceState) -> Void
+    /// The person's assistant name and wake phrase, from each welcome.
+    public var onWelcome: @Sendable (String?, String?) -> Void = { _, _ in }
     private let log: IraLog
 
     private let lock = NSLock()
@@ -317,7 +319,7 @@ public final class DeviceClient: @unchecked Sendable {
             try await sender.send(DeviceProtocol.hello(label: label, tools: tools.definitions).encoded())
             let first = try await withTimeout(timing.silence) { try await channel.receive() }
             guard case .text(let text) = first,
-                case .welcome(let deviceID, _, let skills, _) = try DeviceProtocol.decode(text)
+                case .welcome(let deviceID, _, let skills, let assistant, let wakePhrase) = try DeviceProtocol.decode(text)
             else {
                 if case .text(let text) = first, case .error(let reason)? = try? DeviceProtocol.decode(text) {
                     log.warning("the server refused the hello: \(reason)")
@@ -333,6 +335,7 @@ public final class DeviceClient: @unchecked Sendable {
             }
             defer { lock.locked { currentSkillsUnknown = true } }
             onState(.connected(deviceID: deviceID, skills: skills))
+            onWelcome(assistant, wakePhrase)
             return await session(channel: channel, sender: sender, deviceID: deviceID, skills: skills)
         } catch {
             let closed = error as? WebSocketClosed ?? WebSocketClosed(reason: "the connection ended")

@@ -1,4 +1,5 @@
 import AppKit
+import Combine
 import IraKit
 import SwiftUI
 
@@ -40,6 +41,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var panel: FloatingPanel!
     private var settingsWindow: NSWindow?
     private var hotKey: HotKey?
+    private var wakeWatch: Any?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         model = AppModel()
@@ -60,8 +62,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
         hotKey = HotKey { [weak self] in self?.togglePanel() }
         registerHotKey()
+        model.onWake = { [weak self] in self?.showPanel() }
+        // The menu-bar mark shows a dot while "Hey Ira" listens.
+        wakeWatch = model.$wakeListening.sink { [weak self] listening in
+            self?.statusItem.button?.image = AppDelegate.menuBarImage(listening: listening)
+        }
         // First launch, or not paired yet: show the window so pairing is the first thing seen.
-        if !model.paired || !model.settings.firstRunDone {
+        if model.screen == .setup {
             showPanel()
         }
     }
@@ -105,20 +112,44 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let logs = NSMenuItem(title: "Show Logs", action: #selector(openLogs), keyEquivalent: "")
         logs.target = self
         menu.addItem(logs)
+        let remove = NSMenuItem(title: "Remove Ira from this Mac…", action: #selector(removeFromMac), keyEquivalent: "")
+        remove.target = self
+        menu.addItem(remove)
         menu.addItem(.separator())
         let quit = NSMenuItem(title: "Quit Ira", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
         menu.addItem(quit)
     }
 
     static func describe(_ state: DeviceState, paired: Bool) -> String {
-        guard paired else { return "Not paired yet" }
+        guard paired else { return "Not paired yet: open Ira to pair this Mac" }
         switch state {
         case .connected(_, let skills):
-            return skills.isEmpty ? "Connected: no skills on yet" : "Connected: \(skills.joined(separator: ", "))"
+            return skills.isEmpty
+                ? "Connected, with no skills on yet: switch them on in Your devices"
+                : "Connected: \(skills.joined(separator: ", "))"
         case .connecting: return "Connecting…"
-        case .waiting(let seconds, _): return "Offline: trying again in \(Int(seconds.rounded())) s"
-        case .refused: return "This Mac was removed from Ira: pair it again"
+        case .waiting(let seconds, _): return "Cannot reach your Ira: trying again in \(Int(seconds.rounded())) s"
+        case .refused: return "Your Ira no longer knows this Mac: pair it again in Settings"
         case .stopped: return "Not connected"
+        }
+    }
+
+    @objc func removeFromMac() {
+        NSApp.activate(ignoringOtherApps: true)
+        let alert = NSAlert()
+        alert.messageText = "Remove Ira from this Mac?"
+        alert.informativeText = "Your Ira forgets this Mac at once, and the app deletes its key, settings and logs here. Your files are not touched. Then drag Ira from Applications to the Bin."
+        alert.addButton(withTitle: "Remove")
+        alert.addButton(withTitle: "Cancel")
+        alert.buttons.first?.hasDestructiveAction = true
+        guard alert.runModal() == .alertFirstButtonReturn else { return }
+        Task {
+            await model.removeEverything()
+            let done = NSAlert()
+            done.messageText = "Ira is removed from this Mac"
+            done.informativeText = "Drag Ira from Applications to the Bin to finish. To use Ira again, open it and pair it with a new code."
+            done.runModal()
+            NSApp.terminate(nil)
         }
     }
 
@@ -173,18 +204,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         settingsWindow?.makeKeyAndOrderFront(nil)
     }
 
-    /// The menu-bar mark: the repository's four voice bars, as a template image.
-    static func menuBarImage() -> NSImage {
-        let image = NSImage(size: NSSize(width: 18, height: 18), flipped: false) { rect in
+    /// The menu-bar mark: the repository's four voice bars, as a template image,
+    /// with a dot while "Hey Ira" listens.
+    static func menuBarImage(listening: Bool = false) -> NSImage {
+        let image = NSImage(size: NSSize(width: listening ? 22 : 18, height: 18), flipped: false) { _ in
             NSColor.black.setFill()
             let bars: [(x: CGFloat, y: CGFloat, h: CGFloat)] = [(3, 7, 4), (6.5, 4.5, 9), (10, 2.5, 13), (13.5, 5.5, 7)]
             for bar in bars {
                 NSBezierPath(roundedRect: NSRect(x: bar.x, y: bar.y, width: 2, height: bar.h), xRadius: 1, yRadius: 1).fill()
             }
-            _ = rect
+            if listening {
+                NSBezierPath(ovalIn: NSRect(x: 17.5, y: 13, width: 4, height: 4)).fill()
+            }
             return true
         }
         image.isTemplate = true
+        image.accessibilityDescription = listening ? "Ira, listening for its wake phrase" : "Ira"
         return image
     }
 }

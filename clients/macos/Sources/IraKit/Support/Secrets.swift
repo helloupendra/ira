@@ -1,8 +1,8 @@
 import Foundation
 import Security
 
-/// Where the app keeps its secrets: the device token and, if the person signed
-/// in for typing, their session token. Never in a file, UserDefaults or a log.
+/// Where the app keeps its secret: the device token. Never in a file,
+/// UserDefaults or a log.
 public protocol SecretStore: Sendable {
     func load(_ account: String) -> String?
     func save(_ value: String, account: String) throws
@@ -12,8 +12,6 @@ public protocol SecretStore: Sendable {
 public enum SecretAccount {
     /// This Mac's device token (`irad_...`), from pairing.
     public static let device = "device"
-    /// A session token (`ira_s_...`) from signing in, used only when live voice is not available.
-    public static let session = "session"
 }
 
 public struct SecretError: LocalizedError {

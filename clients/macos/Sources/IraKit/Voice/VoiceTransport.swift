@@ -34,8 +34,7 @@ public enum TalkEvent: Equatable, Sendable {
 ///   speaks; Ira's answer comes back sentence by sentence as MP3.
 /// * `HTTPVoiceTransport`: the fallback while a server has no live voice:
 ///   record, `/v1/voice/transcribe`, `/v1/ask/stream`, `/v1/voice/speak` per
-///   sentence. It needs a signed-in session, since a device token works only
-///   on WebSockets.
+///   sentence, with the same device token.
 ///
 /// The conversation (microphone, voice detector, player) is the same for both.
 public protocol VoiceTransport: AnyObject, Sendable {
@@ -117,4 +116,33 @@ public struct SentenceSplitter: Sendable {
 /// listens as if the mic button had been pressed. None ships in this version.
 public protocol WakeWordDetector: AnyObject {
     func heard(_ samples: [Float]) -> Bool
+}
+
+/// The wake phrase in a live transcript ("Hey Ira" by default; each person may
+/// choose their own on their Ira page).
+public enum WakePhrase {
+    /// Lower-case letters and single spaces only.
+    static func normalized(_ text: String) -> String {
+        text.lowercased().replacingOccurrences(of: "[^\\p{L} ]", with: " ", options: .regularExpression)
+            .split(separator: " ").joined(separator: " ")
+    }
+
+    /// Whether `transcript` holds `phrase`, allowing the spellings a recogniser
+    /// writes for "Ira" ("eera", "irah", "era").
+    public static func heard(_ transcript: String, phrase: String = "Hey Ira") -> Bool {
+        let text = " " + normalized(transcript) + " "
+        let wanted = normalized(phrase)
+        guard !wanted.isEmpty else { return false }
+        var forms = [wanted]
+        for spelling in ["eera", "irah", "era", "ira"] where wanted.contains("ira") {
+            forms.append(wanted.replacingOccurrences(of: "ira", with: spelling))
+        }
+        if wanted.hasPrefix("hey ") {
+            let rest = String(wanted.dropFirst(4))
+            forms += ["hi " + rest, "hay " + rest].flatMap { form in
+                [form] + ["eera", "irah", "era"].map { form.replacingOccurrences(of: "ira", with: $0) }
+            }
+        }
+        return forms.contains { text.contains(" " + $0 + " ") }
+    }
 }

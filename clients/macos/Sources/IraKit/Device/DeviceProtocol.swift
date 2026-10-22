@@ -12,7 +12,7 @@ public enum DeviceProtocol {
 
     /// A frame from the server, checked.
     public enum Incoming: Equatable, Sendable {
-        case welcome(deviceID: Int?, label: String?, skills: [String], assistant: String?)
+        case welcome(deviceID: Int?, label: String?, skills: [String], assistant: String?, wakePhrase: String? = nil)
         case call(id: String, tool: String, args: JSONValue)
         case ping
         case pong
@@ -43,7 +43,8 @@ public enum DeviceProtocol {
                 deviceID: frame["deviceId"]?.intValue,
                 label: frame["label"]?.stringValue,
                 skills: strings(frame["skills"]),
-                assistant: frame["assistant"]?.stringValue)
+                assistant: frame["assistant"]?.stringValue,
+                wakePhrase: frame["wakePhrase"]?.stringValue)
         case "call":
             guard let id = frame["id"]?.stringValue, !id.isEmpty else {
                 throw BadFrame(reason: "a call needs an id")

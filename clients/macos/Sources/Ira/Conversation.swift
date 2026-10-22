@@ -21,8 +21,10 @@ struct PendingAction: Equatable {
 
 /// The conversation in the window: typing, the live microphone, and Ira's voice.
 ///
-/// It picks the transport: live voice with this Mac's device token when the
-/// server has it, else the HTTP API with a signed-in session.
+/// It picks the transport: live voice when the server has it, else the HTTP API;
+/// both sign in with this Mac's device token. One conversation id per window
+/// (kept for 30 minutes), so the conversation goes on across reconnects and
+/// shows in the person's web chat too.
 @MainActor
 final class Conversation: ObservableObject {
     enum Mode: Equatable { case idle, listening, hearing, thinking, speaking }
@@ -34,7 +36,8 @@ final class Conversation: ObservableObject {
     @Published var level: Float = 0
     @Published var notice: String?
     @Published var transportKind: String?
-    @Published var needsSignIn = false
+    /// What this Mac's key may do for its person (from /v1/info): ask, voice, actions.
+    @Published var permissions: [String] = []
 
     private let settings: AppSettings
     private let secrets: SecretStore
@@ -48,12 +51,15 @@ final class Conversation: ObservableObject {
     private var interruptedTurn = 0
     private var lastActivity = Date()
     private var idleTimer: Timer?
-    /// "Hey Ira" comes later: a detector plugged in here would start listening.
-    var wakeWord: WakeWordDetector?
+    /// Called when listening stops, so "Hey Ira" can listen again.
+    var onListeningEnded: (() -> Void)?
+    /// This window's conversation.
+    private(set) var conversationID: String
 
     init(settings: AppSettings, secrets: SecretStore) {
         self.settings = settings
         self.secrets = secrets
+        conversationID = settings.recentConversation() ?? Conversation.newID()
         audio.onFrame = { [weak self] samples, at in self?.frame(samples, at: at) }
         audio.onTurnStarted = { [weak self] turn in
             guard let self else { return }
@@ -69,6 +75,10 @@ final class Conversation: ObservableObject {
     }
 
     var server: String { settings.server }
+
+    static func newID() -> String {
+        "mac-" + UUID().uuidString.lowercased().replacingOccurrences(of: "-", with: "").prefix(12)
+    }
 
     // MARK: Connecting
 
@@ -86,40 +96,40 @@ final class Conversation: ObservableObject {
         let events: @Sendable (TalkEvent) -> Void = { [weak self] event in
             Task { @MainActor in self?.handle(event) }
         }
-        var liveProblem: String?
-        if let token = secrets.load(SecretAccount.device), !settings.server.isEmpty {
-            do {
-                let live = try LiveVoiceTransport(server: settings.server, token: token)
-                try await live.start(conversationID: settings.recentConversation(), events: events)
-                return use(live)
-            } catch {
-                liveProblem = error.localizedDescription
-                IraLog.shared.info("live voice unavailable: \(liveProblem ?? "")")
-            }
+        guard let token = secrets.load(SecretAccount.device), !settings.server.isEmpty else {
+            notice = "This Mac is not paired with your Ira yet. Pair it first (Settings → Pair again)."
+            return nil
         }
-        if let session = secrets.load(SecretAccount.session) {
-            let client = AskClient(server: settings.server, token: { session })
-            let http = HTTPVoiceTransport(client: client, speakReplies: { [settings] in settings.speakReplies })
-            do {
-                try await http.start(conversationID: settings.recentConversation(), events: events)
-                needsSignIn = false
-                return use(http)
-            } catch let failure as AskClient.Failure {
-                if failure.signedOut {
-                    secrets.delete(SecretAccount.session)
-                    needsSignIn = true
-                }
-                notice = failure.message
-                return nil
-            } catch {
-                notice = error.localizedDescription
+        let client = AskClient(server: settings.server, token: { token })
+        if let info = try? await client.info() {
+            permissions = (info["permissions"]?.arrayValue ?? []).compactMap(\.stringValue)
+            if !permissions.contains("ask") {
+                notice = "Your Ira account may not talk to Ira (a viewer account). Ask the person who runs your Ira to change your role."
                 return nil
             }
         }
-        needsSignIn = true
-        notice = "Live voice is not available on this server yet (\(liveProblem ?? "no answer")). "
-            + "Sign in with your Ira email and password to talk by typing and by voice."
-        return nil
+        var liveProblem = ""
+        do {
+            let live = try LiveVoiceTransport(server: settings.server, token: token)
+            try await live.start(conversationID: conversationID, events: events)
+            return use(live)
+        } catch {
+            liveProblem = error.localizedDescription
+            IraLog.shared.info("live voice unavailable: \(liveProblem)")
+        }
+        let http = HTTPVoiceTransport(client: client, speakReplies: { [settings] in settings.speakReplies })
+        do {
+            try await http.start(conversationID: conversationID, events: events)
+            return use(http)
+        } catch let failure as AskClient.Failure {
+            notice = failure.signedOut
+                ? "Your Ira no longer knows this Mac (it was removed on Your devices). Pair it again in Settings."
+                : "Ira cannot be reached right now: \(failure.message). Check your internet connection, then try again."
+            return nil
+        } catch {
+            notice = "Ira cannot be reached right now. Check your internet connection, then try again."
+            return nil
+        }
     }
 
     private func use(_ transport: VoiceTransport) -> VoiceTransport {
@@ -211,6 +221,7 @@ final class Conversation: ObservableObject {
         caption = ""
         idleTimer?.invalidate()
         if mode == .listening || mode == .hearing { mode = .idle }
+        onListeningEnded?()
     }
 
     /// Stop Ira talking (the stop button, or the person started to speak).
@@ -269,7 +280,10 @@ final class Conversation: ObservableObject {
     private func handle(_ event: TalkEvent) {
         switch event {
         case .ready(let conversationID, let assistant):
-            if let conversationID { settings.rememberConversation(conversationID) }
+            if let conversationID {
+                self.conversationID = conversationID
+                settings.rememberConversation(conversationID)
+            }
             if let assistant, !assistant.isEmpty { settings.assistantName = assistant }
         case .partial(let text):
             caption = text
@@ -327,7 +341,7 @@ final class Conversation: ObservableObject {
             transportKind = nil
             if listening {
                 stopListening()
-                notice = "The connection to Ira closed\(reason.map { " (\($0))" } ?? ""). Press the mic to talk again."
+                notice = "The connection to Ira dropped\(reason.map { " (\($0))" } ?? ""). Press the mic to talk again."
             }
         }
     }
@@ -356,7 +370,37 @@ final class Conversation: ObservableObject {
 
     func clear() {
         entries.removeAll()
-        settings.rememberConversation(nil)
+        conversationID = Conversation.newID()
+        settings.rememberConversation(conversationID)
         disconnect()
+    }
+
+    /// Confirm a Tier 3 action with the PIN typed here; the PIN goes only to the
+    /// confirm endpoint, never to a model. Returns a sentence for the card.
+    func confirm(_ action: PendingAction, pin: String) async -> String {
+        guard let token = secrets.load(SecretAccount.device) else { return "This Mac is not paired." }
+        let client = AskClient(server: settings.server, token: { token })
+        let outcome: JSONValue
+        do {
+            outcome = try await client.confirm(actionID: action.id, pin: pin)
+        } catch {
+            return "Ira could not be reached: \(error.localizedDescription). Try again."
+        }
+        let status = outcome["status"]?.stringValue ?? ""
+        if let index = entries.firstIndex(where: { $0.action?.id == action.id }), status != "wrong_pin" {
+            entries[index].action?.status = status
+        }
+        switch status {
+        case "executed": return "Done."
+        case "wrong_pin":
+            let left = outcome["attempts_left"]?.intValue.map { " \($0) tries left." } ?? ""
+            return "That PIN is not right.\(left)"
+        case "locked": return "Too many wrong PINs: actions are locked for a while. Try again later."
+        case "expired": return "This proposal expired. Ask Ira again."
+        case "no_pin": return "You have no PIN yet. Set one in the Ira app's menu, then ask again."
+        case "not_allowed": return "Your role may not confirm this action."
+        case "failed": return "It ran but failed: \(outcome["message"]?.stringValue ?? "no reason given")."
+        default: return outcome["message"]?.stringValue ?? "Ira answered: \(status)."
+        }
     }
 }

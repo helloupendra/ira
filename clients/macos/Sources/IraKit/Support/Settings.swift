@@ -22,7 +22,6 @@ public final class AppSettings: @unchecked Sendable {
         static let firstRunDone = "firstRunDone"
         static let conversationID = "conversationID"
         static let conversationAt = "conversationAt"
-        static let signedInEmail = "signedInEmail"
         static let networkSalt = "networkSalt"
         static let wakeWord = "wakeWord"
     }
@@ -102,12 +101,6 @@ public final class AppSettings: @unchecked Sendable {
         set { defaults.set(newValue, forKey: Key.firstRunDone) }
     }
 
-    /// The email of the account signed in for typing without live voice (shown, never a secret).
-    public var signedInEmail: String? {
-        get { defaults.string(forKey: Key.signedInEmail) }
-        set { defaults.set(newValue, forKey: Key.signedInEmail) }
-    }
-
     /// The conversation to continue, if it was used in the last 30 minutes.
     public func recentConversation(now: Date = Date()) -> String? {
         guard let id = defaults.string(forKey: Key.conversationID),
@@ -124,7 +117,7 @@ public final class AppSettings: @unchecked Sendable {
 
     /// Forget the pairing (the token is deleted from the Keychain separately).
     public func forgetPairing() {
-        for key in [Key.server, Key.deviceID, Key.deviceLabel, Key.conversationID, Key.conversationAt, Key.signedInEmail] {
+        for key in [Key.server, Key.deviceID, Key.deviceLabel, Key.conversationID, Key.conversationAt] {
             defaults.removeObject(forKey: key)
         }
     }

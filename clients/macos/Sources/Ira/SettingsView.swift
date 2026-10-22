@@ -6,37 +6,48 @@ final class SettingsState: ObservableObject {
     @Published var recording = false
     var monitor: Any?
     @Published var speak = true
+    @Published var wake = false
+    @Published var login = false
+    @Published var loginProblem: String?
     @Published var onlyFolders: [String] = []
     @Published var extraFolders: [String] = []
-    @Published var confirmForget = false
+    @Published var confirmRemove = false
+    @Published var confirmRepair = false
 }
 
 struct SettingsView: View {
     @ObservedObject var model: AppModel
     @ObservedObject var conversation: Conversation
+    @ObservedObject var permissions: PermissionCenter
     let hotKeyChanged: () -> Void
     @StateObject private var state = SettingsState()
+
+    init(model: AppModel, conversation: Conversation, hotKeyChanged: @escaping () -> Void) {
+        self.model = model
+        self.conversation = conversation
+        self.permissions = model.permissions
+        self.hotKeyChanged = hotKeyChanged
+    }
 
     var body: some View {
         Form {
             Section("This Mac") {
-                LabeledContent("Server", value: model.settings.server.isEmpty ? "Not paired" : model.settings.server)
+                LabeledContent("Your Ira", value: model.settings.server.isEmpty ? "Not paired" : model.settings.server)
                 LabeledContent("Name on Ira", value: model.settings.deviceLabel)
                 LabeledContent("Connection", value: AppDelegate.describe(model.deviceState, paired: model.paired))
                 LabeledContent("Talking through", value: conversation.transportKind.map { $0 == "live" ? "live voice" : "the HTTP API" } ?? "not connected yet")
+                if !conversation.permissions.isEmpty {
+                    LabeledContent("This Mac may", value: conversation.permissions.map(Self.permissionName).joined(separator: ", "))
+                }
                 HStack {
                     Button("Reconnect") { model.reconnect() }
-                    Button("Pair again…") {
-                        Task { await model.forget() }
-                    }
-                    .help("Remove this Mac from Ira and pair it with a new code")
+                    Button("Pair again…") { state.confirmRepair = true }
                     Spacer()
-                    Button("Remove this Mac", role: .destructive) { state.confirmForget = true }
                 }
             }
-            Section("Shortcut") {
+            Section("Open Ira") {
                 HStack {
-                    Text("Open Ira with")
+                    Text("Shortcut")
                     Spacer()
                     Button(state.recording ? "Press the new keys…" : HotKey.describe(keyCode: model.settings.hotKeyCode, modifiers: model.settings.hotKeyModifiers)) {
                         state.recording ? stopRecording() : startRecording()
@@ -47,23 +58,42 @@ struct SettingsView: View {
                         hotKeyChanged()
                     }
                 }
-                Text("“Hey Ira” without a key comes in a later version.")
+                Toggle("Open Ira when I log in", isOn: $state.login)
+                    .onChange(of: state.login) { _, on in
+                        guard on != LoginItem.enabled else { return }
+                        state.loginProblem = LoginItem.set(on)
+                    }
+                if let problem = state.loginProblem {
+                    Text(problem).font(.caption).foregroundStyle(.orange)
+                }
+            }
+            Section("“\(model.wake.phrase)”") {
+                Toggle("Listen for “\(model.wake.phrase)”", isOn: $state.wake)
+                    .onChange(of: state.wake) { _, on in
+                        guard on != model.settings.wakeWord || on != model.wakeListening else { return }
+                        Task {
+                            await model.setWakeWord(on)
+                            state.wake = model.settings.wakeWord
+                        }
+                    }
+                Text("The Mac listens for the phrase by itself, with speech recognition on this Mac; nothing leaves it until it hears the phrase. The menu-bar mark shows a dot while it listens. Off by default.")
                     .font(.caption).foregroundStyle(.secondary)
+                if let problem = model.wakeProblem {
+                    Text(problem).font(.caption).foregroundStyle(.orange)
+                }
             }
             Section("Voice") {
                 Toggle("Speak replies to typed questions too", isOn: $state.speak)
                     .onChange(of: state.speak) { _, on in model.settings.speakReplies = on }
-                if let email = model.settings.signedInEmail {
-                    HStack {
-                        Text("Signed in as \(email) for when live voice is not available")
-                            .font(.callout)
-                        Spacer()
-                        Button("Sign out") { Task { await model.signOut() } }
-                    }
-                } else {
-                    Text("Talking uses this Mac's own key and the server's live voice. On a server without live voice, Ira asks you to sign in once.")
-                        .font(.caption).foregroundStyle(.secondary)
+            }
+            Section("Permissions") {
+                ForEach(permissions.all) { permission in
+                    PermissionRow(
+                        permission: permission,
+                        ask: { Task { await permissions.ask(permission) } },
+                        open: { permissions.open(permission) })
                 }
+                Button("Check again") { permissions.refresh() }
             }
             Section("Folders") {
                 Text("Ira finds and reads files in your home folder, never in ~/Library, keychains or hidden folders. Choose folders below to narrow it, or to add a drive.")
@@ -91,26 +121,53 @@ struct SettingsView: View {
                 }
             }
             Section("Privacy") {
-                HStack {
-                    Button("Microphone…") { openPrivacy("Privacy_Microphone") }
-                    Button("Screen Recording…") { openPrivacy("Privacy_ScreenCapture") }
-                    Button("Files and Folders…") { openPrivacy("Privacy_FilesAndFolders") }
-                }
                 Text("Logs in ~/Library/Logs/Ira hold tool names and timings, never what Ira read or heard.")
                     .font(.caption).foregroundStyle(.secondary)
+                HStack {
+                    Button("Show Logs") {
+                        if let logs = IraLog.defaultDirectory { NSWorkspace.shared.open(logs) }
+                    }
+                    Spacer()
+                    Button("Remove Ira from this Mac…", role: .destructive) { state.confirmRemove = true }
+                }
             }
         }
         .formStyle(.grouped)
         .onAppear {
             state.speak = model.settings.speakReplies
+            state.wake = model.settings.wakeWord
+            state.login = LoginItem.enabled
             state.onlyFolders = model.settings.onlyFolders
             state.extraFolders = model.settings.extraFolders
+            permissions.refresh()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+            permissions.refresh()
         }
         .onDisappear(perform: stopRecording)
-        .confirmationDialog("Remove this Mac from Ira?", isPresented: $state.confirmForget) {
-            Button("Remove", role: .destructive) { Task { await model.forget() } }
+        .confirmationDialog("Remove Ira from this Mac?", isPresented: $state.confirmRemove) {
+            Button("Remove", role: .destructive) {
+                Task {
+                    await model.removeEverything()
+                    NSApp.keyWindow?.close()
+                }
+            }
         } message: {
-            Text("Ira forgets this Mac's key at once. To use Ira here again, pair it with a new code.")
+            Text("Your Ira forgets this Mac at once, and the app deletes its key, settings and logs here. Your files are not touched. Then drag Ira from Applications to the Bin.")
+        }
+        .confirmationDialog("Pair this Mac again?", isPresented: $state.confirmRepair) {
+            Button("Pair again", role: .destructive) { Task { await model.removeEverything() } }
+        } message: {
+            Text("This Mac's current pairing ends at once. Then make a new pairing code on Your devices.")
+        }
+    }
+
+    static func permissionName(_ permission: String) -> String {
+        switch permission {
+        case "ask": return "talk to Ira"
+        case "voice": return "use voice"
+        case "actions": return "confirm actions with your PIN"
+        default: return permission
         }
     }
 

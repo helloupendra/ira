@@ -24,8 +24,7 @@ struct MainView: View {
     var body: some View {
         Group {
             switch model.screen {
-            case .pair: PairView(model: model)
-            case .permissions: PermissionsView(model: model)
+            case .setup: SetupView(model: model, conversation: conversation)
             case .chat: ChatView(model: model, conversation: conversation, openSettings: openSettings)
             }
         }
@@ -135,111 +134,6 @@ struct Header: View {
 
 // MARK: First run
 
-final class PermissionState: ObservableObject {
-    @Published var mic = AudioIO.micPermission
-    @Published var screen = ScreenText.permitted
-    @Published var contacts = CNContactStore.authorizationStatus(for: .contacts) == .authorized
-    @Published var calendar = EKEventStore.authorizationStatus(for: .event) == .fullAccess
-    @Published var reminders = EKEventStore.authorizationStatus(for: .reminder) == .fullAccess
-
-    func refresh() {
-        mic = AudioIO.micPermission
-        screen = ScreenText.permitted
-        contacts = CNContactStore.authorizationStatus(for: .contacts) == .authorized
-        calendar = EKEventStore.authorizationStatus(for: .event) == .fullAccess
-        reminders = EKEventStore.authorizationStatus(for: .reminder) == .fullAccess
-    }
-}
-
-struct PermissionsView: View {
-    @ObservedObject var model: AppModel
-    @StateObject private var state = PermissionState()
-
-    var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 16) {
-                Header(title: "What Ira may use on this Mac")
-                Text("Ira reads nothing until you ask. macOS asks you before Ira uses each of these; you can change your mind in System Settings → Privacy & Security at any time.")
-                    .fixedSize(horizontal: false, vertical: true)
-                PermissionRow(
-                    icon: "mic", title: "Microphone",
-                    text: "So you can talk to Ira. It listens only after you press the mic button, and stops when you press it again or stay quiet.",
-                    granted: state.mic == .authorized,
-                    actionTitle: state.mic == .notDetermined ? "Allow" : "Open Settings",
-                    action: askMic)
-                PermissionRow(
-                    icon: "folder", title: "Files and folders",
-                    text: "So Ira can find a file and read it to you. macOS asks the first time Ira opens something in Documents, Desktop or Downloads; say Allow. Ira never reads your Library folder, keychains or hidden files.",
-                    granted: false, actionTitle: nil, action: {})
-                PermissionRow(
-                    icon: "macwindow", title: "Screen Recording",
-                    text: "Only for “what is on my screen?”. Ira takes a picture of the window in front, reads its text on this Mac, and sends only the text. Turn on the Screen skill for this Mac in Ira too.",
-                    granted: state.screen,
-                    actionTitle: "Allow",
-                    action: askScreen)
-                PermissionRow(
-                    icon: "person.crop.circle", title: "Contacts",
-                    text: "So Ira can put a name to a number, or find the number or email to write to. Only when you ask.",
-                    granted: state.contacts, actionTitle: "Allow",
-                    action: { request { _ = try? await CNContactStore().requestAccess(for: .contacts) } })
-                PermissionRow(
-                    icon: "calendar", title: "Calendars and Reminders",
-                    text: "So Ira can tell you what is on your day, and add an event or a reminder. A new event waits for your yes.",
-                    granted: state.calendar && state.reminders, actionTitle: "Allow",
-                    action: {
-                        request {
-                            let store = EKEventStore()
-                            _ = try? await store.requestFullAccessToEvents()
-                            _ = try? await store.requestFullAccessToReminders()
-                        }
-                    })
-                PermissionRow(
-                    icon: "envelope", title: "Mail, Notes and Messages",
-                    text: "So Ira can search your inbox and notes, draft an email, and send an iMessage. macOS asks the first time (“Ira wants to control Mail”). Ira never sends an email itself, and a message waits for your yes.",
-                    granted: false, actionTitle: nil, action: {})
-                PermissionRow(
-                    icon: "hammer", title: "Coding tasks (if you set them up)",
-                    text: "Ira works in your repositories, often in Documents, so macOS asks once for the Documents folder. Each task works on its own copy and branch, and never pushes without your PIN.",
-                    granted: false, actionTitle: nil, action: {})
-                Text("On your Ira's **Your devices** page, switch on the skills you want this Mac to have: Files, Screen, Contacts, Calendar, Mail and the others. Each needs your PIN.")
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-                HStack {
-                    Spacer()
-                    Button("Done") { model.finishFirstRun() }
-                        .keyboardShortcut(.defaultAction)
-                }
-            }
-            .padding(20)
-        }
-    }
-
-    private func askMic() {
-        if state.mic == .notDetermined {
-            Task {
-                _ = await AudioIO.askMicPermission()
-                state.mic = AudioIO.micPermission
-            }
-        } else {
-            openPrivacy("Privacy_Microphone")
-        }
-    }
-
-    private func request(_ ask: @escaping () async -> Void) {
-        Task {
-            await ask()
-            state.refresh()
-        }
-    }
-
-    private func askScreen() {
-        ScreenText.requestPermission()
-        state.screen = ScreenText.permitted
-        if !state.screen { openPrivacy("Privacy_ScreenCapture") }
-    }
-}
-
 func openPrivacy(_ anchor: String) {
     if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?\(anchor)") {
         NSWorkspace.shared.open(url)
@@ -247,35 +141,42 @@ func openPrivacy(_ anchor: String) {
 }
 
 struct PermissionRow: View {
-    let icon: String
-    let title: String
-    let text: String
-    let granted: Bool
-    let actionTitle: String?
-    let action: () -> Void
+    let permission: Permission
+    let ask: () -> Void
+    let open: () -> Void
 
     var body: some View {
         HStack(alignment: .top, spacing: 12) {
-            Image(systemName: icon)
-                .font(.title2)
+            Image(systemName: permission.icon)
+                .font(.title3)
                 .foregroundStyle(Color.iraText)
-                .frame(width: 28)
+                .frame(width: 26)
             VStack(alignment: .leading, spacing: 4) {
                 HStack {
-                    Text(title).font(.headline)
+                    Text(permission.title).font(.headline)
                     Spacer()
-                    if granted {
+                    switch permission.state {
+                    case .granted:
                         Label("Allowed", systemImage: "checkmark.circle.fill")
                             .foregroundStyle(.green)
                             .font(.callout)
-                    } else if let actionTitle {
-                        Button(actionTitle, action: action)
+                    case .missing:
+                        Button("Open System Settings", action: open)
+                    case .notAsked:
+                        if permission.askable { Button("Allow", action: ask) } else { Text("Asked when needed").font(.caption).foregroundStyle(.secondary) }
+                    case .unknown:
+                        Text("macOS asks the first time").font(.caption).foregroundStyle(.secondary)
                     }
                 }
-                Text(text)
+                Text(permission.why)
                     .font(.callout)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
+                if permission.state == .missing {
+                    Text("Off. Switch Ira on there; you may need to quit and reopen Ira after.")
+                        .font(.caption)
+                        .foregroundStyle(.orange)
+                }
             }
         }
     }
@@ -389,9 +290,6 @@ struct ChatView: View {
             Text(notice)
                 .font(.callout)
                 .fixedSize(horizontal: false, vertical: true)
-            if conversation.needsSignIn {
-                SignInForm(model: model)
-            }
         }
         .padding(10)
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -511,10 +409,17 @@ struct EntryView: View {
     }
 }
 
+final class PinState: ObservableObject {
+    @Published var pin = ""
+    @Published var working = false
+    @Published var answer: String?
+}
+
 struct ActionCard: View {
     let action: PendingAction
     @ObservedObject var conversation: Conversation
     let server: String
+    @StateObject private var state = PinState()
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -530,15 +435,24 @@ struct ActionCard: View {
                         Button("No") { conversation.answer(action, yes: false) }
                     }
                 } else {
-                    Text("Confirm it with your PIN in the Ira app. A PIN is never spoken or typed here.")
+                    HStack {
+                        SecureField("Your PIN", text: $state.pin)
+                            .textFieldStyle(.roundedBorder)
+                            .frame(maxWidth: 140)
+                            .onSubmit(confirm)
+                        Button(state.working ? "Checking…" : "Confirm", action: confirm)
+                            .disabled(state.working || state.pin.count < 4)
+                        Button("No") { conversation.answer(action, yes: false) }
+                    }
+                    Text("Typed here, your PIN goes only to your Ira's confirm step, never to the assistant. Never say it aloud.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
-                    Button("Open Ira") {
-                        if let url = URL(string: server) { NSWorkspace.shared.open(url) }
-                    }
+                }
+                if let answer = state.answer {
+                    Text(answer).font(.callout)
                 }
             } else {
-                Text(action.status == "yes" ? "You said yes." : action.status == "no" ? "You said no." : action.status)
+                Text(ActionCard.outcome(action.status))
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -547,42 +461,26 @@ struct ActionCard: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(RoundedRectangle(cornerRadius: 10).stroke(Color.ira.opacity(0.4)))
     }
-}
 
-struct SignInForm: View {
-    @ObservedObject var model: AppModel
-    @StateObject private var form = FormState()
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            TextField("Email", text: $form.email)
-                .textFieldStyle(.roundedBorder)
-                .textContentType(.username)
-            SecureField("Password", text: $form.password)
-                .textFieldStyle(.roundedBorder)
-                .textContentType(.password)
-                .onSubmit(signIn)
-            HStack {
-                Button(form.working ? "Signing in…" : "Sign in", action: signIn)
-                    .disabled(form.working || form.email.isEmpty || form.password.isEmpty)
-                if let problem = form.problem {
-                    Text(problem).font(.caption).foregroundStyle(.red)
-                }
-            }
+    static func outcome(_ status: String) -> String {
+        switch status {
+        case "yes": return "You said yes."
+        case "no": return "You said no."
+        case "executed": return "Done."
+        case "failed": return "It ran but failed."
+        case "expired": return "It expired before an answer."
+        case "cancelled": return "Cancelled."
+        default: return status
         }
     }
 
-    private func signIn() {
-        form.working = true
-        form.problem = nil
+    private func confirm() {
+        let pin = state.pin
+        state.pin = ""
+        state.working = true
         Task {
-            do {
-                try await model.signIn(email: form.email, password: form.password)
-                form.password = ""
-            } catch {
-                form.problem = error.localizedDescription
-            }
-            form.working = false
+            state.answer = await conversation.confirm(action, pin: pin)
+            state.working = false
         }
     }
 }
