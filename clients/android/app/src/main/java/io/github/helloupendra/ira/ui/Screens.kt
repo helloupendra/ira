@@ -218,7 +218,7 @@ fun SettingsScreen(app: IraApp, onBack: () -> Unit, onApprovals: () -> Unit, onU
             Fact("Connection for the phone's tools", linkText(link))
             Fact("App", "${BuildConfig.VERSION_NAME} (${if (app.tools.flavor.name == "PLAY") "Google Play build" else "personal build"})")
             HorizontalDivider()
-            if (Approvals.ENABLED) TextButton(onClick = onApprovals) { Text("Approvals: fingerprint, trust window, trusted apps") }
+            if (Approvals.WINDOW) TextButton(onClick = onApprovals) { Text("Approvals: fewer PINs for one task") }
             TextButton(onClick = { app.settings.checklistHidden = false; onBack() }) { Text("Show the setup checklist") }
             TextButton(onClick = { openAppSettings(context) }) { Text("Android's settings for Ira (permissions, notifications)") }
             TextButton(onClick = { open(context, app.settings.server.orEmpty()) }) { Text("Export or delete your data (on your Ira, Your data)") }

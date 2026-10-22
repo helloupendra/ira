@@ -112,6 +112,7 @@ fun TalkScreen(app: IraApp, talkRequests: Int, onSkills: () -> Unit, onSettings:
     val server = app.settings.server.orEmpty().removePrefix("https://").removePrefix("http://")
     LifecycleResumeEffect(Unit) {
         refresh++
+        app.refreshApprovals()
         onPauseOrDispose { }
     }
 
@@ -193,16 +194,17 @@ fun TalkScreen(app: IraApp, talkRequests: Int, onSkills: () -> Unit, onSettings:
                 },
             )
         }
-        // An open trust window, while the approvals API exists.
-        val trustUntil by app.trustUntil.collectAsState()
+        // This phone's approval window, counted down here and stoppable.
+        val approvals by app.approvals.collectAsState()
         var now by remember { mutableLongStateOf(System.currentTimeMillis() / 1000) }
-        LaunchedEffect(trustUntil) {
-            while (trustUntil > now) {
+        val window = approvals?.forDevice(app.settings.deviceId, now.toDouble())
+        LaunchedEffect(window?.id, window?.expiresAt) {
+            while (window != null && window.expiresAt > now) {
                 delay(15_000)
                 now = System.currentTimeMillis() / 1000
             }
         }
-        if (Approvals.ENABLED && trustUntil > now) TrustBanner(app, trustUntil - now)
+        if (Approvals.WINDOW && window != null) ApprovalBanner(app, window.id, window.secondsLeft(now.toDouble()))
         Conversation(ui, lines, Modifier.weight(1f), onReport = { reporting = it })
         val card = ui.action
         // Only the newest pending action is shown: a new one replaces the card and any result.
@@ -221,22 +223,25 @@ fun TalkScreen(app: IraApp, talkRequests: Int, onSkills: () -> Unit, onSettings:
             var outcome by remember(card.id) { mutableStateOf<String?>(null) }
             val activity = context as? android.app.Activity
             val fingerprint =
-                if (Approvals.ENABLED && card.needsPin && activity != null && app.settings.approvalsEnrolled && DeviceKey.exists()) {
+                if (Approvals.FINGERPRINT && card.needsPin && activity != null && app.settings.approvalsEnrolled && DeviceKey.exists()) {
                     {
-                        val payload = Approvals.payload(app.settings.deviceId, card.id, System.currentTimeMillis() / 1000 + (card.expiresIn ?: 120))
+                        // The server signs the same bytes: the action, the summary shown, its expiry.
+                        val expiresAt = card.expiresAt ?: (System.currentTimeMillis() / 1000 + (card.expiresIn ?: 120))
+                        val payload = Approvals.payload(card.id, card.summary, expiresAt)
                         Fingerprint.approve(activity, card.summary, payload) { signature, problem ->
                             if (signature == null) {
                                 outcome = problem
                             } else {
                                 confirming = true
                                 scope.launch {
-                                    val refused = withContext(Dispatchers.IO) { app.approvals.approve(card.id, Approvals.base64(payload), signature) }
+                                    val confirmed = withContext(Dispatchers.IO) { app.confirmWithKey(card.id, signature) }
                                     confirming = false
-                                    if (refused == null) {
+                                    if (confirmed.done) {
                                         if (session?.ui?.value?.action?.id == card.id) session?.dismissAction()
-                                        result = "Done: approved with your fingerprint" to null
+                                        result = "Done: ${confirmed.message}" to confirmed.detail
+                                        app.refreshApprovals()
                                     } else {
-                                        outcome = refused
+                                        outcome = confirmed.message
                                     }
                                 }
                             }
@@ -264,6 +269,7 @@ fun TalkScreen(app: IraApp, talkRequests: Int, onSkills: () -> Unit, onSettings:
                         if (confirmed.done) {
                             // Never a stale PIN card: it goes, and what happened shows instead.
                             if (session?.ui?.value?.action?.id == card.id) session?.dismissAction()
+                            if (Approvals.covered(card.tool)) app.refreshApprovals()
                             val title = if (confirmed.status == "executed") "Done: ${confirmed.message}" else confirmed.message
                             result = title to confirmed.detail
                             session?.note(listOfNotNull(title, confirmed.detail).joinToString(" "))

@@ -48,6 +48,18 @@ object Net {
         return rest.newCall(request).execute().use { HttpReply(it.code, it.body.string()) }
     }
 
+    /** POST JSON with the device token. */
+    @Throws(IOException::class)
+    fun postJson(url: String, token: String, json: String): HttpReply =
+        post.post(url, json, mapOf("Content-Type" to "application/json", "Authorization" to "Bearer $token"))
+
+    /** DELETE with the device token; the HTTP status. */
+    @Throws(IOException::class)
+    fun delete(url: String, token: String): Int {
+        val request = Request.Builder().url(url).header("Authorization", "Bearer $token").header("User-Agent", userAgent).delete().build()
+        return rest.newCall(request).execute().use { it.code }
+    }
+
     /** POST JSON with the device token; the response body as bytes (MP3 from /v1/voice/speak). */
     @Throws(IOException::class)
     fun postForBytes(url: String, token: String, json: String): Pair<Int, ByteArray> {

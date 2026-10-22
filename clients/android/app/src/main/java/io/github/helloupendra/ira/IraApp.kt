@@ -11,6 +11,7 @@ import androidx.core.app.NotificationCompat
 import androidx.lifecycle.DefaultLifecycleObserver
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.ProcessLifecycleOwner
+import io.github.helloupendra.ira.core.Actions
 import io.github.helloupendra.ira.core.Approvals
 import io.github.helloupendra.ira.core.DeviceFrame
 import io.github.helloupendra.ira.core.Paired
@@ -59,19 +60,78 @@ class IraApp : Application() {
     private val skills = MutableStateFlow<Set<String>>(emptySet())
     val skillsOn: StateFlow<Set<String>> = skills
 
-    /** The person's Ira, for approvals: the stand-in until the server publishes its API. */
-    val approvals: Approvals.Server = Approvals.NotYet
+    /** The person's approval windows, as the server last said (`GET /v1/me/approvals`). */
+    private val approvalState = MutableStateFlow<Approvals.Status?>(null)
+    val approvals: StateFlow<Approvals.Status?> = approvalState
 
-    /** When the open trust window closes (epoch seconds), or 0. */
-    private val trust = MutableStateFlow(0L)
-    val trustUntil: StateFlow<Long> = trust
-
-    fun trustOpened(minutes: Int) {
-        trust.value = System.currentTimeMillis() / 1000 + minutes * 60L
+    /** Ask the server which approval windows are open. */
+    fun refreshApprovals() {
+        if (!Approvals.WINDOW) return
+        val server = settings.server ?: return
+        val token = secrets.token() ?: return
+        thread(name = "ira-approvals") {
+            val status =
+                try {
+                    Net.get(server.trimEnd('/') + Approvals.PATH, token).takeIf { it.status == 200 }?.let { Approvals.Status.parse(it.body) }
+                } catch (_: IOException) {
+                    null
+                }
+            main.post { if (status != null) approvalState.value = status }
+        }
     }
 
-    fun trustClosed() {
-        trust.value = 0
+    /** Stop one window ([id]) or all of them; [done] gets null, or what went wrong. */
+    fun stopApproval(id: String?, done: (String?) -> Unit = {}) {
+        val server = settings.server ?: return done("This phone is not paired.")
+        val token = secrets.token() ?: return done("This phone is not paired.")
+        val path = if (id == null) Approvals.PATH else Approvals.windowPath(id) ?: return done("That window cannot be stopped from here.")
+        thread(name = "ira-approvals") {
+            val status =
+                try {
+                    Net.delete(server.trimEnd('/') + path, token)
+                } catch (_: IOException) {
+                    -1
+                }
+            main.post {
+                done(
+                    when (status) {
+                        in 200..299, 404 -> null
+                        -1 -> "Could not reach your Ira. Check that the phone is online, then try again."
+                        else -> "Your Ira answered HTTP $status."
+                    },
+                )
+                refreshApprovals()
+            }
+        }
+    }
+
+    /** Fingerprint approval (behind Approvals.FINGERPRINT): register this phone's key with the PIN. */
+    fun enrollKey(publicKey: String, pin: String): String? {
+        val server = settings.server ?: return "This phone is not paired."
+        val token = secrets.token() ?: return "This phone is not paired."
+        return try {
+            val reply = Net.postJson(server.trimEnd('/') + Approvals.KEYS_PATH, token, Approvals.enrollBody(publicKey, pin))
+            when (reply.status) {
+                in 200..299 -> null
+                403 -> "That PIN is not right."
+                423 -> "Actions are locked after wrong PINs. Try again in 15 minutes."
+                404 -> "Your Ira does not offer fingerprint approval yet."
+                else -> "Your Ira answered HTTP ${reply.status}."
+            }
+        } catch (_: IOException) {
+            "Could not reach your Ira. Check that the phone is online, then try again."
+        }
+    }
+
+    /** Fingerprint approval: confirm an action with a signature instead of the PIN. */
+    fun confirmWithKey(actionId: String, signature: String): Actions.Outcome {
+        val server = settings.server.orEmpty()
+        val token = secrets.token().orEmpty()
+        return try {
+            Actions.parse(Net.postJson("${server.trimEnd('/')}/v1/actions/$actionId/confirm", token, Approvals.confirmBody(settings.deviceId, signature)))
+        } catch (_: IOException) {
+            Actions.Outcome("offline", "Could not reach your Ira. Check that the phone is online, then try again.", false)
+        }
     }
 
     /** What was said, kept across a live call and the phone's own speech. */
