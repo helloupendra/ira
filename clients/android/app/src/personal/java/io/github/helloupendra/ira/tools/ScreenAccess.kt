@@ -25,7 +25,7 @@ import kotlinx.serialization.json.JsonElement
 object ScreenAccess {
     const val AVAILABLE = true
 
-    fun serviceName(context: Context): String = ComponentName(context, IraAccessibilityService::class.java).flattenToString()
+    fun serviceName(context: Context): String? = ComponentName(context, IraAccessibilityService::class.java).flattenToString()
 
     fun openSettings(context: Context) {
         context.startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))

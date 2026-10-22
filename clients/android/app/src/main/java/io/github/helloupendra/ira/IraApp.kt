@@ -13,8 +13,8 @@ import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.ProcessLifecycleOwner
 import io.github.helloupendra.ira.core.DeviceFrame
 import io.github.helloupendra.ira.core.Paired
-import io.github.helloupendra.ira.data.SecretStore
-import io.github.helloupendra.ira.data.Settings
+import io.github.helloupendra.ira.store.SecretStore
+import io.github.helloupendra.ira.store.Settings
 import io.github.helloupendra.ira.device.DeviceLink
 import io.github.helloupendra.ira.device.LinkState
 import io.github.helloupendra.ira.service.ConversationService
