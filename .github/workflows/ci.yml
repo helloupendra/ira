@@ -83,24 +83,29 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          # macOS's own Python (Command Line Tools) is 3.9; the companion must run on it.
-          - { os: ubuntu-latest, python: "3.9" }
           - { os: ubuntu-latest, python: "3.12" }
-          # The Keychain and the installer's dry run need macOS.
-          - { os: macos-latest, python: "3.12" }
+          # macOS's own Python (the Command Line Tools', 3.9): what install.sh finds on a
+          # Mac without Homebrew. The Keychain and the installer's dry run need macOS too.
+          - { os: macos-latest, python: system }
     runs-on: ${{ matrix.os }}
     defaults:
       run:
         working-directory: clients/mac
     steps:
       - uses: actions/checkout@v6
-      - uses: actions/setup-python@v6
+      - if: matrix.python != 'system'
+        uses: actions/setup-python@v6
         with:
           python-version: ${{ matrix.python }}
-      - run: pip install "websockets>=13" "pytest>=8"
+      - name: A virtualenv with the companion's test needs
+        run: |
+          if [ "${{ matrix.python }}" = system ]; then python=/usr/bin/python3; else python=python; fi
+          "$python" --version
+          "$python" -m venv ../../.companion-venv
+          ../../.companion-venv/bin/pip install "websockets>=13" "pytest>=8"
       - if: runner.os == 'macOS'
         run: brew install shellcheck
-      - run: python -m pytest
+      - run: ../../.companion-venv/bin/python -m pytest
 
   secrets:
     needs: test
