@@ -1,10 +1,5 @@
 package io.github.helloupendra.ira.ui
 
-import android.content.Context
-import android.content.Intent
-import android.net.Uri
-import android.os.Build
-import android.provider.Settings
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
@@ -36,14 +31,10 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.LifecycleResumeEffect
 import io.github.helloupendra.ira.IraApp
 import io.github.helloupendra.ira.core.Flavor
-import io.github.helloupendra.ira.core.Permissions
 import io.github.helloupendra.ira.core.Skills
 import io.github.helloupendra.ira.core.SpecialAccess
 import io.github.helloupendra.ira.core.ToolGate
 import io.github.helloupendra.ira.tools.ScreenAccess
-
-/** The SMS and call-log permissions: on Google Play, asked for only once Ira is the assistant. */
-private val RESTRICTED = setOf(Permissions.READ_CALL_LOG, Permissions.READ_SMS, Permissions.SEND_SMS)
 
 @Composable
 fun SkillsScreen(app: IraApp, onBack: () -> Unit) {
@@ -51,24 +42,17 @@ fun SkillsScreen(app: IraApp, onBack: () -> Unit) {
     val skillsOn by app.skillsOn.collectAsState()
     var refresh by remember { mutableIntStateOf(0) }
     var asking by remember { mutableStateOf<String?>(null) }
+    var explaining by remember { mutableStateOf<SpecialAccess?>(null) }
     LifecycleResumeEffect(Unit) {
         refresh++
         onPauseOrDispose { }
     }
-    val request =
-        rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { refresh++ }
+    val request = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { refresh++ }
 
     // Read fresh on each refresh (after a permission prompt, or back from Android's settings).
     val state = remember(refresh) { app.tools.gateState() }
-    val flavor = app.tools.flavor
     val tools = app.tools.tools
     val server = app.settings.server.orEmpty().removePrefix("https://").removePrefix("http://")
-
-    fun wanted(skill: String): List<String> {
-        val all = tools.filter { it.skill == skill }.flatMap { it.permissions + it.optionalPermissions }.distinct()
-        return all.filter { flavor == Flavor.PERSONAL || it !in RESTRICTED || state.assistantRole }
-            .filter { it !in state.granted }
-    }
 
     Column(Modifier.fillMaxSize()) {
         TopRow("Skills", onBack)
@@ -83,27 +67,25 @@ fun SkillsScreen(app: IraApp, onBack: () -> Unit) {
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
             AssistantCard(state.assistantRole) { openAssistantSettings(context) }
-            val skills = tools.map { it.skill }.distinct()
-            for (skill in skills) {
+            for (skill in tools.map { it.skill }.distinct()) {
                 val specs = tools.filter { it.skill == skill }
-                val missing = wanted(skill)
-                val special = specs.flatMap { it.special }.distinct().filter { it !in state.special }
-                val needsRole = flavor == Flavor.PLAY && specs.any { it.restricted } && !state.assistantRole
+                val needsRole = app.tools.flavor == Flavor.PLAY && specs.any { it.restricted } && !state.assistantRole
                 SkillCard(
                     title = Disclosures.skillTitle(skill),
                     about = Skills.about[skill].orEmpty(),
                     onServer = skill in skillsOn,
                     needsRole = needsRole,
-                    missing = missing.map { ToolGate.label(it) },
-                    special = special,
+                    missing = missingPermissions(app, state, skill).map { ToolGate.label(it) },
+                    special = missingSpecial(app, state, skill),
                     onAllow = { asking = skill },
-                    onSpecial = { access -> openSpecial(context, access) },
+                    onOpenSettings = { openAppSettings(context) },
+                    onSpecial = { access -> if (access == SpecialAccess.ACCESSIBILITY) asking = skill else explaining = access },
                     extra = {
                         if (skill == Skills.REMINDERS && SpecialAccess.EXACT_ALARMS !in state.special) {
-                            TextButton(onClick = { openSpecial(context, SpecialAccess.EXACT_ALARMS) }) { Text("Allow reminders on time") }
+                            TextButton(onClick = { explaining = SpecialAccess.EXACT_ALARMS }) { Text("Allow reminders on time") }
                         }
                         if (skill == Skills.SETTINGS && SpecialAccess.DO_NOT_DISTURB !in state.special) {
-                            TextButton(onClick = { openSpecial(context, SpecialAccess.DO_NOT_DISTURB) }) { Text("Allow Do Not Disturb") }
+                            TextButton(onClick = { explaining = SpecialAccess.DO_NOT_DISTURB }) { Text("Allow Do Not Disturb") }
                         }
                     },
                 )
@@ -119,7 +101,7 @@ fun SkillsScreen(app: IraApp, onBack: () -> Unit) {
                 app.settings.screenWarningAccepted = true
                 ScreenAccess.openSettings(context)
             } else {
-                val missing = wanted(skill)
+                val missing = missingPermissions(app, state, skill)
                 if (missing.isNotEmpty()) request.launch(missing.toTypedArray())
             }
         }
@@ -135,6 +117,21 @@ fun SkillsScreen(app: IraApp, onBack: () -> Unit) {
             )
         }
     }
+
+    explaining?.let { access ->
+        AlertDialog(
+            onDismissRequest = { explaining = null },
+            title = { Text(ToolGate.specialLabel(access)) },
+            text = { Text(specialWhy(access)) },
+            confirmButton = {
+                TextButton(onClick = {
+                    explaining = null
+                    openSpecial(context, access)
+                }) { Text("Open settings") }
+            },
+            dismissButton = { TextButton(onClick = { explaining = null }) { Text("Not now") } },
+        )
+    }
 }
 
 @Composable
@@ -147,11 +144,12 @@ private fun AssistantCard(held: Boolean, onOpen: () -> Unit) {
                     "Ira is this phone's digital assistant: a long press of the power button opens Ira."
                 } else {
                     "Make Ira the phone's digital assistant so a long press of the power button opens Ira. " +
-                        "Ira can then also start calls and apps for you while it is in the background."
+                        "Ira can then also start calls and apps for you while it is in the background. " +
+                        "In the settings that open, choose Digital assistant app, then Ira."
                 },
                 style = MaterialTheme.typography.bodyMedium,
             )
-            if (!held) OutlinedButton(onClick = onOpen) { Text("Open the setting") }
+            if (!held) OutlinedButton(onClick = onOpen) { Text("Open settings") }
         }
     }
 }
@@ -165,6 +163,7 @@ private fun SkillCard(
     missing: List<String>,
     special: List<SpecialAccess>,
     onAllow: () -> Unit,
+    onOpenSettings: () -> Unit,
     onSpecial: (SpecialAccess) -> Unit,
     extra: @Composable () -> Unit,
 ) {
@@ -179,58 +178,41 @@ private fun SkillCard(
                 )
             }
             Text(about, style = MaterialTheme.typography.bodyMedium)
+            if (!onServer) {
+                Text(
+                    "To use it, switch it on for this phone on your Ira's Your devices page (it needs your PIN).",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
             if (needsRole) {
                 Text(
-                    "Google Play lets an app read calls and SMS only while it is the digital assistant: switch that on above first.",
+                    "Google Play lets an app read calls and SMS only while it is the digital assistant: make Ira the assistant above first.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
             if (missing.isNotEmpty()) {
-                Text("The phone has not allowed: ${missing.joinToString(", ")}.", style = MaterialTheme.typography.bodySmall)
-                OutlinedButton(onClick = onAllow) { Text("Allow") }
+                Text("Android has not allowed: ${missing.joinToString(", ")}.", style = MaterialTheme.typography.bodySmall)
+                Row {
+                    OutlinedButton(onClick = onAllow) { Text("Allow") }
+                    TextButton(onClick = onOpenSettings) { Text("Open settings") }
+                }
+                Text(
+                    "If Allow does nothing, Android remembers an earlier No: use Open settings, then Permissions.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
             }
             for (access in special) {
-                if (access == SpecialAccess.ACCESSIBILITY) {
-                    OutlinedButton(onClick = onAllow) { Text("Switch on (read the warning first)") }
-                } else {
-                    OutlinedButton(onClick = { onSpecial(access) }) { Text("Switch on ${ToolGate.specialLabel(access)}") }
+                OutlinedButton(onClick = { onSpecial(access) }) {
+                    Text(if (access == SpecialAccess.ACCESSIBILITY) "Switch on (read the warning first)" else "Switch on ${ToolGate.specialLabel(access)}")
                 }
             }
             if (missing.isEmpty() && special.isEmpty() && !needsRole) {
-                Text("The phone allows it.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)
+                Text("Android allows it.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)
             }
             extra()
         }
-    }
-}
-
-private fun openAssistantSettings(context: Context) {
-    val tries = listOf(Intent(Settings.ACTION_VOICE_INPUT_SETTINGS), Intent(Settings.ACTION_MANAGE_DEFAULT_APPS_SETTINGS), Intent(Settings.ACTION_SETTINGS))
-    for (intent in tries) {
-        try {
-            context.startActivity(intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
-            return
-        } catch (_: Exception) {
-        }
-    }
-}
-
-private fun openSpecial(context: Context, access: SpecialAccess) {
-    val intent =
-        when (access) {
-            SpecialAccess.NOTIFICATION_LISTENER -> Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS)
-            SpecialAccess.ACCESSIBILITY -> Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)
-            SpecialAccess.EXACT_ALARMS ->
-                if (Build.VERSION.SDK_INT >= 31) {
-                    Intent(Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM, Uri.parse("package:${context.packageName}"))
-                } else {
-                    return
-                }
-            SpecialAccess.DO_NOT_DISTURB -> Intent(Settings.ACTION_NOTIFICATION_POLICY_ACCESS_SETTINGS)
-        }
-    try {
-        context.startActivity(intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
-    } catch (_: Exception) {
     }
 }

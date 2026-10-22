@@ -45,6 +45,7 @@ import io.github.helloupendra.ira.BuildConfig
 import io.github.helloupendra.ira.IraApp
 import io.github.helloupendra.ira.core.PairError
 import io.github.helloupendra.ira.core.Pairing
+import io.github.helloupendra.ira.core.Plain
 import io.github.helloupendra.ira.device.LinkState
 import io.github.helloupendra.ira.net.Net
 import kotlinx.coroutines.Dispatchers
@@ -171,9 +172,9 @@ fun PairScreen(app: IraApp, onPaired: () -> Unit) {
                         app.savePairing(paired)
                         onPaired()
                     } catch (exc: PairError) {
-                        error = exc.message
+                        error = Plain.sentence(exc.message)
                     } catch (_: Exception) {
-                        error = "That did not work. Check the address and try again."
+                        error = "That did not work. Check the address and the code, then try again."
                     } finally {
                         busy = false
                     }
@@ -208,6 +209,8 @@ fun SettingsScreen(app: IraApp, onBack: () -> Unit, onUnpaired: () -> Unit) {
             Fact("Connection for the phone's tools", linkText(link))
             Fact("App", "${BuildConfig.VERSION_NAME} (${if (app.tools.flavor.name == "PLAY") "Google Play build" else "personal build"})")
             HorizontalDivider()
+            TextButton(onClick = { app.settings.checklistHidden = false; onBack() }) { Text("Show the setup checklist") }
+            TextButton(onClick = { openAppSettings(context) }) { Text("Android's settings for Ira (permissions, notifications)") }
             TextButton(onClick = { open(context, PRIVACY_URL) }) { Text("Privacy policy") }
             TextButton(onClick = { open(context, "https://github.com/helloupendra/ira") }) { Text("Source code (MIT licence)") }
             HorizontalDivider()

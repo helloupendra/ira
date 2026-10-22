@@ -37,6 +37,11 @@ class Settings(context: Context) {
         get() = prefs.getBoolean("screen_warning", false)
         set(value) = prefs.edit().putBoolean("screen_warning", value).apply()
 
+    /** The person hid the first-run checklist (Settings can show it again). */
+    var checklistHidden: Boolean
+        get() = prefs.getBoolean("checklist_hidden", false)
+        set(value) = prefs.edit().putBoolean("checklist_hidden", value).apply()
+
     /** The live conversation to continue (an id the server gave, not its content). */
     var conversationId: String?
         get() = prefs.getString("conversation", null)

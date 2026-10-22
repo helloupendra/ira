@@ -90,7 +90,7 @@ class LiveSession(
         listenWanted = true
         if (ready && !listening) {
             listening = mic.start()
-            if (!listening) state.update { it.copy(notice = "The microphone is not available.") }
+            if (!listening) state.update { it.copy(notice = MIC_BUSY) }
         }
         state.update { it.copy(listening = listening) }
     }
@@ -116,6 +116,11 @@ class LiveSession(
         state.update { it.copy(action = null) }
     }
 
+    /** A line from the app itself in the transcript (an action confirmed with the PIN). */
+    fun note(text: String) {
+        state.update { it.copy(lines = (it.lines + CallUi.Line(0, true, text)).takeLast(MAX_LINES)) }
+    }
+
     /** Hang up on purpose. */
     fun end(reason: String? = null) {
         if (ended) return
@@ -138,7 +143,7 @@ class LiveSession(
     private fun connect() {
         val bearer = token()
         if (bearer == null) {
-            end("This phone is not paired with Ira. Pair it again.")
+            end("This phone is not paired with an Ira. Pair it from Settings.")
             return
         }
         val mine = ++generation
@@ -191,12 +196,18 @@ class LiveSession(
         socket = null
         state.update { it.copy(listening = false) }
         if (Backoff.isRefusal(code)) {
-            end("This phone is no longer paired with Ira. Pair it again.")
+            end("Your Ira no longer accepts this phone: it was removed on Your devices. Pair it again from Settings.")
             return
         }
         val wait = backoff.next(nowMs() / 1000)
         IraLog.info("live: reconnecting in ${wait.toInt()} s")
-        state.update { it.copy(status = CallStatus.Reconnecting) }
+        val host = server.removePrefix("https://").removePrefix("http://")
+        state.update {
+            it.copy(
+                status = CallStatus.Reconnecting,
+                notice = "Can't reach your Ira at $host. Trying again in ${maxOf(1, wait.toInt())} s; check that the phone is online and your Ira is running.",
+            )
+        }
         main.postDelayed({ if (!ended) connect() }, (wait * 1000).toLong())
     }
 
@@ -211,7 +222,7 @@ class LiveSession(
                 state.update { it.copy(status = CallStatus.Listening, assistant = message.assistant, notice = null) }
                 if (listenWanted) {
                     listening = mic.start()
-                    if (!listening) state.update { it.copy(notice = "The microphone is not available.") }
+                    if (!listening) state.update { it.copy(notice = MIC_BUSY) }
                 }
                 state.update { it.copy(listening = listening) }
                 quietTimer()
@@ -324,6 +335,8 @@ class LiveSession(
     }
 
     private companion object {
+        const val MIC_BUSY =
+            "The microphone is busy or not allowed. Close other apps that use it, or allow the microphone for Ira in Android's settings."
         const val MAX_LINES = 40
         const val QUIET_MS = 120_000L
     }
