@@ -88,14 +88,14 @@ final class IraUITests: XCTestCase {
         XCTAssertTrue(field.waitForExistence(timeout: 10))
         field.tap()
         field.typeText("hello Ira")
-        app.buttons["send"].tap()
+        app.buttons["send-button"].tap()
         XCTAssertTrue(app.staticTexts["answer"].waitForExistence(timeout: 20))
 
         // A tool on this iPhone: Ira calls contacts_lookup over the device WebSocket,
         // and the simulator's sample contacts answer.
         field.tap()
         field.typeText("contacts lookup query=Kate")
-        app.buttons["send"].tap()
+        app.buttons["send-button"].tap()
         app.navigationBars.firstMatch.staticTexts.firstMatch.tap()  // lets the monitor answer iOS, if it asks
         let kate = app.staticTexts.containing(NSPredicate(format: "label CONTAINS %@", "Kate Bell")).firstMatch
         XCTAssertTrue(kate.waitForExistence(timeout: 30), "Ira did not read the iPhone's contacts")
