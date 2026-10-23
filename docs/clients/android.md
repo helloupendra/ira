@@ -442,10 +442,12 @@ scripts/build-release.sh      # build/ira-play-release.aab, build/ira-play-lite.
 to Gradle in the environment (`IRA_UPLOAD_*`); without those variables a
 release build is unsigned. It checks that Play Lite's bundle asks for none
 of the SMS and call-log permissions and the full one asks for all three
-(`scripts/check-permissions.sh`, which CI also runs on the debug APKs), and
-bundles the symbols of the app's native code (Compose's graphics library)
-for Play's crash reports; that needs the Android NDK
-(`sdkmanager "ndk;28.2.13676358"`). Back up `~/.ira-android/` and the Keychain item
+(`scripts/check-permissions.sh`, which CI also runs on the debug APKs). The
+release build asks for the symbol tables of any native code
+(`debugSymbolLevel = "SYMBOL_TABLE"`, which needs the Android NDK:
+`sdkmanager "ndk;28.2.13676358"`). Today the only native code is Compose's
+graphics library, which ships already stripped, so there are no symbols to
+add and Play's "no debug symbols" notice is advice, not a blocker. Back up `~/.ira-android/` and the Keychain item
 `ira-android-upload`. A lost upload key can be replaced: make a new one,
 export its certificate (`keytool -export -rfc -keystore upload-keystore.jks
 -alias upload -file upload_certificate.pem`) and use **Request upload key
