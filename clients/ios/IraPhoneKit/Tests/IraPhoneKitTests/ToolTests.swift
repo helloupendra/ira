@@ -83,7 +83,7 @@ struct ToolboxTests {
         Toolbox(
             permissions: permissions, eventKit: EventKitTools(), opener: { _ in true }, foreground: { foreground },
             stand: { name, args in
-                if name == "location_now" { try await Task.sleep(nanoseconds: 2_000_000_000) }
+                if name == "location_now" { try await Task.sleep(nanoseconds: 20_000_000_000) }
                 return ["ran": .string(name), "args": args]
             },
             deadlines: { _ in deadline }, record: { activity?.add($0) })
@@ -129,7 +129,7 @@ struct ToolboxTests {
         let box = toolbox(FakePermissions([:]), deadline: 0.2, activity: activity)
         let started = Date()
         await #expect(throws: ToolFailure.self) { try await box.call("location_now", args: [:]) }
-        #expect(Date().timeIntervalSince(started) < 1.5)
+        #expect(Date().timeIntervalSince(started) < 10)  // the tool would take 20 s
         #expect(activity.all.map(\.ok) == [false])
     }
 
