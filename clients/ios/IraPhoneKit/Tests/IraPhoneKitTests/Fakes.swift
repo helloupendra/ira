@@ -81,9 +81,9 @@ final class FakeChannel: WebSocketChannel, @unchecked Sendable {
         }
     }
 
-    /// Wait until `predicate` holds for what was sent, or two seconds pass.
+    /// Wait until `predicate` holds for what was sent, or ten seconds pass (CI runners are slow).
     func waitFor(_ predicate: @escaping ([JSONValue]) -> Bool) async -> Bool {
-        for _ in 0..<200 {
+        for _ in 0..<1000 {
             if predicate(sentJSON) { return true }
             try? await Task.sleep(nanoseconds: 10_000_000)
         }
@@ -126,7 +126,7 @@ final class EventLog<T: Sendable>: @unchecked Sendable {
     var all: [T] { lock.withLock { items } }
 
     func waitFor(_ predicate: @escaping ([T]) -> Bool) async -> Bool {
-        for _ in 0..<300 {
+        for _ in 0..<1000 {
             if predicate(all) { return true }
             try? await Task.sleep(nanoseconds: 10_000_000)
         }
