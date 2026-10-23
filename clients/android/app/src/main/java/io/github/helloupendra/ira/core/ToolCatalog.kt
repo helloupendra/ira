@@ -5,13 +5,27 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
 
-/** Which build this is: what Google Play allows, or the sideloaded build with everything. */
+/**
+ * Which build this is: what Google Play allows a default assistant (with the SMS and
+ * call-log declaration), the same without SMS and the call log (no declaration to wait for),
+ * or the sideloaded build with everything.
+ */
 enum class Flavor {
     PLAY,
+    PLAY_LITE,
     PERSONAL;
 
+    /** Built for Google Play, under its rules. */
+    val play: Boolean
+        get() = this != PERSONAL
+
     companion object {
-        fun of(name: String): Flavor = if (name.equals("personal", ignoreCase = true)) PERSONAL else PLAY
+        fun of(name: String): Flavor =
+            when (name.lowercase()) {
+                "personal" -> PERSONAL
+                "playlite" -> PLAY_LITE
+                else -> PLAY
+            }
     }
 }
 
@@ -44,7 +58,8 @@ data class ToolSpec(
      * is the default digital assistant, and this app also keeps them to a call on the phone.
      */
     val restricted: Boolean = false,
-    val flavors: Set<Flavor> = setOf(Flavor.PLAY, Flavor.PERSONAL),
+    /** The builds that carry it. The SMS and call-log tools are never in Play Lite. */
+    val flavors: Set<Flavor> = if (restricted) setOf(Flavor.PLAY, Flavor.PERSONAL) else Flavor.entries.toSet(),
 ) {
     fun toJson(): JsonObject =
         buildJsonObject {

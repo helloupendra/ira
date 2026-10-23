@@ -31,7 +31,7 @@ fun skillsWaitingOnPhone(app: IraApp, state: ToolGate.State, on: Set<String>): S
     val offered = app.tools.tools.map { it.skill }.toSet()
     return on.filter { it in offered }.filter { skill ->
         val required = app.tools.tools.filter { it.skill == skill }.flatMap { it.permissions }.toSet()
-        val roleNeeded = app.tools.flavor == Flavor.PLAY && app.tools.tools.any { it.skill == skill && it.restricted } && !state.assistantRole
+        val roleNeeded = app.tools.flavor.play && app.tools.tools.any { it.skill == skill && it.restricted } && !state.assistantRole
         roleNeeded || required.any { it !in state.granted } || missingSpecial(app, state, skill).isNotEmpty()
     }.toSet()
 }

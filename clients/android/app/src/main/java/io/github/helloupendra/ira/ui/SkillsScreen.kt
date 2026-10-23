@@ -67,9 +67,17 @@ fun SkillsScreen(app: IraApp, onBack: () -> Unit) {
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
             AssistantCard(state.assistantRole) { openAssistantSettings(context) }
+            if (app.tools.flavor == Flavor.PLAY_LITE) {
+                Text(
+                    "This version of Ira can't read your call history or SMS. It can still place calls, look up " +
+                        "contacts, and read and answer notifications.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
             for (skill in tools.map { it.skill }.distinct()) {
                 val specs = tools.filter { it.skill == skill }
-                val needsRole = app.tools.flavor == Flavor.PLAY && specs.any { it.restricted } && !state.assistantRole
+                val needsRole = app.tools.flavor.play && specs.any { it.restricted } && !state.assistantRole
                 SkillCard(
                     title = Disclosures.skillTitle(skill),
                     about = Skills.about[skill].orEmpty(),

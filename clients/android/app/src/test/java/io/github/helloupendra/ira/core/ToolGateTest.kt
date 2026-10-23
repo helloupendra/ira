@@ -22,6 +22,15 @@ class ToolGateTest {
     }
 
     @Test
+    fun `Play Lite says plainly that it cannot read call history or SMS`() {
+        val calls = tool(Flavor.PLAY, "calls_recent")
+        val message = ToolGate.check(calls, state(Flavor.PLAY_LITE))!!
+        assertTrue(message.startsWith("this version of Ira can't read your call history or SMS"))
+        assertTrue(message.contains("place calls"))
+        assertEquals(null, ToolGate.check(tool(Flavor.PLAY_LITE, "call_place"), state(Flavor.PLAY_LITE)))
+    }
+
+    @Test
     fun `the personal build needs neither`() {
         assertNull(ToolGate.check(tool(Flavor.PERSONAL, "sms_read"), state(Flavor.PERSONAL, role = false, call = false)))
     }

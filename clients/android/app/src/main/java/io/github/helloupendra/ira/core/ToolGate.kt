@@ -16,8 +16,10 @@ object ToolGate {
     )
 
     fun check(spec: ToolSpec, state: State): String? {
-        if (state.flavor !in spec.flavors) return "this build of the app does not have ${spec.name}"
-        if (spec.restricted && state.flavor == Flavor.PLAY) {
+        if (state.flavor !in spec.flavors) {
+            return if (spec.restricted) LITE else "this build of the app does not have ${spec.name}"
+        }
+        if (spec.restricted && state.flavor.play) {
             // Google Play allows SMS and call-log permissions only to the default assistant,
             // and this build uses them only while the person talks to Ira on the phone.
             if (!state.assistantRole) {
@@ -36,6 +38,9 @@ object ToolGate {
         }
         return null
     }
+
+    /** What Play Lite says when asked for the call log or SMS. */
+    const val LITE = "this version of Ira can't read your call history or SMS (Google Play allows that only after a review); it can still place calls, look up contacts, and read and answer notifications"
 
     fun label(permission: String): String =
         when (permission) {

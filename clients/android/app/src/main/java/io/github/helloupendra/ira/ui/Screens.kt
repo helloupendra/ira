@@ -47,6 +47,7 @@ import androidx.compose.ui.unit.dp
 import io.github.helloupendra.ira.BuildConfig
 import io.github.helloupendra.ira.IraApp
 import io.github.helloupendra.ira.core.Approvals
+import io.github.helloupendra.ira.core.Flavor
 import io.github.helloupendra.ira.core.PairError
 import io.github.helloupendra.ira.core.Pairing
 import io.github.helloupendra.ira.core.Plain
@@ -216,7 +217,15 @@ fun SettingsScreen(app: IraApp, onBack: () -> Unit, onApprovals: () -> Unit, onU
             switched?.let { Text(it, color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.bodyMedium) }
             Fact("This phone", app.settings.label)
             Fact("Connection for the phone's tools", linkText(link))
-            Fact("App", "${BuildConfig.VERSION_NAME} (${if (app.tools.flavor.name == "PLAY") "Google Play build" else "personal build"})")
+            Fact(
+                "App",
+                BuildConfig.VERSION_NAME + " (" +
+                    when (app.tools.flavor) {
+                        Flavor.PLAY -> "Google Play build"
+                        Flavor.PLAY_LITE -> "Google Play build, without call history and SMS"
+                        Flavor.PERSONAL -> "personal build"
+                    } + ")",
+            )
             HorizontalDivider()
             if (Approvals.WINDOW) TextButton(onClick = onApprovals) { Text("Approvals: fewer PINs for one task") }
             TextButton(onClick = { app.settings.checklistHidden = false; onBack() }) { Text("Show the setup checklist") }

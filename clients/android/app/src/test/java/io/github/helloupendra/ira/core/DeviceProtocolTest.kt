@@ -76,6 +76,28 @@ class ToolCatalogTest {
     }
 
     @Test
+    fun `Play Lite offers no SMS or call-log tool, and keeps the rest`() {
+        val lite = ToolCatalog.forFlavor(Flavor.PLAY_LITE).associateBy { it.name }
+        for (hidden in listOf("calls_recent", "sms_read", "sms_send")) assertFalse(hidden, hidden in lite)
+        for (kept in listOf("call_place", "contacts_lookup", "notifications_read", "notification_reply", "app_open", "url_open", "media_play", "calendar_read")) {
+            assertTrue(kept, kept in lite)
+        }
+        assertFalse(lite.values.any { it.restricted })
+        assertFalse(lite.values.any { SpecialAccess.ACCESSIBILITY in it.special })
+        assertFalse(lite.values.any { tool -> tool.permissions.any { it in setOf(Permissions.READ_CALL_LOG, Permissions.READ_SMS, Permissions.SEND_SMS) } })
+        assertEquals(play.size - 3, lite.size)
+    }
+
+    @Test
+    fun `the build is told by its flavour name`() {
+        assertEquals(Flavor.PLAY, Flavor.of("play"))
+        assertEquals(Flavor.PLAY_LITE, Flavor.of("playLite"))
+        assertEquals(Flavor.PERSONAL, Flavor.of("personal"))
+        assertTrue(Flavor.PLAY_LITE.play)
+        assertFalse(Flavor.PERSONAL.play)
+    }
+
+    @Test
     fun `the Play build has no Accessibility tool`() {
         assertFalse(play.values.any { SpecialAccess.ACCESSIBILITY in it.special })
         assertFalse("screen_read" in play)
