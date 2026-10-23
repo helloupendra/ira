@@ -89,7 +89,7 @@ struct ConversationView: View {
                     Image(systemName: "arrow.up.circle.fill").font(.title)
                 }
                 .accessibilityLabel("Send")
-                .accessibilityIdentifier("send")
+                .accessibilityIdentifier("send-button")
             }
             Button {
                 typing = false
