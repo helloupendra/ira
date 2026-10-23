@@ -794,3 +794,28 @@ def test_the_websocket_works_behind_a_tunnel(app_runtime):
         assert ws.receive_json()["type"] == "welcome"
     # Cloudflare closes a WebSocket idle for 100 seconds: pings keep it well under.
     assert PING_SECONDS < 100 / 2 and SILENCE_SECONDS < 100
+
+
+def test_skills_change_together_with_one_pin(registry):
+    """The device card saves every tick at once: one PIN to switch any on, none to switch off,
+    and a wrong PIN changes nothing."""
+    runtime = make_runtime(registry=registry)
+    user = person(runtime.store)
+    runtime.guard.pin_iterations = FAST_PIN_ITERATIONS
+    runtime.guard.set_pin("4321", user_id=user.id)
+    devices = runtime.hub.devices
+    code, _ = devices.start_pairing(user.id, "android", "pixel7", ["calls"])
+    _, phone = devices.redeem(code)
+    with TestClient(create_app(runtime, start_channels=False)) as client:
+        me = signed_in(client, "owner@example.com")
+        path = f"/v1/me/devices/{phone.id}"
+        every = ["calls", "contacts", "messages", "notifications"]
+        wrong = client.patch(path, json={"skills": every, "pin": "0000"}, headers=me)
+        assert wrong.status_code == 403
+        assert devices.get(phone.id).skills == ["calls"]  # nothing changed
+        assert client.patch(path, json={"skills": every}, headers=me).status_code == 403
+        done = client.patch(path, json={"skills": every, "pin": "4321"}, headers=me).json()
+        assert [s["name"] for s in done["skills"] if s["on"]] == every
+        fewer = client.patch(path, json={"skills": ["contacts"]}, headers=me)  # off: no PIN
+        assert fewer.status_code == 200
+        assert devices.get(phone.id).skills == ["contacts"]

@@ -182,43 +182,7 @@ const IraPersonal = (() => {
       el("p", { className: "card-title" }, device.label, " ", el("span", { className: device.connected ? "chip ok" : "chip", text: status })),
       el("p", { className: "muted small", text: `${device.kind === "mac" ? "Mac" : "Android phone"}${device.version ? ` · version ${device.version}` : ""}` }),
     );
-    for (const skill of device.skills) {
-      const pin = pinField("Your PIN, to switch it on");
-      pin.hidden = true;
-      const toggle = el("input", { type: "checkbox", checked: skill.on });
-      const error = el("p", { className: "error", role: "alert" });
-      const confirm = el("button", { type: "submit", className: "btn btn-primary", text: "Switch on", hidden: true });
-      const form = el(
-        "form",
-        { className: "skill" },
-        el("label", { className: "switch" }, toggle, el("span", { text: skill.description })),
-        pin,
-        confirm,
-        error,
-      );
-      const save = async (pinValue) => {
-        const wanted = device.skills.filter((s) => (s.name === skill.name ? toggle.checked : s.on)).map((s) => s.name);
-        await call(`/v1/me/devices/${device.id}`, { method: "PATCH", json: { skills: wanted, pin: pinValue || undefined } });
-        await renderDevices(body);
-      };
-      toggle.addEventListener("change", () => {
-        error.textContent = "";
-        if (toggle.checked && !skill.on) {
-          pin.hidden = false; // a new grant: Tier 3, your PIN
-          confirm.hidden = false;
-          $("input", pin).focus();
-        } else {
-          save().catch((problem) => (error.textContent = problem.message));
-        }
-      });
-      form.addEventListener("submit", (event) => {
-        event.preventDefault();
-        const value = $("input", pin).value;
-        $("input", pin).value = "";
-        save(value).catch((problem) => (error.textContent = problem.message));
-      });
-      card.append(form);
-    }
+    if (device.skills.length) card.append(skillsForm(device, body));
     if (device.tools.length) {
       card.append(
         el(
@@ -245,6 +209,76 @@ const IraPersonal = (() => {
     });
     card.append(remove);
     return card;
+  }
+
+  // A device's skills: tick and untick freely, then save once. Switching any on is a new
+  // grant, so that save takes the PIN, once; switching off never does.
+  let savedSkills = null; // {deviceId, results: {skill: "on" | "off"}} after the last save
+
+  function skillsForm(device, body) {
+    const shown = savedSkills && savedSkills.deviceId === device.id ? savedSkills.results : {};
+    if (savedSkills && savedSkills.deviceId === device.id) savedSkills = null;
+    const rows = device.skills.map((skill) => {
+      const box = el("input", { type: "checkbox", name: "skill", value: skill.name, checked: skill.on });
+      const result = el("span", { className: "muted small skill-result", role: "status", text: shown[skill.name] === "on" ? " Switched on." : shown[skill.name] === "off" ? " Switched off." : "" });
+      return { skill, box, result, row: el("label", { className: "switch" }, box, el("span", {}, skill.description, result)) };
+    });
+    const count = el("strong");
+    const pin = pinField("Your PIN, to switch these on");
+    const save = el("button", { type: "submit", className: "btn btn-primary", text: "Save" });
+    const error = el("p", { className: "error", role: "alert" });
+    const bar = el("div", { className: "save-bar", hidden: true }, count, pin, save, error);
+    const changes = () => rows.filter((r) => r.box.checked !== r.skill.on);
+    const refresh = () => {
+      const changed = changes();
+      const adding = changed.some((r) => r.box.checked);
+      bar.hidden = !changed.length;
+      count.textContent = `${changed.length} change${changed.length === 1 ? "" : "s"}`;
+      pin.hidden = !adding; // switching off needs no PIN
+      $("input", pin).required = adding;
+      error.textContent = "";
+    };
+    const all = (on) => () => {
+      for (const r of rows) r.box.checked = on;
+      refresh();
+    };
+    const form = el(
+      "form",
+      { className: "skills-form stack-tight" },
+      el(
+        "div",
+        { className: "row" },
+        el("button", { type: "button", className: "text-btn small", text: "Select all", onClick: all(true) }),
+        el("button", { type: "button", className: "text-btn small", text: "Select none", onClick: all(false) }),
+      ),
+      rows.map((r) => r.row),
+      bar,
+    );
+    // Only a tick changes the bar: leaving the PIN field must not move Save under the pointer.
+    form.addEventListener("change", (event) => {
+      if (event.target.name === "skill") refresh();
+    });
+    form.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const changed = changes();
+      const adding = changed.some((r) => r.box.checked);
+      const value = $("input", pin).value;
+      $("input", pin).value = ""; // the PIN is never kept
+      save.disabled = true;
+      try {
+        await call(`/v1/me/devices/${device.id}`, {
+          method: "PATCH",
+          json: { skills: rows.filter((r) => r.box.checked).map((r) => r.skill.name), pin: adding ? value : undefined },
+        });
+        savedSkills = { deviceId: device.id, results: Object.fromEntries(changed.map((r) => [r.skill.name, r.box.checked ? "on" : "off"])) };
+        await renderDevices(body);
+      } catch (problem) {
+        save.disabled = false;
+        error.textContent = `Nothing was changed: ${problem.message}`;
+        for (const r of changed) r.result.textContent = " Not changed.";
+      }
+    });
+    return form;
   }
 
   // Switched on at pairing unless the person unticks them: the asks people start with.

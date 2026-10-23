@@ -427,3 +427,8 @@ select { font: inherit; min-height: var(--tap); padding: 0 var(--s-2); border: 1
 .report { margin-top: var(--s-1); }
 .report-form { flex-wrap: wrap; gap: var(--s-2); }
 .report-form input { flex: 1; min-width: 10rem; }
+
+/* A device's skills: changes are saved together, from a bar that stays in view. */
+.save-bar { position: sticky; bottom: 0; display: flex; flex-wrap: wrap; align-items: end; gap: var(--s-2); padding: var(--s-2) 0; background: var(--bg); border-top: 1px solid var(--line); }
+.save-bar label { flex: 1; min-width: 9rem; }
+.skill-result { margin-left: var(--s-1); }
