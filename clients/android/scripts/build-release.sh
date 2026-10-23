@@ -17,15 +17,21 @@ IRA_UPLOAD_STORE_FILE="$store" \
 IRA_UPLOAD_STORE_PASSWORD="$password" \
 IRA_UPLOAD_KEY_ALIAS="upload" \
 IRA_UPLOAD_KEY_PASSWORD="$password" \
-  ./gradlew test bundlePlayRelease assemblePersonalRelease
+  ./gradlew test bundlePlayRelease bundlePlayLiteRelease assemblePersonalRelease
 unset password
 
 mkdir -p build
 cp app/build/outputs/bundle/playRelease/app-play-release.aab build/ira-play-release.aab
+cp app/build/outputs/bundle/playLiteRelease/app-playLite-release.aab build/ira-play-lite.aab
 cp app/build/outputs/apk/personal/release/app-personal-release.apk build/ira-personal-release.apk
 
-# Check both are signed by the upload key.
+# The full Play build asks for SMS and the call log; Play Lite must not.
+scripts/check-permissions.sh full build/ira-play-release.aab
+scripts/check-permissions.sh lite build/ira-play-lite.aab
+
+# Check all three are signed by the upload key.
 jarsigner -verify build/ira-play-release.aab >/dev/null && echo "build/ira-play-release.aab: signed"
+jarsigner -verify build/ira-play-lite.aab >/dev/null && echo "build/ira-play-lite.aab: signed"
 apksigner=""
 for tool in "$ANDROID_HOME"/build-tools/*/apksigner; do apksigner="$tool"; done
 "$apksigner" verify build/ira-personal-release.apk && echo "build/ira-personal-release.apk: signed"

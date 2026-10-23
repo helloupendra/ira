@@ -98,6 +98,9 @@ jobs:
       # Caches Gradle, and checks the wrapper jar against Gradle's published checksums.
       - uses: gradle/actions/setup-gradle@v5
       - run: ./gradlew --no-daemon test assembleDebug
+      # Play Lite must not ask for SMS or the call log; the full Play build does.
+      - run: scripts/check-permissions.sh lite app/build/outputs/apk/playLite/debug/app-playLite-debug.apk
+      - run: scripts/check-permissions.sh full app/build/outputs/apk/play/debug/app-play-debug.apk
       - uses: actions/upload-artifact@v4
         with:
           name: ira-android-debug

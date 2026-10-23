@@ -22,8 +22,8 @@ android {
         applicationId = "io.github.helloupendra.ira"
         minSdk = 29
         targetSdk = 37
-        versionCode = 1
-        versionName = "0.1.0"
+        versionCode = 2
+        versionName = "0.2.0"
     }
 
     flavorDimensions += "store"
@@ -31,6 +31,12 @@ android {
         // What Google Play's policies allow a default-assistant app (docs/clients/android.md).
         create("play") {
             dimension = "store"
+        }
+        // The Play build without SMS and the call log: no Permissions Declaration to wait for.
+        // Same application id as "play": the owner uploads one of the two.
+        create("playLite") {
+            dimension = "store"
+            versionNameSuffix = "-lite"
         }
         // Sideloaded, with everything, including the Accessibility fallback.
         create("personal") {
@@ -51,10 +57,20 @@ android {
         }
     }
 
+    // Play Lite is the Play build: the same code, its own manifest (src/playLite) drops the permissions.
+    sourceSets {
+        getByName("playLite") {
+            java.directories.add("src/play/java")
+            kotlin.directories.add("src/play/java")
+        }
+    }
+
     buildTypes {
         release {
             isMinifyEnabled = true
             isShrinkResources = true
+            // Symbols of the native code in the bundle (Compose's graphics library), for Play's crash reports.
+            ndk { debugSymbolLevel = "SYMBOL_TABLE" }
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
             if (canSign) signingConfig = signingConfigs.getByName("upload")
         }
