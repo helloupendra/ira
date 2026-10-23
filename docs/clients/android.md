@@ -25,17 +25,23 @@ commands.
 Ira reads nothing until you ask, and only with the skills you switch on. See
 [what Ira can and cannot see](#what-ira-can-and-cannot-see).
 
-## Two builds
+## Three builds
 
-| | Google Play build | Personal build |
-| --- | --- | --- |
-| Where it comes from | Google Play (internal testing for now), or the debug APK `ira-play-debug.apk` | the APK you install yourself: `ira-personal-debug.apk` |
-| Calls, contacts, SMS, notifications, calendar, alarms, apps, media, settings | yes; call log and SMS only while Ira is your digital assistant and you are talking to Ira on the phone ([why](#the-permission-and-policy-matrix)) | yes |
-| Location | approximate (about a neighbourhood) | precise |
-| Use the phone like a person (read the screen, tap, type) | no: Google Play does not allow it for an assistant | yes, off until you switch it on, after a warning, and each use needs your PIN |
-| App name on the phone | Ira | Ira (personal) |
+| | Google Play build | Google Play Lite | Personal build |
+| --- | --- | --- | --- |
+| Where it comes from | Google Play, or `ira-play-debug.apk` | Google Play, or `ira-play-lite-debug.apk` | the APK you install yourself: `ira-personal-debug.apk` |
+| Calls, contacts, notifications, calendar, alarms, apps, media, settings | yes | yes | yes |
+| Call history and SMS | only while Ira is your digital assistant and you are talking to Ira on the phone ([why](#the-permission-and-policy-matrix)) | no: it does not ask Android for them, and says so when asked | yes |
+| Location | approximate (about a neighbourhood) | approximate | precise |
+| Use the phone like a person (read the screen, tap, type) | no: Google Play does not allow it for an assistant | no | yes, off until you switch it on, after a warning, and each use needs your PIN |
+| App name on the phone | Ira | Ira | Ira (personal) |
 
-Both can be installed side by side; each is paired on its own.
+**Play Lite** exists so Ira can reach Google Play's production track without
+waiting weeks for the SMS and call-log Permissions Declaration review: it
+is the Play build without `READ_CALL_LOG`, `READ_SMS` and `SEND_SMS`, and
+without the three tools that need them. Both Play builds have the same
+application id (`io.github.helloupendra.ira`); upload one of them. The
+personal build installs beside either; each is paired on its own.
 
 ## Install
 
@@ -429,12 +435,17 @@ sign each upload with an **upload key** that never enters the repository:
 
 ```bash
 scripts/make-upload-key.sh    # once: ~/.ira-android/upload-keystore.jks, password in the Keychain
-scripts/build-release.sh      # build/ira-play-release.aab and build/ira-personal-release.apk
+scripts/build-release.sh      # build/ira-play-release.aab, build/ira-play-lite.aab and build/ira-personal-release.apk
 ```
 
 `build-release.sh` reads the password from the macOS Keychain and passes it
 to Gradle in the environment (`IRA_UPLOAD_*`); without those variables a
-release build is unsigned. Back up `~/.ira-android/` and the Keychain item
+release build is unsigned. It checks that Play Lite's bundle asks for none
+of the SMS and call-log permissions and the full one asks for all three
+(`scripts/check-permissions.sh`, which CI also runs on the debug APKs), and
+bundles the symbols of the app's native code (Compose's graphics library)
+for Play's crash reports; that needs the Android NDK
+(`sdkmanager "ndk;28.2.13676358"`). Back up `~/.ira-android/` and the Keychain item
 `ira-android-upload`. A lost upload key can be replaced: make a new one,
 export its certificate (`keytool -export -rfc -keystore upload-keystore.jks
 -alias upload -file upload_certificate.pem`) and use **Request upload key
@@ -546,7 +557,8 @@ listing** ([help](https://support.google.com/googleplay/android-developer/answer
   microphone disclosure and **Agree**, the permission prompt, tap the
   microphone, the notification, speak, Ira answers, **End**.
 - **Sensitive permissions (Permissions Declaration Form)** for SMS and call
-  log ([help](https://support.google.com/googleplay/android-developer/answer/9214102)):
+  log, for the full Play build only; **Play Lite** needs none
+  ([help](https://support.google.com/googleplay/android-developer/answer/9214102)):
   core functionality **Default Assistant handler**; reviewer steps (make Ira
   the digital assistant, pair, ask "who called?"); a video of that. Review
   can take several weeks. If it is refused, remove `READ_CALL_LOG`,
