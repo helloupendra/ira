@@ -5,6 +5,31 @@ they read stay on the computer or server that runs it, and you decide which
 outside services, if any, it talks to. This page says, in plain words, what
 Ira keeps, who can see it, and how to take it away.
 
+## Delete your data
+
+Ira, by Upendra Singh Chauhan. To delete what Ira keeps about you:
+
+1. Open the Ira web app on your Ira server and sign in.
+2. Open the menu, choose **Your data**, then **Delete my data**, and type
+   your password. In the Android app, **Settings → Export or delete your
+   data** opens this page.
+3. To stop a single phone or Mac at once, open **Your devices** and choose
+   **Remove** on it. Its key stops working immediately.
+4. If you can no longer sign in, ask your Ira server's owner, or open an
+   issue marked *privacy* on the project's GitHub page.
+
+**Deleted at once:** your conversations and their messages, your devices,
+their pairing codes and their events, **What Ira did**, your settings, what
+Ira noticed and learned about you, your reminders, the people you told Ira
+about, your reported answers, your business profiles and your connections
+to other services with their tokens.
+
+**Kept:** your account (email and password) until the server's owner
+removes it; the server's security log of account changes; and, on a
+business's server, the actions you asked its tools to take, which are that
+business's records. Copies in the server owner's own backups last as long
+as that owner keeps backups. Ira sends nothing to its developer.
+
 ## What Ira keeps
 
 | What | Where | For how long |
