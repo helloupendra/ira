@@ -21,11 +21,15 @@ Ira, by Upendra Singh Chauhan. To delete what Ira keeps about you:
 **Deleted at once:** your conversations and their messages, your devices,
 their pairing codes and their events, **What Ira did**, your settings, what
 Ira noticed and learned about you, your reminders, the people you told Ira
-about, your reported answers, your business profiles and your connections
-to other services with their tokens.
+about, your reported answers, your business profiles, your connections
+to other services with their tokens, the actions Ira proposed on your
+devices or through your connections, and your approvals: open approval
+windows, fingerprint approval keys and trusted apps.
 
 **Kept:** your account (email and password) until the server's owner
-removes it; the server's security log of account changes; and, on a
+removes it; personal access keys you made (for example **Siri on iPhone**),
+which keep working until you stop them there or under **Tokens and
+security**; the server's security log of account changes; and, on a
 business's server, the actions you asked its tools to take, which are that
 business's records. Copies in the server owner's own backups last as long
 as that owner keeps backups. Ira sends nothing to its developer.
