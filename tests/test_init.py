@@ -15,9 +15,9 @@ from ira.scaffold import (
     BEDROCK_DEFAULT_CHAIN,
     BEDROCK_FAST_CHAIN,
     BEDROCK_REGION,
-    BEDROCK_STT_MODEL,
     POLLY_REGION,
     POLLY_VOICE,
+    TRANSCRIBE_REGION,
     InitError,
     InitOptions,
     init_folder,
@@ -80,8 +80,13 @@ def test_bedrock_folder_uses_the_tested_ids(tmp_path):
         "bedrock:mistral.mistral-large-3-675b-instruct",
     ]
     stt, tts = settings.voice.stt, settings.voice.tts
-    assert (stt.type, stt.provider, stt.model) == ("chat_audio", "bedrock", BEDROCK_STT_MODEL)
-    assert stt.vocabulary == ["Asha"]
+    # Transcribe, not Voxtral: Bedrock refuses Voxtral's audio (23 Oct 2026).
+    assert (stt.type, stt.region, stt.languages, stt.identify) == (
+        "transcribe",
+        TRANSCRIBE_REGION,
+        ["hi-IN", "en-IN"],
+        "one",
+    )
     assert (tts.type, tts.voice, tts.engine, tts.language_code, tts.region) == (
         "polly",
         POLLY_VOICE,
@@ -96,7 +101,7 @@ def test_bedrock_folder_uses_the_tested_ids(tmp_path):
 
 def test_the_ids_agree_with_the_example_config():
     example = (REPO / "ira.example.yaml").read_text(encoding="utf-8")
-    assert f"model: {BEDROCK_STT_MODEL}" in example
+    assert "type: transcribe" in example and f"region: {TRANSCRIBE_REGION}" in example
     assert "bedrock:openai.gpt-oss-120b" in example
     assert "openai.gpt-oss-120b" in BEDROCK_FAST_CHAIN
 

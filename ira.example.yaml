@@ -69,15 +69,14 @@ models:
 
 voice:
   stt:
-    # chat_audio: an OpenAI-compatible chat model that accepts input_audio.
-    # whisper: the /audio/transcriptions API. transcribe: Amazon Transcribe
-    # streaming, e.g. type: transcribe, region: ap-south-1,
-    # languages: [hi-IN, en-IN] (needs the aws extra and
-    # transcribe:StartStreamTranscriptionWebSocket).
-    type: chat_audio
-    provider: bedrock
-    model: mistral.voxtral-small-24b-2507
-    vocabulary: [Ira]             # unusual words the transcriber should expect
+    # transcribe: Amazon Transcribe streaming, for live calls (needs the aws extra
+    # and transcribe:StartStreamTranscriptionWebSocket on the role).
+    # chat_audio: an OpenAI-compatible chat model that accepts input_audio
+    # (provider, model, vocabulary). whisper: the /audio/transcriptions API.
+    type: transcribe
+    region: ap-south-1
+    languages: [hi-IN, en-IN]     # Hindi first: Hinglish comes back in Devanagari
+    identify: one
   # The Ira app may recognise speech in the browser and send text: fallback (when
   # stt is none), prefer (always) or off. Chrome sends that audio to Google.
   browser_stt: fallback

@@ -202,6 +202,16 @@ this policy, from `iam-policy.example.json`:
       "Resource": "arn:aws:bedrock-mantle:us-east-1:*:project/default"
     },
     {
+      "Sid": "TranscribeStreaming",
+      "Effect": "Allow",
+      "Action": [
+        "transcribe:StartStreamTranscription",
+        "transcribe:StartStreamTranscriptionWebSocket"
+      ],
+      "Resource": "*",
+      "Condition": { "StringEquals": { "aws:RequestedRegion": "ap-south-1" } }
+    },
+    {
       "Sid": "PollySynthesizeSpeech",
       "Effect": "Allow",
       "Action": "polly:SynthesizeSpeech",
@@ -301,7 +311,7 @@ link from the journal, and the next steps. The new `ira.yaml` uses:
 | --- | --- |
 | `default` tier, in fallback order | `moonshotai.kimi-k2.5`, `zai.glm-5`, `deepseek.v3.2` |
 | `fast` tier | `openai.gpt-oss-120b`, `mistral.mistral-large-3-675b-instruct` |
-| Speech-to-text | `chat_audio` with `mistral.voxtral-small-24b-2507` on Bedrock |
+| Speech-to-text | Amazon Transcribe streaming in `ap-south-1`, Hindi then Indian English |
 | Text-to-speech | Polly in `ap-south-1`, voice Kajal, neural, `en-IN` |
 
 These are the Bedrock ids that answered on 11 Oct 2026. Bedrock adds and
@@ -310,25 +320,13 @@ refused with "isn't supported on this route", it is served under
 `/openai/v1` on Mantle: give it a second provider with
 `base_url: https://bedrock-mantle.us-east-1.api.aws/openai/v1`.
 
-**Speech-to-text does not work this way today.** On 22 Oct 2026 Mantle
-refused audio for Voxtral ("Model does not support audio modality"), and
-`ira doctor` shows that as a failed speech-to-text check. Typing works;
-voice notes and the microphone do not, until another speech-to-text is
-configured: `voice.stt.type: transcribe` (Amazon Transcribe streaming, see
-the [admin guide](admin-guide.md#voice)) needs one more statement on the
-role:
-
-```json
-{
-  "Sid": "TranscribeStreaming",
-  "Effect": "Allow",
-  "Action": "transcribe:StartStreamTranscriptionWebSocket",
-  "Resource": "*"
-}
-```
-
-It is not yet checked against a live account here. See
-[Hindi, English and Hinglish](language.md).
+**Speech-to-text.** `ira init --provider bedrock` writes Amazon Transcribe
+streaming in `ap-south-1` (Hindi first, then Indian English), which the role
+above allows. It has run live calls since 23 Oct 2026; see
+[Real-time voice](realtime.md#measured) and
+[Hindi, English and Hinglish](language.md). Voxtral through `chat_audio`
+does not work on Mantle today: on 22 Oct 2026 it refused audio ("Model does
+not support audio modality").
 
 Each instance runs as `ira` in a hardened unit:
 

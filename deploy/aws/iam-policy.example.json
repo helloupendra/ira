@@ -8,6 +8,20 @@
       "Resource": "arn:aws:bedrock-mantle:us-east-1:*:project/default"
     },
     {
+      "Sid": "TranscribeStreaming",
+      "Effect": "Allow",
+      "Action": [
+        "transcribe:StartStreamTranscription",
+        "transcribe:StartStreamTranscriptionWebSocket"
+      ],
+      "Resource": "*",
+      "Condition": {
+        "StringEquals": {
+          "aws:RequestedRegion": "ap-south-1"
+        }
+      }
+    },
+    {
       "Sid": "PollySynthesizeSpeech",
       "Effect": "Allow",
       "Action": "polly:SynthesizeSpeech",

@@ -119,9 +119,18 @@ def test_the_iam_policy_allows_only_chat_and_speech():
     policy = json.loads((AWS / "iam-policy.example.json").read_text(encoding="utf-8"))
     statements = policy["Statement"]
     assert all(s["Effect"] == "Allow" for s in statements)
-    actions = {s["Action"] for s in statements}
-    assert actions == {"bedrock-mantle:CreateInference", "polly:SynthesizeSpeech"}
-    bedrock = next(s for s in statements if s["Action"].startswith("bedrock-mantle:"))
+    actions = {
+        a
+        for s in statements
+        for a in ([s["Action"]] if isinstance(s["Action"], str) else s["Action"])
+    }
+    assert actions == {
+        "bedrock-mantle:CreateInference",
+        "polly:SynthesizeSpeech",
+        "transcribe:StartStreamTranscription",
+        "transcribe:StartStreamTranscriptionWebSocket",
+    }
+    bedrock = next(s for s in statements if s["Sid"] == "BedrockMantleChatCompletions")
     assert bedrock["Resource"].startswith("arn:aws:bedrock-mantle:")
     assert bedrock["Resource"].endswith(":project/default")
 

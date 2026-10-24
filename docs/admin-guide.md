@@ -315,6 +315,18 @@ the browser and send only the text (`voice.browser_stt`: `fallback`, the
 default; `prefer` to use it always; `off` never). Chrome sends that audio to
 Google; see [Privacy](privacy.md).
 
+Amazon Transcribe streaming, for live calls (what `ira init --provider
+bedrock` writes):
+
+```yaml
+voice:
+  stt:
+    type: transcribe
+    region: ap-south-1
+    languages: [hi-IN, en-IN]    # Hindi first: Hinglish comes back in Devanagari
+    identify: one
+```
+
 Or an OpenAI-compatible model that takes audio, or Whisper:
 
 ```yaml

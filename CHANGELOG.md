@@ -98,6 +98,10 @@ switch it on.
   or a video, and Ira opens its watch link on the phone or Mac, which
   plays it. YouTube's own search API (with a key) or Brave's, never its
   pages.
+- **New Bedrock instances hear with Transcribe.** `ira init --provider
+  bedrock` (and `ira-add-business`) now write Amazon Transcribe streaming in
+  ap-south-1 for speech, not Voxtral, which Bedrock refuses; the example
+  role policy allows it.
 - **A device's skills, saved together.** On the device card, ticking only
   marks changes; Save sends them all, with one PIN when any is switched on
   and none to switch off. Select all and Select none, and each row says
