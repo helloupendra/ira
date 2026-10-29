@@ -181,6 +181,9 @@ def pinned_client(headers: dict[str, str], auth: Any = None, allow_private: bool
     pool = transport._pool
     if not isinstance(pool, httpcore2.AsyncConnectionPool):
         raise ToolError("connections cannot go through a proxy")
+    # Never silently unpinned: if a new httpcore names this otherwise, refuse to connect.
+    if not hasattr(pool, "_network_backend"):
+        raise ToolError("this server's HTTP library cannot check connections' addresses")
     pool._network_backend = pinned_backend(allow_private)
     return httpx2.AsyncClient(
         headers=headers,
