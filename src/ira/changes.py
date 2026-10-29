@@ -57,7 +57,7 @@ def record(
 
 
 def recent(store: Store, limit: int = 100, before_id: int | None = None) -> list[dict[str, Any]]:
-    rows = store.query(
+    rows = store.read(
         "SELECT * FROM change_log WHERE id < ? ORDER BY id DESC LIMIT ?",
         (before_id if before_id is not None else 2**62, limit),
     )

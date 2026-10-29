@@ -129,7 +129,10 @@ Three views. **Changes**: everything done from the console, with who did it
 and the value before and after. **Actions**: every proposal and outcome,
 with who and from which channel. **Cost**: calls, failures, tokens and cost
 per day for the last 30 days, and every model call with the models tried,
-the time and the cost.
+the time and the cost. Model calls are kept 90 days; the audit and change
+logs until you set days under `retention` in `ira.yaml`, which is cleaned
+every hour. These pages read through a connection of their own, so a long
+list never holds up a live call.
 
 ## The Ira app
 

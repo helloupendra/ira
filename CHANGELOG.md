@@ -8,6 +8,12 @@ Anyone can now run Ira as their own assistant, on their own server or as one
 person on a shared one. Everything below is per person and off until they
 switch it on.
 
+- **Retention.** The logs that only grow are kept to days set under
+  `retention` in `ira.yaml`, cleaned every hour: model calls 90 days,
+  live-call timings 30, ended sessions and unused codes 30 after they end;
+  "What Ira did", the audit log and the change log until the owner sets days.
+  Conversations and Drop keep their own rules. New indexes, and the admin
+  pages read on their own connection, so they never hold up a live call.
 - **Drop.** A private inbox shared by your own devices: send text, a link or a
   file (95 MB) from one, and it is on the others at once. Kept 30 days, 2 GB
   each, encrypted at rest with the server's key (not end to end), removed with

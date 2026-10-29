@@ -304,7 +304,10 @@ The never-list still applies.
 - **No TLS of its own.** Put a reverse proxy with HTTPS in front of any
   non-local deployment ([Deployment](deployment.md)).
 - **Conversations are stored in plain SQLite.** Protect the data folder and
-  its backups like any customer database; retention settings are planned.
+  its backups like any customer database. They stay until their person
+  deletes them; the logs that only grow are kept to the days under
+  `retention` in `ira.yaml` (the cost log 90 days, live-call timings 30, the
+  audit and change logs and "What Ira did" until you set days).
 - **Prompt injection through tool results is not filtered.** If a tool
   returns text written by outsiders (emails, reviews), the model may follow
   instructions in it. The PIN still stands between it and any change.

@@ -116,7 +116,7 @@ def overview(_: Principal = Depends(reader), runtime: Runtime = Depends(get_runt
     since = start_of_today()
     store = runtime.store
     runtime.guard.expire_overdue()
-    calls = store.query("SELECT * FROM calls WHERE at >= ?", (since,))
+    calls = store.read("SELECT * FROM calls WHERE at >= ?", (since,))
     latencies = [c["seconds"] for c in calls if c["ok"]]
     models: dict[Any, dict[str, Any]] = {}
     for call in calls:
@@ -125,14 +125,14 @@ def overview(_: Principal = Depends(reader), runtime: Runtime = Depends(get_runt
         entry["failures"] += 0 if call["ok"] else 1
         entry["cost"] += call["cost_usd"] or 0.0
         entry["s"].append(call["seconds"])
-    actions = store.query(
+    actions = store.read(
         "SELECT status, COUNT(*) AS n FROM pending_actions WHERE created_at >= ? GROUP BY status",
         (since,),
     )
-    conversations = store.one(
+    conversations = store.read_one(
         "SELECT COUNT(*) AS n FROM conversations WHERE last_at >= ?", (since,)
     )
-    questions = store.one(
+    questions = store.read_one(
         "SELECT COUNT(*) AS n FROM messages WHERE role = 'user' AND at >= ?", (since,)
     )
     return Overview(
@@ -182,7 +182,7 @@ def calls(
     _: Principal = Depends(reader),
     runtime: Runtime = Depends(get_runtime),
 ) -> list[CallRow]:
-    rows = runtime.store.query(
+    rows = runtime.store.read(
         "SELECT * FROM calls WHERE id < ? ORDER BY id DESC LIMIT ?",
         (before_id if before_id is not None else 2**62, limit + 1),
     )
@@ -307,7 +307,7 @@ def actions(
         where.append("created_at < ?")
         params.append(before)
     rows = page(
-        runtime.store.query(
+        runtime.store.read(
             f"SELECT * FROM pending_actions WHERE {' AND '.join(where) or '1'} "
             "ORDER BY created_at DESC, id DESC LIMIT ?",
             (*params, limit + 1),
@@ -346,7 +346,7 @@ def action_counts(
     runtime: Runtime = Depends(get_runtime),
 ) -> ActionCounts:
     runtime.guard.expire_overdue()
-    rows = runtime.store.query(
+    rows = runtime.store.read(
         "SELECT status, COUNT(*) AS n FROM pending_actions WHERE created_at >= ? GROUP BY status",
         (since if since is not None else float("-inf"),),
     )
@@ -364,7 +364,7 @@ def _decisions(runtime: Runtime, ids: list[str]) -> dict[str, tuple[str | None, 
     if not ids:
         return {}
     marks = ",".join("?" for _ in ids)
-    rows = runtime.store.query(
+    rows = runtime.store.read(
         f"SELECT action_id, actor, channel, at FROM audit_log WHERE action_id IN ({marks}) "
         f"AND outcome IN ({','.join('?' for _ in DECISIONS)}) ORDER BY id",
         (*ids, *DECISIONS),
@@ -578,10 +578,10 @@ def models(_: Principal = Depends(reader), runtime: Runtime = Depends(get_runtim
     providers = []
     for name, cfg in settings.models.providers.items():
         prefix = (len(name) + 1, f"{name}:")
-        last_ok = runtime.store.one(
+        last_ok = runtime.store.read_one(
             "SELECT MAX(at) AS at FROM calls WHERE ok = 1 AND substr(model, 1, ?) = ?", prefix
         )
-        last_error = runtime.store.one(
+        last_error = runtime.store.read_one(
             "SELECT at, error_kind FROM calls WHERE ok = 0 AND substr(model, 1, ?) = ? "
             "ORDER BY id DESC LIMIT 1",
             prefix,
@@ -687,7 +687,7 @@ def costs(
 ) -> list[CostDay]:
     first = dt.date.today() - dt.timedelta(days=days - 1)
     since = dt.datetime.combine(first, dt.time()).timestamp()
-    rows = runtime.store.query(
+    rows = runtime.store.read(
         "SELECT date(at, 'unixepoch', 'localtime') AS day, COUNT(*) AS calls, "
         "SUM(1 - ok) AS failures, COALESCE(SUM(cost_usd), 0) AS cost_usd, "
         "SUM(input_tokens) AS input_tokens, SUM(output_tokens) AS output_tokens "

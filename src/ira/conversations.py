@@ -210,7 +210,7 @@ class Conversations:
         return self._rows(where, params, limit)
 
     def _rows(self, where: list[str], params: list[Any], limit: int) -> list[dict[str, Any]]:
-        rows = self.store.query(
+        rows = self.store.read(
             "SELECT c.*, u.email, (SELECT substr(m.content, 1, 120) FROM messages m "
             "WHERE m.conversation_id = c.id AND m.role = 'user' ORDER BY m.id LIMIT 1) AS preview "
             "FROM conversations c LEFT JOIN users u ON u.id = c.user_id "

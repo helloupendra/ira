@@ -103,6 +103,17 @@ drop:
   keep_days: 30                   # then deleted
   telegram_forward: true          # new items go to the person's paired Telegram chat
 
+# How long the logs that only grow are kept, in days (null: kept). Conversations stay
+# until their person deletes them; "What Ira did" and the audit log are kept unless you
+# set days here. Cleaned every hour.
+retention:
+  calls_days: 90                  # the cost log: each model call, its tokens and cost
+  voice_days: 30                  # live calls' timings (never their words)
+  tool_log_days: null             # "What Ira did", which each person can see and delete
+  audit_days: null                # what actions were confirmed, by whom
+  change_log_days: null           # changes made in the admin console
+  ended_days: 30                  # sessions, invites and pairing codes after they end
+
 channels:
   http:
     host: 127.0.0.1               # put a TLS reverse proxy in front for remote use

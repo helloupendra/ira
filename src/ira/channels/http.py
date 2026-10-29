@@ -527,13 +527,21 @@ ADMIN_PLACEHOLDER = """<!doctype html><html lang="en"><head><meta charset="utf-8
 <a href="/v1/docs">/v1/docs</a> (see the <code>admin</code> section).</p></body></html>"""
 
 
-async def _clean_drop(runtime: Runtime) -> None:
-    """Every hour, delete Drop items past their time, with their files."""
+async def _clean_up(runtime: Runtime) -> None:
+    """Every hour, delete Drop items past their time, with their files, and the log rows past
+    the days set under ``retention``."""
+    from ira import retention
+
+    jobs = (
+        ("Drop", runtime.drop.clean),
+        ("old log rows", lambda: retention.clean(runtime.store, runtime.settings.retention)),
+    )
     while True:
-        try:
-            await asyncio.to_thread(runtime.drop.clean)
-        except Exception:
-            log.exception("cleaning Drop failed")
+        for name, job in jobs:
+            try:
+                await asyncio.to_thread(job)
+            except Exception:
+                log.exception("cleaning %s failed", name)
         await asyncio.sleep(3600)
 
 
@@ -571,7 +579,7 @@ def create_app(runtime: Runtime, *, start_channels: bool = True) -> FastAPI:
             scheduler = LearningScheduler(runtime.learner)
             tasks.append(asyncio.create_task(scheduler.run(), name="ira-learning"))
         if start_channels:
-            tasks.append(asyncio.create_task(_clean_drop(runtime), name="ira-drop-clean"))
+            tasks.append(asyncio.create_task(_clean_up(runtime), name="ira-clean-up"))
         if start_channels and runtime.settings.channels.telegram.enabled:
             from ira.channels.telegram import drop_notifier, event_notifier, start_telegram
 

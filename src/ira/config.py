@@ -221,6 +221,20 @@ class DropConfig(_Strict):
     telegram_forward: bool = True
 
 
+class RetentionConfig(_Strict):
+    """How long the logs that only grow are kept, in days. ``None`` keeps them: a person's
+    "What Ira did" and a business's audit log are kept until deleted, unless the owner
+    chooses days here. Conversations and Drop have their own rules."""
+
+    calls_days: int | None = Field(default=90, ge=1)  # the cost log: model calls, tokens, cost
+    voice_days: int | None = Field(default=30, ge=1)  # live calls' timings, never their words
+    tool_log_days: int | None = Field(default=None, ge=1)  # "What Ira did"
+    audit_days: int | None = Field(default=None, ge=1)  # actions' audit log
+    change_log_days: int | None = Field(default=None, ge=1)  # console changes
+    # Sessions, invites and pairing codes this long after they ended, expired or were used.
+    ended_days: int = Field(default=30, ge=1)
+
+
 class ConnectorsConfig(_Strict):
     # Local MCP servers people may connect; a person can never add a command themselves.
     mcp_servers: dict[str, McpServerConfig] = Field(default_factory=dict)
@@ -256,6 +270,7 @@ class Settings(_Strict):
     search: SearchConfig = Field(default_factory=SearchConfig)
     connectors: ConnectorsConfig = Field(default_factory=ConnectorsConfig)
     drop: DropConfig = Field(default_factory=DropConfig)
+    retention: RetentionConfig = Field(default_factory=RetentionConfig)
     config_dir: Path = Field(default_factory=Path.cwd, exclude=True)
 
     @field_validator("tools")

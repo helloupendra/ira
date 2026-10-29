@@ -43,6 +43,7 @@ CREATE TABLE IF NOT EXISTS calls (
     output_tokens INTEGER NOT NULL DEFAULT 0,
     cost_usd      REAL
 );
+CREATE INDEX IF NOT EXISTS calls_at ON calls (at);
 
 CREATE TABLE IF NOT EXISTS pending_actions (
     id              TEXT PRIMARY KEY,
@@ -64,6 +65,7 @@ CREATE TABLE IF NOT EXISTS pending_actions (
 CREATE INDEX IF NOT EXISTS pending_actions_conversation
     ON pending_actions (conversation_id, created_at);
 CREATE INDEX IF NOT EXISTS pending_actions_status ON pending_actions (status, expires_at);
+CREATE INDEX IF NOT EXISTS pending_actions_created ON pending_actions (created_at);
 
 CREATE TABLE IF NOT EXISTS audit_log (
     id        INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -75,6 +77,8 @@ CREATE TABLE IF NOT EXISTS audit_log (
     channel   TEXT,
     detail    TEXT
 );
+CREATE INDEX IF NOT EXISTS audit_log_action ON audit_log (action_id);
+CREATE INDEX IF NOT EXISTS audit_log_at ON audit_log (at);
 
 CREATE TABLE IF NOT EXISTS pin_state (
     id           INTEGER PRIMARY KEY CHECK (id = 1),
@@ -128,6 +132,7 @@ CREATE TABLE IF NOT EXISTS change_log (
     after   TEXT,
     channel TEXT
 );
+CREATE INDEX IF NOT EXISTS change_log_at ON change_log (at);
 
 CREATE TABLE IF NOT EXISTS sessions (
     id           TEXT PRIMARY KEY,
@@ -139,6 +144,8 @@ CREATE TABLE IF NOT EXISTS sessions (
     revoked_at   REAL,
     user_agent   TEXT
 );
+CREATE INDEX IF NOT EXISTS sessions_user ON sessions (user_id);
+CREATE INDEX IF NOT EXISTS sessions_expires ON sessions (expires_at);
 
 -- API tokens belong to a user; their scopes can only narrow the user's role.
 CREATE TABLE IF NOT EXISTS api_tokens (
@@ -162,6 +169,7 @@ CREATE TABLE IF NOT EXISTS conversations (
     reset_at   REAL NOT NULL DEFAULT 0
 );
 CREATE INDEX IF NOT EXISTS conversations_last ON conversations (last_at);
+CREATE INDEX IF NOT EXISTS conversations_user ON conversations (user_id, last_at);
 
 CREATE TABLE IF NOT EXISTS messages (
     id              INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -177,6 +185,7 @@ CREATE TABLE IF NOT EXISTS messages (
     private         INTEGER NOT NULL DEFAULT 0 -- a device's output: only its user sees it
 );
 CREATE INDEX IF NOT EXISTS messages_conversation ON messages (conversation_id, id);
+CREATE INDEX IF NOT EXISTS messages_role_at ON messages (role, at);
 
 CREATE TABLE IF NOT EXISTS telegram_chats (
     chat_id   INTEGER PRIMARY KEY,
@@ -357,6 +366,7 @@ CREATE TABLE IF NOT EXISTS tool_log (
     seconds         REAL
 );
 CREATE INDEX IF NOT EXISTS tool_log_user ON tool_log (user_id, id);
+CREATE INDEX IF NOT EXISTS tool_log_at ON tool_log (at);
 
 -- Each person's own preferences: the assistant's name, languages, skills.
 CREATE TABLE IF NOT EXISTS user_settings (
@@ -439,6 +449,9 @@ class Store:
         self.path = str(path)
         self._lock = threading.RLock()
         self._conn = sqlite3.connect(self.path, check_same_thread=False, isolation_level=None)
+        # The admin pages read through their own connection (see `read`).
+        self._reader: sqlite3.Connection | None = None
+        self._read_lock = threading.Lock()
         self._conn.row_factory = sqlite3.Row
         with self._lock:
             if self.path != ":memory:":
@@ -608,6 +621,25 @@ class Store:
         with self._lock:
             return self._conn.execute(sql, tuple(params)).fetchone()
 
+    def read(self, sql: str, params: Iterable[Any] = ()) -> list[sqlite3.Row]:
+        """A read for the admin pages, on a connection of its own that can only read: a long
+        scan never holds the lock that live calls write through, and WAL lets it read while
+        they write. An in-memory database (tests) has one connection, so it reads through it."""
+        if self.path == ":memory:":
+            return self.query(sql, params)
+        with self._read_lock:
+            if self._reader is None:
+                reader = sqlite3.connect(self.path, check_same_thread=False, isolation_level=None)
+                reader.row_factory = sqlite3.Row
+                reader.execute("PRAGMA busy_timeout=5000")
+                reader.execute("PRAGMA query_only=ON")
+                self._reader = reader
+            return self._reader.execute(sql, tuple(params)).fetchall()
+
+    def read_one(self, sql: str, params: Iterable[Any] = ()) -> sqlite3.Row | None:
+        rows = self.read(sql, params)
+        return rows[0] if rows else None
+
     def get_setting(self, key: str, default: str | None = None) -> str | None:
         row = self.one("SELECT value FROM settings WHERE key = ?", (key,))
         return row["value"] if row else default
@@ -623,5 +655,9 @@ class Store:
         self.execute("DELETE FROM settings WHERE key = ?", (key,))
 
     def close(self) -> None:
+        with self._read_lock:
+            if self._reader is not None:
+                self._reader.close()
+                self._reader = None
         with self._lock:
             self._conn.close()
