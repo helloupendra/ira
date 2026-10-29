@@ -46,7 +46,7 @@ from ira.devices.protocol import (
 from ira.devices.store import Device, Devices
 from ira.tools.actions import PendingAction
 from ira.tools.personal import PersonalTool
-from ira.tools.registry import ToolError
+from ira.tools.registry import ToolError, ToolTimeout
 
 log = logging.getLogger("ira.devices")
 
@@ -309,7 +309,9 @@ class DeviceHub:
             await connection.send({"type": "call", "id": call_id, "tool": tool, "args": args})
             return await asyncio.wait_for(future, seconds)
         except TimeoutError:
-            raise ToolError(f"the device did not answer within {seconds:g} seconds") from None
+            raise ToolTimeout(
+                f"the device did not answer within {seconds:g} seconds: it may still have done it"
+            ) from None
         except ToolError:
             raise
         except Exception as exc:

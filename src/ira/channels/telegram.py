@@ -11,6 +11,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import logging
 import os
 import secrets
@@ -235,6 +236,8 @@ class TelegramBot:
         self.state = runtime.channel_state.setdefault(
             "telegram", {"running": False, "last_poll_at": None, "last_error": None, "updates": 0}
         )
+        # Each chat's latest update, still being handled: the next waits for it.
+        self._chats: dict[Any, asyncio.Future[None]] = {}
 
     async def run(self) -> None:
         offset: int | None = None
@@ -254,12 +257,31 @@ class TelegramBot:
                 for update in updates:
                     offset = int(update["update_id"]) + 1
                     self.state["updates"] += 1
-                    try:
-                        await self.handle_update(update)
-                    except Exception:
-                        log.exception("telegram update %s failed", update.get("update_id"))
+                    self._dispatch(update)
         finally:
             self.state["running"] = False
+
+    def _dispatch(self, update: dict[str, Any]) -> None:
+        """Handle an update without holding up other chats: each chat's own messages stay in
+        order, one after another, while different chats are answered side by side (a slow
+        tool or a big voice note in one chat never stalls the rest)."""
+        chat = ((update.get("message") or {}).get("chat") or {}).get("id")
+        previous = self._chats.get(chat)
+
+        async def run() -> None:
+            if previous is not None:
+                with contextlib.suppress(BaseException):
+                    await previous
+            try:
+                await self.handle_update(update)
+            except Exception:
+                log.exception("telegram update %s failed", update.get("update_id"))
+
+        task = asyncio.ensure_future(run())
+        self._chats[chat] = task
+        task.add_done_callback(
+            lambda done: self._chats.pop(chat, None) if self._chats.get(chat) is done else None
+        )
 
     def _principal(self, chat_id: int) -> Principal | None:
         row = self.runtime.store.one(

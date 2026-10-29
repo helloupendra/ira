@@ -9206,6 +9206,12 @@
                         "description": "Confirmed, ran and failed.",
                         "default": 0
                     },
+                    "unknown": {
+                        "type": "integer",
+                        "title": "Unknown",
+                        "description": "Confirmed, but it ran out of time or a restart cut it off: it may or may not have happened.",
+                        "default": 0
+                    },
                     "cancelled": {
                         "type": "integer",
                         "title": "Cancelled",

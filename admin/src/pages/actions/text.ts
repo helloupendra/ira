@@ -8,6 +8,7 @@ export const FILTERS: readonly { value: string; label: string }[] = [
   { value: 'pending', label: 'Pending' },
   { value: 'executed', label: 'Executed' },
   { value: 'failed', label: 'Failed' },
+  { value: 'unknown', label: 'Unknown' },
   { value: 'expired', label: 'Expired' },
   { value: 'cancelled', label: 'Cancelled' },
 ];
@@ -44,6 +45,8 @@ export function countFor(counts: ActionCounts | undefined, status: string): numb
       return counts.executed;
     case 'failed':
       return counts.failed;
+    case 'unknown':
+      return counts.unknown ?? 0;
     case 'expired':
       return counts.expired;
     case 'cancelled':
@@ -63,6 +66,8 @@ export function emptyText(status: string): string {
       return 'No executed actions yet.';
     case 'failed':
       return 'No failed actions.';
+    case 'unknown':
+      return 'No actions of unknown outcome: none ran out of time or was cut off by a restart.';
     case 'expired':
       return 'No expired actions.';
     case 'cancelled':

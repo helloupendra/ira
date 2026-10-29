@@ -165,6 +165,9 @@ class AssistantConfig(_Strict):
     instructions: str = ""
     tier: str = "default"
     max_tool_rounds: int = 8
+    # A tool that has not answered by then is given up on, so one stuck tool never holds a
+    # conversation (or a channel) for ever.
+    tool_seconds: float = Field(default=45, gt=0, le=600)
     history_messages: int = 30
     # At most this much of a conversation (in characters) goes to the model: old tool
     # results are shortened first, then the oldest whole turns are left out.

@@ -9,6 +9,8 @@ export function actionBadge(status: string): string {
       return 'badge badge-ok';
     case 'failed':
       return 'badge badge-danger';
+    case 'unknown':
+      return 'badge badge-warn';
     default:
       return 'badge badge-muted';
   }
@@ -21,6 +23,8 @@ export function outcomeBadge(outcome: string): string {
       return 'badge badge-ok';
     case 'proposed':
       return 'badge badge-accent';
+    case 'unknown':
+      return 'badge badge-warn';
     case 'wrong_pin':
     case 'locked':
     case 'failed':

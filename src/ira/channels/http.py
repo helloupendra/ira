@@ -83,6 +83,7 @@ MAX_AUDIO_BYTES = 10 * 1024 * 1024
 OUTCOME_STATUS = {
     "executed": 200,
     "failed": 200,
+    "unknown": 200,
     "cancelled": 200,
     "wrong_pin": 403,
     "not_found": 404,
@@ -542,6 +543,9 @@ class ConsoleFiles(StaticFiles):
 def create_app(runtime: Runtime, *, start_channels: bool = True) -> FastAPI:
     @contextlib.asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+        stranded = runtime.guard.recover_interrupted()
+        if stranded:
+            log.warning("%d action(s) were cut off by a restart: marked unknown", stranded)
         code = runtime.ensure_setup_code()
         if code and not runtime.setup_code_shown:
             log.warning(

@@ -34,7 +34,7 @@ from pydantic import BaseModel
 from ira import toollog
 from ira.security import PIN_ITERATIONS, hash_pin, new_id, verify_pin
 from ira.store import CONFIRMING_ROLES, SHARED_PIN_SETTING, Store
-from ira.tools.registry import Tool, ToolError, ToolRegistry
+from ira.tools.registry import Tool, ToolError, ToolRegistry, ToolTimeout
 
 log = logging.getLogger("ira.actions")
 
@@ -42,11 +42,17 @@ log = logging.getLogger("ira.actions")
 PIN_SETTING = SHARED_PIN_SETTING
 
 # Where a proposed action can stand. Only "pending" waits for a PIN.
-ACTION_STATUSES = ("pending", "executing", "executed", "failed", "cancelled", "expired")
+ACTION_STATUSES = (
+    "pending", "executing", "executed", "failed", "unknown", "cancelled", "expired"
+)  # fmt: skip
+# An action that ran out of time or was cut off by a restart: it may or may not have
+# happened, and saying "failed" would invite doing it twice.
+UNKNOWN_MESSAGE = "It may or may not have happened: {why}. Check before asking for it again."
 
 OutcomeStatus = Literal[
     "executed",
     "failed",
+    "unknown",
     "wrong_pin",
     "locked",
     "expired",
@@ -154,10 +160,13 @@ class ActionGuard:
         confirm_roles: Sequence[str] = CONFIRMING_ROLES,
         tool_confirm_roles: Mapping[str, Sequence[str]] | None = None,
         clock: Callable[[], float] = time.time,
+        action_seconds: float = 60,
     ) -> None:
         self.store = store
         self.registry = registry
         self.expiry_seconds = expiry_seconds
+        # A confirmed action that has not finished by then is recorded as "unknown".
+        self.action_seconds = action_seconds
         self.max_wrong_pins = max_wrong_pins
         self.lock_seconds = lock_seconds
         self.pin_iterations = pin_iterations
@@ -765,7 +774,19 @@ class ActionGuard:
     ) -> Outcome:
         started = time.monotonic()
         try:
-            result = await self._run(pending)
+            result = await asyncio.wait_for(self._run(pending), self.action_seconds)
+        except (TimeoutError, ToolTimeout) as exc:
+            why = str(exc) if isinstance(exc, ToolTimeout) else (
+                f"it did not finish within {self.action_seconds:g} seconds"
+            )  # fmt: skip
+            outcome = self._unknown(pending, why, actor, channel)
+            self._finished(pending, "unknown", started)
+            return outcome
+        except asyncio.CancelledError:
+            # The server is stopping while it runs: never left "executing" for ever.
+            self._unknown(pending, "the server stopped while it ran", actor, channel)
+            self._finished(pending, "unknown", started)
+            raise
         except ToolError as exc:
             outcome = self._failed(pending, str(exc), actor, channel)
             self._finished(pending, "failed", started)
@@ -821,6 +842,26 @@ class ActionGuard:
             seconds=time.monotonic() - started,
             clock=self.clock,
         )
+
+    def _unknown(
+        self, pending: PendingAction, why: str, actor: str | None, channel: str | None
+    ) -> Outcome:
+        self.store.execute(
+            "UPDATE pending_actions SET status = 'unknown', result = ?, finished_at = ? "
+            "WHERE id = ?",
+            (json.dumps({"error": why}), self.clock(), pending.id),
+        )
+        pending.status = "unknown"
+        return self._finish(pending, "unknown", UNKNOWN_MESSAGE.format(why=why), actor, channel)
+
+    def recover_interrupted(self) -> int:
+        """At start: actions left "executing" by a restart become "unknown", in the audit
+        log too, so no later turn is told they are still running."""
+        rows = self.store.query("SELECT * FROM pending_actions WHERE status = 'executing'")
+        for row in rows:
+            pending = _row_to_action(row)
+            self._unknown(pending, "the server restarted while it ran", "server", "server")
+        return len(rows)
 
     def _failed(
         self, pending: PendingAction, reason: str, actor: str | None, channel: str | None

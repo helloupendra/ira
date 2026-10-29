@@ -32,6 +32,8 @@ SETTLED_NOTES = {
     "failed": "The person confirmed it, but it failed. Say so plainly.",
     "running": "The person confirmed it; it is still running.",
     "cancelled": "The person said no. Nothing was changed.",
+    "unknown": "It was confirmed, but it may or may not have happened (it ran out of time, "
+    "or the server restarted). Say so plainly, and suggest checking before trying again.",
     "expired": "Nobody confirmed it in time. Nothing was changed.",
 }
 
@@ -46,13 +48,14 @@ def settled(row: Any, now: float, personal: Callable[[str], bool] | None = None)
         "executed": "done",
         "failed": "failed",
         "executing": "running",
+        "unknown": "unknown",
         "cancelled": "cancelled",
     }.get(status, "expired")
     body: dict[str, Any] = {"status": state, "summary": row["a_summary"]}
     result = json.loads(row["a_result"]) if row["a_result"] else None
     if state == "done":
         body["result"] = result
-    elif state == "failed":
+    elif state in ("failed", "unknown"):
         body["error"] = (result or {}).get("error") if isinstance(result, dict) else result
     body["for_you"] = SETTLED_NOTES[state]
     text = json.dumps(body, default=str, ensure_ascii=False)

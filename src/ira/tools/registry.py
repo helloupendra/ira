@@ -57,6 +57,10 @@ class ToolError(Exception):
     """Raise from a tool to send a plain message back to the model and the user."""
 
 
+class ToolTimeout(ToolError):
+    """The tool did not answer in time: what it was doing may or may not have happened."""
+
+
 @dataclass
 class ToolContext:
     """Handed to a tool module's optional ``setup(ctx)`` and ``seed(ctx)`` hooks."""

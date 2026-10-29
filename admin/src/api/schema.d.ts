@@ -1995,6 +1995,12 @@ export interface components {
              */
             failed: number;
             /**
+             * Unknown
+             * @description Confirmed, but it ran out of time or a restart cut it off: it may or may not have happened.
+             * @default 0
+             */
+            unknown: number;
+            /**
              * Cancelled
              * @description Dropped by someone before it ran.
              * @default 0

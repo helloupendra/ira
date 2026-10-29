@@ -212,6 +212,7 @@ class Assistant:
         max_tool_rounds: int = 8,
         history_messages: int = 30,
         history_chars: int = 60_000,
+        tool_seconds: float = 45,
         personal_tools: PersonalTools | None = None,
         user_settings: UserSettings | None = None,
         tool_calls_per_minute: int = 30,
@@ -230,6 +231,7 @@ class Assistant:
         self.max_tool_rounds = max_tool_rounds
         self.history_messages = history_messages
         self.history_chars = history_chars
+        self.tool_seconds = tool_seconds
         self.conversations = conversations or Conversations(store)
         if self.conversations.personal is None:  # not the business's own: a connection's
             self.conversations.personal = lambda name: name not in self.registry
@@ -826,9 +828,14 @@ class Assistant:
         try:
             positional, keywords = tool.call_args(args)
             if inspect.iscoroutinefunction(tool.fn):
-                value = await tool.fn(*positional, **keywords)
+                running = tool.fn(*positional, **keywords)
             else:
-                value = await asyncio.to_thread(tool.fn, *positional, **keywords)
+                running = asyncio.to_thread(tool.fn, *positional, **keywords)
+            value = await asyncio.wait_for(running, self.tool_seconds)
+        except TimeoutError:
+            return _failed(
+                f"the tool did not answer within {self.tool_seconds:g} seconds", safe_call
+            )
         except ToolError as exc:
             return _failed(str(exc), safe_call)
         except Exception as exc:
@@ -948,8 +955,10 @@ class Assistant:
             )
             return _proposed(pending, safe_call)
         try:
-            value = await extra.run(arguments)
+            value = await asyncio.wait_for(extra.run(arguments), self.tool_seconds)
             self._note_front(conversation_id, extra, arguments, value)
+        except TimeoutError:
+            return _failed(f"it did not answer within {self.tool_seconds:g} seconds", safe_call)
         except ToolError as exc:
             if extra.source != "device":
                 return _failed(str(exc), safe_call)

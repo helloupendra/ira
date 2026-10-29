@@ -355,7 +355,7 @@ def action_counts(
 
 
 # Outcomes that are someone's decision; "expired" is the clock's, not a person's.
-DECISIONS = ("executed", "failed", "cancelled")
+DECISIONS = ("executed", "failed", "unknown", "cancelled")
 
 
 def _decisions(runtime: Runtime, ids: list[str]) -> dict[str, tuple[str | None, str | None, float]]:

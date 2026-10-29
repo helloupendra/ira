@@ -460,6 +460,7 @@ def build_runtime(
         tool_confirm_roles={
             name: rule.confirm_roles for name, rule in settings.actions.tools.items()
         },
+        action_seconds=settings.assistant.tool_seconds + 15,  # a device's own limit first
     )
     for name in settings.actions.tools:
         tool = registry.get(name)
@@ -481,6 +482,7 @@ def build_runtime(
         max_tool_rounds=settings.assistant.max_tool_rounds,
         history_messages=settings.assistant.history_messages,
         history_chars=settings.assistant.history_chars,
+        tool_seconds=settings.assistant.tool_seconds,
         user_settings=UserSettings(
             store,
             languages=list(settings.assistant.languages),

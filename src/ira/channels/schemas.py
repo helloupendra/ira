@@ -533,6 +533,11 @@ class ActionCounts(BaseModel):
     executing: int = Field(default=0, description="Confirmed and running right now.")
     executed: int = Field(default=0, description="Confirmed and ran.")
     failed: int = Field(default=0, description="Confirmed, ran and failed.")
+    unknown: int = Field(
+        default=0,
+        description="Confirmed, but it ran out of time or a restart cut it off: it may or may "
+        "not have happened.",
+    )
     cancelled: int = Field(default=0, description="Dropped by someone before it ran.")
     expired: int = Field(default=0, description="Nobody confirmed it in time.")
 

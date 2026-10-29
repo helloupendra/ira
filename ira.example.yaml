@@ -11,6 +11,7 @@ assistant:
   max_tool_rounds: 8
   history_messages: 30            # messages of context per conversation
   history_chars: 60000            # and at most this much text: old tool results shrink first
+  tool_seconds: 45                # a tool that has not answered by then is given up on
 
 data_dir: ./data                  # SQLite files; relative to this file
 

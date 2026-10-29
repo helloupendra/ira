@@ -57,6 +57,7 @@ const COUNTS: ActionCounts = {
   executing: 1,
   executed: 2,
   failed: 1,
+  unknown: 0,
   cancelled: 1,
   expired: 24,
 };

@@ -192,6 +192,7 @@ The PIN is the confirming user's own (set with `PUT /v1/me/pin` or
 | --- | --- | --- |
 | `executed` | 200 | it ran; `result` holds the tool's return value |
 | `failed` | 200 | it ran and failed; `message` says why |
+| `unknown` | 200 | it ran out of time (a device that did not answer) or a restart cut it off: it may or may not have happened, so check before asking again |
 | `wrong_pin` | 403 | `attempts_left` before the lock |
 | `not_allowed` | 403 | your role may not confirm this action; no PIN attempt is used |
 | `not_found` | 404 | no such action |

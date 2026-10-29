@@ -49,6 +49,13 @@ on its own it can never change anything.
   from the person's own words in a new message. A device's own status ("Opened
   YouTube", an alarm set) and the person's own data (their contacts, call
   log, location) do not taint it. A skill the server does not know does.
+- **Never "running" for ever.** A confirmed action that does not finish in
+  time (a device that does not answer), or that a restart cuts off, is
+  recorded as **unknown**: it may or may not have happened, and Ira says so
+  rather than calling it failed, which would invite doing it twice. Every
+  tool also has a time limit (`assistant.tool_seconds`, 45 seconds), and
+  Telegram answers each chat on its own, so one slow tool never stalls the
+  others.
 - Once it has run, the model sees what became of it (its result, its
   error, a no, or its expiry), never "waiting for confirmation" again, and
   carries on from there. The yes or the PIN itself never passes through a
