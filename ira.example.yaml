@@ -104,10 +104,10 @@ drop:
   telegram_forward: true          # new items go to the person's paired Telegram chat
 
 # How long the logs that only grow are kept, in days (null: kept). Conversations stay
-# until their person deletes them; "What Ira did" and the audit log are kept unless you
-# set days here. Cleaned every hour.
+# until their person deletes them; the cost log, "What Ira did" and the audit log are kept
+# unless you set days here. Cleaned every hour.
 retention:
-  calls_days: 90                  # the cost log: each model call, its tokens and cost
+  calls_days: null                # the cost log: each model call, its tokens and cost
   voice_days: 30                  # live calls' timings (never their words)
   tool_log_days: null             # "What Ira did", which each person can see and delete
   audit_days: null                # what actions were confirmed, by whom

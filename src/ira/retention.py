@@ -1,7 +1,7 @@
 """Keep the logs that only grow to the days set under ``retention`` in ira.yaml.
 
-Only what nobody was promised is deleted on its own: the cost log and live calls' timings
-by default; "What Ira did", the audit log and the change log only when the owner sets days
+Only what nobody was promised is deleted on its own: live calls' timings by default; the
+cost log, "What Ira did", the audit log and the change log only when the owner sets days
 for them; sessions once they ended, and invites and pairing codes that were never used.
 Conversations, Drop, devices, reminders and a business's actions have their own rules and
 are never touched here. Rows go a thousand at a time, so live calls never wait long.

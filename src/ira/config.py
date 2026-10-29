@@ -222,11 +222,12 @@ class DropConfig(_Strict):
 
 
 class RetentionConfig(_Strict):
-    """How long the logs that only grow are kept, in days. ``None`` keeps them: a person's
-    "What Ira did" and a business's audit log are kept until deleted, unless the owner
-    chooses days here. Conversations and Drop have their own rules."""
+    """How long the logs that only grow are kept, in days. ``None`` keeps them, the default
+    for all but live calls' timings: the cost log, a person's "What Ira did" and a business's
+    audit log stay unless the owner chooses days here. Conversations and Drop have their own
+    rules."""
 
-    calls_days: int | None = Field(default=90, ge=1)  # the cost log: model calls, tokens, cost
+    calls_days: int | None = Field(default=None, ge=1)  # the cost log: model calls, tokens, cost
     voice_days: int | None = Field(default=30, ge=1)  # live calls' timings, never their words
     tool_log_days: int | None = Field(default=None, ge=1)  # "What Ira did"
     audit_days: int | None = Field(default=None, ge=1)  # actions' audit log

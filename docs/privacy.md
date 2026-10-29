@@ -44,7 +44,7 @@ as that owner keeps backups. Ira sends nothing to its developer.
 | Your devices: name, kind, the tools they offer, the skills you switched on, when they were last seen | the server's database | until you remove the device |
 | Your devices' events ("the upload finished") | the server's database | 7 days, at most 200 |
 | **What Ira did**: which tool, which device, when, how long, and whether it worked | the server's database | until you delete your data (or fewer days, if the server's owner set `retention.tool_log_days`) |
-| Each call to a language model: when, which model, its tokens and cost, never what was said | the server's database, seen by its owners and admins | 90 days (`retention.calls_days`) |
+| Each call to a language model: when, which model, its tokens and cost, never what was said | the server's database, seen by its owners and admins | until the server's owner sets days (`retention.calls_days`) |
 | A live call's timings (how long until you heard Ira), never its words | the server's database | 30 days (`retention.voice_days`) |
 | Your sign-ins (sessions): when, and the browser's name | the server's database | until 30 days after they end |
 | Your settings: the assistant's name, wake phrase, languages, web search on or off | the server's database | until you change or delete them |

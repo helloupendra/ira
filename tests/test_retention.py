@@ -36,12 +36,16 @@ def test_only_what_nobody_was_promised_goes_by_default(tmp_path):
     log_rows(store, NOW - 400 * DAY)
     log_rows(store, NOW - DAY)
     deleted = clean(store, RetentionConfig(), now=NOW)
-    assert deleted == {"calls": 1, "voice_turns": 1}
-    for kept in ("tool_log", "audit_log", "change_log"):
+    assert deleted == {"voice_turns": 1}  # live calls' timings: privacy; everything else stays
+    for kept in ("calls", "tool_log", "audit_log", "change_log"):
         assert rows(store, kept) == 2, kept
 
-    owner_chose = RetentionConfig(tool_log_days=365, audit_days=365, change_log_days=365)
-    assert clean(store, owner_chose, now=NOW) == {"tool_log": 1, "audit_log": 1, "change_log": 1}
+    owner_chose = RetentionConfig(
+        calls_days=365, tool_log_days=365, audit_days=365, change_log_days=365
+    )
+    assert clean(store, owner_chose, now=NOW) == {
+        "calls": 1, "tool_log": 1, "audit_log": 1, "change_log": 1,
+    }  # fmt: skip
     assert rows(store, "calls") == rows(store, "audit_log") == 1
 
 
@@ -81,7 +85,8 @@ def test_many_rows_go_a_batch_at_a_time(tmp_path):
             "INSERT INTO calls (at, tier, purpose, tried, attempts, ok, seconds) "
             "VALUES (1, 'default', 'chat', 'm', 1, 1, 0.1)"
         )
-    assert clean(store, RetentionConfig(), now=NOW)["calls"] == 2500 and rows(store, "calls") == 0
+    deleted = clean(store, RetentionConfig(calls_days=30), now=NOW)
+    assert deleted["calls"] == 2500 and rows(store, "calls") == 0
 
 
 def test_the_admin_pages_read_while_a_write_holds_the_lock(tmp_path):
