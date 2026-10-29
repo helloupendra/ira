@@ -181,8 +181,8 @@ on its own it can never change anything.
 - Errors from model, voice and Telegram calls are scrubbed of the credential
   before they are raised or logged (some servers echo keys back, and the
   Telegram token is part of every URL).
-- The `calls` table records model, timing, tokens and cost, never a key or a
-  prompt.
+- The `calls` table records each attempt's model, timing, tokens and cost,
+  never a key or a prompt.
 - On AWS, prefer an instance or task role: SigV4 signing uses botocore's
   default credential chain, so no key needs to exist on disk.
 

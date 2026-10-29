@@ -1,11 +1,19 @@
 import { describe, expect, it } from 'vitest';
-import { ago, clock, count, dayDate, humanize, pct, seconds, usd, when } from './format';
+import { ago, clock, costText, count, dayDate, humanize, pct, seconds, usd, when } from './format';
 
 // Node applies a change to TZ at once; the formatters are built per call.
 process.env.TZ = 'UTC';
 
 // Monday 12 October 2026, 14:32 UTC.
 const T = Date.UTC(2026, 9, 12, 14, 32) / 1000;
+
+describe('costText', () => {
+  it('says unknown, never $0, when a cost is not known', () => {
+    expect(costText(null)).toBe('unknown');
+    expect(costText(0)).toBe('$0.00');
+    expect(costText(0.12, 3)).toBe('$0.12 + 3 unknown');
+  });
+});
 
 describe('usd', () => {
   it('uses two decimals from one cent up', () => {

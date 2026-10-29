@@ -16,7 +16,7 @@ import {
 process.env.TZ = 'UTC';
 
 function day(partial: Partial<CostDay> = {}): CostDay {
-  return { day: '2026-10-12', calls: 10, failures: 1, cost_usd: 0.25, input_tokens: 1000, output_tokens: 200, ...partial };
+  return { day: '2026-10-12', calls: 10, failures: 1, cost_usd: 0.25, cost_unknown: 0, input_tokens: 1000, output_tokens: 200, ...partial };
 }
 
 describe('the view chips', () => {
@@ -63,14 +63,16 @@ describe('cost days', () => {
   });
   it('add up to the totals', () => {
     const sum = totals([day(), day({ day: '2026-10-11', calls: 5, failures: 0, cost_usd: 0.5, input_tokens: 1, output_tokens: 2 })]);
-    expect(sum).toEqual({ calls: 15, failures: 1, cost_usd: 0.75, input_tokens: 1001, output_tokens: 202 });
-    expect(totals([])).toEqual({ calls: 0, failures: 0, cost_usd: 0, input_tokens: 0, output_tokens: 0 });
+    expect(sum).toEqual({ calls: 15, failures: 1, cost_usd: 0.75, cost_unknown: 0, input_tokens: 1001, output_tokens: 202 });
+    expect(totals([])).toEqual({ calls: 0, failures: 0, cost_usd: 0, cost_unknown: 0, input_tokens: 0, output_tokens: 0 });
+    expect(totals([day({ cost_unknown: 2 }), day({ cost_unknown: 1 })]).cost_unknown).toBe(3);
   });
 });
 
 describe('a model call', () => {
   it('reads ok, or names the error', () => {
     expect(okLabel({ ok: true, error_kind: null })).toBe('ok');
+    expect(okLabel({ ok: false, error_kind: 'abandoned' })).toBe('cut off');
     expect(okLabel({ ok: false, error_kind: 'timeout' })).toBe('timeout');
     expect(okLabel({ ok: false, error_kind: 'rate_limited' })).toBe('rate limited');
     expect(okLabel({ ok: false, error_kind: null })).toBe('failed');

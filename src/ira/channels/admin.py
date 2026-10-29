@@ -120,10 +120,13 @@ def overview(_: Principal = Depends(reader), runtime: Runtime = Depends(get_runt
     latencies = [c["seconds"] for c in calls if c["ok"]]
     models: dict[Any, dict[str, Any]] = {}
     for call in calls:
-        entry = models.setdefault(call["model"], {"calls": 0, "failures": 0, "cost": 0.0, "s": []})
+        entry = models.setdefault(
+            call["model"], {"calls": 0, "failures": 0, "cost": 0.0, "unknown": 0, "s": []}
+        )
         entry["calls"] += 1
         entry["failures"] += 0 if call["ok"] else 1
         entry["cost"] += call["cost_usd"] or 0.0
+        entry["unknown"] += 1 if call["cost_usd"] is None else 0
         entry["s"].append(call["seconds"])
     actions = store.read(
         "SELECT status, COUNT(*) AS n FROM pending_actions WHERE created_at >= ? GROUP BY status",
@@ -143,6 +146,7 @@ def overview(_: Principal = Depends(reader), runtime: Runtime = Depends(get_runt
         calls=len(calls),
         failures=sum(1 for c in calls if not c["ok"]),
         cost_usd=round(sum(c["cost_usd"] or 0.0 for c in calls), 6),
+        cost_unknown=sum(1 for c in calls if c["cost_usd"] is None),
         input_tokens=sum(c["input_tokens"] for c in calls),
         output_tokens=sum(c["output_tokens"] for c in calls),
         latency_p50=_percentile(latencies, 0.50),
@@ -153,6 +157,7 @@ def overview(_: Principal = Depends(reader), runtime: Runtime = Depends(get_runt
                 calls=e["calls"],
                 failures=e["failures"],
                 cost_usd=round(e["cost"], 6),
+                cost_unknown=e["unknown"],
                 avg_seconds=round(sum(e["s"]) / len(e["s"]), 3),
             )
             for model, e in sorted(models.items(), key=lambda kv: -kv[1]["calls"])
@@ -690,6 +695,7 @@ def costs(
     rows = runtime.store.read(
         "SELECT date(at, 'unixepoch', 'localtime') AS day, COUNT(*) AS calls, "
         "SUM(1 - ok) AS failures, COALESCE(SUM(cost_usd), 0) AS cost_usd, "
+        "SUM(cost_usd IS NULL) AS cost_unknown, "
         "SUM(input_tokens) AS input_tokens, SUM(output_tokens) AS output_tokens "
         "FROM calls WHERE at >= ? GROUP BY day ORDER BY day DESC",
         (since,),

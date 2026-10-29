@@ -120,9 +120,15 @@ model does not add its timeout to every request. When streaming, the gateway
 can only fall back before the first word reaches the user; it never mixes
 two models' answers.
 
-Every request writes a row to the `calls` table: the model that answered, the
-models tried, attempts, seconds, tokens and cost (from the `prices` table in
-`ira.yaml`). Never a key or a prompt.
+Every attempt at a model writes a row to the `calls` table, however it ends:
+answered, failed, timed out, or cut off (the person spoke over Ira, or left).
+The attempts of one request share an id. Each row has the model, seconds,
+tokens (and how many were read from the provider's cache) and the cost, from
+the `prices` table in `ira.yaml`: cached input at its own price (`cached_input`
+and `cache_write`; unset, half the input price and a quarter more than it,
+so a cost is never under-counted). A cost that is not known (no price, or
+the provider did not say how many tokens) is stored as unknown, never $0.
+Never a key or a prompt.
 
 ## Languages
 

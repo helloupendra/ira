@@ -8,6 +8,11 @@ Anyone can now run Ira as their own assistant, on their own server or as one
 person on a shared one. Everything below is per person and off until they
 switch it on.
 
+- **The cost log counts every attempt.** One row per attempt at a model,
+  however it ends (answered, failed, timed out or cut off), grouped by
+  request; a cost that is not known is "unknown", never $0.00; and input
+  read from a provider's cache is priced as cached (`cached_input` and
+  `cache_write` in the price table).
 - **Retention.** The logs that only grow are kept to days set under
   `retention` in `ira.yaml`, cleaned every hour: live-call timings 30 days,
   ended sessions and unused codes 30 after they end; model calls, "What Ira

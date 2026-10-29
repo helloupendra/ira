@@ -337,6 +337,9 @@ class ModelUsage(BaseModel):
     calls: int
     failures: int
     cost_usd: float
+    cost_unknown: int = Field(
+        default=0, description="Of these calls, how many have no known cost (left out of cost_usd)."
+    )
     avg_seconds: float
 
 
@@ -360,14 +363,20 @@ class Overview(BaseModel):
         "since the start of today. A bare PIN typed into chat is never stored or counted."
     )
     calls: int = Field(
-        description="Model calls today. One question can make several (one per tool round), "
+        description="Attempts at a model today, one each: a question can make several (one "
+        "per tool round, and one more for each model that failed before another answered), "
         "and model tests count too."
     )
     failures: int = Field(
-        description="Model calls today that failed: no model in the chain answered, "
-        "or a stream broke off."
+        description="Attempts today that did not answer: the model failed or timed out, or "
+        "the answer was cut off (abandoned)."
     )
-    cost_usd: float
+    cost_usd: float = Field(description="What today's calls cost, where it is known.")
+    cost_unknown: int = Field(
+        default=0,
+        description="Calls today whose cost is not known: no price set for the model, the "
+        "provider did not report its tokens, or the attempt failed or was cut off.",
+    )
     input_tokens: int
     output_tokens: int
     latency_p50: float | None
@@ -400,7 +409,11 @@ class CallRow(BaseModel):
     seconds: float
     input_tokens: int
     output_tokens: int
-    cost_usd: float | None
+    cost_usd: float | None = Field(
+        description="null when not known: no price set, no token count, or no answer."
+    )
+    request: str | None = Field(default=None, description="Shared by the attempts of one request.")
+    cached_tokens: int = Field(default=0, description="Of input_tokens, those read from cache.")
 
 
 class ConversationRow(BaseModel):
@@ -1001,6 +1014,7 @@ class CostDay(BaseModel):
     calls: int
     failures: int
     cost_usd: float
+    cost_unknown: int = Field(default=0, description="Calls that day with no known cost.")
     input_tokens: int
     output_tokens: int
 

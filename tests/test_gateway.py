@@ -30,8 +30,13 @@ async def test_falls_back_to_the_next_model_on_capacity_refusal(store):
     assert response.text == "from the second model"
     assert response.model == "b:m"
     assert response.attempts == 2
-    row = store.one("SELECT * FROM calls")
-    assert (row["tried"], row["attempts"], row["ok"], row["model"]) == ("a:m,b:m", 2, 1, "b:m")
+    # One row per attempt: the one that failed counts against its own model.
+    rows = store.query("SELECT * FROM calls ORDER BY id")
+    assert [(r["model"], r["tried"], r["attempts"], r["ok"], r["error_kind"]) for r in rows] == [
+        ("a:m", "a:m", 1, 0, "capacity"),
+        ("b:m", "a:m,b:m", 2, 1, None),
+    ]
+    assert rows[0]["request"] == rows[1]["request"] and rows[0]["cost_usd"] is None
 
 
 async def test_falls_back_on_timeout(store):
@@ -71,8 +76,8 @@ async def test_all_models_failing_raises_and_is_logged(store):
     with pytest.raises(GatewayError) as caught:
         await gw.chat(HELLO)
     assert [ref for ref, _ in caught.value.errors] == ["a:m", "b:m"]
-    row = store.one("SELECT * FROM calls")
-    assert (row["ok"], row["attempts"], row["error_kind"]) == (0, 2, "capacity")
+    rows = store.query("SELECT ok, attempts, error_kind FROM calls ORDER BY id")
+    assert [tuple(r) for r in rows] == [(0, 1, "auth"), (0, 2, "capacity")]
 
 
 async def test_cost_comes_from_the_price_table(store):
@@ -87,6 +92,36 @@ async def test_cost_comes_from_the_price_table(store):
     assert response.cost_usd == pytest.approx(0.002)
     row = store.one("SELECT input_tokens, output_tokens, cost_usd FROM calls")
     assert tuple(row) == (1000, 500, pytest.approx(0.002))
+
+
+async def test_a_cost_not_known_is_unknown_and_cached_input_is_cheaper(store):
+    unreported = ChatResponse(text="ok", usage=Usage(known=False))
+    cached = ChatResponse(text="ok", usage=Usage(1000, 0, cached_input_tokens=800))
+    provider = ScriptedProvider([unreported, cached, cached])
+    prices = {"p:m": Price(input=1.0, output=2.0, cached_input=0.1)}
+    gw = Gateway({"p": provider}, {"default": ["p:m"]}, prices=prices, store=store)
+    assert (await gw.chat(HELLO)).cost_usd is None  # the provider did not say: not $0
+    # 200 plain at $1 and 800 cached at $0.10, per million.
+    assert (await gw.chat(HELLO)).cost_usd == pytest.approx((200 * 1.0 + 800 * 0.1) / 1e6)
+    gw.prices["p:m"] = Price(input=1.0, output=2.0)  # no cached price set: half, never less
+    assert (await gw.chat(HELLO)).cost_usd == pytest.approx((200 * 1.0 + 800 * 0.5) / 1e6)
+    costs = [r["cost_usd"] for r in store.query("SELECT cost_usd FROM calls ORDER BY id")]
+    assert costs[0] is None
+    assert [r["cached_tokens"] for r in store.query("SELECT cached_tokens FROM calls")] == [
+        0,
+        800,
+        800,
+    ]
+
+
+async def test_a_stream_cut_off_is_still_counted(store):
+    gw = gateway(store, a=ScriptedProvider(["a long answer in many words"]))
+    stream = gw.stream(HELLO)
+    first = await anext(stream)
+    assert isinstance(first, TextDelta)
+    await stream.aclose()  # the person spoke over Ira
+    row = store.one("SELECT model, ok, error_kind, cost_usd FROM calls")
+    assert tuple(row) == ("a:m", 0, "abandoned", None)
 
 
 async def test_stream_falls_back_before_the_first_word(store):
@@ -143,3 +178,28 @@ async def test_provider_errors_never_carry_the_api_key():
 def test_unknown_provider_in_a_tier_is_a_config_error(store):
     with pytest.raises(ValueError, match="unknown provider"):
         Gateway({"a": ScriptedProvider()}, {"default": ["a:m", "missing:m"]}, store=store)
+
+
+def test_providers_say_what_was_cached():
+    from ira.models.base import anthropic_usage, openai_usage
+
+    openai = openai_usage(
+        {
+            "prompt_tokens": 1000,
+            "completion_tokens": 20,
+            "prompt_tokens_details": {"cached_tokens": 600},
+        }
+    )
+    assert (openai.input_tokens, openai.cached_input_tokens, openai.known) == (1000, 600, True)
+    # Anthropic counts cache reads and writes apart from input_tokens.
+    split = anthropic_usage(
+        {"input_tokens": 50, "cache_read_input_tokens": 900, "cache_creation_input_tokens": 100},
+        output_tokens=30,
+    )
+    assert (split.input_tokens, split.cached_input_tokens, split.cache_write_tokens) == (
+        1050,
+        900,
+        100,
+    )
+    assert split.output_tokens == 30
+    assert not openai_usage(None).known and not anthropic_usage({}).known

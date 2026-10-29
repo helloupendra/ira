@@ -43,6 +43,11 @@ class ProviderConfig(_Strict):
 class PriceConfig(_Strict):
     input: float  # USD per million input tokens
     output: float  # USD per million output tokens
+    # Input read from the provider's cache, and written to it. Unset: half the input price
+    # and a quarter more than it, the most any of the big providers charge, so a cost is
+    # never under-counted. Set the model's own for exact figures.
+    cached_input: float | None = Field(default=None, ge=0)
+    cache_write: float | None = Field(default=None, ge=0)
 
 
 def _default_providers() -> dict[str, ProviderConfig]:

@@ -20,6 +20,7 @@ from ira.models.base import (
     TextDelta,
     ToolCall,
     Usage,
+    openai_usage,
 )
 from ira.models.http import HttpClient, sse_data
 
@@ -96,11 +97,10 @@ def parse_completion(data: dict[str, Any], model: str) -> ChatResponse:
         )
         for index, call in enumerate(message.get("tool_calls") or [])
     ]
-    usage = data.get("usage") or {}
     return ChatResponse(
         text=_text_of(message.get("content")),
         tool_calls=calls,
-        usage=Usage(usage.get("prompt_tokens") or 0, usage.get("completion_tokens") or 0),
+        usage=openai_usage(data.get("usage")),
         model=model,
         stop_reason=choice.get("finish_reason"),
     )
@@ -167,7 +167,7 @@ class OpenAICompatProvider:
 
         text: list[str] = []
         slots: dict[int, dict[str, str]] = {}
-        usage = Usage()
+        usage = Usage(known=False)  # until a chunk carries it
         stop_reason: str | None = None
         async with self.http.stream_lines("/chat/completions", payload, timeout=timeout) as lines:
             async for data in sse_data(lines):
@@ -180,8 +180,7 @@ class OpenAICompatProvider:
                 if chunk.get("error"):
                     raise ProviderError(f"stream error: {chunk['error']}", kind="server")
                 if chunk.get("usage"):
-                    u = chunk["usage"]
-                    usage = Usage(u.get("prompt_tokens") or 0, u.get("completion_tokens") or 0)
+                    usage = openai_usage(chunk["usage"])
                 for choice in chunk.get("choices") or []:
                     delta = choice.get("delta") or {}
                     piece = _text_of(delta.get("content"))

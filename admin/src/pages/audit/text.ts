@@ -49,16 +49,18 @@ export interface Totals {
   calls: number;
   failures: number;
   cost_usd: number;
+  cost_unknown: number;
   input_tokens: number;
   output_tokens: number;
 }
 
 export function totals(rows: readonly CostDay[]): Totals {
-  const sum: Totals = { calls: 0, failures: 0, cost_usd: 0, input_tokens: 0, output_tokens: 0 };
+  const sum: Totals = { calls: 0, failures: 0, cost_usd: 0, cost_unknown: 0, input_tokens: 0, output_tokens: 0 };
   for (const row of rows) {
     sum.calls += row.calls;
     sum.failures += row.failures;
     sum.cost_usd += row.cost_usd;
+    sum.cost_unknown += row.cost_unknown ?? 0;
     sum.input_tokens += row.input_tokens;
     sum.output_tokens += row.output_tokens;
   }
@@ -69,6 +71,7 @@ export function totals(rows: readonly CostDay[]): Totals {
 export function okLabel(row: Pick<CallRow, 'ok' | 'error_kind'>): string {
   if (row.ok) return 'ok';
   const kind = row.error_kind?.trim();
+  if (kind === 'abandoned') return 'cut off';
   return kind ? humanize(kind) : 'failed';
 }
 

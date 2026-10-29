@@ -32,6 +32,13 @@ export function usd(n: number | null | undefined): string {
   return `$${number(n, digits, digits)}`;
 }
 
+// A cost that may not be known: one call's ("unknown" when it is not), or a total with
+// how many of its calls have no known cost ("$0.12 + 3 unknown"). Never $0 for unknown.
+export function costText(n: number | null | undefined, unknown = 0): string {
+  if (isMissing(n)) return 'unknown';
+  return unknown > 0 ? `${usd(n)} + ${count(unknown)} unknown` : usd(n);
+}
+
 export function seconds(n: number | null | undefined): string {
   if (isMissing(n)) return DASH;
   return `${number(n, 2, 2)} s`;

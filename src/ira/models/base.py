@@ -74,13 +74,51 @@ class Message:
 
 @dataclass
 class Usage:
+    """Tokens a call used. input_tokens counts all of the input, cached or not; of them,
+    cached_input_tokens were read from the provider's cache and cache_write_tokens written to
+    it, each priced at its own rate. known is False when the provider said nothing: such a
+    call's cost is unknown, never $0."""
+
     input_tokens: int = 0
     output_tokens: int = 0
+    cached_input_tokens: int = 0
+    cache_write_tokens: int = 0
+    known: bool = True
 
     def __add__(self, other: Usage) -> Usage:
         return Usage(
-            self.input_tokens + other.input_tokens, self.output_tokens + other.output_tokens
+            self.input_tokens + other.input_tokens,
+            self.output_tokens + other.output_tokens,
+            self.cached_input_tokens + other.cached_input_tokens,
+            self.cache_write_tokens + other.cache_write_tokens,
+            self.known and other.known,
         )
+
+
+def openai_usage(usage: dict[str, Any] | None) -> Usage:
+    """An OpenAI-style usage object: prompt_tokens include the cached ones."""
+    if not usage:
+        return Usage(known=False)
+    details = usage.get("prompt_tokens_details") or {}
+    return Usage(
+        usage.get("prompt_tokens") or 0,
+        usage.get("completion_tokens") or 0,
+        cached_input_tokens=details.get("cached_tokens") or 0,
+    )
+
+
+def anthropic_usage(usage: dict[str, Any] | None, output_tokens: int | None = None) -> Usage:
+    """Anthropic's usage: input_tokens leaves out what was read from or written to the cache."""
+    if not usage:
+        return Usage(known=False)
+    read = usage.get("cache_read_input_tokens") or 0
+    written = usage.get("cache_creation_input_tokens") or 0
+    return Usage(
+        (usage.get("input_tokens") or 0) + read + written,
+        output_tokens if output_tokens is not None else (usage.get("output_tokens") or 0),
+        cached_input_tokens=read,
+        cache_write_tokens=written,
+    )
 
 
 @dataclass

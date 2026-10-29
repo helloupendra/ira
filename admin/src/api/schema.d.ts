@@ -2612,8 +2612,22 @@ export interface components {
             input_tokens: number;
             /** Output Tokens */
             output_tokens: number;
-            /** Cost Usd */
+            /**
+             * Cost Usd
+             * @description null when not known: no price set, no token count, or no answer.
+             */
             cost_usd: number | null;
+            /**
+             * Request
+             * @description Shared by the attempts of one request.
+             */
+            request?: string | null;
+            /**
+             * Cached Tokens
+             * @description Of input_tokens, those read from cache.
+             * @default 0
+             */
+            cached_tokens: number;
         };
         /** ChangeRow */
         ChangeRow: {
@@ -2898,6 +2912,12 @@ export interface components {
             failures: number;
             /** Cost Usd */
             cost_usd: number;
+            /**
+             * Cost Unknown
+             * @description Calls that day with no known cost.
+             * @default 0
+             */
+            cost_unknown: number;
             /** Input Tokens */
             input_tokens: number;
             /** Output Tokens */
@@ -3710,6 +3730,12 @@ export interface components {
             failures: number;
             /** Cost Usd */
             cost_usd: number;
+            /**
+             * Cost Unknown
+             * @description Of these calls, how many have no known cost (left out of cost_usd).
+             * @default 0
+             */
+            cost_unknown: number;
             /** Avg Seconds */
             avg_seconds: number;
         };
@@ -3960,16 +3986,25 @@ export interface components {
             questions: number;
             /**
              * Calls
-             * @description Model calls today. One question can make several (one per tool round), and model tests count too.
+             * @description Attempts at a model today, one each: a question can make several (one per tool round, and one more for each model that failed before another answered), and model tests count too.
              */
             calls: number;
             /**
              * Failures
-             * @description Model calls today that failed: no model in the chain answered, or a stream broke off.
+             * @description Attempts today that did not answer: the model failed or timed out, or the answer was cut off (abandoned).
              */
             failures: number;
-            /** Cost Usd */
+            /**
+             * Cost Usd
+             * @description What today's calls cost, where it is known.
+             */
             cost_usd: number;
+            /**
+             * Cost Unknown
+             * @description Calls today whose cost is not known: no price set for the model, the provider did not report its tokens, or the attempt failed or was cut off.
+             * @default 0
+             */
+            cost_unknown: number;
             /** Input Tokens */
             input_tokens: number;
             /** Output Tokens */

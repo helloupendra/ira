@@ -10801,7 +10801,26 @@
                                 "type": "null"
                             }
                         ],
-                        "title": "Cost Usd"
+                        "title": "Cost Usd",
+                        "description": "null when not known: no price set, no token count, or no answer."
+                    },
+                    "request": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Request",
+                        "description": "Shared by the attempts of one request."
+                    },
+                    "cached_tokens": {
+                        "type": "integer",
+                        "title": "Cached Tokens",
+                        "description": "Of input_tokens, those read from cache.",
+                        "default": 0
                     }
                 },
                 "type": "object",
@@ -11476,6 +11495,12 @@
                     "cost_usd": {
                         "type": "number",
                         "title": "Cost Usd"
+                    },
+                    "cost_unknown": {
+                        "type": "integer",
+                        "title": "Cost Unknown",
+                        "description": "Calls that day with no known cost.",
+                        "default": 0
                     },
                     "input_tokens": {
                         "type": "integer",
@@ -13217,6 +13242,12 @@
                         "type": "number",
                         "title": "Cost Usd"
                     },
+                    "cost_unknown": {
+                        "type": "integer",
+                        "title": "Cost Unknown",
+                        "description": "Of these calls, how many have no known cost (left out of cost_usd).",
+                        "default": 0
+                    },
                     "avg_seconds": {
                         "type": "number",
                         "title": "Avg Seconds"
@@ -13765,16 +13796,23 @@
                     "calls": {
                         "type": "integer",
                         "title": "Calls",
-                        "description": "Model calls today. One question can make several (one per tool round), and model tests count too."
+                        "description": "Attempts at a model today, one each: a question can make several (one per tool round, and one more for each model that failed before another answered), and model tests count too."
                     },
                     "failures": {
                         "type": "integer",
                         "title": "Failures",
-                        "description": "Model calls today that failed: no model in the chain answered, or a stream broke off."
+                        "description": "Attempts today that did not answer: the model failed or timed out, or the answer was cut off (abandoned)."
                     },
                     "cost_usd": {
                         "type": "number",
-                        "title": "Cost Usd"
+                        "title": "Cost Usd",
+                        "description": "What today's calls cost, where it is known."
+                    },
+                    "cost_unknown": {
+                        "type": "integer",
+                        "title": "Cost Unknown",
+                        "description": "Calls today whose cost is not known: no price set for the model, the provider did not report its tokens, or the attempt failed or was cut off.",
+                        "default": 0
                     },
                     "input_tokens": {
                         "type": "integer",

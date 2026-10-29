@@ -37,7 +37,9 @@ and the channels. It can be closed and resumed. The steps are in
 ![Today: questions, model calls, failures, cost and latency, a by-model table, actions by status and channel health](images/console-overview-desktop-light.png)
 
 What Ira did today, since midnight server time: questions asked, model
-calls, failures, cost in US dollars (from the price table in `ira.yaml`),
+calls (one for each attempt, so a model that failed before another answered
+counts against itself), failures, cost in US dollars (from the price table
+in `ira.yaml`, with how many calls' cost is unknown),
 p50 and p95 latency in seconds, conversations and tokens; a table per model;
 actions by status (each a link into Actions); and whether each channel is
 on. Refresh re-reads everything.

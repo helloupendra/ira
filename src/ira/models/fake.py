@@ -58,7 +58,7 @@ class ScriptedProvider:
         if isinstance(item, str):
             item = ChatResponse(text=item)
         item.model = model
-        if not item.usage.input_tokens:
+        if not item.usage.input_tokens and item.usage.known:  # a script may say "not reported"
             item.usage = Usage(_estimate_tokens(messages), max(1, len(item.text) // 4))
         return item
 

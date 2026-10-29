@@ -14,7 +14,7 @@ from ira.models.base import (
     StreamEvent,
     TextDelta,
     ToolCall,
-    Usage,
+    anthropic_usage,
 )
 from ira.models.http import HttpClient, classify_status, sse_data
 
@@ -104,11 +104,10 @@ def parse_message(data: dict[str, Any], model: str) -> ChatResponse:
                     arguments=json.dumps(block.get("input") or {}),
                 )
             )
-    usage = data.get("usage") or {}
     return ChatResponse(
         text="".join(text),
         tool_calls=calls,
-        usage=Usage(usage.get("input_tokens") or 0, usage.get("output_tokens") or 0),
+        usage=anthropic_usage(data.get("usage")),
         model=model,
         stop_reason=data.get("stop_reason"),
     )
@@ -170,7 +169,8 @@ class AnthropicProvider:
 
         text: list[str] = []
         blocks: dict[int, dict[str, str]] = {}
-        input_tokens = output_tokens = 0
+        started_usage: dict[str, Any] | None = None
+        output_tokens = 0
         stop_reason: str | None = None
         async with self.http.stream_lines("/v1/messages", payload, timeout=timeout) as lines:
             async for data in sse_data(lines):
@@ -182,8 +182,7 @@ class AnthropicProvider:
                 if kind == "error":
                     raise _stream_error(event)
                 if kind == "message_start":
-                    usage = (event.get("message") or {}).get("usage") or {}
-                    input_tokens = usage.get("input_tokens") or 0
+                    started_usage = (event.get("message") or {}).get("usage") or None
                 elif kind == "content_block_start":
                     block = event.get("content_block") or {}
                     if block.get("type") == "tool_use":
@@ -215,7 +214,7 @@ class AnthropicProvider:
             ChatResponse(
                 text="".join(text),
                 tool_calls=calls,
-                usage=Usage(input_tokens, output_tokens),
+                usage=anthropic_usage(started_usage, output_tokens),
                 model=model,
                 stop_reason=stop_reason,
             )

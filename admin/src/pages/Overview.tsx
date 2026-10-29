@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react';
 import { Link } from 'wouter';
 import { admin, type ChannelView, type Overview as OverviewData } from '../api/endpoints';
-import { count, dayDate, humanize, seconds, usd } from '../lib/format';
+import { costText, count, dayDate, humanize, seconds } from '../lib/format';
 import type { Permission } from '../lib/roles';
 import { Icon } from '../ui/icons';
 import { Page } from '../ui/Page';
@@ -55,7 +55,7 @@ function Stats({ data }: { data: OverviewData }) {
       <Stat label="Questions" value={count(data.questions)} />
       <Stat label="Model calls" value={count(data.calls)} />
       <Stat label="Failures" value={count(data.failures)} />
-      <Stat label="Cost" value={usd(data.cost_usd)} />
+      <Stat label="Cost" value={costText(data.cost_usd, data.cost_unknown ?? 0)} />
       <Stat label="Latency p50 / p95" value={`${seconds(data.latency_p50)} / ${seconds(data.latency_p95)}`} />
       <Stat label="Conversations" value={count(data.conversations)} />
       <Stat label="Tokens in / out" value={`${count(data.input_tokens)} / ${count(data.output_tokens)}`} />
@@ -95,7 +95,7 @@ function ByModel({ data }: { data: OverviewData }) {
                   <td>{row.model ?? <span className="muted">none (no model answered)</span>}</td>
                   <td className="num">{count(row.calls)}</td>
                   <td className={row.failures > 0 ? 'num danger' : 'num'}>{count(row.failures)}</td>
-                  <td className="num">{usd(row.cost_usd)}</td>
+                  <td className="num">{costText(row.cost_usd, row.cost_unknown ?? 0)}</td>
                   <td className="num">{seconds(row.avg_seconds)}</td>
                 </tr>
               ))}

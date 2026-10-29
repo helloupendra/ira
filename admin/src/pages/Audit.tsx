@@ -1,7 +1,7 @@
 import { useState, type ReactNode } from 'react';
 import { useLocation, useSearch } from 'wouter';
 import { admin, type AuditRow, type CallRow, type ChangeRow, type CostDay } from '../api/endpoints';
-import { clock, count, dayDate, humanize, seconds, usd, when } from '../lib/format';
+import { clock, costText, count, dayDate, humanize, seconds, when } from '../lib/format';
 import { outcomeBadge } from '../ui/badges';
 import { Icon } from '../ui/icons';
 import { Json } from '../ui/Json';
@@ -256,7 +256,7 @@ function CostDays({ rows }: { rows: CostDay[] }) {
       <dl className="stats cost-stats">
         <Stat label="Calls" value={count(sum.calls)} />
         <Stat label="Failures" value={count(sum.failures)} />
-        <Stat label="Cost" value={usd(sum.cost_usd)} />
+        <Stat label="Cost" value={costText(sum.cost_usd, sum.cost_unknown)} />
         <Stat label="Tokens in / out" value={`${count(sum.input_tokens)} / ${count(sum.output_tokens)}`} />
       </dl>
       <p className="inline-note cost-note">Cost is in US dollars, as configured in ira.yaml's price table.</p>
@@ -292,7 +292,7 @@ function CostDays({ rows }: { rows: CostDay[] }) {
                   </td>
                   <td className="num">{count(row.calls)}</td>
                   <td className={row.failures > 0 ? 'num danger' : 'num'}>{count(row.failures)}</td>
-                  <td className="num">{usd(row.cost_usd)}</td>
+                  <td className="num">{costText(row.cost_usd, row.cost_unknown ?? 0)}</td>
                   <td className="num">{count(row.input_tokens)}</td>
                   <td className="num">{count(row.output_tokens)}</td>
                 </tr>
@@ -348,7 +348,7 @@ function CallsTable({ rows }: { rows: CallRow[] }) {
                 <td className="num">
                   {count(row.input_tokens)} / {count(row.output_tokens)}
                 </td>
-                <td className="num">{usd(row.cost_usd)}</td>
+                <td className="num">{costText(row.cost_usd)}</td>
               </tr>
             );
           })}

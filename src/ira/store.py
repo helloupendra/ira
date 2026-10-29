@@ -27,10 +27,12 @@ CREATE TABLE IF NOT EXISTS settings (
     value TEXT NOT NULL
 );
 
--- One row per gateway request. Never the API key or the prompt.
+-- One row per attempt at a model, however it ended; the attempts of one request share
+-- `request`. cost_usd is NULL when not known. Never the API key or the prompt.
 CREATE TABLE IF NOT EXISTS calls (
     id            INTEGER PRIMARY KEY AUTOINCREMENT,
     at            REAL NOT NULL,
+    request       TEXT,
     tier          TEXT NOT NULL,
     purpose       TEXT NOT NULL,
     model         TEXT,
@@ -41,6 +43,7 @@ CREATE TABLE IF NOT EXISTS calls (
     seconds       REAL NOT NULL,
     input_tokens  INTEGER NOT NULL DEFAULT 0,
     output_tokens INTEGER NOT NULL DEFAULT 0,
+    cached_tokens INTEGER NOT NULL DEFAULT 0,
     cost_usd      REAL
 );
 CREATE INDEX IF NOT EXISTS calls_at ON calls (at);
@@ -477,6 +480,8 @@ class Store:
         ("pending_actions", "user_id", "INTEGER"),
         ("pending_actions", "device_id", "INTEGER"),
         ("device_pairings", "uses_left", "INTEGER"),
+        ("calls", "request", "TEXT"),
+        ("calls", "cached_tokens", "INTEGER NOT NULL DEFAULT 0"),
     )
 
     def _add_missing_columns(self) -> None:

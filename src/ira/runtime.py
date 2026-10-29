@@ -554,7 +554,10 @@ def build_runtime(
     gateway = Gateway(
         providers,
         settings.models.tiers,
-        prices={ref: Price(p.input, p.output) for ref, p in settings.models.prices.items()},
+        prices={
+            ref: Price(p.input, p.output, p.cached_input, p.cache_write)
+            for ref, p in settings.models.prices.items()
+        },
         store=store,
         cooldown_seconds=settings.models.cooldown_seconds,
         timeout_seconds=settings.models.timeout_seconds,

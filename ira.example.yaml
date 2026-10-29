@@ -61,7 +61,7 @@ models:
   # US dollars per million tokens, for the cost column of the call log.
   # Illustrative numbers: check your provider's current price page.
   prices:
-    openai:gpt-4o-mini: { input: 0.15, output: 0.60 }
+    openai:gpt-4o-mini: { input: 0.15, output: 0.60, cached_input: 0.075 }
 
 # Each person's connections (pip install "ira-assistant[connectors]").
 # connectors:
