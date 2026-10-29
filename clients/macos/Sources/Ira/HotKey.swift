@@ -50,6 +50,11 @@ final class HotKey {
         reference = nil
     }
 
+    /// Drop's keys: ⌃⌥⌘V sends the clipboard, ⌃⌥⌘C copies the newest item.
+    static let dropModifiers = UInt32(controlKey | optionKey | cmdKey)
+    static let sendClipboardKey = UInt32(kVK_ANSI_V)
+    static let copyLatestKey = UInt32(kVK_ANSI_C)
+
     /// Carbon modifier flags from AppKit's.
     static func carbonModifiers(_ flags: NSEvent.ModifierFlags) -> UInt32 {
         var out: UInt32 = 0

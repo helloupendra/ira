@@ -60,6 +60,8 @@ public final class DeviceClient: @unchecked Sendable {
     private let onState: @Sendable (DeviceState) -> Void
     /// The person's assistant name and wake phrase, from each welcome.
     public var onWelcome: @Sendable (String?, String?) -> Void = { _, _ in }
+    /// A change in the person's Drop, from another of their devices.
+    public var onDrop: @Sendable (DropFrame) -> Void = { _ in }
     private let log: IraLog
 
     private let lock = NSLock()
@@ -427,6 +429,8 @@ public final class DeviceClient: @unchecked Sendable {
                 lock.locked { currentSkills = now }
                 log.info("skills now \(now)")
                 onState(.connected(deviceID: deviceID, skills: skills))
+            case .drop(let change):
+                onDrop(change)
             case .error(let reason):
                 log.warning("the server said: \(reason)")
             case .welcome, .pong, .other:

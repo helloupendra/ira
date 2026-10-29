@@ -18,7 +18,11 @@ switch it on.
   the other devices, and Share → Ira once the app is installed on Android
   (shown first, sent only on Send to Drop). On Android: a Drop screen,
   Share → Ira Drop with a confirm and progress, a Send clipboard tile, and a
-  notification with Copy while Ira is open.
+  notification with Copy while Ira is open. On the Mac: the newest items in
+  the menu-bar menu, files and text dragged onto the icon, ⌃⌥⌘V to send the
+  clipboard and ⌃⌥⌘C to copy the newest item, a notification with Copy, and
+  files saved to ~/Downloads/Ira. Ira for Mac now refuses a tool whose skill
+  is off for it, whatever the server asks, and `~/LIBRARY` like `~/Library`.
   From a terminal:
   `ira drop login`, then `send`, `list`, `get` and `rm`.
   `POST/GET/DELETE /v1/me/drop`, `/v1/me/drop/settings`.

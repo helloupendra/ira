@@ -62,6 +62,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var panel: FloatingPanel!
     private var settingsWindow: NSWindow?
     private var hotKey: HotKey?
+    /// ⌃⌥⌘V sends the clipboard to Drop; ⌃⌥⌘C copies the newest item from it.
+    private var sendClipboardKey: HotKey?
+    private var copyLatestKey: HotKey?
+    private var dropTarget: DropTarget?
     private var wakeWatch: Any?
     private var workWatch: Any?
     private var approvalWatch: Any?
@@ -103,6 +107,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
         hotKey = HotKey { [weak self] in self?.togglePanel() }
         registerHotKey()
+        sendClipboardKey = HotKey { [weak self] in self?.sendClipboardToDrop() }
+        copyLatestKey = HotKey { [weak self] in self?.copyLatestFromDrop() }
+        if sendClipboardKey?.register(keyCode: HotKey.sendClipboardKey, modifiers: HotKey.dropModifiers) != true
+            || copyLatestKey?.register(keyCode: HotKey.copyLatestKey, modifiers: HotKey.dropModifiers) != true
+        {
+            IraLog.shared.warning("a Drop hotkey is taken by another app")
+        }
+        if let button = statusItem.button { dropTarget = DropTarget(drop: model.drop, button: button) }
+        Task { await model.drop.refresh() }
         model.onWake = { [weak self] in self?.showPanel() }
         observers.append(NotificationCenter.default.addObserver(forName: .iraShowPanel, object: nil, queue: .main) { [weak self] _ in
             MainActor.assumeIsolated { self?.showPanel() }
@@ -156,6 +169,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             menu.addItem(stop)
         }
         menu.addItem(.separator())
+        addDropItems(to: menu)
+        menu.addItem(.separator())
         if !model.activity.isEmpty {
             let header = NSMenuItem(title: "What I read", action: nil, keyEquivalent: "")
             header.isEnabled = false
@@ -180,6 +195,96 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let quit = NSMenuItem(title: "Quit Ira", action: #selector(quitFromMenu), keyEquivalent: "q")
         quit.target = self
         menu.addItem(quit)
+    }
+
+    // MARK: Drop
+
+    /// The newest few items, each with what can be done with it, and ways to send.
+    private func addDropItems(to menu: NSMenu) {
+        let header = NSMenuItem(title: "Drop", action: nil, keyEquivalent: "")
+        header.isEnabled = false
+        menu.addItem(header)
+        guard model.paired else { return }
+        for item in model.drop.items.prefix(5) {
+            let line = item.preview
+            let entry = NSMenuItem(title: line.count > 48 ? String(line.prefix(47)) + "…" : line, action: nil, keyEquivalent: "")
+            entry.toolTip = "From \(item.fromLabel)"
+            let actions = NSMenu()
+            for (title, verb) in AppDelegate.dropActions(for: item) {
+                let action = NSMenuItem(title: title, action: #selector(dropAction(_:)), keyEquivalent: "")
+                action.target = self
+                action.representedObject = DropChoice(item: item, verb: verb)
+                actions.addItem(action)
+            }
+            entry.submenu = actions
+            menu.addItem(entry)
+        }
+        let send = NSMenuItem(title: "Send Clipboard to Drop  (⌃⌥⌘V)", action: #selector(sendClipboardToDrop), keyEquivalent: "")
+        send.target = self
+        menu.addItem(send)
+        let latest = NSMenuItem(title: "Copy Latest from Drop  (⌃⌥⌘C)", action: #selector(copyLatestFromDrop), keyEquivalent: "")
+        latest.target = self
+        menu.addItem(latest)
+        let files = NSMenuItem(title: "Send Files to Drop…", action: #selector(sendFilesToDrop), keyEquivalent: "")
+        files.target = self
+        menu.addItem(files)
+        let folder = NSMenuItem(title: "Open Downloads/Ira", action: #selector(openDropFolder), keyEquivalent: "")
+        folder.target = self
+        menu.addItem(folder)
+    }
+
+    /// Copy first for text and links; a file is saved to Downloads/Ira.
+    static func dropActions(for item: DropItem) -> [(String, String)] {
+        var actions: [(String, String)] = []
+        if item.isFile {
+            actions += [("Save to Downloads/Ira and Show", "open"), ("Copy the File", "copy")]
+        } else {
+            actions.append(("Copy", "copy"))
+            if item.link != nil { actions.append(("Open Link", "open")) }
+        }
+        actions.append(("Delete from All Devices", "delete"))
+        return actions
+    }
+
+    @objc private func dropAction(_ sender: NSMenuItem) {
+        guard let choice = sender.representedObject as? DropChoice else { return }
+        let drop = model.drop
+        Task {
+            switch choice.verb {
+            case "copy": await drop.copy(choice.item)
+            case "open": await drop.open(choice.item)
+            case "delete": await drop.delete(choice.item)
+            default: break
+            }
+        }
+    }
+
+    @objc private func sendClipboardToDrop() {
+        let drop = model.drop
+        Task { await drop.sendClipboard() }
+    }
+
+    @objc private func copyLatestFromDrop() {
+        let drop = model.drop
+        Task { await drop.copyLatest() }
+    }
+
+    @objc private func sendFilesToDrop() {
+        let picker = NSOpenPanel()
+        picker.canChooseFiles = true
+        picker.canChooseDirectories = false
+        picker.allowsMultipleSelection = true
+        picker.prompt = "Send to Drop"
+        NSApp.activate(ignoringOtherApps: true)
+        guard picker.runModal() == .OK else { return }
+        let drop = model.drop
+        let files = picker.urls
+        Task { await drop.send(files: files) }
+    }
+
+    @objc private func openDropFolder() {
+        try? FileManager.default.createDirectory(at: DropBox.folder, withIntermediateDirectories: true)
+        NSWorkspace.shared.open(DropBox.folder)
     }
 
     static func describe(_ state: DeviceState, paired: Bool) -> String {
@@ -502,4 +607,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 extension Notification.Name {
     static let iraFocusInput = Notification.Name("in.ira.mac.focusInput")
     static let iraShowPanel = Notification.Name("in.ira.mac.showPanel")
+}
+
+/// One item and what to do with it, for its menu entry.
+final class DropChoice: NSObject {
+    let item: DropItem
+    let verb: String
+
+    init(item: DropItem, verb: String) {
+        self.item = item
+        self.verb = verb
+    }
 }

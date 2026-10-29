@@ -170,6 +170,22 @@ on, as a code made with a salt kept on this Mac. Never the network's name,
 never what is on the screen or which apps run. See [What Ira
 learns](../learning.md).
 
+## Drop: send anything to your other devices
+
+Drop is your own inbox, shared by your devices (see
+[Privacy](../privacy.md#drop)). In the menu-bar menu, **Drop** lists the
+newest five; each has **Copy** first for text and links (and **Open
+Link**), and **Save to Downloads/Ira and Show** for a file.
+
+- **Drag** files, a link or text onto Ira's menu-bar icon to send them.
+- **⌃⌥⌘V** sends the clipboard (text, or files copied in the Finder);
+  **⌃⌥⌘C** copies the newest item. Both are in the menu too, with **Send
+  Files to Drop…**.
+- Text from another device comes as a notification with **Copy**. A file
+  is saved to `~/Downloads/Ira` at once (never over a file already there,
+  checked against its fingerprint, and marked as downloaded, so macOS
+  checks it before it opens), with **Show in Finder**.
+
 ## What Ira can do on your Mac
 
 Each ability belongs to a **skill** you switch on for this Mac on **Your
@@ -275,7 +291,8 @@ Ira **cannot**:
 - read a web page through the browser, form fields or passwords; or the
   windows of System Settings, the password prompt, Keychain Access and
   password managers (it says so by name);
-- read your **Library folder** (mail, messages, browser data, the Keychain),
+- read your **Library folder** (mail, messages, browser data, the Keychain;
+  however its name is written, `~/LIBRARY` too),
   **hidden files and folders** (such as `.ssh` and `.aws`), or files that
   hold keys and passwords (`.env`, `.pem`, `.key`, `id_rsa`, password
   databases). These are refused even if you ask;
@@ -291,7 +308,8 @@ Ira **cannot**:
 - read your clipboard when a password manager marked what you copied as
   private;
 - use any ability whose skill is off, or whose permission macOS has not
-  given.
+  given. The Mac checks the skill itself, so not even a server that asks
+  can use one that is off.
 
 What Ira reads goes to your own Ira server, marked as data that can never
 give Ira orders, and is kept only in that conversation (see

@@ -28,6 +28,8 @@ final class AppModel: ObservableObject {
     let settings: AppSettings
     let secrets: SecretStore
     let conversation: Conversation
+    /// The person's Drop: the menu's inbox, and what arrives from their other devices.
+    let drop: DropBox
     let permissions = PermissionCenter()
     /// An approval window open for this Mac, after a PIN on a control step.
     let approvals: ApprovalMonitor
@@ -50,6 +52,7 @@ final class AppModel: ObservableObject {
         self.assistant = settings.assistantName
         self.pinned = settings.panelPinned
         self.conversation = Conversation(settings: settings, secrets: secrets)
+        self.drop = DropBox(settings: settings, secrets: secrets)
         self.approvals = ApprovalMonitor(settings: settings, secrets: secrets)
         conversation.onConfirmed = { [weak self] in Task { await self?.approvals.refresh() } }
         trackFrontApp()
@@ -221,7 +224,11 @@ final class AppModel: ObservableObject {
                 // The server is reachable again: a turn after this may use live voice.
                 self.conversation.retryLive("the device connection is back")
                 await self.approvals.refresh()
+                await self.drop.catchUp()
             }
+        }
+        client.onDrop = { [weak self] change in
+            Task { @MainActor in self?.drop.handle(change) }
         }
         device = client
         startRoutine(client)
