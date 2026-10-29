@@ -357,6 +357,8 @@ def export_data(runtime: Runtime, principal: Principal) -> dict[str, Any]:
             c.public() for c in (runtime.connectors.for_user(user_id) if runtime.connectors else [])
         ],
         "businesses": [vars(b) for b in runtime.businesses.list(user_id)],
+        # Drop: the list of items (the files themselves are downloaded one by one).
+        "drop": [i.public() for i in runtime.drop.list(user_id, limit=10_000)],
     }
 
 
@@ -443,6 +445,7 @@ async def delete_my_data(
         store.execute("DELETE FROM voice_turns WHERE user_id = ?", (user_id,))
         store.execute("DELETE FROM reports WHERE user_id = ?", (user_id,))
         store.execute("DELETE FROM businesses WHERE user_id = ?", (user_id,))
+        runtime.drop.delete_user(user_id)  # the items and their files
         store.execute("DELETE FROM device_pairings WHERE user_id = ?", (user_id,))
         devices = store.execute("DELETE FROM devices WHERE user_id = ?", (user_id,)).rowcount
         settings = store.execute("DELETE FROM user_settings WHERE user_id = ?", (user_id,)).rowcount

@@ -48,6 +48,7 @@ as that owner keeps backups. Ira sends nothing to its developer.
 | A device's own key | the Mac's Keychain (later, the phone's Keystore) | until you remove the device |
 | If you switched learning on: what Ira noticed (left, reached, locked..., the time, a place name you gave, the device), and your thumbs on answers | the server's database | as long as you chose: 30 to 365 days (90 by default) |
 | Routines you said yes to, and your reminders | the server's database | until you forget them, they go off, or you delete your data |
+| Drop: the text, links and files you send to your own devices | the server's data folder; files encrypted at rest with the server's key | 30 days, or until you delete them or your data |
 | Your business profiles: what each is, its people, terms, what Ira may do | the server's database | until you remove them or delete your data |
 | Answers you reported: why, your note, and which answer | the server's database, seen by its owners and admins | until you delete your data |
 
@@ -118,6 +119,17 @@ not train on what you send. Check their pages yourself: terms change.
   did" and settings, after your password. Your account remains, and so do
   the records a business keeps (the actions you asked its tools to take, and
   its audit log); the owner can remove the account.
+
+## Drop
+
+Drop is your own inbox, shared by your own devices: what you send from one
+(text, a link, a file) is on the others. It is kept on your Ira server for
+30 days, or until you delete it; a file is encrypted there with the
+server's own key. That protects a stolen disk or backup, not the server
+itself: whoever runs the server can read it, so this is **not end-to-end
+encryption**. Nobody but you sees your items in Ira, not even its owner or
+admins; logs keep only an item's number, kind and size, never its words
+or file name. **Delete my data** removes every item and file.
 
 ## The Ira app for Android
 

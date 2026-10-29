@@ -30,6 +30,7 @@ from ira.channels import (
     businesses,
     connectors,
     devices,
+    drop,
     learning,
     live,
     me,
@@ -526,6 +527,16 @@ ADMIN_PLACEHOLDER = """<!doctype html><html lang="en"><head><meta charset="utf-8
 <a href="/v1/docs">/v1/docs</a> (see the <code>admin</code> section).</p></body></html>"""
 
 
+async def _clean_drop(runtime: Runtime) -> None:
+    """Every hour, delete Drop items past their time, with their files."""
+    while True:
+        try:
+            await asyncio.to_thread(runtime.drop.clean)
+        except Exception:
+            log.exception("cleaning Drop failed")
+        await asyncio.sleep(3600)
+
+
 class ConsoleFiles(StaticFiles):
     """The console's files. A path with no file behind it and no file extension is one of the
     console's own routes (``/admin/setup``, ``/admin/invite``), so it gets ``index.html`` and the
@@ -558,6 +569,8 @@ def create_app(runtime: Runtime, *, start_channels: bool = True) -> FastAPI:
 
             scheduler = LearningScheduler(runtime.learner)
             tasks.append(asyncio.create_task(scheduler.run(), name="ira-learning"))
+        if start_channels:
+            tasks.append(asyncio.create_task(_clean_drop(runtime), name="ira-drop-clean"))
         if start_channels and runtime.settings.channels.telegram.enabled:
             from ira.channels.telegram import event_notifier, start_telegram
 
@@ -620,6 +633,7 @@ def create_app(runtime: Runtime, *, start_channels: bool = True) -> FastAPI:
     app.include_router(my_tokens.router)
     app.include_router(approvals.router)
     app.include_router(approvals.keys)
+    app.include_router(drop.router)
     devices.mask_tokens_in_logs()
 
     @app.get("/pair", include_in_schema=False)

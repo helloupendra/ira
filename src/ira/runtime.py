@@ -17,6 +17,7 @@ from ira.businesses import Businesses
 from ira.config import ConfigError, ProviderConfig, Settings, secret
 from ira.conversations import Conversations
 from ira.devices import DeviceHub, Devices
+from ira.drop import Drop
 from ira.learning.learner import Learner
 from ira.learning.people import people_tools
 from ira.learning.reminders import reminder_tools
@@ -94,6 +95,8 @@ class Runtime:
     approvals: Approvals = field(init=False)
     # Devices' approval keys: a fingerprint on the device instead of the PIN.
     approval_keys: ApprovalKeys = field(init=False)
+    # Each person's private inbox, shared by their own devices.
+    drop: Drop = field(init=False)
     # Each person's connections to other services (MCP servers).
     connectors: Any = None
 
@@ -136,6 +139,22 @@ class Runtime:
         )
         if self.guard.signature_check is None:
             self.guard.signature_check = self.approval_keys.verify
+        drop = self.settings.drop
+
+        def drop_key() -> bytes:
+            from ira.connectors.sealed import load_key
+
+            return load_key(self.settings.data_dir)
+
+        self.drop = Drop(
+            self.store,
+            self.settings.data_dir / "drop",
+            drop_key,
+            max_file_bytes=drop.max_file_mb * 1024 * 1024,
+            max_text=drop.max_text,
+            quota_bytes=drop.quota_mb * 1024 * 1024,
+            keep_seconds=drop.keep_days * 86400,
+        )
         if self.assistant.after_turn is None:
             self.assistant.after_turn = self._learn_from
         if self.assistant.personal_tools is None:

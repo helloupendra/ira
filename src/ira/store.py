@@ -229,6 +229,25 @@ CREATE TABLE IF NOT EXISTS device_events (
 CREATE INDEX IF NOT EXISTS device_events_user ON device_events (user_id, id);
 
 -- "What Ira did": every tool call, without its arguments or results.
+-- Drop: a person's private inbox shared by their own devices. A file's bytes are under
+-- the data folder (drop/<user>/<id>.bin), encrypted with the instance key.
+CREATE TABLE IF NOT EXISTS drop_items (
+    id             INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id        INTEGER NOT NULL,
+    kind           TEXT NOT NULL,
+    text           TEXT,
+    name           TEXT,
+    mime           TEXT,
+    size           INTEGER,
+    sha256         TEXT,
+    from_device_id INTEGER,
+    from_label     TEXT NOT NULL,
+    created_at     REAL NOT NULL,
+    expires_at     REAL NOT NULL
+);
+CREATE INDEX IF NOT EXISTS drop_items_user ON drop_items (user_id, id);
+CREATE INDEX IF NOT EXISTS drop_items_expiry ON drop_items (expires_at);
+
 -- Approval windows: after a PIN on a screen-control action, more steps on that device run
 -- without asking until expires_at (docs/security.md, "Approvals").
 CREATE TABLE IF NOT EXISTS approval_windows (

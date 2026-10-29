@@ -36,7 +36,11 @@ NEVER_IDS = frozenset(
 
 
 def never_app(app: str | None) -> bool:
-    """Terminal, iTerm, Script Editor, Automator and the like: never acted in, never trusted."""
+    """Terminal, iTerm, Script Editor, Automator and the like: never acted in, never trusted.
+
+    Names match by any part ("terminal" anywhere in it): an app that merely has such a word
+    in its name is refused too. That errs on the safe side on purpose; do not narrow it
+    to exact names without weighing that."""
     if not app:
         return False
     name = app.strip().lower().removesuffix(".app")

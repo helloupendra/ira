@@ -209,6 +209,17 @@ class GoogleConfig(_Strict):
     client_secret_env: str = "GOOGLE_CLIENT_SECRET"
 
 
+class DropConfig(_Strict):
+    """Drop: each person's private inbox, shared by their own devices."""
+
+    max_file_mb: int = Field(default=100, ge=1, le=2048)
+    max_text: int = Field(default=100_000, ge=100, le=1_000_000)
+    quota_mb: int = Field(default=2048, ge=1)  # per person
+    keep_days: int = Field(default=30, ge=1, le=3650)
+    # Items sent from other devices are forwarded to the person's paired Telegram chat.
+    telegram_forward: bool = True
+
+
 class ConnectorsConfig(_Strict):
     # Local MCP servers people may connect; a person can never add a command themselves.
     mcp_servers: dict[str, McpServerConfig] = Field(default_factory=dict)
@@ -243,6 +254,7 @@ class Settings(_Strict):
     actions: ActionsConfig = Field(default_factory=ActionsConfig)
     search: SearchConfig = Field(default_factory=SearchConfig)
     connectors: ConnectorsConfig = Field(default_factory=ConnectorsConfig)
+    drop: DropConfig = Field(default_factory=DropConfig)
     config_dir: Path = Field(default_factory=Path.cwd, exclude=True)
 
     @field_validator("tools")

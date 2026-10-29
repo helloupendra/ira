@@ -321,6 +321,23 @@ Each tool's `min_tier` comes from its annotations: read-only is 0, unmarked
 or writing is 2, destructive or about sending, paying, sharing, deleting,
 merging or pushing is 3. See [Your connections](connectors.md).
 
+### Drop: your inbox across your devices
+
+| Route | Who | Does |
+| --- | --- | --- |
+| `POST /v1/me/drop` | `ask` (a session, a device, an API token) | JSON `{"text": "..."}` (a link when the whole text is one address), or multipart with `file` and an optional `text` caption. `201` and the item; `413` too large (100 MB, 100,000 characters), `507` your Drop is full (2 GB) |
+| `GET /v1/me/drop?after_id=&limit=50` | `ask` | `{"items": [...], "has_more"}`, newest first; `after_id` gives only newer items, to catch up |
+| `GET /v1/me/drop/{id}/file` | `ask` | a file's bytes, as an attachment |
+| `DELETE /v1/me/drop/{id}` | `ask` | `204`; it is gone from every device |
+
+An item: `id`, `kind` (`text`, `link`, `file`), `text`, and for a file `name`,
+`mime`, `size`, `sha256`; `from_device_id` and `from_label` (the device's
+name, or Web, CLI, Telegram); `created_at` and `expires_at` (30 days).
+Connected devices are told at once with a `{"type": "drop", "event": "new",
+"item": {...}}` or `{"type": "drop", "event": "deleted", "id": 42}` frame on
+their WebSocket (not the device it came from); one that was offline catches
+up with `after_id`. Someone else's item is always `404`.
+
 ### Approvals
 
 `GET /v1/me/approvals`, `DELETE /v1/me/approvals[/{id}]` and

@@ -350,6 +350,21 @@ class DeviceHub:
         self._last_event[connection.device.id] = now
         await self.publish(connection.device.user_id, connection.device.id, event)
 
+    async def send_to_person(
+        self, user_id: int, frame: dict[str, Any], *, except_device: int | None = None
+    ) -> int:
+        """Send a frame to every connected device of one person (but ``except_device``,
+        the one it came from). Returns how many got it."""
+        sent = 0
+        for connection in list(self.connections.values()):
+            device = connection.device
+            if device.user_id != user_id or device.id == except_device or connection.closed:
+                continue
+            with contextlib.suppress(Exception):
+                await connection.send(frame)
+                sent += 1
+        return sent
+
     async def publish(self, user_id: int, device_id: int | None, event: Event) -> dict[str, Any]:
         """Keep an event and send it to its user's channels, and to nobody else's."""
         row = self.devices.add_event(user_id, device_id, event)

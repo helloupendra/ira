@@ -1948,6 +1948,58 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/me/drop": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Your Drop, newest first */
+        get: operations["list_drop"];
+        put?: never;
+        /** Drop text or a link (JSON {text}), or a file (multipart: file, and text as a caption) */
+        post: operations["drop"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/me/drop/{item_id}/file": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** A dropped file's bytes */
+        get: operations["drop_file"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/me/drop/{item_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Delete an item from every device */
+        delete: operations["delete_drop"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -3047,6 +3099,56 @@ export interface components {
              * @description Where to download it: here, or the project's releases page.
              */
             url: string;
+        };
+        /** DropItem */
+        DropItem: {
+            /** Id */
+            id: number;
+            /**
+             * Kind
+             * @description text, link or file.
+             */
+            kind: string;
+            /**
+             * Text
+             * @description The text or link; a file's caption.
+             */
+            text?: string | null;
+            /** Name */
+            name?: string | null;
+            /** Mime */
+            mime?: string | null;
+            /**
+             * Size
+             * @description A file's size in bytes.
+             */
+            size?: number | null;
+            /**
+             * Sha256
+             * @description A file's SHA-256, hex.
+             */
+            sha256?: string | null;
+            /** From Device Id */
+            from_device_id?: number | null;
+            /**
+             * From Label
+             * @description The device's name, or Web, Telegram, CLI.
+             */
+            from_label: string;
+            /** Created At */
+            created_at: string;
+            /** Expires At */
+            expires_at: string;
+        };
+        /** DropList */
+        DropList: {
+            /**
+             * Items
+             * @description Newest first.
+             */
+            items: components["schemas"]["DropItem"][];
+            /** Has More */
+            has_more: boolean;
         };
         /** EmailChange */
         EmailChange: {
@@ -11572,6 +11674,131 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["OkResponse"];
                 };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_drop: {
+        parameters: {
+            query?: {
+                /** @description Only items newer than this one. */
+                after_id?: number | null;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DropList"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    drop: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": {
+                    /** Text */
+                    text: string;
+                };
+                "multipart/form-data": {
+                    /** Format: binary */
+                    file: string;
+                    text?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DropItem"];
+                };
+            };
+        };
+    };
+    drop_file: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                item_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/octet-stream": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_drop: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                item_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {
