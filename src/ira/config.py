@@ -212,7 +212,8 @@ class GoogleConfig(_Strict):
 class DropConfig(_Strict):
     """Drop: each person's private inbox, shared by their own devices."""
 
-    max_file_mb: int = Field(default=100, ge=1, le=2048)
+    # 95, not 100: a Cloudflare tunnel refuses request bodies over 100 MB on its free plan.
+    max_file_mb: int = Field(default=95, ge=1, le=2048)
     max_text: int = Field(default=100_000, ge=100, le=1_000_000)
     quota_mb: int = Field(default=2048, ge=1)  # per person
     keep_days: int = Field(default=30, ge=1, le=3650)

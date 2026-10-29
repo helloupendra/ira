@@ -828,6 +828,9 @@ class TokenCreateRequest(BaseModel):
 
 class MyTokenCreate(BaseModel):
     label: str = Field(default="Siri on iPhone", max_length=60)
+    drop: bool = Field(
+        default=False, description="It may also use your Drop (for the `ira drop` CLI)."
+    )
     pin: str = Field(min_length=1, max_length=20, description="Your action PIN.")
 
 

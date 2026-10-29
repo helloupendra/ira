@@ -325,10 +325,10 @@ merging or pushing is 3. See [Your connections](connectors.md).
 
 | Route | Who | Does |
 | --- | --- | --- |
-| `POST /v1/me/drop` | `ask` (a session, a device, an API token) | JSON `{"text": "..."}` (a link when the whole text is one address), or multipart with `file` and an optional `text` caption. `201` and the item; `413` too large (100 MB, 100,000 characters), `507` your Drop is full (2 GB) |
-| `GET /v1/me/drop?after_id=&limit=50` | `ask` | `{"items": [...], "has_more"}`, newest first; `after_id` gives only newer items, to catch up |
-| `GET /v1/me/drop/{id}/file` | `ask` | a file's bytes, as an attachment |
-| `DELETE /v1/me/drop/{id}` | `ask` | `204`; it is gone from every device |
+| `POST /v1/me/drop` | `drop` (a session, a paired device, or an API token made with it) | JSON `{"text": "..."}` (a link when the whole text is one address), or multipart with `file` and an optional `text` caption. `201` and the item; `413` too large (95 MB, 100,000 characters), `507` your Drop is full (2 GB) |
+| `GET /v1/me/drop?after_id=&limit=50` | `drop` | `{"items": [...], "has_more"}`, newest first; `after_id` gives only newer items, to catch up |
+| `GET /v1/me/drop/{id}/file` | `drop` | a file's bytes, always as an attachment |
+| `DELETE /v1/me/drop/{id}` | `drop` | `204`; it is gone from every device |
 
 An item: `id`, `kind` (`text`, `link`, `file`), `text`, and for a file `name`,
 `mime`, `size`, `sha256`; `from_device_id` and `from_label` (the device's
@@ -337,6 +337,16 @@ Connected devices are told at once with a `{"type": "drop", "event": "new",
 "item": {...}}` or `{"type": "drop", "event": "deleted", "id": 42}` frame on
 their WebSocket (not the device it came from); one that was offline catches
 up with `after_id`. Someone else's item is always `404`.
+
+A token that may only ask (Siri's) has no `drop`, so a lost phone's
+Shortcut cannot read the inbox; make one with `"drop": true` for the `ira`
+CLI. The file limit is 95 MB because a Cloudflare tunnel refuses bodies over
+100 MB; raise `drop.max_file_mb` only when nothing in front of Ira does.
+
+A file comes back as an attachment with `X-Content-Type-Options: nosniff`,
+never to be shown inline: an app opens it with the system's viewer or saves
+it, and the web inbox previews only images it can draw safely (PNG, JPEG,
+GIF, WebP) from a blob, never HTML or SVG, which could run script.
 
 Ira has two tools of its own for it: `drop_list` (what is in your Drop) and
 `drop_send` (put text or a link there, "send this to my phone"). After a
@@ -354,7 +364,7 @@ A run inside a window shows in "What Ira did" with the outcome `approved`.
 | Route | Who | Does |
 | --- | --- | --- |
 | `GET /v1/me/tokens` | a session with `ask` | `MyToken[]`: your API tokens that still work, never their values |
-| `POST /v1/me/tokens` | a session with `ask` | `MyTokenCreate` (`label`, `pin`): a token whose only scope is `ask`, shown once (`TokenCreated`). Your PIN, as for a new device. 10 at most |
+| `POST /v1/me/tokens` | a session with `ask` | `MyTokenCreate` (`label`, `pin`, `drop`): a token whose only scope is `ask`, plus `drop` when asked (for the `ira` CLI), shown once (`TokenCreated`). Your PIN, as for a new device. 10 at most |
 | `DELETE /v1/me/tokens/{id}` | a session with `ask` | stops one of your tokens |
 
 A Siri Shortcut sends what was said to `POST /v1/ask` with one

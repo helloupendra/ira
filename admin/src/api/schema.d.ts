@@ -3802,6 +3802,12 @@ export interface components {
              */
             label: string;
             /**
+             * Drop
+             * @description It may also use your Drop (for the `ira drop` CLI).
+             * @default false
+             */
+            drop: boolean;
+            /**
              * Pin
              * @description Your action PIN.
              */

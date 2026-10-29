@@ -178,3 +178,34 @@ def test_the_inbox_over_http_and_live_to_the_other_devices(tmp_path):
         assert gone.status_code == 200
     assert runtime.drop.list(owner.id) == []
     assert not (tmp_path / "drop" / str(owner.id)).exists()
+
+
+def test_a_key_that_may_only_ask_cannot_read_the_inbox(tmp_path):
+    runtime = make_runtime(data_dir=tmp_path)
+    owner = runtime.accounts.create_first_owner("owner@example.com", PASSWORD)
+    runtime.accounts.create_user("viewer@example.com", PASSWORD, "viewer")
+    runtime.guard.set_pin("4321", user_id=owner.id)
+    runtime.drop.add_text(owner.id, "the plan", from_label="Mac")
+    with TestClient(create_app(runtime, start_channels=False)) as client:
+
+        def login(email):
+            body = {"email": email, "password": PASSWORD, "use_cookie": False}
+            token = client.post("/v1/auth/login", json=body).json()["session_token"]
+            return {"Authorization": f"Bearer {token}"}
+
+        me = login("owner@example.com")
+
+        def key(**extra):
+            made = client.post("/v1/me/tokens", json={"pin": "4321", **extra}, headers=me).json()
+            return made["scopes"], {"Authorization": f"Bearer {made['token']}"}
+
+        scopes, siri = key()
+        assert scopes == ["ask"]
+        assert client.get("/v1/me/drop", headers=siri).status_code == 403
+        assert client.post("/v1/me/drop", json={"text": "x"}, headers=siri).status_code == 403
+        scopes, cli = key(label="ira CLI", drop=True)
+        assert scopes == ["ask", "drop"]
+        assert [i["text"] for i in client.get("/v1/me/drop", headers=cli).json()["items"]] == [
+            "the plan"
+        ]
+        assert client.get("/v1/me/drop", headers=login("viewer@example.com")).status_code == 403

@@ -13365,6 +13365,12 @@
                         "title": "Label",
                         "default": "Siri on iPhone"
                     },
+                    "drop": {
+                        "type": "boolean",
+                        "title": "Drop",
+                        "description": "It may also use your Drop (for the `ira drop` CLI).",
+                        "default": false
+                    },
                     "pin": {
                         "type": "string",
                         "maxLength": 20,

@@ -1,6 +1,10 @@
-export type Permission = 'ask' | 'voice' | 'actions' | 'admin.read' | 'admin.write' | 'users';
+export type Permission =
+  "ask" | "voice" | "actions" | "drop" | "admin.read" | "admin.write" | "users";
 
-export function can(permissions: readonly string[] | null | undefined, p: Permission): boolean {
+export function can(
+  permissions: readonly string[] | null | undefined,
+  p: Permission,
+): boolean {
   return permissions?.includes(p) ?? false;
 }
 
@@ -8,16 +12,17 @@ export function can(permissions: readonly string[] | null | undefined, p: Permis
 // something is not available.
 export function whoCan(p: Permission): string {
   switch (p) {
-    case 'admin.read':
-      return 'an owner, admin or viewer';
-    case 'admin.write':
-      return 'an owner or admin';
-    case 'users':
-      return 'the owner';
-    case 'ask':
-    case 'voice':
-    case 'actions':
-      return 'an owner, admin or staff member';
+    case "admin.read":
+      return "an owner, admin or viewer";
+    case "admin.write":
+      return "an owner or admin";
+    case "users":
+      return "the owner";
+    case "ask":
+    case "voice":
+    case "actions":
+    case "drop":
+      return "an owner, admin or staff member";
   }
 }
 
@@ -26,6 +31,6 @@ export function whyNot(role: string, p: Permission): string {
 }
 
 export function roleLabel(role: string): string {
-  if (!role) return '';
+  if (!role) return "";
   return role.charAt(0).toUpperCase() + role.slice(1);
 }

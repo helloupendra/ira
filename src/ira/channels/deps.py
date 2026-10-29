@@ -92,7 +92,7 @@ def _unauthorized(detail: str = "sign in or send a bearer token") -> HTTPExcepti
 
 # What a paired device may do for its person over HTTP: talk to Ira (typed or by voice) and
 # confirm actions. Never settings, accounts or anything an admin does: those need a session.
-DEVICE_PERMISSIONS = frozenset({"ask", "voice", "actions"})
+DEVICE_PERMISSIONS = frozenset({"ask", "voice", "actions", "drop"})
 
 
 def device_principal(runtime: Runtime, token: str) -> Principal | None:

@@ -26,7 +26,7 @@ def test_a_device_token_asks_and_talks_for_its_person_only(registry):
     with TestClient(create_app(runtime, start_channels=False)) as client:
         info = client.get("/v1/info", headers=headers).json()
         assert info["user"]["email"] == "owner@example.com"
-        assert sorted(info["permissions"]) == ["actions", "ask", "voice"]
+        assert sorted(info["permissions"]) == ["actions", "ask", "drop", "voice"]
         asked = client.post(
             "/v1/ask", json={"text": "hello", "conversation_id": "m1"}, headers=headers
         )

@@ -129,7 +129,8 @@ server's own key. That protects a stolen disk or backup, not the server
 itself: whoever runs the server can read it, so this is **not end-to-end
 encryption**. Nobody but you sees your items in Ira, not even its owner or
 admins; logs keep only an item's number, kind and size, never its words
-or file name. **Delete my data** removes every item and file.
+or file name. **Delete my data** removes every item and file. A file is
+limited to 95 MB, and the key a Siri Shortcut uses cannot read your Drop.
 
 ## The Ira app for Android
 

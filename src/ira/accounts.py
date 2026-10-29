@@ -33,10 +33,10 @@ ROLES: tuple[Role, ...] = ("owner", "admin", "staff", "viewer")
 
 PERMISSIONS: dict[str, frozenset[str]] = {
     "owner": frozenset(
-        {"ask", "voice", "actions", "observe", "admin.read", "admin.write", "users"}
+        {"ask", "voice", "actions", "observe", "drop", "admin.read", "admin.write", "users"}
     ),
-    "admin": frozenset({"ask", "voice", "actions", "observe", "admin.read", "admin.write"}),
-    "staff": frozenset({"ask", "voice", "actions", "observe"}),
+    "admin": frozenset({"ask", "voice", "actions", "observe", "drop", "admin.read", "admin.write"}),
+    "staff": frozenset({"ask", "voice", "actions", "observe", "drop"}),
     "viewer": frozenset({"admin.read"}),
 }
 
@@ -49,7 +49,7 @@ ROLE_DESCRIPTIONS: dict[str, str] = {
 
 # What an API token may carry. Writing config and managing users need a session.
 # "observe" only reports where its person is (a phone's place events), for learning.
-TOKEN_SCOPES = ("ask", "voice", "actions", "observe", "admin.read")
+TOKEN_SCOPES = ("ask", "voice", "actions", "observe", "drop", "admin.read")
 
 SESSION_SECONDS = 14 * 24 * 3600
 COOKIE_DAYS = SESSION_SECONDS / 86400

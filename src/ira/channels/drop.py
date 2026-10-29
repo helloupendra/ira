@@ -16,6 +16,8 @@ from ira.drop import DropError, Item
 from ira.runtime import Runtime
 
 router = APIRouter(prefix="/v1/me/drop", tags=["drop"])
+# Drop needs its own permission: a session or a paired device has it, an API token only
+# when made with it. A key that may only ask (Siri's) cannot read the inbox.
 
 
 class DropItem(BaseModel):
@@ -86,7 +88,7 @@ def _refused(exc: DropError) -> HTTPException:
 )
 async def drop(
     request: Request,
-    who: Principal = Depends(require("ask")),
+    who: Principal = Depends(require("drop")),
     runtime: Runtime = Depends(get_runtime),
 ) -> DropItem:
     label, device_id = source(runtime, who)
@@ -127,7 +129,7 @@ async def drop(
 def list_drop(
     after_id: int | None = Query(None, ge=0, description="Only items newer than this one."),
     limit: int = Query(50, ge=1, le=200),
-    who: Principal = Depends(require("ask")),
+    who: Principal = Depends(require("drop")),
     runtime: Runtime = Depends(get_runtime),
 ) -> DropList:
     items = runtime.drop.list(who.user.id, after_id=after_id, limit=limit + 1)
@@ -151,7 +153,7 @@ def _own(runtime: Runtime, who: Principal, item_id: int) -> Item:
 )
 def drop_file(
     item_id: int,
-    who: Principal = Depends(require("ask")),
+    who: Principal = Depends(require("drop")),
     runtime: Runtime = Depends(get_runtime),
 ) -> StreamingResponse:
     item = _own(runtime, who, item_id)
@@ -178,7 +180,7 @@ def drop_file(
 @router.delete("/{item_id}", status_code=204, summary="Delete an item from every device")
 async def delete_drop(
     item_id: int,
-    who: Principal = Depends(require("ask")),
+    who: Principal = Depends(require("drop")),
     runtime: Runtime = Depends(get_runtime),
 ) -> Response:
     _own(runtime, who, item_id)

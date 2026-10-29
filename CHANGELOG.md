@@ -9,9 +9,10 @@ person on a shared one. Everything below is per person and off until they
 switch it on.
 
 - **Drop.** A private inbox shared by your own devices: send text, a link or a
-  file (100 MB) from one, and it is on the others at once. Kept 30 days, 2 GB
+  file (95 MB) from one, and it is on the others at once. Kept 30 days, 2 GB
   each, encrypted at rest with the server's key (not end to end), removed with
-  your data. `POST/GET/DELETE /v1/me/drop`.
+  your data. Its own permission, `drop`: a Siri key cannot read it. Ira can
+  list it and send to it. `POST/GET/DELETE /v1/me/drop`.
 - **Devices.** A person pairs a Mac (later, an Android phone) with a one-time
   code or QR code and their PIN. The device trades the code for its own
   `irad_` token, kept only as a hash and valid only on the device WebSocket

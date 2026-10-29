@@ -19,6 +19,12 @@ on its own it can never change anything.
   own actions may be confirmed by anyone whose role allows it.
 - A key that may only ask (such as Siri's) cannot say yes: not with the
   approve route, not by typing "haan". Saying no is always allowed.
+- **Drop has its own permission.** A session and a paired device have it;
+  an API token only when made with it. A key that may only ask cannot read,
+  download or delete the inbox. It can still ask Ira what is in it, as it
+  can ask about the person's other data: that is what asking is for.
+- A Drop file is always sent as an attachment with `nosniff`, so a file
+  someone sent cannot run as a page on Ira's address.
 - Each PIN is stored as a salted PBKDF2-SHA256 hash (600,000 iterations by
   default) and checked off the event loop. Setting one over the API needs
   the account password again.

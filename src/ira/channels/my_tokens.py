@@ -2,7 +2,8 @@
 
 A Shortcut on an iPhone ("Hey Siri, Ask Ira") sends what you said to /v1/ask
 with one of these. It can ask and nothing else: it cannot confirm an action,
-pair a device or read the console, so a lost phone gives away the least.
+pair a device, read your Drop or the console, so a lost phone gives away the least.
+One for the ``ira`` CLI may also use your Drop, when made with ``drop``.
 """
 
 from __future__ import annotations
@@ -61,16 +62,17 @@ async def make_my_token(
         raise HTTPException(409, detail=f"{MAX_TOKENS} tokens at most: remove one first")
     label = " ".join(body.label.split()) or "Siri on iPhone"
     await _check_pin(runtime, who, body.pin, f"make a token for {label}")
-    token, token_id = runtime.accounts.create_token(who.user, label, ["ask"])
+    scopes = ["ask", "drop"] if body.drop else ["ask"]
+    token, token_id = runtime.accounts.create_token(who.user, label, scopes)
     changes.record(
         runtime.store,
         who.actor,
         "token.created",
         token_id,
         channel=who.channel,
-        after={"label": label, "scopes": ["ask"]},
+        after={"label": label, "scopes": scopes},
     )
-    return TokenCreated(id=token_id, label=label, scopes=["ask"], token=token)
+    return TokenCreated(id=token_id, label=label, scopes=scopes, token=token)
 
 
 @router.delete("/{token_id}", response_model=OkResponse, summary="Stop one of your tokens")

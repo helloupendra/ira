@@ -98,7 +98,7 @@ voice:
 # Drop: each person's private inbox, shared by their own devices (web, Mac, Android,
 # Telegram, the CLI). Files are encrypted at rest with the instance's secret key.
 drop:
-  max_file_mb: 100
+  max_file_mb: 95                 # a Cloudflare tunnel refuses bodies over 100 MB
   quota_mb: 2048                  # per person
   keep_days: 30                   # then deleted
   telegram_forward: true          # new items go to the person's paired Telegram chat

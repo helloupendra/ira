@@ -180,6 +180,7 @@ def test_a_device_token_talks_for_its_person_but_never_pairs(registry):
         assert client.get("/v1/info", headers=device).json()["permissions"] == [
             "actions",
             "ask",
+            "drop",
             "voice",
         ]
         pairing = {"kind": "mac", "label": "Another", "skills": [], "pin": "4321"}
