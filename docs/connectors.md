@@ -90,7 +90,10 @@ server's own description of its tools is a hint, so a tool called
 
 Whatever a connected service returns reaches the model marked as data,
 never instructions, like a web page: a turn that read it cannot propose a
-Tier 2 or 3 action. Each tool can be switched off, and so can the whole
+Tier 2 or 3 action. Every `<` in it is escaped, so it cannot close that
+mark or pose as a tag. The service's own descriptions of its tools and
+their parameters reach the model too: marked as the service's words, cut
+to a few hundred characters, without angle brackets. Each tool can be switched off, and so can the whole
 connection (switching it back on needs your PIN). At most 40 tools of one
 connection are offered at once; the rest start switched off.
 

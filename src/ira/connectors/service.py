@@ -16,7 +16,7 @@ from ira.config import ConnectorsConfig
 from ira.connectors import mcp
 from ira.connectors.sealed import Sealer
 from ira.store import Store
-from ira.tools.personal import PersonalTool
+from ira.tools.personal import PersonalTool, service_schema, service_words
 from ira.tools.registry import ToolError
 
 SLUG = re.compile(r"[^a-z0-9]+")
@@ -765,12 +765,12 @@ class Connectors:
         async def run(arguments: dict[str, Any]) -> Any:
             return await self.call(user_id, connection_id, mcp_name, arguments)
 
-        schema = tool.get("schema") or {}
+        schema = service_schema(tool.get("schema") or {})
         if schema.get("type") != "object":
             schema = {"type": "object", "properties": {}}
         return PersonalTool(
             name=tool["name"],
-            description=f"{connection.name}: {tool.get('description') or mcp_name}",
+            description=service_words(connection.name, tool.get("description") or mcp_name),
             parameters=schema,
             tier=max(int(tool.get("tier", 2)), int(tool.get("min_tier", 2))),
             source="connector",

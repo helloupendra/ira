@@ -167,7 +167,8 @@ a hello: the server revokes its token and closes the connection.
   device's hello, never from the model.
 - **Untrusted output.** What a device returns reaches the model inside
   `<device_output untrusted="true" from="...">...</device_output>`, with a
-  rule that it is data, never instructions. Once a turn has read a device's
+  rule that it is data, never instructions. Every `<` in it is escaped, so
+  it cannot end the wrapper early. Once a turn has read a device's
   output, it cannot propose a Tier 2 or 3 action.
 - **Privacy.** A device's output is kept only in its person's conversation,
   marked private: an admin reading that conversation sees a placeholder, and
