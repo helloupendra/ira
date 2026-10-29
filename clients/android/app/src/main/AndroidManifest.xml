@@ -91,6 +91,48 @@
             </intent-filter>
         </activity>
 
+        <!-- Drop: Share → Ira from any app. It shows what came in and sends it only on a tap. -->
+        <activity
+            android:name=".drop.ShareActivity"
+            android:exported="true"
+            android:excludeFromRecents="true"
+            android:label="@string/share_label"
+            android:taskAffinity=""
+            android:theme="@style/Theme.Ira.Sheet">
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="*/*" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.SEND_MULTIPLE" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="*/*" />
+            </intent-filter>
+        </activity>
+
+        <!-- Drop: the "Send clipboard" quick-settings tile, and the moment it reads the clipboard. -->
+        <service
+            android:name=".drop.ClipboardTile"
+            android:exported="true"
+            android:icon="@drawable/ic_ira"
+            android:label="@string/tile_label"
+            android:permission="android.permission.BIND_QUICK_SETTINGS_TILE">
+            <intent-filter>
+                <action android:name="android.service.quicksettings.action.QS_TILE" />
+            </intent-filter>
+        </service>
+        <activity
+            android:name=".drop.ClipboardActivity"
+            android:exported="false"
+            android:excludeFromRecents="true"
+            android:noHistory="true"
+            android:taskAffinity=""
+            android:theme="@style/Theme.Ira.Invisible" />
+        <receiver
+            android:name=".drop.CopyReceiver"
+            android:exported="false" />
+
         <service
             android:name=".service.ConversationService"
             android:exported="false"

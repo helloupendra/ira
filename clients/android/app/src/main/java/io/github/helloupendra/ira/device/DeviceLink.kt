@@ -55,7 +55,8 @@ sealed interface LinkState {
  *   carrying the same id, several at once (4 at most), each within 25 seconds;
  * - pings every 30 seconds, and reconnects when it hears nothing for 90;
  * - reconnects with a growing delay; after a refused token, every 5 minutes;
- * - shows the person's events (a task finished) as notifications.
+ * - shows the person's events (a task finished) as notifications;
+ * - passes on what changes in the person's Drop.
  */
 class DeviceLink(
     private val server: String,
@@ -65,6 +66,10 @@ class DeviceLink(
     private val runner: ToolRunner,
     private val onSkills: (List<String>) -> Unit,
     private val onEvent: (DeviceFrame.Event) -> Unit,
+    /** A change in the person's Drop, from another of their devices. */
+    private val onDrop: (DeviceFrame.Drop) -> Unit = {},
+    /** Welcomed again: what changed while the link was down can be fetched now. */
+    private val onConnected: () -> Unit = {},
 ) {
     private val main = Handler(Looper.getMainLooper())
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -214,6 +219,7 @@ class DeviceLink(
                 backoff.connected(nowMs() / 1000)
                 state.value = LinkState.Connected(frame.skills)
                 onSkills(frame.skills)
+                onConnected()
             }
             is DeviceFrame.Skills -> {
                 state.value = LinkState.Connected(frame.skills)
@@ -221,6 +227,7 @@ class DeviceLink(
             }
             is DeviceFrame.Call -> call(webSocket, frame)
             is DeviceFrame.Event -> onEvent(frame)
+            is DeviceFrame.Drop -> onDrop(frame)
             is DeviceFrame.Ping -> webSocket.send(DeviceProtocol.pong())
             is DeviceFrame.Pong -> Unit
             is DeviceFrame.Error -> IraLog.info("device: the server refused a frame")

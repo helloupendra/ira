@@ -6,11 +6,18 @@ import io.github.helloupendra.ira.core.HttpPost
 import io.github.helloupendra.ira.core.HttpReply
 import io.github.helloupendra.ira.core.Pairing
 import java.io.IOException
+import java.io.InputStream
+import java.io.OutputStream
 import java.util.concurrent.TimeUnit
+import okhttp3.MediaType
 import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.MediaType.Companion.toMediaTypeOrNull
+import okhttp3.MultipartBody
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import okhttp3.RequestBody
 import okhttp3.RequestBody.Companion.toRequestBody
+import okio.BufferedSink
 import okhttp3.WebSocket
 import okhttp3.WebSocketListener
 
@@ -97,6 +104,64 @@ object Net {
             }
             return response.code
         }
+    }
+
+    /**
+     * Send one file to Drop (`POST /v1/me/drop`, multipart), read from [open] as it goes, so a
+     * large one never sits in memory; [progress] hears 0 to 1. Blocking: call it off the main
+     * thread. [length] is -1 when unknown.
+     */
+    @Throws(IOException::class)
+    fun upload(url: String, token: String, name: String, mime: String?, length: Long, caption: String?, open: () -> InputStream, progress: (Float) -> Unit): HttpReply {
+        val file =
+            object : RequestBody() {
+                override fun contentType(): MediaType? = (mime ?: "application/octet-stream").toMediaTypeOrNull()
+
+                override fun contentLength(): Long = length
+
+                override fun writeTo(sink: BufferedSink) {
+                    open().use { input ->
+                        val buffer = ByteArray(64 * 1024)
+                        var sent = 0L
+                        while (true) {
+                            val read = input.read(buffer)
+                            if (read < 0) break
+                            sink.write(buffer, 0, read)
+                            sent += read
+                            if (length > 0) progress((sent.toFloat() / length).coerceAtMost(1f))
+                        }
+                    }
+                }
+            }
+        val body =
+            MultipartBody.Builder()
+                .setType(MultipartBody.FORM)
+                .apply { if (!caption.isNullOrBlank()) addFormDataPart("text", caption) }
+                .addFormDataPart("file", name, file)
+                .build()
+        val request =
+            Request.Builder().url(url)
+                .header("Authorization", "Bearer $token")
+                .header("User-Agent", userAgent)
+                .post(body)
+                .build()
+        return transfers.newCall(request).execute().use { HttpReply(it.code, it.body.string()) }
+    }
+
+    /** GET a file into [out] as it comes; the HTTP status. Blocking: call it off the main thread. */
+    @Throws(IOException::class)
+    fun download(url: String, token: String, out: OutputStream): Int {
+        val request = Request.Builder().url(url).header("Authorization", "Bearer $token").header("User-Agent", userAgent).build()
+        transfers.newCall(request).execute().use { response ->
+            if (!response.isSuccessful) return response.code
+            response.body.byteStream().use { it.copyTo(out, 64 * 1024) }
+            return response.code
+        }
+    }
+
+    /** Files up to 95 MB, over a phone's connection: minutes, not seconds. */
+    private val transfers: OkHttpClient by lazy {
+        client.newBuilder().readTimeout(120, TimeUnit.SECONDS).writeTimeout(120, TimeUnit.SECONDS).build()
     }
 
     /** A model and its tools can take a while between events: two minutes at most. */

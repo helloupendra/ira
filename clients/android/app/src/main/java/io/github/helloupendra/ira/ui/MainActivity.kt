@@ -15,6 +15,9 @@ class MainActivity : ComponentActivity() {
     /** Bumped when the assistant gesture opens Ira: the talk screen starts a call. */
     private val talkRequests = mutableIntStateOf(0)
 
+    /** Bumped when a Drop notification opens Ira: the Drop screen shows. */
+    private val dropRequests = mutableIntStateOf(0)
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         // What Ira reads out here (messages, calls, notifications) stays out of screenshots,
@@ -23,7 +26,7 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         handle(intent)
         val app = application as IraApp
-        setContent { IraTheme { IraScreens(app, talkRequests.intValue) } }
+        setContent { IraTheme { IraScreens(app, talkRequests.intValue, dropRequests.intValue) } }
     }
 
     override fun onNewIntent(intent: Intent) {
@@ -44,10 +47,12 @@ class MainActivity : ComponentActivity() {
 
     private fun handle(intent: Intent?) {
         if (intent?.action == ACTION_TALK || intent?.action == Intent.ACTION_ASSIST) talkRequests.intValue++
+        if (intent?.action == ACTION_DROP) dropRequests.intValue++
     }
 
     companion object {
         const val ACTION_TALK = "io.github.helloupendra.ira.TALK"
+        const val ACTION_DROP = "io.github.helloupendra.ira.DROP"
 
         private var current = java.lang.ref.WeakReference<MainActivity>(null)
 

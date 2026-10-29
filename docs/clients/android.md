@@ -200,11 +200,30 @@ to stop. Typed messages always go over HTTP unless a live call is on.
   if you like, and **Send**. The report goes to your Ira's owner with that
   answer; nothing else is sent.
 - **End** the call with the button, or the notification's **End**. Two
-  quiet minutes end it too.
+  quiet minutes end it too. A phone call or an alarm ends it as well: Ira
+  stops talking and the microphone goes off (from Android 12 even while she
+  is only listening).
 
 While a call is on, a notification **Talking with Ira** shows that the
 microphone may listen. The call uses [real-time voice](../realtime.md),
 protocol 1, the same as the web app and the Mac app.
+
+## Drop: send anything to your other devices
+
+Drop is your own inbox, shared by your devices (see
+[Privacy](../privacy.md#drop)).
+
+- **Drop** at the top of the talk screen lists what you sent from any
+  device, newest first. Text and links have **Copy** first (and **Open** for
+  a link); a file has **Save**, into Downloads/Ira, then **Open**. Type or
+  **Paste** at the top and **Send**, or **Choose files**.
+- **Share → Ira Drop** from any app (a photo, a page, a PDF) shows what
+  came in, and sends it only when you tap **Send to Drop**, with a progress
+  bar for each file. Files are limited to 95 MB.
+- **The Send clipboard tile**: add it to the quick settings (pull down
+  twice, the pencil). One tap sends what you copied.
+- While Ira is open, something new from another device shows as a
+  notification with **Copy**.
 
 ## What Ira can do on your phone
 

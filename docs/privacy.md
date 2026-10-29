@@ -157,6 +157,10 @@ and nothing else:
   calendar event, or the phone's location once. Nothing is read in the
   background, and none of it is copied anywhere but your conversation;
 - **what you type**, and your taps on Yes, No and the PIN card;
+- **what you send to your Drop**: text, a link, a file you picked, shared
+  to Ira (only after you tap **Send to Drop**) or copied before you tapped
+  the **Send clipboard** tile. A file you save goes to Downloads/Ira on
+  the phone; nothing else from Drop stays there;
 - **a report, when you make one** with **Report this answer**: the
   answer's id, the reason you picked and your note, if any. The server's
   owners and admins read it.

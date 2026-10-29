@@ -88,7 +88,7 @@ import io.github.helloupendra.ira.voice.Transcript
 import kotlinx.coroutines.flow.MutableStateFlow
 
 @Composable
-fun TalkScreen(app: IraApp, talkRequests: Int, onSkills: () -> Unit, onSettings: () -> Unit) {
+fun TalkScreen(app: IraApp, talkRequests: Int, onSkills: () -> Unit, onSettings: () -> Unit, onDrop: () -> Unit = {}) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val session by app.session.collectAsState()
@@ -163,6 +163,7 @@ fun TalkScreen(app: IraApp, talkRequests: Int, onSkills: () -> Unit, onSettings:
 
     Column(Modifier.fillMaxSize().imePadding()) {
         TopRow(ui.assistant) {
+            TextButton(onClick = onDrop) { Text("Drop") }
             TextButton(onClick = onSkills) { Text("Skills") }
             TextButton(onClick = onSettings) { Text("Settings") }
         }

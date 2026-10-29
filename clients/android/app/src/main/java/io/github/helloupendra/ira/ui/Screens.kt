@@ -57,15 +57,16 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
-enum class Screen { Talk, Skills, Settings, Approvals }
+enum class Screen { Talk, Skills, Settings, Approvals, Drop }
 
 /** The privacy policy: the project's own privacy page. */
 const val PRIVACY_URL = "https://helloupendra.github.io/ira/docs/privacy/"
 
 @Composable
-fun IraScreens(app: IraApp, talkRequests: Int) {
+fun IraScreens(app: IraApp, talkRequests: Int, dropRequests: Int = 0) {
     var paired by remember { mutableStateOf(app.paired) }
     var screen by remember { mutableStateOf(Screen.Talk) }
+    LaunchedEffect(dropRequests) { if (dropRequests > 0 && paired) screen = Screen.Drop }
     Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
         Column(Modifier.safeDrawingPadding()) {
             if (!paired) {
@@ -77,7 +78,8 @@ fun IraScreens(app: IraApp, talkRequests: Int) {
             }
             BackHandler(enabled = screen != Screen.Talk) { screen = Screen.Talk }
             when (screen) {
-                Screen.Talk -> TalkScreen(app, talkRequests, onSkills = { screen = Screen.Skills }, onSettings = { screen = Screen.Settings })
+                Screen.Talk ->
+                    TalkScreen(app, talkRequests, onSkills = { screen = Screen.Skills }, onSettings = { screen = Screen.Settings }, onDrop = { screen = Screen.Drop })
                 Screen.Skills -> SkillsScreen(app, onBack = { screen = Screen.Talk })
                 Screen.Settings ->
                     SettingsScreen(app, onBack = { screen = Screen.Talk }, onApprovals = { screen = Screen.Approvals }, onUnpaired = {
@@ -85,6 +87,7 @@ fun IraScreens(app: IraApp, talkRequests: Int) {
                         screen = Screen.Talk
                     })
                 Screen.Approvals -> ApprovalsScreen(app, onBack = { screen = Screen.Settings })
+                Screen.Drop -> DropScreen(app, onBack = { screen = Screen.Talk })
             }
         }
     }

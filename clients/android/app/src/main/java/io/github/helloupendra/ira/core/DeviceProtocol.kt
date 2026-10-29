@@ -81,6 +81,16 @@ object DeviceProtocol {
                     title = m.string("title").orEmpty(),
                     text = m.string("text").orEmpty(),
                 )
+            "drop" -> {
+                val event = m.string("event").orEmpty()
+                val item = m.obj("item")?.let { Drop.item(it) }
+                val id = m.long("id") ?: item?.id
+                if (event == "new" && item != null || event == "deleted" && id != null) {
+                    DeviceFrame.Drop(event, item, id ?: 0)
+                } else {
+                    DeviceFrame.Unknown("a drop frame without its item")
+                }
+            }
             "ping" -> DeviceFrame.Ping
             "pong" -> DeviceFrame.Pong
             "error" -> DeviceFrame.Error(m.string("error") ?: m.string("message") ?: "error")
@@ -122,6 +132,9 @@ sealed interface DeviceFrame {
 
     /** An event for this phone's person: shown as a notification. */
     data class Event(val event: String, val title: String, val text: String) : DeviceFrame
+
+    /** Something new in the person's Drop ([item]), or one deleted ([id]), on another device. */
+    data class Drop(val event: String, val item: io.github.helloupendra.ira.core.Drop.Item?, val id: Long) : DeviceFrame
 
     data object Ping : DeviceFrame
 

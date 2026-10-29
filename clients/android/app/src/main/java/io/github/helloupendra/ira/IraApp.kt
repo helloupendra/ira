@@ -20,6 +20,7 @@ import io.github.helloupendra.ira.store.SecretStore
 import io.github.helloupendra.ira.store.Settings
 import io.github.helloupendra.ira.device.DeviceLink
 import io.github.helloupendra.ira.device.LinkState
+import io.github.helloupendra.ira.drop.DropBox
 import io.github.helloupendra.ira.service.ConversationService
 import io.github.helloupendra.ira.tools.PhoneState
 import io.github.helloupendra.ira.tools.PhoneTools
@@ -49,6 +50,10 @@ class IraApp : Application() {
     lateinit var secrets: SecretStore
         private set
     lateinit var tools: PhoneTools
+        private set
+
+    /** The person's Drop, as this phone knows it. */
+    lateinit var drop: DropBox
         private set
 
     private val main = Handler(Looper.getMainLooper())
@@ -160,6 +165,7 @@ class IraApp : Application() {
         settings = Settings(this)
         secrets = SecretStore(this)
         tools = PhoneTools(this)
+        drop = DropBox(this)
         skills.value = settings.skillsOn
         ProcessLifecycleOwner.get().lifecycle.addObserver(
             object : DefaultLifecycleObserver {
@@ -394,6 +400,8 @@ class IraApp : Application() {
                     skills.value = on.toSet()
                 },
                 onEvent = ::showEvent,
+                onDrop = { drop.onFrame(it) },
+                onConnected = { drop.catchUp() },
             )
         link = created
         mirror?.cancel()
