@@ -25,6 +25,10 @@ on its own it can never change anything.
   can ask about the person's other data: that is what asking is for.
 - A Drop file is always sent as an attachment with `nosniff`, so a file
   someone sent cannot run as a page on Ira's address.
+- **Share → Ira waits for a tap.** Any web page can post a form to the
+  app's share address, so what arrives there is shown first and goes to
+  Drop only on **Send to Drop**; a post whose page names another site is
+  not kept at all.
 - Each PIN is stored as a salted PBKDF2-SHA256 hash (600,000 iterations by
   default) and checked off the event loop. Setting one over the API needs
   the account password again.

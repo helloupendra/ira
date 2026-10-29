@@ -15,7 +15,8 @@ switch it on.
   list it and send to it. On Telegram, `/drop` puts text or a file in it, and
   new items come to the paired chat unless switched off. In the Ira app: a
   tray at the top with Copy first, files by picker, drag or paste, live from
-  the other devices, and Share → Ira once the app is installed on Android.
+  the other devices, and Share → Ira once the app is installed on Android
+  (shown first, sent only on Send to Drop).
   From a terminal:
   `ira drop login`, then `send`, `list`, `get` and `rm`.
   `POST/GET/DELETE /v1/me/drop`, `/v1/me/drop/settings`.

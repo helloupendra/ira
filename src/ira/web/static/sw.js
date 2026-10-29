@@ -31,12 +31,15 @@ self.addEventListener("activate", (event) => {
   self.clients.claim();
 });
 
-// Share → Ira: keep what was shared, then open the app, which sends it to your Drop
-// and empties this cache. Nothing here leaves the phone until the app sends it.
+// Share → Ira: keep what was shared, then open the app, which shows it and sends it to
+// your Drop only when you say so. Nothing here leaves the phone until then. A post that
+// another site made (its page named as the referrer) is not kept at all; one that hides
+// its referrer still waits for that yes.
 async function keepShared(request) {
   try {
-    const form = await request.formData();
     await caches.delete(SHARE);
+    if (request.referrer && new URL(request.referrer).origin !== self.location.origin) return Response.redirect("/", 303);
+    const form = await request.formData();
     const cache = await caches.open(SHARE);
     const files = form.getAll("files").filter((file) => typeof file !== "string" && file.size);
     for (const [index, file] of files.entries()) {

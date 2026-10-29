@@ -1055,7 +1055,7 @@ const IraPersonal = (() => {
   // Previews only for images a browser draws without running anything: never SVG or HTML.
   const PREVIEW_TYPES = ["image/png", "image/jpeg", "image/gif", "image/webp"];
   const PREVIEW_BYTES = 8 * 1024 * 1024;
-  const drop = { items: [], hasMore: false, list: null, more: null, progress: null, limits: null, previews: new Map() };
+  const drop = { items: [], hasMore: false, list: null, more: null, progress: null, limits: null, previews: new Map(), shared: null };
 
   function canDrop() {
     return Boolean(state.info && state.info.permissions.includes("drop"));
@@ -1156,7 +1156,7 @@ const IraPersonal = (() => {
         )
       : null;
     paintDrop();
-    body.replaceChildren(form, drop.list, drop.more, telegram);
+    body.replaceChildren(sharedCard(), form, drop.list, drop.more, telegram);
     text.focus();
   }
 
@@ -1324,6 +1324,43 @@ const IraPersonal = (() => {
   }
 
   // Share → Ira, from the installed app: the service worker kept it; send it now.
+  // Shared items wait here for a yes: any web page can post to /share in this browser, so
+  // what arrives there is not taken to be the person's own until they send it.
+  function sharedCard() {
+    const shared = drop.shared;
+    if (!shared) return null;
+    const card = el(
+      "div",
+      { className: "card drop-shared", role: "region", "aria-label": "Shared with Ira" },
+      el("p", { className: "card-title", text: "Shared with Ira" }),
+      shared.text ? el("p", { className: "turn-text drop-text", text: shared.text }) : null,
+      shared.files.length ? el("ul", { className: "small" }, shared.files.map((file) => el("li", { className: "breakable", text: `${file.name} (${bytes(file.size)})` }))) : null,
+      el("p", { className: "muted small", text: "Is this what you shared? It goes to your Drop only when you send it." }),
+    );
+    const done = () => {
+      drop.shared = null;
+      card.remove();
+    };
+    card.append(
+      el(
+        "div",
+        { className: "row" },
+        el("button", {
+          type: "button",
+          className: "btn btn-primary",
+          text: "Send to Drop",
+          onClick: () => {
+            done();
+            if (shared.files.length) sendFiles(shared.files, shared.text);
+            else sendText(shared.text).catch((problem) => window.alert(problem.message));
+          },
+        }),
+        el("button", { type: "button", className: "btn btn-ghost", text: "Discard", onClick: done }),
+      ),
+    );
+    return card;
+  }
+
   async function takeShared() {
     if (!new URLSearchParams(location.search).has("share")) return;
     history.replaceState(null, "", location.pathname + location.hash);
@@ -1341,14 +1378,14 @@ const IraPersonal = (() => {
         files.push(new File([await hit.blob()], name, { type: hit.headers.get("Content-Type") || "" }));
       }
     }
-    await caches.delete("ira-share");
+    await caches.delete("ira-share"); // held in this page only, until Send or Discard
     if (!shared || !canDrop()) return;
     const url = shared.url.trim();
     const words = shared.text.trim();
     const text = url && words.includes(url) ? words : [words, url].filter(Boolean).join("\n") || shared.title.trim();
-    await openDrop();
-    if (files.length) await sendFiles(files, text);
-    else if (text) await sendText(text).catch((problem) => window.alert(problem.message));
+    if (!files.length && !text) return;
+    drop.shared = { files, text };
+    await open("drop");
   }
 
   // Files dragged onto the app, or pasted, go to Drop; so does text pasted while Drop is open.
@@ -1406,6 +1443,7 @@ const IraPersonal = (() => {
     drop.previews.clear();
     drop.items = [];
     drop.list = null;
+    drop.shared = null;
   }
 
   // --- Siri on iPhone -----------------------------------------------------------------

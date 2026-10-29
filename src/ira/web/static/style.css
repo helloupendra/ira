@@ -438,6 +438,8 @@ select { font: inherit; min-height: var(--tap); padding: 0 var(--s-2); border: 1
 .drop-btn.has-new::after { content: ""; position: absolute; top: 9px; right: 9px; width: 8px; height: 8px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 0 2px var(--bg); }
 .drop-compose textarea { width: 100%; }
 .drop-text { max-height: 12rem; overflow: auto; }
+.drop-shared { border-color: var(--accent); background: var(--accent-soft); }
+.drop-shared ul { margin: 0; padding-left: var(--s-4); }
 .drop-preview { max-width: 100%; max-height: 16rem; border-radius: var(--radius-s); justify-self: start; background: var(--bg-sunken); }
 .drop-progress { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--s-2); }
 .drop-progress:empty { display: none; }
