@@ -12,7 +12,9 @@ switch it on.
   file (95 MB) from one, and it is on the others at once. Kept 30 days, 2 GB
   each, encrypted at rest with the server's key (not end to end), removed with
   your data. Its own permission, `drop`: a Siri key cannot read it. Ira can
-  list it and send to it. `POST/GET/DELETE /v1/me/drop`.
+  list it and send to it. On Telegram, `/drop` puts text or a file in it, and
+  new items come to the paired chat unless switched off.
+  `POST/GET/DELETE /v1/me/drop`, `/v1/me/drop/settings`.
 - **Devices.** A person pairs a Mac (later, an Android phone) with a one-time
   code or QR code and their PIN. The device trades the code for its own
   `irad_` token, kept only as a hash and valid only on the device WebSocket

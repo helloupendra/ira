@@ -9290,6 +9290,76 @@
                 }
             }
         },
+        "/v1/me/drop/settings": {
+            "get": {
+                "tags": [
+                    "drop"
+                ],
+                "summary": "Your Drop's settings",
+                "operationId": "drop_settings",
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/DropSettings"
+                                }
+                            }
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "HTTPBearer": []
+                    }
+                ]
+            },
+            "patch": {
+                "tags": [
+                    "drop"
+                ],
+                "summary": "Change your Drop's settings",
+                "operationId": "change_drop_settings",
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/DropSettingsChange"
+                            }
+                        }
+                    },
+                    "required": true
+                },
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/DropSettings"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "HTTPBearer": []
+                    }
+                ]
+            }
+        },
         "/v1/me/drop/{item_id}/file": {
             "get": {
                 "tags": [
@@ -11900,6 +11970,39 @@
                     "has_more"
                 ],
                 "title": "DropList"
+            },
+            "DropSettings": {
+                "properties": {
+                    "telegram": {
+                        "type": "boolean",
+                        "title": "Telegram",
+                        "description": "New items from your other devices go to your paired Telegram chat."
+                    },
+                    "telegram_ready": {
+                        "type": "boolean",
+                        "title": "Telegram Ready",
+                        "description": "This server forwards to Telegram, and you have a paired chat."
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "telegram",
+                    "telegram_ready"
+                ],
+                "title": "DropSettings"
+            },
+            "DropSettingsChange": {
+                "properties": {
+                    "telegram": {
+                        "type": "boolean",
+                        "title": "Telegram"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "telegram"
+                ],
+                "title": "DropSettingsChange"
             },
             "EmailChange": {
                 "properties": {

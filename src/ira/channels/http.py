@@ -572,11 +572,13 @@ def create_app(runtime: Runtime, *, start_channels: bool = True) -> FastAPI:
         if start_channels:
             tasks.append(asyncio.create_task(_clean_drop(runtime), name="ira-drop-clean"))
         if start_channels and runtime.settings.channels.telegram.enabled:
-            from ira.channels.telegram import event_notifier, start_telegram
+            from ira.channels.telegram import drop_notifier, event_notifier, start_telegram
 
             tasks.append(start_telegram(runtime))
             if runtime.hub is not None:
                 runtime.hub.notifiers.append(event_notifier(runtime))
+            if runtime.drop_notifier is None:
+                runtime.drop_notifier = drop_notifier(runtime)
         try:
             yield
         finally:

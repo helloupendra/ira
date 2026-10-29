@@ -329,6 +329,8 @@ merging or pushing is 3. See [Your connections](connectors.md).
 | `GET /v1/me/drop?after_id=&limit=50` | `drop` | `{"items": [...], "has_more"}`, newest first; `after_id` gives only newer items, to catch up |
 | `GET /v1/me/drop/{id}/file` | `drop` | a file's bytes, always as an attachment |
 | `DELETE /v1/me/drop/{id}` | `drop` | `204`; it is gone from every device |
+| `GET /v1/me/drop/settings` | `drop` | `DropSettings`: `telegram` (new items from your other devices go to your paired Telegram chat; on by default) and `telegram_ready` (this server forwards, and you have a paired chat) |
+| `PATCH /v1/me/drop/settings` | `drop` | `{"telegram": false}` to stop forwarding, `true` to start again |
 
 An item: `id`, `kind` (`text`, `link`, `file`), `text`, and for a file `name`,
 `mime`, `size`, `sha256`; `from_device_id` and `from_label` (the device's
@@ -336,7 +338,9 @@ name, or Web, CLI, Telegram); `created_at` and `expires_at` (30 days).
 Connected devices are told at once with a `{"type": "drop", "event": "new",
 "item": {...}}` or `{"type": "drop", "event": "deleted", "id": 42}` frame on
 their WebSocket (not the device it came from); one that was offline catches
-up with `after_id`. Someone else's item is always `404`.
+up with `after_id`. Someone else's item is always `404`. On Telegram,
+`/drop <text>` or a file sent with `/drop` as its caption puts it in your
+Drop.
 
 A token that may only ask (Siri's) has no `drop`, so a lost phone's
 Shortcut cannot read the inbox; make one with `"drop": true` for the `ira`

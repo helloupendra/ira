@@ -288,8 +288,12 @@ session, never a token.
    and the paired chats, and `DELETE /v1/admin/telegram/chats/{chat_id}`
    unpairs one. Both writes go to the change log; the code never does.
 
-Commands: `/help`, `/new` (fresh context), `/cancel` (drop the pending
-action), `/name <new name>` (owner or admin). To confirm an action, type the
+Commands: `/help`, `/new` (fresh context), `/drop <text>` (put it in your
+Drop; or send a file or photo with `/drop` as its caption, up to the 20 MB a
+bot may fetch), `/cancel` (drop the pending action), `/name <new name>`
+(owner or admin). New Drop items from the person's other devices come to
+their chat (a file as a document, up to 45 MB), unless the server sets
+`drop.telegram_forward: false` or they switch it off. To confirm an action, type the
 PIN as a message on its own: the bot deletes it immediately and never sends it
 to a model. A PIN said in a voice note is refused and that note deleted.
 

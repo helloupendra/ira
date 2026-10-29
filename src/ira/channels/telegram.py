@@ -45,6 +45,7 @@ When I propose an action, type your PIN to confirm it (I delete the PIN message 
 or send /cancel.
 
 /new - start a fresh conversation
+/drop <text> - put it in your Drop (or send a file with /drop as its caption)
 /cancel - drop the pending action
 /name <new name> - rename me (owner or admin)"""
 
@@ -110,6 +111,16 @@ class TelegramApi:
     async def send_voice(self, chat_id: int, mp3: bytes) -> None:
         await self.call(
             "sendVoice", chat_id=chat_id, files={"voice": ("reply.mp3", mp3, "audio/mpeg")}
+        )
+
+    async def send_document(
+        self, chat_id: int, name: str, data: bytes, mime: str, caption: str | None = None
+    ) -> None:
+        params: dict[str, Any] = {"chat_id": chat_id}
+        if caption:
+            params["caption"] = caption[:1000]
+        await self.call(
+            "sendDocument", timeout=120, files={"document": (name, data, mime)}, **params
         )
 
     async def download_file(self, file_id: str) -> bytes:
@@ -367,6 +378,11 @@ class TelegramBot:
             await self._confirm(principal, chat_id, conversation_id, text)
             return
 
+        command, _, caption = (message.get("caption") or "").strip().partition(" ")
+        if command.split("@", 1)[0].lower() == "/drop":
+            await self._drop_file(principal, chat_id, message, caption.strip())
+            return
+
         if text.startswith("/"):
             await self._command(principal, chat_id, conversation_id, text)
             return
@@ -454,6 +470,8 @@ class TelegramBot:
         elif command == "/new":
             assistant.reset(conversation_id)
             await self._send(chat_id, "Fresh start. What can I do for you?")
+        elif command == "/drop":
+            await self._drop_text(principal, chat_id, argument)
         elif command == "/cancel":
             pending = self.runtime.guard.latest_pending(conversation_id)
             if pending is None:
@@ -473,6 +491,76 @@ class TelegramBot:
                 await self._send(chat_id, f"Done. Call me {name}.")
         else:
             await self._send(chat_id, "I don't know that command. Send /help.")
+
+    # Drop: "/drop some text", or a file sent with "/drop" as its caption.
+
+    async def _drop_text(self, principal: Principal, chat_id: int, text: str) -> None:
+        from ira.drop import DropError
+
+        if not principal.can("drop"):
+            await self._send(chat_id, "Your account cannot use Drop.")
+            return
+        if not text.strip():
+            await self._send(
+                chat_id, "Send /drop and the text, or a file with /drop as its caption."
+            )
+            return
+        try:
+            item = self.runtime.drop.add_text(principal.user.id, text, from_label="Telegram")
+        except DropError as exc:
+            await self._send(chat_id, f"Not saved: {exc}")
+            return
+        frame = {"type": "drop", "event": "new", "item": item.public()}
+        await self.runtime.drop_changed(principal.user.id, frame)
+        await self._send(chat_id, "Saved to your Drop: it is on your devices now.")
+
+    async def _drop_file(
+        self, principal: Principal, chat_id: int, message: dict[str, Any], caption: str
+    ) -> None:
+        import io
+
+        from ira.drop import DropError
+
+        photos = message.get("photo") or []
+        photo = photos[-1] if photos else None  # the largest size Telegram made
+        found = (
+            message.get("document")
+            or message.get("video")
+            or message.get("audio")
+            or message.get("voice")
+            or photo
+        )
+        if not found or not principal.can("drop"):
+            await self._drop_text(principal, chat_id, caption)
+            return
+        size = int(found.get("file_size") or 0)
+        if size > TELEGRAM_DOWNLOAD_LIMIT:
+            await self._send(
+                chat_id,
+                "Telegram lets bots fetch files up to 20 MB: send this one from the Ira app.",
+            )
+            return
+        if found is photo:
+            name, mime = "photo.jpg", "image/jpeg"  # Telegram sends photos as JPEG
+        else:
+            name, mime = found.get("file_name") or "file", found.get("mime_type")
+        try:
+            data = await self.api.download_file(found["file_id"])
+            item = await asyncio.to_thread(
+                self.runtime.drop.add_file,
+                principal.user.id,
+                io.BytesIO(data),
+                name,
+                mime,
+                caption=caption or None,
+                from_label="Telegram",
+            )
+        except (TelegramError, DropError) as exc:
+            await self._send(chat_id, f"Not saved: {exc}")
+            return
+        frame = {"type": "drop", "event": "new", "item": item.public()}
+        await self.runtime.drop_changed(principal.user.id, frame)
+        await self._send(chat_id, f"Saved {item.name} to your Drop: it is on your devices now.")
 
     async def _transcribe(self, chat_id: int, voice: dict[str, Any]) -> str | None:
         stt = self.runtime.stt
@@ -531,6 +619,64 @@ def event_message(event: dict[str, Any]) -> str:
         head = f"{head} ({event['device']})"
     text = (event.get("text") or "").strip()
     return f"{head}\n{text}" if text and text != event.get("title") else head
+
+
+TELEGRAM_DOWNLOAD_LIMIT = 20 * 1024 * 1024  # what a bot may fetch from Telegram
+TELEGRAM_SEND_LIMIT = 45 * 1024 * 1024  # what a bot may send (50 MB), with room to spare
+TELEGRAM_TEXT_LIMIT = 3500  # a message holds 4,096 characters
+
+
+def drop_notifier(runtime: Runtime, api: Any = None) -> Any:
+    """Forward a new Drop item to the person's own paired chats: text as a message, a file
+    as a document (up to Telegram's limit). Not one that came from Telegram, and not when
+    the server or the person switched it off."""
+
+    async def notify(user_id: int, item: dict[str, Any]) -> None:
+        if item.get("from_label") == "Telegram" or not runtime.settings.drop.telegram_forward:
+            return
+        if not runtime.assistant.user_settings.get(user_id).drop_telegram:
+            return
+        client = api or telegram_api(runtime)
+        if client is None:
+            return
+        rows = runtime.store.query(
+            "SELECT t.chat_id FROM telegram_chats t JOIN users u ON u.id = t.user_id "
+            "WHERE t.user_id = ? AND u.disabled_at IS NULL",
+            (user_id,),
+        )
+        if not rows:
+            return
+        head = f"In your Drop, from {item.get('from_label') or 'a device'}:"
+        data = None
+        if item.get("kind") == "file" and (item.get("size") or 0) <= TELEGRAM_SEND_LIMIT:
+            stored = runtime.drop.get(user_id, int(item["id"]))
+            if stored is not None:
+                data = await asyncio.to_thread(lambda: b"".join(runtime.drop.read(stored)))
+        for row in rows:
+            chat_id = int(row["chat_id"])
+            try:
+                if item.get("kind") != "file":
+                    text = item.get("text") or ""
+                    if len(text) > TELEGRAM_TEXT_LIMIT:
+                        text = text[:TELEGRAM_TEXT_LIMIT] + "… (the rest is in the Ira app)"
+                    await client.send_message(chat_id, f"{head}\n{text}")
+                elif data is not None:
+                    caption = f"{head} {item.get('text') or ''}".strip()
+                    await client.send_document(
+                        chat_id, item.get("name") or "file", data, item.get("mime") or
+                        "application/octet-stream", caption,
+                    )  # fmt: skip
+                else:
+                    megabytes = round((item.get("size") or 0) / 1024 / 1024)
+                    await client.send_message(
+                        chat_id,
+                        f"{head} {item.get('name')} ({megabytes} MB), too big for Telegram: "
+                        "open it in the Ira app.",
+                    )
+            except TelegramError as exc:
+                log.warning("forwarding a Drop item to Telegram failed: %s", exc)
+
+    return notify
 
 
 def event_notifier(runtime: Runtime, api: Any = None) -> Any:

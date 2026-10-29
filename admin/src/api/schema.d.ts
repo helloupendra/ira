@@ -1966,6 +1966,24 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/me/drop/settings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Your Drop's settings */
+        get: operations["drop_settings"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Change your Drop's settings */
+        patch: operations["change_drop_settings"];
+        trace?: never;
+    };
     "/v1/me/drop/{item_id}/file": {
         parameters: {
             query?: never;
@@ -3149,6 +3167,24 @@ export interface components {
             items: components["schemas"]["DropItem"][];
             /** Has More */
             has_more: boolean;
+        };
+        /** DropSettings */
+        DropSettings: {
+            /**
+             * Telegram
+             * @description New items from your other devices go to your paired Telegram chat.
+             */
+            telegram: boolean;
+            /**
+             * Telegram Ready
+             * @description This server forwards to Telegram, and you have a paired chat.
+             */
+            telegram_ready: boolean;
+        };
+        /** DropSettingsChange */
+        DropSettingsChange: {
+            /** Telegram */
+            telegram: boolean;
         };
         /** EmailChange */
         EmailChange: {
@@ -11753,6 +11789,59 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["DropItem"];
+                };
+            };
+        };
+    };
+    drop_settings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DropSettings"];
+                };
+            };
+        };
+    };
+    change_drop_settings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DropSettingsChange"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DropSettings"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

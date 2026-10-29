@@ -125,6 +125,49 @@ async def drop(
     return DropItem(**view)
 
 
+class DropSettings(BaseModel):
+    telegram: bool = Field(
+        description="New items from your other devices go to your paired Telegram chat."
+    )
+    telegram_ready: bool = Field(
+        description="This server forwards to Telegram, and you have a paired chat."
+    )
+
+
+class DropSettingsChange(BaseModel):
+    telegram: bool
+
+
+def _settings(runtime: Runtime, user_id: int) -> DropSettings:
+    paired = runtime.store.one(
+        "SELECT 1 AS yes FROM telegram_chats WHERE user_id = ? LIMIT 1", (user_id,)
+    )
+    return DropSettings(
+        telegram=runtime.assistant.user_settings.get(user_id).drop_telegram,
+        telegram_ready=bool(paired) and runtime.settings.drop.telegram_forward,
+    )
+
+
+@router.get("/settings", response_model=DropSettings, summary="Your Drop's settings")
+def drop_settings(
+    who: Principal = Depends(require("drop")), runtime: Runtime = Depends(get_runtime)
+) -> DropSettings:
+    return _settings(runtime, who.user.id)
+
+
+@router.patch("/settings", response_model=DropSettings, summary="Change your Drop's settings")
+def change_drop_settings(
+    body: DropSettingsChange,
+    who: Principal = Depends(require("drop")),
+    runtime: Runtime = Depends(get_runtime),
+) -> DropSettings:
+    # Your own chat only, so no PIN: off or on as you like.
+    runtime.assistant.user_settings.set(
+        who.user.id, "drop_telegram", None if body.telegram else False
+    )
+    return _settings(runtime, who.user.id)
+
+
 @router.get("", response_model=DropList, summary="Your Drop, newest first")
 def list_drop(
     after_id: int | None = Query(None, ge=0, description="Only items newer than this one."),

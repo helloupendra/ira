@@ -95,7 +95,7 @@ each person switches web search on for themselves.
 | YouTube Data API (`video_find`, if you switched search on and the owner set a key) | your words for the video | [Google privacy policy](https://policies.google.com/privacy) |
 | Brave Search (web search, if you switched it on) | your search words only | [Brave Search API privacy notice](https://api-dashboard.search.brave.com/privacy-policy) (queries kept up to 90 days for billing, not linked to a person) |
 | News feeds listed by the owner | nothing about you: Ira fetches the feeds and searches them on the server | the feeds' own sites |
-| Telegram, if you paired a chat | the messages of that chat, and your device's event notes | [Telegram privacy policy](https://telegram.org/privacy) |
+| Telegram, if you paired a chat | the messages of that chat, your device's event notes, and new Drop items unless you switched that off | [Telegram privacy policy](https://telegram.org/privacy) |
 
 With the demo provider and no keys, nothing leaves your computer at all.
 The providers above were chosen because their business terms say they do
@@ -131,6 +131,9 @@ encryption**. Nobody but you sees your items in Ira, not even its owner or
 admins; logs keep only an item's number, kind and size, never its words
 or file name. **Delete my data** removes every item and file. A file is
 limited to 95 MB, and the key a Siri Shortcut uses cannot read your Drop.
+If you paired a Telegram chat, what you send from your other devices is
+also sent there, through Telegram's servers; switch that off in your Drop's
+settings (`PATCH /v1/me/drop/settings`).
 
 ## The Ira app for Android
 

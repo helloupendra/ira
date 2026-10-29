@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import contextlib
 import logging
 import time
@@ -99,6 +100,7 @@ class Runtime:
     drop: Drop = field(init=False)
     # Forwards a new Drop item to the person's Telegram chat, when Telegram is on.
     drop_notifier: Any = None
+    _drop_forwards: set[asyncio.Task[None]] = field(default_factory=set, init=False, repr=False)
     # Each person's connections to other services (MCP servers).
     connectors: Any = None
 
@@ -278,10 +280,16 @@ class Runtime:
         if self.hub is not None:
             await self.hub.send_to_person(user_id, frame, except_device=except_device)
         if self.drop_notifier is not None and frame.get("event") == "new":
-            try:
-                await self.drop_notifier(user_id, frame["item"])
-            except Exception:
-                log.exception("forwarding a Drop item failed")
+            # In the background: a slow Telegram never holds up the upload that made it.
+            task = asyncio.create_task(self._forward_drop(user_id, frame["item"]))
+            self._drop_forwards.add(task)
+            task.add_done_callback(self._drop_forwards.discard)
+
+    async def _forward_drop(self, user_id: int, item: dict[str, Any]) -> None:
+        try:
+            await self.drop_notifier(user_id, item)
+        except Exception:
+            log.exception("forwarding a Drop item failed")
 
     def drop_tools(self, user_id: int) -> list[Any]:
         """Ira's own Drop tools for one person: what is in it, and putting text in it."""
