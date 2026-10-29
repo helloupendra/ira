@@ -498,6 +498,8 @@ listing** ([help](https://support.google.com/googleplay/android-developer/answer
   1024 × 500 JPEG or PNG without transparency; at least two phone
   screenshots (1080 × 1920 is the recommended size; up to 8). Use the
   fictional Sunrise Dental Clinic demo for screenshots, never your own data.
+  Take them from a debug build: a release build keeps its screen out of
+  screenshots and the app switcher (`FLAG_SECURE`).
 - **Store settings**: the support email.
 
 **4. App content.** **Policy and programs → App content**, every section:

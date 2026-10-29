@@ -2,10 +2,12 @@ package io.github.helloupendra.ira.ui
 
 import android.content.Intent
 import android.os.Bundle
+import android.view.WindowManager
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.runtime.mutableIntStateOf
+import io.github.helloupendra.ira.BuildConfig
 import io.github.helloupendra.ira.IraApp
 import io.github.helloupendra.ira.tools.PhoneState
 
@@ -15,6 +17,9 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // What Ira reads out here (messages, calls, notifications) stays out of screenshots,
+        // screen recordings and the app switcher. Debug builds allow them, for store images.
+        if (!BuildConfig.DEBUG) window.setFlags(WindowManager.LayoutParams.FLAG_SECURE, WindowManager.LayoutParams.FLAG_SECURE)
         enableEdgeToEdge()
         handle(intent)
         val app = application as IraApp
