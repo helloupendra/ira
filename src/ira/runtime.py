@@ -480,6 +480,7 @@ def build_runtime(
         tier=settings.assistant.tier,
         max_tool_rounds=settings.assistant.max_tool_rounds,
         history_messages=settings.assistant.history_messages,
+        history_chars=settings.assistant.history_chars,
         user_settings=UserSettings(
             store,
             languages=list(settings.assistant.languages),

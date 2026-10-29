@@ -166,6 +166,9 @@ class AssistantConfig(_Strict):
     tier: str = "default"
     max_tool_rounds: int = 8
     history_messages: int = 30
+    # At most this much of a conversation (in characters) goes to the model: old tool
+    # results are shortened first, then the oldest whole turns are left out.
+    history_chars: int = Field(default=60_000, ge=4_000)
     # The languages people speak to Ira in, and the language it replies in ("auto": the
     # one they spoke). Each person can change both for themselves.
     languages: list[LanguageCode] = Field(default_factory=lambda: ["hinglish", "en", "hi"])

@@ -11,7 +11,11 @@ Role = Literal["system", "user", "assistant", "tool"]
 
 # Error kinds a provider can raise. The gateway falls back on every kind; the
 # kind is kept for the call log and for choosing a cool-down.
-ErrorKind = Literal["capacity", "timeout", "auth", "bad_request", "server", "network", "error"]
+ErrorKind = Literal[
+    "capacity", "timeout", "auth", "bad_request", "too_long", "server", "network", "error"
+]
+# Errors that say the request was wrong, not that the model is down: never a cool-down.
+REQUEST_ERRORS = ("bad_request", "too_long")
 
 
 @dataclass

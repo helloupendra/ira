@@ -17,6 +17,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from ira.models.base import (
+    REQUEST_ERRORS,
     ChatProvider,
     ChatResponse,
     Message,
@@ -179,6 +180,11 @@ class Gateway:
         return (usage.input_tokens * price.input + usage.output_tokens * price.output) / 1_000_000
 
     def _cool_down(self, ref: str, error: ProviderError) -> None:
+        if error.kind in REQUEST_ERRORS:
+            # One too-long or malformed request is that request's problem: the model is
+            # fine for everyone else, so it is not benched.
+            log.warning("model %s refused one request (%s)", ref, error.kind)
+            return
         seconds = self.cooldown_seconds
         if error.retry_after:
             seconds = min(max(seconds, error.retry_after), 10 * self.cooldown_seconds)

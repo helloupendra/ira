@@ -75,6 +75,14 @@ def classify_status(status: int, body: str) -> ErrorKind:
         return "timeout"
     if status >= 500:
         return "server"
+    if status in (400, 413, 422) and any(
+        words in lowered
+        for words in (
+            "context length", "context window", "too long", "too many tokens",
+            "maximum context", "input is too", "prompt is too", "exceeds the maximum",
+        )
+    ):  # fmt: skip
+        return "too_long"
     return "bad_request"
 
 

@@ -139,9 +139,14 @@ works is measured, not assumed: see [Hindi, English and Hinglish](language.md).
 ## Conversations
 
 Each channel keeps conversations in SQLite. The model sees the last
-`history_messages` messages, and the window always starts on a user turn,
-because providers reject a tool result whose call was cut off. On Telegram,
-`/new` starts fresh context; the transcript stays for the admin.
+`history_messages` messages, and at most `history_chars` characters of them
+(60,000 by default): tool results of earlier turns are shortened first, then
+the oldest whole turns are left out. The window always starts on a user
+turn, because providers reject a tool result whose call was cut off. When a
+model still says a conversation is too long, Ira sends much less of it once
+more; such a refusal is the request's problem, so the model is not set aside
+for anyone else. On Telegram, `/new` starts fresh context; the transcript
+stays for the admin.
 
 ## Accounts, roles and tokens
 

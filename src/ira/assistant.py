@@ -15,6 +15,7 @@ Every call is written to "What Ira did", without its arguments or result.
 from __future__ import annotations
 
 import asyncio
+import dataclasses
 import inspect
 import json
 import logging
@@ -210,6 +211,7 @@ class Assistant:
         tier: str = "default",
         max_tool_rounds: int = 8,
         history_messages: int = 30,
+        history_chars: int = 60_000,
         personal_tools: PersonalTools | None = None,
         user_settings: UserSettings | None = None,
         tool_calls_per_minute: int = 30,
@@ -227,6 +229,7 @@ class Assistant:
         self.voice_tier: str | None = None  # a live call's tier, when it should be faster
         self.max_tool_rounds = max_tool_rounds
         self.history_messages = history_messages
+        self.history_chars = history_chars
         self.conversations = conversations or Conversations(store)
         if self.conversations.personal is None:  # not the business's own: a connection's
             self.conversations.personal = lambda name: name not in self.registry
@@ -544,8 +547,16 @@ class Assistant:
         # so: the person has said nothing new since what came before it.
         tainted = text is None
 
+        budget, tight = self.history_chars, False
+        # This turn begins at the new message; carrying on after a PIN, at the last one.
+        current_from = start
+        if text is None:
+            current_from = next(
+                (i for i in range(len(history) - 1, -1, -1) if history[i].role == "user"), start
+            )
         for _ in range(self.max_tool_rounds):
-            messages = [Message(role="system", content=system), *history]
+            sent = fit(history, budget, current_from=current_from, tight=tight)
+            messages = [Message(role="system", content=system), *sent]
             if cue and history and history[-1].role != "tool":
                 messages.append(Message(role="user", content=cue))
             try:
@@ -564,6 +575,11 @@ class Assistant:
                     if piece:
                         yield {"type": "delta", "text": piece}
             except GatewayError as exc:
+                if not tight and any(e.kind == "too_long" for _, e in exc.errors):
+                    # Too long for the model: send much less of the past, once, and go on.
+                    log.warning("conversation too long for the model; sending less of it")
+                    budget, tight = max(4_000, budget // 4), True
+                    continue
                 log.warning("gateway failed: %s", exc)
                 message = (
                     "I can't reach a language model right now "
@@ -1005,6 +1021,47 @@ def _without_foreign(text: str | None, keep: bool) -> str:
 
 def _letters(text: str) -> int:
     return sum(c.isalpha() for c in text)
+
+
+OLD_TOOL_RESULT_CHARS = 1_500
+TIGHT_TOOL_RESULT_CHARS = 4_000
+
+
+def _size(message: Message) -> int:
+    content = message.content if isinstance(message.content, str) else json.dumps(message.content)
+    calls = sum(len(c.arguments) + len(c.name) for c in message.tool_calls)
+    return len(content or "") + calls
+
+
+def _shortened(message: Message, limit: int) -> Message:
+    if message.role != "tool" or not isinstance(message.content, str):
+        return message
+    if len(message.content) <= limit:
+        return message
+    return dataclasses.replace(message, content=message.content[:limit] + " ... [shortened]")
+
+
+def fit(
+    history: list[Message], budget: int, *, current_from: int, tight: bool = False
+) -> list[Message]:
+    """What of a conversation goes to the model, within ``budget`` characters: tool results
+    of earlier turns are shortened (with ``tight``, this turn's too), then the oldest whole
+    turns are left out, always starting at a message from the person. The stored
+    conversation is never changed."""
+    earlier = [_shortened(m, OLD_TOOL_RESULT_CHARS) for m in history[:current_from]]
+    current = history[current_from:]
+    if tight:
+        current = [_shortened(m, TIGHT_TOOL_RESULT_CHARS) for m in current]
+    total = sum(map(_size, earlier)) + sum(map(_size, current))
+    while total > budget:
+        later_turn = next((i for i, m in enumerate(earlier) if i > 0 and m.role == "user"), None)
+        if later_turn is None:  # one earlier turn left: it stays, as the turn being continued
+            break
+        total -= sum(map(_size, earlier[:later_turn]))
+        earlier = earlier[later_turn:]
+    if total > budget and current and current[0].role == "user":
+        earlier = []  # still too much: this turn alone, which starts with the person's words
+    return [*earlier, *current]
 
 
 def _last_user_text(history: list[Message]) -> str:
