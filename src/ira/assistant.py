@@ -553,7 +553,9 @@ class Assistant:
         tier = self.voice_tier if spoken and self.voice_tier else self.tier
         model: str | None = None
         final_text = ""
-        call_ids: set[str] = set()
+        # Every call id in the conversation so far: a new call never repeats one, which
+        # Anthropic refuses when a turn falls back to it.
+        call_ids = {c.id for m in history for c in m.tool_calls or []}
         # This turn has read text written by others. A turn that carries on after a PIN starts
         # so: the person has said nothing new since what came before it.
         tainted = text is None
@@ -628,6 +630,8 @@ class Assistant:
             results: list[Message] = []
             for call in response.tool_calls:
                 event_id = _unique(call.id, call_ids)
+                if event_id != call.id:
+                    call = ToolCall(event_id, call.name, call.arguments)
                 yield {
                     "type": "tool",
                     "id": event_id,
@@ -1132,13 +1136,15 @@ def _out_of_steps(messages: list[Message]) -> str:
 
 
 def _unique(call_id: str, seen: set[str]) -> str:
-    """The model's call id, made unique within the turn.
+    """The model's call id, made unique within the conversation and fit for every provider
+    (letters, digits, "_" and "-": Anthropic's rule).
 
-    Some providers number calls afresh each round, or send none at all.
+    Some providers number calls afresh each round, send the same id every time, or none.
     """
-    candidate, n = call_id or "call", 1
+    base = re.sub(r"[^A-Za-z0-9_-]", "_", call_id or "")[:56] or "call"
+    candidate, n = base, 1
     while candidate in seen:
         n += 1
-        candidate = f"{call_id or 'call'}-{n}"
+        candidate = f"{base}-{n}"
     seen.add(candidate)
     return candidate
