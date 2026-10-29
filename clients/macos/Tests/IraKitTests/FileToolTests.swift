@@ -51,6 +51,12 @@ struct PathPolicyTests {
         #expect(policy.refusal(path) != nil, "should refuse \(path)")
     }
 
+    @Test(arguments: ["~/LIBRARY/Application Support/app/config.json", "~/library/Mail/V10/x.emlx", "~/LiBrArY/Keychains"])
+    func caseDoesNotGetPastTheDenyList(path: String) {
+        // The Mac's disk ignores case: these are ~/Library.
+        #expect(policy.refusal(path) == "Ira never reads ~/Library", "should refuse \(path)")
+    }
+
     @Test func relativePathsAreRefused() {
         #expect(policy.refusal("Documents/a.pdf") == "give the full path, starting with / or ~/")
     }

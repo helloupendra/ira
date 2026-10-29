@@ -108,16 +108,19 @@ public struct PathPolicy: Sendable {
 
     private func deniedReason(_ url: URL) -> String? {
         let path = url.path
-        let inHome = PathPolicy.isInside(url, home)
+        // The Mac's disk ignores case, so ~/LIBRARY is ~/Library: the deny list does too.
+        let inHome = PathPolicy.isInside(url, home, ignoringCase: true)
         for folder in PathPolicy.deniedSystemFolders
-        where !inHome && PathPolicy.isInside(url, URL(fileURLWithPath: folder)) {
+        where !inHome && PathPolicy.isInside(url, URL(fileURLWithPath: folder), ignoringCase: true) {
             return "Ira never reads system folders"
         }
         // Inside the home folder: the denied folders, by their first component.
         if inHome {
             let relative = String(path.dropFirst(home.path.count)).split(separator: "/").map(String.init)
-            if let first = relative.first, PathPolicy.deniedHomeFolders.contains(first) {
-                return "Ira never reads ~/\(first)"
+            if let first = relative.first,
+                let denied = PathPolicy.deniedHomeFolders.first(where: { $0.caseInsensitiveCompare(first) == .orderedSame })
+            {
+                return "Ira never reads ~/\(denied)"
             }
         }
         let components = inHome ? Array(url.pathComponents.dropFirst(home.pathComponents.count)) : url.pathComponents
@@ -136,9 +139,13 @@ public struct PathPolicy: Sendable {
         return nil
     }
 
-    static func isInside(_ url: URL, _ folder: URL) -> Bool {
-        let path = url.standardizedFileURL.path
-        let base = folder.standardizedFileURL.path
+    static func isInside(_ url: URL, _ folder: URL, ignoringCase: Bool = false) -> Bool {
+        var path = url.standardizedFileURL.path
+        var base = folder.standardizedFileURL.path
+        if ignoringCase {
+            path = path.lowercased()
+            base = base.lowercased()
+        }
         if base == "/" { return true }
         return path == base || path.hasPrefix(base.hasSuffix("/") ? base : base + "/")
     }
