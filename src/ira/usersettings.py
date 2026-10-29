@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import datetime as dt
 import json
+import time
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -61,11 +62,17 @@ def clean_name(value: str, limit: int) -> str:
 
 def today_for(prefs: Prefs) -> dt.date:
     """Today in the person's own time zone, else the server's."""
+    return now_for(prefs).date()
+
+
+def now_for(prefs: Prefs, epoch: float | None = None) -> dt.datetime:
+    """Now in the person's own time zone, else the server's, as an aware time."""
     from zoneinfo import ZoneInfo
 
+    moment = dt.datetime.fromtimestamp(time.time() if epoch is None else epoch, dt.UTC)
     if prefs.timezone and valid_timezone(prefs.timezone):
-        return dt.datetime.now(ZoneInfo(prefs.timezone)).date()
-    return dt.date.today()
+        return moment.astimezone(ZoneInfo(prefs.timezone))
+    return moment.astimezone()
 
 
 def valid_timezone(name: str) -> bool:

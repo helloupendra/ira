@@ -36,7 +36,7 @@ from ira.store import Store
 from ira.tools.actions import ActionGuard, PendingAction
 from ira.tools.personal import UNTRUSTED_RULE, PersonalTool, is_no, is_yes, wrap_untrusted
 from ira.tools.registry import Tool, ToolError, ToolRegistry, validation_message
-from ira.usersettings import UserSettings, language_rule, today_for
+from ira.usersettings import UserSettings, language_rule, now_for
 
 log = logging.getLogger("ira.assistant")
 
@@ -51,7 +51,7 @@ INVALID_JSON = "arguments were not valid JSON"
 
 SYSTEM_PROMPT = """\
 You are {name}, a helpful voice and text assistant for {business}.
-Today is {today}.
+Today is {today}. It is now {now}: use this time, never guess it.
 
 How you work:
 - Use the tools to look things up. Never invent appointments, prices, names or numbers.
@@ -230,6 +230,7 @@ class Assistant:
         self.tool_limit = ToolRateLimit(tool_calls_per_minute)
         # What the person let Ira learn about them and approved, for their prompt.
         self.memory = memory
+        self.clock: Callable[[], float] = time.time  # for the time in the prompt
         # The businesses the person works with, as they described them.
         self.businesses: Callable[[int | None], list[str]] | None = None
         # What the person's devices can do but they have not switched on, one line a device.
@@ -276,11 +277,13 @@ class Assistant:
         small, after which Ira says what it did.
         """
         prefs = self.user_settings.get(user_id)
-        today = today_for(prefs)
+        now = now_for(prefs, self.clock())
+        zone = prefs.timezone or now.tzname() or "the server's time"
         prompt = SYSTEM_PROMPT.format(
             name=prefs.assistant_name or self.name,
             business=self.business,
-            today=f"{today:%A %d %B %Y} ({today})",
+            today=f"{now:%A %d %B %Y} ({now.date()})",
+            now=f"{now:%H:%M} ({now:%I:%M %p}), {zone}",
             languages=language_rule(prefs),
         )
         if spoken:
