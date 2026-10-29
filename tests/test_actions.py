@@ -238,11 +238,11 @@ async def test_a_new_pin_from_the_console_does_not_lift_a_lock(store, registry, 
     guard.set_pin(PIN, user_id=owner.id)
     for _ in range(3):
         await guard.confirm(propose(guard).id, "0000", user_id=owner.id, role="owner")
-    assert guard.locked_until() is not None
+    assert guard.locked_until(owner.id) is not None
     guard.set_pin("9999", user_id=owner.id, actor="owner@example.com via web", channel="web")
-    assert guard.locked_until() is not None
+    assert guard.locked_until(owner.id) is not None
     guard.set_pin("9999", user_id=owner.id, unlock=True)  # what `ira pin set` does
-    assert guard.locked_until() is None
+    assert guard.locked_until(owner.id) is None
 
 
 async def test_a_switched_off_tool_does_not_run_after_the_pin(guard, ledger):
@@ -295,3 +295,59 @@ def test_older_databases_gain_the_new_columns(tmp_path):
     assert {"pin_hash", "pin_set_at"} <= columns
     sessions = {row["name"] for row in store.query("PRAGMA table_info(sessions)")}
     assert "user_agent" in sessions
+
+
+async def test_many_guesses_at_once_get_three_checks_then_the_lock(
+    store, registry, clock, people, ledger, monkeypatch
+):
+    """A stolen session cannot beat the lock by sending every guess at the same moment."""
+    import ira.tools.actions as actions
+
+    owner, staff = people
+    guard = ActionGuard(store, registry, pin_iterations=FAST_PIN_ITERATIONS, clock=clock)
+    guard.set_pin(PIN, user_id=owner.id)
+    guard.set_pin(PIN, user_id=staff.id)
+    checked: list[str] = []
+    real = actions.verify_pin
+
+    def slow_verify(pin: str, stored: str) -> bool:
+        checked.append(pin)
+        import time as _time
+
+        _time.sleep(0.01)  # the real check is slow too: this is when guesses race
+        return real(pin, stored)
+
+    monkeypatch.setattr(actions, "verify_pin", slow_verify)
+    pending = propose(guard)
+    guesses = [f"{n:04d}" for n in range(20)] + [PIN]  # the right one, last, at the same time
+    results = await asyncio.gather(
+        *(guard.confirm(pending.id, g, user_id=owner.id, role="owner") for g in guesses)
+    )
+    assert len(checked) == 3  # three wrong ones were checked, then everything was refused
+    assert [r.status for r in results].count("locked") == len(guesses) - 2
+    assert ledger.refunds == [] and guard.get(pending.id).status == "pending"
+    assert guard.locked_until(owner.id) is not None
+
+    # The lock is the owner's alone: someone else confirms as usual.
+    assert guard.locked_until(staff.id) is None
+    other = await guard.confirm(propose(guard).id, PIN, user_id=staff.id, role="staff")
+    assert other.status == "executed"
+
+
+async def test_an_action_that_expires_during_the_pin_check_does_not_run(
+    store, registry, clock, ledger, monkeypatch
+):
+    import ira.tools.actions as actions
+
+    guard = ActionGuard(store, registry, pin_iterations=FAST_PIN_ITERATIONS, clock=clock)
+    guard.set_pin(PIN)
+    pending = propose(guard)
+    real = actions.verify_pin
+
+    def slow_verify(pin: str, stored: str) -> bool:
+        clock.now = pending.expires_at + 1  # the check took past its expiry
+        return real(pin, stored)
+
+    monkeypatch.setattr(actions, "verify_pin", slow_verify)
+    outcome = await guard.confirm(pending.id, PIN)
+    assert outcome.status == "expired" and ledger.refunds == []

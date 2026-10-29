@@ -71,7 +71,7 @@ def test_locked_until_comes_with_locked_seconds(world):
             f"/v1/actions/{action['action']['id']}/confirm", json={"pin": "0000"}, headers=headers
         ).json()
     assert outcome["status"] == "locked"
-    until = runtime.guard.locked_until()
+    until = runtime.guard.locked_until(owner.id)
     assert outcome["locked_until"] == until
 
     status = client.get("/v1/me/pin", headers=headers).json()

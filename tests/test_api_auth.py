@@ -273,3 +273,43 @@ def test_without_the_connectors_extra_everything_else_works(registry, monkeypatc
         )
         assert made.status_code == 501 and "connectors extra" in made.json()["detail"]
         assert client.post("/v1/ask", json={"text": "hello"}, headers=headers).status_code == 200
+
+
+def test_many_sign_ins_at_once_cannot_beat_the_limit(monkeypatch):
+    """Guesses sent together are counted before the password check, not after."""
+    import threading
+    import time as _time
+
+    from ira.accounts import Accounts
+
+    runtime = make_runtime()
+    runtime.accounts.create_first_owner("owner@example.com", "correct-horse-battery")
+    checked: list[str] = []
+    real = Accounts.authenticate
+
+    def slow(self, email, password):
+        checked.append(password)
+        _time.sleep(0.02)
+        return real(self, email, password)
+
+    monkeypatch.setattr(Accounts, "authenticate", slow)
+    client = TestClient(create_app(runtime, start_channels=False))
+    codes: list[int] = []
+
+    def guess(n: int) -> None:
+        body = {"email": "owner@example.com", "password": f"guess-{n}", "use_cookie": False}
+        codes.append(client.post("/v1/auth/login", json=body).status_code)
+
+    threads = [threading.Thread(target=guess, args=(n,)) for n in range(20)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+    assert len(checked) <= 5 and codes.count(429) >= 15  # five tries, then the limit
+
+    # A right password gives its attempt back: signing in often is never blocked.
+    fresh = make_runtime()
+    fresh.accounts.create_first_owner("owner@example.com", "correct-horse-battery")
+    other = TestClient(create_app(fresh, start_channels=False))
+    body = {"email": "owner@example.com", "password": "correct-horse-battery", "use_cookie": False}
+    assert [other.post("/v1/auth/login", json=body).status_code for _ in range(7)] == [200] * 7

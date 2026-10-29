@@ -95,7 +95,8 @@ Never the arguments or the result.
 - Who may confirm is a rule in `ira.yaml`: `actions.confirm_roles` (owner,
   admin and staff by default), narrowed per action with
   `actions.tools.<name>.confirm_roles`. A refused role uses no PIN attempt.
-- Three wrong PINs in a row lock **all** actions for 15 minutes.
+- Three wrong PINs in a row lock that person's actions for 15 minutes (each
+  person has their own count; guesses sent at once are checked one by one).
 - A message consisting only of a PIN is never sent to a model, on any channel.
 - Every proposal and every confirmation outcome (executed, failed, wrong PIN,
   locked, expired, cancelled, already done) is written to the audit log.

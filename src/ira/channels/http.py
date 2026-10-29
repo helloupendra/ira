@@ -155,12 +155,14 @@ def auth_login(
 ) -> SessionResponse:
     limiter = runtime.accounts.limiter
     keys = (f"email:{body.email.strip().lower()}", f"ip:{client_ip(request)}")
-    if limiter.blocked(*keys):
+    attempt = limiter.take(*keys)  # counted before the check: guesses cannot race the limit
+    if attempt is None:
         raise HTTPException(429, detail="too many failed sign-ins; try again in 15 minutes")
-    user = runtime.accounts.authenticate(body.email, body.password)
+    with runtime.accounts.checking:
+        user = runtime.accounts.authenticate(body.email, body.password)
     if user is None:
-        limiter.fail(*keys)
         raise HTTPException(401, detail="wrong email or password")
+    limiter.release(attempt, *keys)
     limiter.clear(keys[0])
     token, expires = runtime.accounts.start_session(
         user, user_agent=request.headers.get("user-agent")

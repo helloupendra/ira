@@ -136,6 +136,11 @@ def _row_to_action(row: Any) -> PendingAction:
     )
 
 
+def _subject(user_id: int | None) -> int:
+    """Whose PIN lock: a person's, or 0 for the installation PIN."""
+    return user_id if user_id is not None else 0
+
+
 class ActionGuard:
     def __init__(
         self,
@@ -163,6 +168,8 @@ class ActionGuard:
         self.device_runner: Callable[[PendingAction], Awaitable[Any]] | None = None
         # Runs a confirmed action of a person's own tool (a connection's): set by the runtime.
         self.personal_runner: Callable[[PendingAction], Awaitable[Any]] | None = None
+        # One PIN check at a time per person (a lock each), so guesses cannot race.
+        self._pin_checks: dict[int, asyncio.Lock] = {}
         # Told of each action confirmed with a right PIN (approval windows).
         self.after_pin: Callable[[PendingAction], None] | None = None
         # Checks a device's signature over an action: (user, device, action, signature).
@@ -201,7 +208,10 @@ class ActionGuard:
             if cursor.rowcount != 1:
                 raise ValueError("no such user")
         if unlock:
-            self.store.execute("UPDATE pin_state SET failures = 0, locked_until = 0 WHERE id = 1")
+            self.store.execute(
+                "UPDATE pin_locks SET failures = 0, locked_until = 0 WHERE subject = ?",
+                (_subject(user_id),),
+            )
         self._audit(None, None, "pin_set", actor, channel, None)
 
     def clear_pin(self, user_id: int, *, actor: str, channel: str = "web") -> bool:
@@ -233,14 +243,73 @@ class ActionGuard:
         )
         return row["pin_set_at"] if row else None
 
-    def wrong_pins(self) -> int:
-        row = self.store.one("SELECT failures FROM pin_state WHERE id = 1")
-        return int(row["failures"]) if row else 0
+    def wrong_pins(self, user_id: int | None = None, *, anyone: bool = False) -> int:
+        """Wrong PINs counted towards the lock: one person's (the installation PIN's without
+        a user), or with ``anyone`` everybody's together."""
+        if anyone:
+            row = self.store.one("SELECT COALESCE(SUM(failures), 0) AS n FROM pin_locks")
+        else:
+            row = self.store.one(
+                "SELECT failures AS n FROM pin_locks WHERE subject = ?", (_subject(user_id),)
+            )
+        return int(row["n"]) if row else 0
 
-    def locked_until(self) -> float | None:
-        row = self.store.one("SELECT locked_until FROM pin_state WHERE id = 1")
-        until = float(row["locked_until"]) if row else 0.0
+    def locked_until(self, user_id: int | None = None, *, anyone: bool = False) -> float | None:
+        """When one person's PIN lock ends (or, with ``anyone``, the latest anybody's)."""
+        if anyone:
+            row = self.store.one("SELECT MAX(locked_until) AS until FROM pin_locks")
+        else:
+            row = self.store.one(
+                "SELECT locked_until AS until FROM pin_locks WHERE subject = ?",
+                (_subject(user_id),),
+            )
+        until = float(row["until"] or 0) if row else 0.0
         return until if until > self.clock() else None
+
+    async def _checked(
+        self, user_id: int | None, check: Callable[[], Awaitable[bool]]
+    ) -> tuple[str, float | None]:
+        """Check one person's PIN (or signature) one attempt at a time, so that many guesses
+        at once cannot all get past the lock: a wrong one is counted, and the lock set,
+        before the next is checked. Returns ("ok" | "wrong" | "wrong_locked" | "locked",
+        the lock's end): "locked" when it was locked already and nothing was checked."""
+        lock = self._pin_checks.setdefault(_subject(user_id), asyncio.Lock())
+        async with lock:
+            until = self.locked_until(user_id)
+            if until is not None:
+                return "locked", until
+            if await check():
+                self._right_pin(user_id)
+                return "ok", None
+            subject = _subject(user_id)
+            self.store.execute("INSERT OR IGNORE INTO pin_locks (subject) VALUES (?)", (subject,))
+            self.store.execute(
+                "UPDATE pin_locks SET failures = failures + 1 WHERE subject = ?", (subject,)
+            )
+            if self.wrong_pins(user_id) >= self.max_wrong_pins:
+                until = self.clock() + self.lock_seconds
+                self.store.execute(
+                    "UPDATE pin_locks SET failures = 0, locked_until = ? WHERE subject = ?",
+                    (until, subject),
+                )
+                return "wrong_locked", until
+            return "wrong", None
+
+    def _right_pin(self, user_id: int | None) -> None:
+        self.store.execute(
+            "UPDATE pin_locks SET failures = 0, locked_until = 0 WHERE subject = ?",
+            (_subject(user_id),),
+        )
+
+    def _locked(self, until: float, actor: str | None, channel: str | None, pending=None):
+        return self._finish(
+            pending,
+            "locked",
+            "Actions are locked after too many wrong PINs. Try again later.",
+            actor,
+            channel,
+            locked_until=until,
+        )
 
     # Proposing.
 
@@ -425,23 +494,20 @@ class ActionGuard:
         Wrong PINs count towards the same lock as actions, and the outcome is
         audited with ``what`` as its detail: "confirmed", or why not.
         """
-        locked = self.locked_until()
+        locked = self.locked_until(user_id)
         if locked is not None:
-            return self._finish(
-                None,
-                "locked",
-                "Actions are locked after too many wrong PINs. Try again later.",
-                actor,
-                channel,
-                locked_until=locked,
-            )
+            return self._locked(locked, actor, channel)
         stored = self._stored_pin(user_id)
         if stored is None:
             message = "You have no action PIN yet. Set your PIN in the Ira app's menu first."
             return self._finish(None, "no_pin", message, actor, channel)
-        if not await asyncio.to_thread(verify_pin, pin, stored):
-            return self._wrong_pin(None, actor, channel)
-        self.store.execute("UPDATE pin_state SET failures = 0 WHERE id = 1")
+        verdict, until = await self._checked(
+            user_id, lambda: asyncio.to_thread(verify_pin, pin, stored)
+        )
+        if verdict == "locked":
+            return self._locked(until, actor, channel, None)
+        if verdict != "ok":
+            return self._wrong_pin(None, actor, channel, user_id, until)
         return self._finish(None, "confirmed", what, actor, channel)
 
     # Confirming and cancelling.
@@ -465,16 +531,9 @@ class ActionGuard:
         signed this action with its enrolled key, after their fingerprint. A wrong
         signature counts as a wrong PIN.
         """
-        locked = self.locked_until()
+        locked = self.locked_until(user_id)
         if locked is not None:
-            return self._finish(
-                None,
-                "locked",
-                "Actions are locked after too many wrong PINs. Try again later.",
-                actor,
-                channel,
-                locked_until=locked,
-            )
+            return self._locked(locked, actor, channel)
 
         pending = self.get(action_id)
         if pending is None:
@@ -508,8 +567,16 @@ class ActionGuard:
                 message = "This server cannot check a device's approval key."
                 return self._finish(pending, "not_allowed", message, actor, channel)
             device_id, signature = signed
-            if not self.signature_check(user_id, device_id, pending, signature):
-                return self._wrong_pin(pending, actor, channel)
+            check = self.signature_check
+
+            async def signature_ok() -> bool:
+                return check(user_id, device_id, pending, signature)
+
+            verdict, until = await self._checked(user_id, signature_ok)
+            if verdict == "locked":
+                return self._locked(until, actor, channel, pending)
+            if verdict != "ok":
+                return self._wrong_pin(pending, actor, channel, user_id, until)
         else:
             stored = self._stored_pin(user_id)
             if stored is None:
@@ -520,17 +587,33 @@ class ActionGuard:
                     "Set your PIN in the Ira app's menu, or ask an owner to reset it."
                 )
                 return self._finish(pending, "no_pin", message, actor, channel)
-            # PBKDF2 is deliberately slow; keep it off the event loop.
-            if not pin or not await asyncio.to_thread(verify_pin, pin, stored):
-                return self._wrong_pin(pending, actor, channel)
 
-        self.store.execute("UPDATE pin_state SET failures = 0 WHERE id = 1")
+            # PBKDF2 is deliberately slow; keep it off the event loop.
+            async def pin_ok() -> bool:
+                return bool(pin) and await asyncio.to_thread(verify_pin, pin, stored)
+
+            verdict, until = await self._checked(user_id, pin_ok)
+            if verdict == "locked":
+                return self._locked(until, actor, channel, pending)
+            if verdict != "ok":
+                return self._wrong_pin(pending, actor, channel, user_id, until)
+
+        # Claimed once, and only while it has not expired, even if the PIN took a while.
         claimed = self.store.execute(
-            "UPDATE pending_actions SET status = 'executing' WHERE id = ? AND status = 'pending'",
-            (pending.id,),
+            "UPDATE pending_actions SET status = 'executing' "
+            "WHERE id = ? AND status = 'pending' AND expires_at > ?",
+            (pending.id, self.clock()),
         )
         if claimed.rowcount != 1:
             current = self.get(pending.id) or pending
+            if current.status == "pending":
+                return self._finish(
+                    current,
+                    "expired",
+                    "This action expired. Ask again to re-propose it.",
+                    actor,
+                    channel,
+                )
             return self._finish(
                 current, "already_done", f"This action is already {current.status}.", actor, channel
             )
@@ -607,16 +690,17 @@ class ActionGuard:
     # Internals.
 
     def _wrong_pin(
-        self, pending: PendingAction | None, actor: str | None, channel: str | None
+        self,
+        pending: PendingAction | None,
+        actor: str | None,
+        channel: str | None,
+        user_id: int | None = None,
+        until: float | None = None,
     ) -> Outcome:
-        self.store.execute("UPDATE pin_state SET failures = failures + 1 WHERE id = 1")
-        row = self.store.one("SELECT failures FROM pin_state WHERE id = 1")
-        failures = int(row["failures"]) if row else 1
-        if failures >= self.max_wrong_pins:
-            until = self.clock() + self.lock_seconds
-            self.store.execute(
-                "UPDATE pin_state SET failures = 0, locked_until = ? WHERE id = 1", (until,)
-            )
+        """A wrong PIN (or signature), already counted; ``until`` when it, or an earlier
+        one, locked actions."""
+        failures = self.wrong_pins(user_id)
+        if until is not None:
             minutes = round(self.lock_seconds / 60)
             return self._finish(
                 pending,

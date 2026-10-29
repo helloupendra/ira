@@ -16,8 +16,18 @@ on its own it can never change anything.
 - Each PIN is stored as a salted PBKDF2-SHA256 hash (600,000 iterations by
   default) and checked off the event loop. Setting one over the API needs
   the account password again.
-- **Three wrong PINs lock every action for 15 minutes**, including attempts
-  with the right PIN during the lock.
+- **Three wrong PINs lock that person's actions for 15 minutes**,
+  including attempts with the right PIN during the lock. Each person has
+  their own count (one person's mistakes never lock another's), and a
+  person's PINs are checked one at a time: guesses sent all at once get
+  three checks, then the lock, like guesses sent one by one. A PIN for a
+  new grant (pairing, a skill, a connection) counts the same way.
+- **Sign-in** allows five wrong passwords per email or address in 15
+  minutes; each attempt is counted before the password is checked, so
+  sending many at once does not help, and at most two are checked at a
+  time.
+- An action runs only while it has not expired, even when the PIN check
+  took a while.
 - A compare-and-set on the action's status means it **runs at most once**,
   even when two confirmations race.
 - **What taints a turn.** After Ira reads text that others wrote (a

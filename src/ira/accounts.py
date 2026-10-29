@@ -223,6 +223,25 @@ class LoginLimiter:
             for key in keys:
                 self._recent(key).append(self.clock())
 
+    def take(self, *keys: str) -> float | None:
+        """Count an attempt as failed before the password is checked, so that many at once
+        cannot all get past the limit; None when the keys are blocked. On success, give it
+        back with ``release``."""
+        with self._lock:
+            if any(len(self._recent(k)) >= self.limit for k in keys):
+                return None
+            at = self.clock()
+            for key in keys:
+                self._recent(key).append(at)
+            return at
+
+    def release(self, at: float, *keys: str) -> None:
+        with self._lock:
+            for key in keys:
+                entry = self._attempts.get(key)
+                if entry is not None and at in entry.failures:
+                    entry.failures.remove(at)
+
     def clear(self, *keys: str) -> None:
         with self._lock:
             for key in keys:
@@ -234,6 +253,8 @@ class Accounts:
         self.store = store
         self.clock = clock
         self.limiter = LoginLimiter(clock=clock)
+        # Each password check takes 64 MB (Argon2id): two at a time keeps a small server up.
+        self.checking = threading.BoundedSemaphore(2)
 
     # Users.
 

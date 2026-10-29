@@ -83,6 +83,14 @@ CREATE TABLE IF NOT EXISTS pin_state (
 );
 INSERT OR IGNORE INTO pin_state (id, failures, locked_until) VALUES (1, 0, 0);
 
+-- Wrong PINs, per person (subject 0: the installation PIN). An attempt is counted
+-- before the PIN is checked, so many guesses at once cannot all pass the lock.
+CREATE TABLE IF NOT EXISTS pin_locks (
+    subject      INTEGER PRIMARY KEY,
+    failures     INTEGER NOT NULL DEFAULT 0,
+    locked_until REAL NOT NULL DEFAULT 0
+);
+
 CREATE TABLE IF NOT EXISTS users (
     id            INTEGER PRIMARY KEY AUTOINCREMENT,
     email         TEXT NOT NULL UNIQUE,

@@ -162,7 +162,7 @@ def invite_accept(
 
 def _pin_status(runtime: Runtime, principal: Principal) -> PinStatus:
     guard = runtime.guard
-    locked = guard.locked_until()
+    locked = guard.locked_until(principal.user.id)
     return PinStatus(
         has_pin=guard.has_pin(principal.user.id),
         can_confirm="actions" in principal.user.permissions,

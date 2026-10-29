@@ -701,12 +701,12 @@ def security(
     _: Principal = Depends(reader), runtime: Runtime = Depends(get_runtime)
 ) -> SecurityView:
     guard = runtime.guard
-    locked = guard.locked_until()
+    locked = guard.locked_until(anyone=True)
     action_tools = [t.name for t in runtime.registry if t.kind == "action"]
     return SecurityView(
         locked_seconds=None if locked is None else max(0, round(locked - guard.clock())),
         locked_until=locked,
-        wrong_pins=guard.wrong_pins(),
+        wrong_pins=guard.wrong_pins(anyone=True),
         max_wrong_pins=guard.max_wrong_pins,
         lock_minutes=round(guard.lock_seconds / 60, 1),
         expiry_seconds=guard.expiry_seconds,
