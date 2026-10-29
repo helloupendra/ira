@@ -358,6 +358,11 @@ public final class DeviceClient: @unchecked Sendable {
         }
         let events = Task { await self.eventSender(sender) }
         var calls: [Task<Void, Never>] = []
+        // Each tool's skill, as this Mac offered it.
+        var skillOf: [String: String] = [:]
+        for tool in tools.definitions {
+            if let name = tool["name"]?.stringValue, let skill = tool["skill"]?.stringValue { skillOf[name] = skill }
+        }
         defer {
             pinger.cancel()
             events.cancel()
@@ -382,6 +387,15 @@ public final class DeviceClient: @unchecked Sendable {
             }
             switch frame {
             case .call(let id, let tool, let args):
+                // The server calls a tool only while its skill is on; this Mac checks too, so a
+                // server bug, or a server it was tricked into pairing with, cannot use a skill
+                // that is off here.
+                if let skill = skillOf[tool], !skills.contains(skill) {
+                    log.info("call \(tool) refused: its skill is off")
+                    let refusal = DeviceProtocol.failure(id: id, error: "the \(skill) skill is off for Ira on this Mac")
+                    try? await sender.send(DeviceProtocol.encodeResult(refusal))
+                    continue
+                }
                 calls.removeAll { $0.isCancelled }
                 calls.append(Task { [tools, log] in
                     // Every call is logged: its tool, how long, and how it ended. Never contents.

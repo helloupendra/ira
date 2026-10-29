@@ -68,11 +68,17 @@ struct DeviceFrameTests {
 
 /// Tools for the client tests: one that answers, one that fails, one that waits.
 struct ScriptedTools: ToolRunner {
-    var definitions: [JSONValue] { [["name": "echo_back", "description": "Echo.", "parameters": ["type": "object"], "tier": 0]] }
+    var definitions: [JSONValue] {
+        [
+            ["name": "echo_back", "description": "Echo.", "parameters": ["type": "object"], "tier": 0],
+            ["name": "screen_peek", "description": "Peek.", "parameters": ["type": "object"], "skill": "screen", "tier": 0],
+        ]
+    }
 
     func call(_ name: String, args: JSONValue) async throws -> JSONValue {
         switch name {
         case "echo_back": return ["echo": args]
+        case "screen_peek": return "peeked"
         case "slow_one":
             try await Task.sleep(nanoseconds: 300_000_000)
             return "slow"
@@ -130,6 +136,23 @@ struct DeviceClientTests {
         channel.close(code: 4000)
         let closed = await run.value
         #expect(closed?.code == 4000)
+    }
+
+    @Test func aSkillThatIsOffHereIsRefusedWhateverTheServerSays() async throws {
+        let channel = FakeChannel()
+        let (client, _) = client(channel, states: EventLog<DeviceState>())
+        let run = Task { await client.runOnce(token: "irad_test") }
+        #expect(await channel.waitFor { $0.count == 1 })
+        channel.push(["type": "welcome", "deviceId": 1, "skills": ["files"]])
+        channel.push(["type": "call", "id": "c1", "tool": "screen_peek", "args": [:]])
+        #expect(await channel.waitFor { sent in
+            sent.contains(["type": "result", "id": "c1", "ok": false, "error": "the screen skill is off for Ira on this Mac"])
+        })
+        channel.push(["type": "skills", "skills": ["files", "screen"]])
+        channel.push(["type": "call", "id": "c2", "tool": "screen_peek", "args": [:]])
+        #expect(await channel.waitFor { sent in sent.contains(["type": "result", "id": "c2", "ok": true, "content": "peeked"]) })
+        channel.close(code: 1000)
+        _ = await run.value
     }
 
     @Test func callsRunSideBySide() async throws {
