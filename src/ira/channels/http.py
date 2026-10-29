@@ -241,6 +241,7 @@ async def ask(
         channel=principal.channel,
         actor=principal.actor,
         user_id=principal.user.id,
+        can_approve=principal.can("actions"),
     )
     data = reply.public()
     data["conversation_id"] = client_id
@@ -350,6 +351,7 @@ async def ask_stream(
             channel=principal.channel,
             actor=principal.actor,
             user_id=principal.user.id,
+            can_approve=principal.can("actions"),
         ):
             if event["type"] == "done":
                 event = {**event, "conversation_id": client_id}
@@ -486,7 +488,7 @@ async def confirm_action(
 async def approve_action(
     action_id: str,
     response: Response,
-    principal: Principal = Depends(require("ask")),
+    principal: Principal = Depends(require("actions")),  # an ask-only token cannot say yes
     runtime: Runtime = Depends(get_runtime),
 ) -> ActionOutcome:
     outcome = await runtime.guard.approve(
@@ -508,7 +510,9 @@ def cancel_action(
     principal: Principal = Depends(require("actions")),
     runtime: Runtime = Depends(get_runtime),
 ) -> ActionOutcome:
-    outcome = runtime.guard.cancel(action_id, actor=principal.actor, channel=principal.channel)
+    outcome = runtime.guard.cancel(
+        action_id, actor=principal.actor, channel=principal.channel, user_id=principal.user.id
+    )
     return _outcome_response(response, outcome, runtime, principal)
 
 

@@ -359,6 +359,7 @@ class Assistant:
         channel: str = "api",
         actor: str = "owner",
         user_id: int | None = None,
+        can_approve: bool = True,
     ) -> Reply:
         reply = Reply(text="", conversation_id=conversation_id)
         parts: list[str] = []
@@ -370,6 +371,7 @@ class Assistant:
             actor=actor,
             user_id=user_id,
             stream=False,
+            can_approve=can_approve,
         ):
             if event["type"] == "delta":
                 parts.append(event["text"])
@@ -401,8 +403,10 @@ class Assistant:
         actor: str = "owner",
         user_id: int | None = None,
         stream: bool = True,
+        can_approve: bool = True,
     ) -> AsyncIterator[dict[str, Any]]:
-        """Run one user turn, yielding events: delta, tool, tool_result, action, done, error."""
+        """Run one user turn, yielding events: delta, tool, tool_result, action, done, error.
+        ``can_approve``: the credential may say yes to an action (an ask-only token may not)."""
         text = text.strip()
         if looks_like_pin(text):
             # A bare PIN typed into chat: keep it away from every model.
@@ -418,6 +422,14 @@ class Assistant:
         lock = self._locks.setdefault(conversation_id, asyncio.Lock())
         async with lock:
             pending = self.guard.awaiting_yes(conversation_id, user_id)
+            if pending is not None and is_yes(text) and not can_approve:
+                message = (
+                    "This key can only ask, so it cannot say yes. Say yes in the Ira app, "
+                    "where it waits for you."
+                )
+                yield {"type": "delta", "text": message}
+                yield {"type": "done", "text": message, "model": None}
+                return
             if pending is not None and (is_yes(text) or is_no(text)):
                 async for event in self._answer_proposal(
                     pending, text, conversation_id, channel, actor, user_id
@@ -450,7 +462,7 @@ class Assistant:
                     yield event
                 return
         else:
-            outcome = self.guard.cancel(pending.id, actor=actor, channel=channel)
+            outcome = self.guard.cancel(pending.id, actor=actor, channel=channel, user_id=user_id)
         message = outcome.message
         self.conversations.append(
             conversation_id,

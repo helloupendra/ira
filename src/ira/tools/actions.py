@@ -561,6 +561,14 @@ class ActionGuard:
                 actor,
                 channel,
             )
+        if not self.may_answer(pending, user_id):
+            return self._finish(
+                pending,
+                "not_allowed",
+                "Only the person who asked for this can confirm it.",
+                actor,
+                channel,
+            )
 
         if signed is not None:
             if self.signature_check is None or user_id is None:
@@ -670,12 +678,44 @@ class ActionGuard:
         pending.status = "executing"
         return await self._execute(pending, actor, channel)
 
+    def personal(self, pending: PendingAction) -> bool:
+        """An action on someone's own device or connection, or one that needs only their
+        yes (Tier 2): theirs to answer, never another person's."""
+        return (
+            pending.device_id is not None
+            or pending.tier == 2
+            or (pending.user_id is not None and self.registry.get(pending.tool) is None)
+        )
+
+    def may_answer(self, pending: PendingAction, user_id: int | None) -> bool:
+        """Whether this person may confirm or cancel it: anyone allowed, for a business's
+        own action; only the person who asked, for a personal one."""
+        if not self.personal(pending) or pending.user_id is None:
+            return True
+        return user_id == pending.user_id
+
     def cancel(
-        self, action_id: str, *, actor: str | None = None, channel: str | None = None
+        self,
+        action_id: str,
+        *,
+        actor: str | None = None,
+        channel: str | None = None,
+        user_id: int | None = None,
+        anyone: bool = False,
     ) -> Outcome:
+        """Drop a pending action. A personal one only by the person who asked (``anyone``:
+        the server's own expiry and housekeeping)."""
         pending = self.get(action_id)
         if pending is None:
             return self._finish(None, "not_found", "No such action.", actor, channel)
+        if not anyone and not self.may_answer(pending, user_id):
+            return self._finish(
+                pending,
+                "not_allowed",
+                "Only the person who asked for this can cancel it.",
+                actor,
+                channel,
+            )
         if self._expired(pending):
             message = "This action had already expired. Nothing was changed."
             return self._finish(pending, "expired", message, actor, channel)

@@ -343,6 +343,7 @@ class TelegramBot:
             channel="telegram",
             actor=principal.actor,
             user_id=principal.user.id,
+            can_approve=principal.can("actions"),
         )
         body = f'Heard: "{text}"\n\n{reply.text}' if heard else reply.text
         await self._send(chat_id, body or "(no answer)")
@@ -402,7 +403,7 @@ class TelegramBot:
                 await self._send(chat_id, "Nothing is waiting to be cancelled.")
             else:
                 outcome = self.runtime.guard.cancel(
-                    pending.id, actor=principal.actor, channel="telegram"
+                    pending.id, actor=principal.actor, channel="telegram", user_id=principal.user.id
                 )
                 await self._send(chat_id, outcome.message)
         elif command == "/name":

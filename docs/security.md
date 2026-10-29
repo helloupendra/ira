@@ -13,6 +13,12 @@ on its own it can never change anything.
 - It runs only after `POST /v1/actions/{id}/confirm` (or a typed PIN on
   Telegram) with the confirming person's own **PIN**, and only if their role
   may confirm that action (`actions.confirm_roles`, narrowed per tool).
+- **A personal action is answered only by the person who asked**: one on
+  their own device or connection, or one that needs only their yes (Tier
+  2). Nobody else confirms or cancels it, not even an owner. A business's
+  own actions may be confirmed by anyone whose role allows it.
+- A key that may only ask (such as Siri's) cannot say yes: not with the
+  approve route, not by typing "haan". Saying no is always allowed.
 - Each PIN is stored as a salted PBKDF2-SHA256 hash (600,000 iterations by
   default) and checked off the event loop. Setting one over the API needs
   the account password again.

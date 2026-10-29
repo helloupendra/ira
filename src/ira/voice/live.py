@@ -364,6 +364,7 @@ class LiveCall:
                         channel="voice",
                         actor=self.principal.actor,
                         user_id=self.user_id,
+                        can_approve=self.principal.can("actions"),
                     )
                 async for event in events:
                     kind = event.get("type")
