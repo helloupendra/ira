@@ -76,8 +76,6 @@ interface Conversation {
 
     fun stopIra()
 
-    fun answer(yes: Boolean)
-
     fun dismissAction()
 
     fun note(text: String)

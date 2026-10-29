@@ -221,6 +221,36 @@ fun TalkScreen(app: IraApp, talkRequests: Int, onSkills: () -> Unit, onSettings:
         if (card != null) {
             // The PIN's outcome belongs to this card only.
             var outcome by remember(card.id) { mutableStateOf<String?>(null) }
+            // An answer that ended the action: never a stale card; what happened shows instead.
+            val settle = { confirmed: Actions.Outcome ->
+                if (confirmed.done) {
+                    if (session?.ui?.value?.action?.id == card.id) session?.dismissAction()
+                    if (Approvals.covered(card.tool)) app.refreshApprovals()
+                    val title = if (confirmed.status == "executed") "Done: ${confirmed.message}" else confirmed.message
+                    result = title to confirmed.detail
+                    session?.note(listOfNotNull(title, confirmed.detail).joinToString(" "))
+                    // Ira carries on after the action: her answer as her next message, unless
+                    // the open live call already spoke it as its own turn.
+                    val reply = confirmed.reply
+                    if (reply != null && !confirmed.continuedInCall) {
+                        app.transcript.add(Transcript.Line("reply:${card.id}", true, reply, messageId = confirmed.replyMessageId))
+                    }
+                } else {
+                    outcome = confirmed.message
+                }
+            }
+            val answer = { yes: Boolean ->
+                confirming = true
+                outcome = null
+                scope.launch {
+                    val answered =
+                        withContext(Dispatchers.IO) {
+                            Actions.answer(app.settings.server.orEmpty(), app.secrets.token().orEmpty(), card.id, yes, Net.post)
+                        }
+                    confirming = false
+                    settle(answered)
+                }
+            }
             val activity = context as? android.app.Activity
             val fingerprint =
                 if (Approvals.FINGERPRINT && card.needsPin && activity != null && app.settings.approvalsEnrolled && DeviceKey.exists()) {
@@ -255,8 +285,8 @@ fun TalkScreen(app: IraApp, talkRequests: Int, onSkills: () -> Unit, onSettings:
                 busy = confirming,
                 outcome = outcome,
                 onFingerprint = fingerprint,
-                onYes = { session?.answer(true) },
-                onNo = { session?.answer(false) },
+                onYes = { answer(true) },
+                onNo = { answer(false) },
                 onPin = { pin ->
                     confirming = true
                     outcome = null
@@ -266,22 +296,7 @@ fun TalkScreen(app: IraApp, talkRequests: Int, onSkills: () -> Unit, onSettings:
                                 Actions.confirm(app.settings.server.orEmpty(), app.secrets.token().orEmpty(), card.id, pin, Net.post)
                             }
                         confirming = false
-                        if (confirmed.done) {
-                            // Never a stale PIN card: it goes, and what happened shows instead.
-                            if (session?.ui?.value?.action?.id == card.id) session?.dismissAction()
-                            if (Approvals.covered(card.tool)) app.refreshApprovals()
-                            val title = if (confirmed.status == "executed") "Done: ${confirmed.message}" else confirmed.message
-                            result = title to confirmed.detail
-                            session?.note(listOfNotNull(title, confirmed.detail).joinToString(" "))
-                            // Ira carries on after the action: her answer as her next message, unless
-                            // the open live call already spoke it as its own turn.
-                            val reply = confirmed.reply
-                            if (reply != null && !confirmed.continuedInCall) {
-                                app.transcript.add(Transcript.Line("reply:${card.id}", true, reply, messageId = confirmed.replyMessageId))
-                            }
-                        } else {
-                            outcome = confirmed.message
-                        }
+                        settle(confirmed)
                     }
                 },
                 onDismiss = { session?.dismissAction() },

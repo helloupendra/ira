@@ -26,6 +26,20 @@ class ActionsTest {
     }
 
     @Test
+    fun `yes and no answer the card's own action by its id`() {
+        val seen = mutableListOf<String>()
+        val post = HttpPost { url, body, _ ->
+            seen += "$url $body"
+            HttpReply(200, if (url.endsWith("/approve")) """{"status": "executed", "message": "Sent."}""" else """{"status": "cancelled"}""")
+        }
+        assertEquals("executed", Actions.answer("https://ira.example.com", "irad_x", "a1b2", true, post).status)
+        val no = Actions.answer("https://ira.example.com", "irad_x", "a1b2", false, post)
+        assertTrue(no.done)
+        assertEquals(listOf("https://ira.example.com/v1/actions/a1b2/approve {}", "https://ira.example.com/v1/actions/a1b2/cancel {}"), seen)
+        assertEquals("bad", Actions.answer("https://ira.example.com", "irad_x", "../x", true, post).status)
+    }
+
+    @Test
     fun `a done action carries a short result for its card`() {
         val done = Actions.parse(HttpReply(200, """{"status": "executed", "message": "Ran screen_read.", "result": {"app": "YouTube", "summary": "On screen in YouTube: Hindi news live"}}"""))
         assertEquals(Actions.Outcome("executed", "Ran screen_read.", true, "On screen in YouTube: Hindi news live"), done)

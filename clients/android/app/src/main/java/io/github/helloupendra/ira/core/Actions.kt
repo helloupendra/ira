@@ -6,8 +6,9 @@ import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
 
 /**
- * Confirming a Tier 3 action with the PIN, typed on the phone (never spoken):
- * `POST /v1/actions/{id}/confirm` with the device token, as `docs/devices.md` allows.
+ * Answering an action card with the device token, as `docs/devices.md` allows: a Tier 3
+ * action with the PIN, typed on the phone (never spoken), `POST /v1/actions/{id}/confirm`;
+ * a Tier 2 one with Yes or No, `POST /v1/actions/{id}/approve` or `/cancel`.
  */
 object Actions {
     data class Outcome(
@@ -41,13 +42,23 @@ object Actions {
 
     fun confirmBody(pin: String): String = buildJsonObject { put("pin", JsonPrimitive(pin)) }.toString()
 
-    fun confirm(server: String, token: String, actionId: String, pin: String, post: HttpPost): Outcome {
+    fun confirm(server: String, token: String, actionId: String, pin: String, post: HttpPost): Outcome =
+        send(server, token, actionId, "confirm", confirmBody(pin), post)
+
+    /**
+     * Yes or no to this card's own action, by its id: never the word "yes" in the chat, which
+     * could answer a newer action, or be lost while Ira is still talking.
+     */
+    fun answer(server: String, token: String, actionId: String, yes: Boolean, post: HttpPost): Outcome =
+        send(server, token, actionId, if (yes) "approve" else "cancel", "{}", post)
+
+    private fun send(server: String, token: String, actionId: String, verb: String, body: String, post: HttpPost): Outcome {
         if (!Regex("^[A-Za-z0-9_-]{1,80}$").matches(actionId)) return Outcome("bad", "That action cannot be confirmed here.", false)
         val reply =
             try {
                 post.post(
-                    "${server.trimEnd('/')}/v1/actions/$actionId/confirm",
-                    confirmBody(pin),
+                    "${server.trimEnd('/')}/v1/actions/$actionId/$verb",
+                    body,
                     mapOf("Content-Type" to "application/json", "Authorization" to "Bearer $token"),
                 )
             } catch (_: IOException) {

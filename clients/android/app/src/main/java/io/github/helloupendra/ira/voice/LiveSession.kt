@@ -106,12 +106,6 @@ class LiveSession(
         state.update { it.copy(status = statusOf(machine.phase)) }
     }
 
-    /** A tap on a Tier 2 card: the same short yes or no the server listens for. */
-    override fun answer(yes: Boolean) {
-        state.update { it.copy(action = null) }
-        send(if (yes) "yes" else "no") { error -> if (error != null) state.update { it.copy(notice = error) } }
-    }
-
     override fun dismissAction() {
         state.update { it.copy(action = null) }
     }

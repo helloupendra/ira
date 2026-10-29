@@ -144,11 +144,6 @@ class PhoneSession(
         if (voice) listen() else state.update { it.copy(status = CallStatus.Listening) }
     }
 
-    override fun answer(yes: Boolean) {
-        state.update { it.copy(action = null) }
-        send(if (yes) "yes" else "no") { error -> if (error != null) state.update { it.copy(notice = error) } }
-    }
-
     override fun dismissAction() {
         state.update { it.copy(action = null) }
     }
