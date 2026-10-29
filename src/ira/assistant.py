@@ -15,6 +15,7 @@ Every call is written to "What Ira did", without its arguments or result.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import dataclasses
 import inspect
 import json
@@ -263,6 +264,7 @@ class Assistant:
         self.after_turn = after_turn
         self._background: set[asyncio.Task[Any]] = set()
         self._locks: dict[str, asyncio.Lock] = {}
+        self._waiting: dict[str, int] = {}
 
     # Identity.
 
@@ -438,8 +440,7 @@ class Assistant:
             return
 
         self.conversations.ensure(conversation_id, channel=channel, user_id=user_id)
-        lock = self._locks.setdefault(conversation_id, asyncio.Lock())
-        async with lock:
+        async with self._one_turn(conversation_id):
             pending = self.guard.awaiting_yes(conversation_id, user_id)
             if pending is not None and is_yes(text) and not can_approve:
                 message = (
@@ -511,12 +512,28 @@ class Assistant:
     ) -> AsyncIterator[dict[str, Any]]:
         """Carry on after an action was confirmed outside the chat (a PIN on its card): the
         model sees what the action returned and goes on with the plan, then answers."""
-        lock = self._locks.setdefault(conversation_id, asyncio.Lock())
-        async with lock:
+        async with self._one_turn(conversation_id):
             async for event in self._turn(
                 None, conversation_id, channel, actor, stream, user_id, cue=CONFIRMED_CUE
             ):
                 yield event
+
+    @contextlib.asynccontextmanager
+    async def _one_turn(self, conversation_id: str) -> AsyncIterator[None]:
+        """One turn at a time in a conversation. Its lock goes once nobody holds or waits for
+        it, so a server that saw many conversations does not keep a lock for each."""
+        lock = self._locks.setdefault(conversation_id, asyncio.Lock())
+        self._waiting[conversation_id] = self._waiting.get(conversation_id, 0) + 1
+        try:
+            async with lock:
+                yield
+        finally:
+            left = self._waiting[conversation_id] - 1
+            if left:
+                self._waiting[conversation_id] = left
+            else:
+                del self._waiting[conversation_id]
+                self._locks.pop(conversation_id, None)
 
     async def _turn(
         self,

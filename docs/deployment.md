@@ -470,7 +470,8 @@ sudo systemctl start ira@clinic
 
 Back up first. Then take the scripts of the new release, run the bootstrap
 with its ref, and restart each instance once nobody is on a live call with
-it (the server keeps the count in `data/live-calls.json`; a restart closes
+it (the server keeps the count in `data/live-calls.json`, and sets it to
+none when it starts, so a crash leaves no stale count; a restart closes
 calls and devices with "going away", and the apps reconnect at once):
 
 ```bash

@@ -557,6 +557,7 @@ def create_app(runtime: Runtime, *, start_channels: bool = True) -> FastAPI:
         stranded = runtime.guard.recover_interrupted()
         if stranded:
             log.warning("%d action(s) were cut off by a restart: marked unknown", stranded)
+        runtime.reset_live_calls()
         code = runtime.ensure_setup_code()
         if code and not runtime.setup_code_shown:
             log.warning(

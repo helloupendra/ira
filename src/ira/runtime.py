@@ -232,6 +232,11 @@ class Runtime:
             del self.live_calls[key]
         self._write_live_calls()
 
+    def reset_live_calls(self) -> None:
+        """At start no live call is open, whatever a crash left in the file: a deploy that
+        waits for none then need not wait for calls that ended with the old process."""
+        self._write_live_calls()
+
     def _write_live_calls(self) -> None:
         """How many live calls are open, in data/live-calls.json, so that a deploy can wait
         for none (ira-restart-when-quiet) instead of cutting someone off."""
