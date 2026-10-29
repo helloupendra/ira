@@ -26,9 +26,46 @@ def valid_pin(pin: str) -> bool:
     return bool(PIN_PATTERN.fullmatch(pin))
 
 
+# Digits said as words, as speech-to-text writes them: English, Hindi in Latin letters and
+# in Devanagari. ("no" and "do" are left out of the Latin ones only when ambiguous: "do"
+# counts as two only among other digits.)
+NUMBER_WORDS = {
+    **dict.fromkeys(("zero", "oh", "shunya", "sunya", "शून्य", "जीरो"), "0"),
+    **dict.fromkeys(("one", "ek", "एक", "वन"), "1"),
+    **dict.fromkeys(("two", "do", "दो", "टू"), "2"),
+    **dict.fromkeys(("three", "teen", "tin", "तीन", "थ्री"), "3"),
+    **dict.fromkeys(("four", "char", "chaar", "चार", "फोर"), "4"),
+    **dict.fromkeys(("five", "paanch", "panch", "पांच", "पाँच", "फाइव"), "5"),
+    **dict.fromkeys(("six", "chhe", "chhah", "che", "छह", "छः", "छे", "सिक्स"), "6"),
+    **dict.fromkeys(("seven", "saat", "sat", "सात", "सेवन"), "7"),
+    **dict.fromkeys(("eight", "aath", "आठ", "एट"), "8"),
+    **dict.fromkeys(("nine", "nau", "नौ", "नाइन"), "9"),
+}
+PIN_WORDS = {"pin", "पिन", "mera", "meri", "my", "is", "hai", "है", "मेरा", "मेरी"}
+_DEVANAGARI_DIGITS = str.maketrans("०१२३४५६७८९", "0123456789")
+_SEPARATORS = re.compile(r"[\s.,;:!?'\"()\[\]{}\-–—_/।]+")
+
+
+def spoken_digits(text: str) -> str | None:
+    """The digits of a message made only of digits and digit words ("4321.", "1 2 3 4",
+    "ek do teen char", "मेरा पिन चार तीन दो एक है"), else None."""
+    tokens = [t for t in _SEPARATORS.split(text.translate(_DEVANAGARI_DIGITS).lower()) if t]
+    digits = []
+    for token in tokens:
+        if token.isdigit():
+            digits.append(token)
+        elif token in NUMBER_WORDS:
+            digits.append(NUMBER_WORDS[token])
+        elif token not in PIN_WORDS:
+            return None
+    return "".join(digits) or None
+
+
 def looks_like_pin(text: str) -> bool:
-    """A message that is only a PIN's digits: treated as a PIN, never sent to a model."""
-    return valid_pin(text.strip())
+    """A message that is a PIN, typed or spoken (digits, or digit words in English or
+    Hindi, with nothing else but "my PIN is"): never sent to a model, never stored."""
+    digits = spoken_digits(text)
+    return digits is not None and valid_pin(digits)
 
 
 def hash_pin(pin: str, *, iterations: int = PIN_ITERATIONS, salt: bytes | None = None) -> str:
