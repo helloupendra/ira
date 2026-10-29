@@ -224,6 +224,16 @@ async def bot_identity(runtime: Runtime) -> dict[str, Any]:
     return cache
 
 
+def chat_of(update: dict[str, Any]) -> Any:
+    """The chat an update belongs to: a message, an edited one, or a button pressed."""
+    for key in ("message", "edited_message"):
+        chat = (update.get(key) or {}).get("chat") or {}
+        if "id" in chat:
+            return chat["id"]
+    pressed = ((update.get("callback_query") or {}).get("message") or {}).get("chat") or {}
+    return pressed.get("id")
+
+
 # --- the bot -------------------------------------------------------------------------
 
 
@@ -238,6 +248,11 @@ class TelegramBot:
         )
         # Each chat's latest update, still being handled: the next waits for it.
         self._chats: dict[Any, asyncio.Future[None]] = {}
+        # Update ids handed out (to skip when Telegram sends them again), those still being
+        # handled (Telegram is told it has them only once they are done), and the newest.
+        self._seen: set[int] = set()
+        self._handling: set[int] = set()
+        self._newest = 0
 
     async def run(self) -> None:
         offset: int | None = None
@@ -254,18 +269,36 @@ class TelegramBot:
                     log.warning("telegram poll failed: %s", exc)
                     await asyncio.sleep(5)
                     continue
+                fresh = 0
                 for update in updates:
-                    offset = int(update["update_id"]) + 1
+                    update_id = int(update["update_id"])
+                    self._newest = max(self._newest, update_id)
+                    if update_id in self._seen:
+                        continue  # handed out already, still being handled
+                    fresh += 1
                     self.state["updates"] += 1
                     self._dispatch(update)
+                # Telegram forgets an update once a poll asks for the ones after it, so ask
+                # only past those already handled: an update being handled when the server
+                # restarts comes again, instead of being lost.
+                waiting = sorted(self._handling)
+                offset = waiting[0] if waiting else (self._newest + 1 if self._newest else None)
+                if updates and not fresh:
+                    await asyncio.sleep(1)  # only updates still being handled came back
         finally:
             self.state["running"] = False
 
     def _dispatch(self, update: dict[str, Any]) -> None:
-        """Handle an update without holding up other chats: each chat's own messages stay in
-        order, one after another, while different chats are answered side by side (a slow
-        tool or a big voice note in one chat never stalls the rest)."""
-        chat = ((update.get("message") or {}).get("chat") or {}).get("id")
+        """Handle an update without holding up other chats: each chat's own updates
+        (messages, edits, button presses) stay in order, one after another, while different
+        chats are answered side by side (a slow tool or a big voice note in one chat never
+        stalls the rest)."""
+        chat = chat_of(update)
+        update_id = int(update.get("update_id", 0))
+        self._seen.add(update_id)
+        self._handling.add(update_id)
+        if len(self._seen) > 2000:  # those long handled cannot come back
+            self._seen = {u for u in self._seen if u >= min(self._handling | {update_id}) - 1000}
         previous = self._chats.get(chat)
 
         async def run() -> None:
@@ -276,6 +309,8 @@ class TelegramBot:
                 await self.handle_update(update)
             except Exception:
                 log.exception("telegram update %s failed", update.get("update_id"))
+            finally:
+                self._handling.discard(update_id)
 
         task = asyncio.ensure_future(run())
         self._chats[chat] = task

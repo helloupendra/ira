@@ -124,3 +124,52 @@ async def test_one_slow_chat_never_holds_up_another():
     assert done == ["2:quick"]
     await asyncio.sleep(0.3)
     assert done == ["2:quick", "1:slow", "1:after"]
+
+
+def test_button_presses_and_edits_belong_to_their_chat():
+    from ira.channels.telegram import chat_of
+
+    assert chat_of({"message": {"chat": {"id": 5}}}) == 5
+    assert chat_of({"edited_message": {"chat": {"id": 6}}}) == 6
+    assert chat_of({"callback_query": {"message": {"chat": {"id": 7}}}}) == 7
+
+
+async def test_an_update_being_handled_is_not_confirmed_to_telegram():
+    """Telegram forgets an update once a poll asks past it: that waits until it is handled,
+    so a restart in the middle gets it again; and one sent again is not handled twice."""
+    runtime = make_runtime()
+    finish = asyncio.Event()
+    handled: list[int] = []
+
+    def update(update_id: int, chat: int) -> dict[str, Any]:
+        return {"update_id": update_id, "message": {"chat": {"id": chat, "type": "private"}}}
+
+    class Api:
+        def __init__(self) -> None:
+            self.offsets: list[int | None] = []
+
+        async def get_updates(self, offset, timeout):
+            self.offsets.append(offset)
+            if len(self.offsets) == 1:
+                return [update(10, 1), update(11, 2)]
+            if len(self.offsets) == 2:
+                return [update(10, 1)]  # still not confirmed: Telegram sends it again
+            if len(self.offsets) == 3:
+                finish.set()
+                await asyncio.sleep(0.05)
+                return []
+            raise asyncio.CancelledError
+
+    api = Api()
+    bot = TelegramBot(runtime, api=api)
+
+    async def handle(u: dict[str, Any]) -> None:
+        if u["update_id"] == 10:
+            await finish.wait()
+        handled.append(u["update_id"])
+
+    bot.handle_update = handle  # type: ignore[method-assign]
+    with pytest.raises(asyncio.CancelledError):
+        await bot.run()
+    assert api.offsets[:3] == [None, 10, 10]  # 10 not confirmed while being handled
+    assert api.offsets[3] == 12 and sorted(handled) == [10, 11]  # then past both, once each
