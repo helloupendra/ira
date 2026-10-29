@@ -16,7 +16,9 @@ switch it on.
   new items come to the paired chat unless switched off. In the Ira app: a
   tray at the top with Copy first, files by picker, drag or paste, live from
   the other devices, and Share → Ira once the app is installed on Android
-  (shown first, sent only on Send to Drop).
+  (shown first, sent only on Send to Drop). On Android: a Drop screen,
+  Share → Ira Drop with a confirm and progress, a Send clipboard tile, and a
+  notification with Copy while Ira is open.
   From a terminal:
   `ira drop login`, then `send`, `list`, `get` and `rm`.
   `POST/GET/DELETE /v1/me/drop`, `/v1/me/drop/settings`.
@@ -263,6 +265,9 @@ switch it on.
   the default assistant and no Accessibility service, and a sideloaded
   personal build that adds them; the docs give the policy matrix and a
   Play Console guide. CI runs its unit tests and builds both debug APKs.
+  Version 3 (0.3.0) adds Drop, approves with a fingerprint only (never the
+  screen lock), answers Yes and No by the action's id, ends a call when the
+  phone rings, and keeps release builds out of screenshots.
 - **Tasks on your Mac** (the `tasks` skill): Ira hands a job to a coding
   agent configured on the Mac, in a new git worktree and branch of a
   repository the person allowed there. It runs in macOS's sandbox, its git
