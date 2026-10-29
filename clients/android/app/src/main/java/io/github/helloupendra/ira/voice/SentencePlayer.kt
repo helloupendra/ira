@@ -4,6 +4,7 @@ import android.content.Context
 import android.media.AudioFocusRequest
 import android.media.AudioManager
 import android.net.Uri
+import android.os.Build
 import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem
@@ -27,12 +28,15 @@ class SentencePlayer(context: Context, private val listener: Listener) {
         fun onSentenceStarted(turn: Int, seq: Int)
 
         fun onSentenceFinished(turn: Int, seq: Int)
+
+        /** Another sound took over (a phone call, an alarm, navigation): Ira has stopped. */
+        fun onInterrupted() {}
     }
 
     private val audio = ConcurrentHashMap<String, ByteArray>()
     private var started: String? = null
 
-    private val focus = AudioFocus(context)
+    private val focus = AudioFocus(context) { interrupted() }
 
     private val player: ExoPlayer =
         ExoPlayer.Builder(context)
@@ -87,6 +91,12 @@ class SentencePlayer(context: Context, private val listener: Listener) {
         player.release()
     }
 
+    private fun interrupted() {
+        if (!isPlaying) return
+        stop()
+        listener.onInterrupted()
+    }
+
     private fun check() {
         val current = player.currentMediaItem?.mediaId
         if (player.isPlaying && current != null && current != started) {
@@ -130,9 +140,11 @@ class SentencePlayer(context: Context, private val listener: Listener) {
 
 /**
  * Transient audio focus while Ira speaks: music and other sound duck, and come back when she
- * stops. Asked for by the app because ExoPlayer handles focus only for media and games.
+ * stops. Asked for by the app because ExoPlayer handles focus only for media and games. When
+ * something else takes the sound for itself (a ringing phone, a call, an alarm), [onLost]
+ * says so and Ira stops; a short sound that only ducks her (a notification) does not.
  */
-class AudioFocus(context: Context) {
+class AudioFocus(context: Context, private val onLost: () -> Unit = {}) {
     private val manager = context.getSystemService(AudioManager::class.java)
     private var held = false
     private val request =
@@ -143,7 +155,9 @@ class AudioFocus(context: Context) {
                     .setContentType(android.media.AudioAttributes.CONTENT_TYPE_SPEECH)
                     .build(),
             )
-            .setOnAudioFocusChangeListener { }
+            .setOnAudioFocusChangeListener { change ->
+                if (change == AudioManager.AUDIOFOCUS_LOSS || change == AudioManager.AUDIOFOCUS_LOSS_TRANSIENT) onLost()
+            }
             .build()
 
     fun request() {
@@ -156,4 +170,34 @@ class AudioFocus(context: Context) {
         manager?.abandonAudioFocusRequest(request)
         held = false
     }
+}
+
+/**
+ * Says when the phone starts ringing or a phone call begins, so a call with Ira ends at once
+ * and her microphone is off: from Android 12 through the audio mode, with no permission.
+ * Before that, losing the audio focus while she speaks does it. The communication mode is
+ * not counted: some phones use it for Ira's own microphone.
+ */
+class PhoneCalls(context: Context, private val onCall: () -> Unit) {
+    private val manager = context.getSystemService(AudioManager::class.java)
+    private val executor = context.mainExecutor
+    private var watching: Any? = null
+
+    /** Ringing, or on a phone call, now. */
+    val busy: Boolean
+        get() = manager != null && inCall(manager.mode)
+
+    fun start() {
+        if (Build.VERSION.SDK_INT < 31 || manager == null || watching != null) return
+        val listener = AudioManager.OnModeChangedListener { mode -> if (inCall(mode)) onCall() }
+        manager.addOnModeChangedListener(executor, listener)
+        watching = listener
+    }
+
+    fun stop() {
+        if (Build.VERSION.SDK_INT >= 31) (watching as? AudioManager.OnModeChangedListener)?.let { manager?.removeOnModeChangedListener(it) }
+        watching = null
+    }
+
+    private fun inCall(mode: Int): Boolean = mode == AudioManager.MODE_RINGTONE || mode == AudioManager.MODE_IN_CALL
 }

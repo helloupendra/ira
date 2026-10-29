@@ -63,6 +63,7 @@ class LiveSession(
     private val vad = EnergyVad()
     private val mic = MicCapture(context, ::onMicFrame)
     private val player = SentencePlayer(context, this)
+    private val calls = PhoneCalls(context) { end(PHONE_CALL) }
     private val backoff = Backoff()
     private var socket: WebSocket? = null
     private var ready = false
@@ -78,6 +79,8 @@ class LiveSession(
     private val idle = Runnable { onQuiet() }
 
     fun start() {
+        if (calls.busy) return end(PHONE_CALL)
+        calls.start()
         connect()
     }
 
@@ -120,6 +123,7 @@ class LiveSession(
         if (ended) return
         ended = true
         main.removeCallbacksAndMessages(null)
+        calls.stop()
         listening = false
         mic.stop()
         player.release()
@@ -289,6 +293,11 @@ class LiveSession(
         state.update { it.copy(status = statusOf(machine.phase)) }
     }
 
+    /** The phone needed its sound (a call, an alarm): the call ends, the microphone with it. */
+    override fun onInterrupted() {
+        end(PHONE_CALL)
+    }
+
     override fun onSentenceFinished(turn: Int, seq: Int) {
         machine.onSentenceFinished()
         replying = machine.playing
@@ -330,6 +339,7 @@ class LiveSession(
         const val MIC_BUSY =
             "The microphone is busy or not allowed. Close other apps that use it, or allow the microphone for Ira in Android's settings."
         const val NO_LIVE = "Live calls need your Ira to have speech set up. Using the phone's own speech recognition instead."
+        const val PHONE_CALL = "Ira stopped: your phone needed its sound, for a call or an alarm. Tap to talk again."
 
         /** The server's reasons that mean no live call can work here (`channels/live.py`). */
         private val LIVE_UNAVAILABLE = listOf("speech-to-text", "text-to-speech", "talk to Ira by voice")

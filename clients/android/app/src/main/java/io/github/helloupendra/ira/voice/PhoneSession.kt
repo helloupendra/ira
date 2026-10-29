@@ -64,6 +64,7 @@ class PhoneSession(
     private var onDevice = true
     private var quietSince = 0L
     private var player: SentencePlayer? = null
+    private val calls = PhoneCalls(context) { stopListening(LiveSession.PHONE_CALL) }
     private var tts: TextToSpeech? = null
     private var ttsReady = false
 
@@ -160,6 +161,8 @@ class PhoneSession(
             state.update { it.copy(notice = "This phone has no speech recognition. Type to Ira instead, or set up speech on your Ira for live calls.") }
             return
         }
+        if (calls.busy) return stopListening(LiveSession.PHONE_CALL)
+        calls.start()
         voice = true
         quietSince = System.currentTimeMillis()
         state.update { it.copy(mode = TalkMode.PHONE, listening = true) }
@@ -168,6 +171,7 @@ class PhoneSession(
 
     /** Stop listening (the talk button again); the conversation stays for typing. */
     fun stopListening(why: String? = null) {
+        calls.stop()
         voice = false
         recognizer?.cancel()
         stopSpeaking()
@@ -367,6 +371,10 @@ class PhoneSession(
 
     override fun onSentenceStarted(turn: Int, seq: Int) = Unit
 
+    override fun onInterrupted() {
+        stopListening(LiveSession.PHONE_CALL)
+    }
+
     override fun onSentenceFinished(turn: Int, seq: Int) {
         idle()
     }
@@ -387,6 +395,7 @@ class PhoneSession(
         if (ended) return
         ended = true
         voice = false
+        calls.stop()
         main.removeCallbacksAndMessages(null)
         call?.cancel()
         recognizer?.destroy()
