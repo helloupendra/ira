@@ -447,7 +447,8 @@ def clear_my_events(
 
 @router.get(
     "/v1/me/events/stream",
-    summary="Your devices' events as server-sent events, as they happen",
+    summary="Your devices' events as server-sent events, as they happen; Drop changes as "
+    "`event: drop`",
     response_class=StreamingResponse,
     responses={200: {"content": {"text/event-stream": {"schema": {"type": "object"}}}}},
 )
@@ -470,6 +471,11 @@ async def my_event_stream(
                     continue
                 if row is None:  # the server is stopping: the app reconnects
                     return
+                if "drop" in row:  # a Drop frame, as devices get it; not for an ask-only key
+                    if who.can("drop"):
+                        frame = json.dumps(row["drop"], ensure_ascii=False)
+                        yield f"event: drop\ndata: {frame}\n\n"
+                    continue
                 data = EventView(**row).model_dump(mode="json")
                 yield f"data: {json.dumps(data, ensure_ascii=False)}\n\n"
         finally:

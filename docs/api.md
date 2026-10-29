@@ -326,12 +326,12 @@ merging or pushing is 3. See [Your connections](connectors.md).
 | Route | Who | Does |
 | --- | --- | --- |
 | `POST /v1/me/drop` | `drop` (a session, a paired device, or an API token made with it) | JSON `{"text": "..."}` (a link when the whole text is one address), or multipart with `file` and an optional `text` caption. `201` and the item; `413` too large (95 MB, 100,000 characters), `507` your Drop is full (2 GB) |
-| `GET /v1/me/drop?after_id=&limit=50` | `drop` | `{"items": [...], "has_more"}`, newest first; `after_id` gives only newer items, to catch up |
+| `GET /v1/me/drop?after_id=&before_id=&limit=50` | `drop` | `{"items": [...], "has_more"}`, newest first; `after_id` gives only newer items, to catch up; `before_id` the next page of older ones |
 | `GET /v1/me/drop/{id}` | `drop` | one item |
 | `GET /v1/me/drop/{id}/file` | `drop` | a file's bytes, always as an attachment |
 | `DELETE /v1/me/drop/{id}` | `drop` | `204`; it is gone from every device |
 | `GET /v1/me/drop/settings` | `drop` | `DropSettings`: `telegram` (new items from your other devices go to your paired Telegram chat; on by default) and `telegram_ready` (this server forwards, and you have a paired chat) |
-| `PATCH /v1/me/drop/settings` | `drop` | `{"telegram": false}` to stop forwarding, `true` to start again |
+| `PATCH /v1/me/drop/settings` | `drop` | `{"telegram": false}` to stop forwarding, `true` to start again. Both answer with `max_file_mb` and `max_text` too |
 
 An item: `id`, `kind` (`text`, `link`, `file`), `text`, and for a file `name`,
 `mime`, `size`, `sha256`; `from_device_id` and `from_label` (the device's
@@ -339,7 +339,9 @@ name, or Web, CLI, Telegram); `created_at` and `expires_at` (30 days).
 Connected devices are told at once with a `{"type": "drop", "event": "new",
 "item": {...}}` or `{"type": "drop", "event": "deleted", "id": 42}` frame on
 their WebSocket (not the device it came from); one that was offline catches
-up with `after_id`. Someone else's item is always `404`. On Telegram,
+up with `after_id`. The web app hears the same frames as `event: drop` on
+`GET /v1/me/events/stream`, only with the `drop` permission. Someone else's
+item is always `404`. On Telegram,
 `/drop <text>` or a file sent with `/drop` as its caption puts it in your
 Drop.
 

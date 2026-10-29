@@ -1,5 +1,5 @@
-// Your own Ira: your devices, your assistant's name and languages, what Ira did, and your
-// data. Also listens for your devices' events ("the upload finished") and says them.
+// Your own Ira: Drop, your devices, your assistant's name and languages, what Ira did, and
+// your data. Also listens for your devices' events ("the upload finished") and says them.
 // Loaded after app.js, whose helpers ($, api, detail, state, addTurn, speak...) it uses.
 // Everything shown here is built with textContent: nothing from the server is HTML.
 "use strict";
@@ -124,6 +124,7 @@ const IraPersonal = (() => {
   // --- the panel sheet --------------------------------------------------------------
 
   const PANELS = {
+    drop: { title: "Drop", render: renderDrop },
     devices: { title: "Your devices", render: renderDevices },
     assistant: { title: "Your assistant", render: renderAssistant },
     activity: { title: "What Ira did", render: renderActivity },
@@ -136,14 +137,14 @@ const IraPersonal = (() => {
 
   function open(name) {
     const panel = PANELS[name];
-    if (!panel) return;
+    if (!panel || (name === "drop" && !canDrop())) return Promise.resolve();
     $("#menu").close();
     $("#panel-title").textContent = panel.title;
     const body = $("#panel-body");
     body.replaceChildren(el("p", { className: "muted", text: "Loading…" }));
     const dialog = $("#panel");
     if (!dialog.open) dialog.showModal();
-    panel.render(body).catch((error) => {
+    return panel.render(body).catch((error) => {
       body.replaceChildren(el("p", { className: "error", role: "alert", text: error.message }));
     });
   }
@@ -726,6 +727,14 @@ const IraPersonal = (() => {
       announce(text);
       if (speakOn() && (state.mode === "idle" || state.mode === "answering")) speak(text);
     });
+    events.addEventListener("drop", (message) => {
+      try {
+        dropChanged(JSON.parse(message.data));
+      } catch {
+        /* not a frame this app knows */
+      }
+    });
+    events.addEventListener("open", dropCatchUp);
   }
 
   // A learning question in the chat: answer it there.
@@ -1040,6 +1049,364 @@ const IraPersonal = (() => {
   const PRESETS = {
     github: { name: "GitHub", url: "https://api.githubcopilot.com/mcp/readonly", hint: "A fine-grained personal access token from github.com/settings/tokens. This address is read-only." },
   };
+
+  // --- Drop: your inbox across your devices ---------------------------------------------
+
+  // Previews only for images a browser draws without running anything: never SVG or HTML.
+  const PREVIEW_TYPES = ["image/png", "image/jpeg", "image/gif", "image/webp"];
+  const PREVIEW_BYTES = 8 * 1024 * 1024;
+  const drop = { items: [], hasMore: false, list: null, more: null, progress: null, limits: null, previews: new Map() };
+
+  function canDrop() {
+    return Boolean(state.info && state.info.permissions.includes("drop"));
+  }
+
+  function dropShown() {
+    return Boolean(drop.list && drop.list.isConnected && $("#panel").open);
+  }
+
+  function openDrop() {
+    return dropShown() ? Promise.resolve() : open("drop");
+  }
+
+  function bytes(n) {
+    if (n < 1024) return `${n} B`;
+    if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
+    return `${(n / 1024 / 1024).toFixed(1)} MB`;
+  }
+
+  function fileUrl(item) {
+    return `/v1/me/drop/${encodeURIComponent(item.id)}/file`;
+  }
+
+  async function renderDrop(body) {
+    const [listed, settings] = await Promise.all([call("/v1/me/drop?limit=50"), call("/v1/me/drop/settings")]);
+    drop.items = listed.items;
+    drop.hasMore = listed.has_more;
+    drop.limits = settings;
+    $("#drop-open").classList.remove("has-new");
+    const text = el("textarea", { rows: "2", maxlength: String(settings.max_text), placeholder: "Text or a link", "aria-label": "Text or a link to send" });
+    const picker = el("input", { type: "file", multiple: true, hidden: true });
+    const error = el("p", { className: "error", role: "alert" });
+    drop.progress = el("ul", { className: "drop-progress" });
+    picker.addEventListener("change", () => {
+      sendFiles([...picker.files]);
+      picker.value = "";
+    });
+    const form = el(
+      "form",
+      { className: "stack-tight drop-compose" },
+      text,
+      el(
+        "div",
+        { className: "row" },
+        el("button", { type: "submit", className: "btn btn-primary", text: "Send" }),
+        el("button", { type: "button", className: "btn btn-ghost", text: "Choose files", onClick: () => picker.click() }),
+        picker,
+      ),
+      el("p", { className: "muted small", text: `It shows up on all your devices at once. Or drop files anywhere here, or paste. Files up to ${settings.max_file_mb} MB; kept 30 days.` }),
+      error,
+      drop.progress,
+    );
+    form.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      error.textContent = "";
+      if (!text.value.trim()) return;
+      try {
+        await sendText(text.value);
+        text.value = "";
+      } catch (problem) {
+        error.textContent = problem.message;
+      }
+    });
+    text.addEventListener("keydown", (event) => {
+      if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) form.requestSubmit();
+    });
+    drop.list = el("ul", { className: "cards" });
+    drop.more = el("button", {
+      type: "button",
+      className: "btn btn-ghost",
+      text: "Show older",
+      onClick: async () => {
+        const oldest = drop.items[drop.items.length - 1];
+        const listed = await call(`/v1/me/drop?limit=50&before_id=${encodeURIComponent(oldest.id)}`);
+        const known = new Set(drop.items.map((item) => item.id));
+        drop.items.push(...listed.items.filter((item) => !known.has(item.id)));
+        drop.hasMore = listed.has_more;
+        paintDrop();
+      },
+    });
+    const telegram = settings.telegram_ready
+      ? el(
+          "label",
+          { className: "switch" },
+          el("input", {
+            type: "checkbox",
+            checked: settings.telegram,
+            onChange: async (event) => {
+              try {
+                await call("/v1/me/drop/settings", { method: "PATCH", json: { telegram: event.target.checked } });
+              } catch (problem) {
+                event.target.checked = !event.target.checked;
+                error.textContent = problem.message;
+              }
+            },
+          }),
+          el("span", { text: "Also send what arrives to my Telegram chat" }),
+        )
+      : null;
+    paintDrop();
+    body.replaceChildren(form, drop.list, drop.more, telegram);
+    text.focus();
+  }
+
+  function paintDrop() {
+    if (!drop.list) return;
+    drop.list.replaceChildren(
+      ...(drop.items.length
+        ? drop.items.map(dropCard)
+        : [el("li", { className: "muted", text: "Nothing here yet. What you send from any of your devices shows up here." })]),
+    );
+    drop.more.hidden = !drop.hasMore;
+  }
+
+  function dropCard(item) {
+    const li = el("li", { className: "card drop-item" });
+    const actions = el("div", { className: "row" });
+    if (item.kind === "file") {
+      li.append(el("p", { className: "card-title" }, el("span", { className: "breakable", text: item.name }), el("span", { className: "muted small", text: bytes(item.size || 0) })));
+      if (item.text) li.append(el("p", { className: "turn-text drop-text", text: item.text }));
+      if (PREVIEW_TYPES.includes(item.mime) && item.size <= PREVIEW_BYTES) li.append(dropPreview(item));
+      // A plain link: the file comes as an attachment, so the browser saves it and never shows it here.
+      actions.append(el("a", { className: "btn btn-primary", href: fileUrl(item), download: item.name, text: "Save" }));
+    } else {
+      const link = item.kind === "link" && /^https?:\/\//i.test(item.text);
+      li.append(
+        link
+          ? el("a", { className: "breakable", href: item.text, target: "_blank", rel: "noopener noreferrer", text: item.text })
+          : el("p", { className: "turn-text drop-text", text: item.text }),
+      );
+      actions.append(copyButton(item.text, "Copy", "btn btn-primary"));
+      if (link) actions.append(el("a", { className: "btn btn-ghost", href: item.text, target: "_blank", rel: "noopener noreferrer", text: "Open" }));
+    }
+    actions.append(
+      el("button", {
+        type: "button",
+        className: "btn btn-ghost",
+        text: "Delete",
+        onClick: async () => {
+          if (!window.confirm("Delete this from all your devices?")) return;
+          try {
+            await call(`/v1/me/drop/${encodeURIComponent(item.id)}`, { method: "DELETE" });
+            forget(item.id);
+          } catch (problem) {
+            window.alert(problem.message);
+          }
+        },
+      }),
+    );
+    li.append(el("p", { className: "muted small", text: `From ${item.from_label}, ${when(Date.parse(item.created_at) / 1000)}` }), actions);
+    return li;
+  }
+
+  function dropPreview(item) {
+    const img = el("img", { className: "drop-preview", alt: item.name });
+    const ready = drop.previews.get(item.id);
+    if (ready) {
+      img.src = ready;
+      return img;
+    }
+    api(fileUrl(item))
+      .then(async (response) => {
+        const type = (response.headers.get("content-type") || "").split(";")[0].trim();
+        if (!response.ok || !PREVIEW_TYPES.includes(type)) return img.remove();
+        const url = URL.createObjectURL(new Blob([await response.arrayBuffer()], { type }));
+        drop.previews.set(item.id, url);
+        img.src = url;
+      })
+      .catch(() => img.remove());
+    return img;
+  }
+
+  function arrived(item) {
+    if (!drop.items.some((known) => known.id === item.id)) {
+      drop.items.unshift(item);
+      drop.items.sort((a, b) => b.id - a.id);
+    }
+    paintDrop();
+  }
+
+  function forget(id) {
+    drop.items = drop.items.filter((item) => item.id !== id);
+    const url = drop.previews.get(id);
+    if (url) URL.revokeObjectURL(url);
+    drop.previews.delete(id);
+    paintDrop();
+  }
+
+  async function sendText(text) {
+    arrived(await call("/v1/me/drop", { method: "POST", json: { text } }));
+  }
+
+  async function sendFiles(files, caption = "") {
+    const limit = (drop.limits ? drop.limits.max_file_mb : 95) * 1024 * 1024;
+    for (const [index, file] of files.entries()) {
+      const bar = el("progress", { max: "1", value: "0", "aria-label": `Sending ${file.name}` });
+      const note = el("span", { className: "small" });
+      const row = el("li", { className: "row" }, el("span", { className: "small breakable", text: file.name || "file" }), bar, note);
+      if (drop.progress) drop.progress.append(row);
+      if (file.size > limit) {
+        bar.remove();
+        note.className = "error small";
+        note.textContent = `is over ${limit / 1024 / 1024} MB: too large for Drop`;
+        continue;
+      }
+      try {
+        arrived(await upload(file, index === 0 ? caption : "", (part) => (bar.value = part)));
+        row.remove();
+      } catch (problem) {
+        bar.remove();
+        note.className = "error small";
+        note.textContent = problem.message;
+      }
+    }
+  }
+
+  // XMLHttpRequest, not fetch: only it reports how much of an upload has gone.
+  function upload(file, caption, progress) {
+    return new Promise((resolve, reject) => {
+      const form = new FormData();
+      form.append("file", file, file.name || "file");
+      if (caption) form.append("text", caption);
+      const request = new XMLHttpRequest();
+      request.open("POST", "/v1/me/drop");
+      request.setRequestHeader("X-Ira-Request", "1");
+      request.responseType = "json";
+      request.upload.addEventListener("progress", (event) => {
+        if (event.lengthComputable) progress(event.loaded / event.total);
+      });
+      request.addEventListener("load", () => {
+        if (request.status === 201) return resolve(request.response);
+        if (request.status === 401) {
+          close();
+          sessionExpired();
+        }
+        const said = request.response && request.response.detail;
+        reject(new Error(typeof said === "string" ? said : `Not sent (HTTP ${request.status}).`));
+      });
+      request.addEventListener("error", () => reject(new Error("Ira could not be reached. Try again.")));
+      request.send(form);
+    });
+  }
+
+  // A live change, from the event stream: a new item, or one deleted on another device.
+  function dropChanged(frame) {
+    if (frame.event === "new" && frame.item) {
+      arrived(frame.item);
+      if (!dropShown()) {
+        $("#drop-open").classList.add("has-new");
+        announce(`New in your Drop, from ${frame.item.from_label}.`);
+      }
+    } else if (frame.event === "deleted") {
+      forget(frame.id);
+    }
+  }
+
+  // After the stream reconnects: what arrived meanwhile.
+  async function dropCatchUp() {
+    if (!canDrop() || !drop.items.length) return;
+    try {
+      const listed = await call(`/v1/me/drop?after_id=${encodeURIComponent(drop.items[0].id)}`);
+      for (const item of listed.items.reverse()) dropChanged({ event: "new", item });
+    } catch {
+      /* the next reconnect, or opening Drop, catches up */
+    }
+  }
+
+  // Share → Ira, from the installed app: the service worker kept it; send it now.
+  async function takeShared() {
+    if (!new URLSearchParams(location.search).has("share")) return;
+    history.replaceState(null, "", location.pathname + location.hash);
+    if (!("caches" in window)) return;
+    const cache = await caches.open("ira-share");
+    const meta = await cache.match("/shared/meta");
+    const files = [];
+    let shared = null;
+    if (meta) {
+      shared = await meta.json();
+      for (let index = 0; index < shared.files; index++) {
+        const hit = await cache.match(`/shared/${index}`);
+        if (!hit) continue;
+        const name = decodeURIComponent(hit.headers.get("X-Name") || "file");
+        files.push(new File([await hit.blob()], name, { type: hit.headers.get("Content-Type") || "" }));
+      }
+    }
+    await caches.delete("ira-share");
+    if (!shared || !canDrop()) return;
+    const url = shared.url.trim();
+    const words = shared.text.trim();
+    const text = url && words.includes(url) ? words : [words, url].filter(Boolean).join("\n") || shared.title.trim();
+    await openDrop();
+    if (files.length) await sendFiles(files, text);
+    else if (text) await sendText(text).catch((problem) => window.alert(problem.message));
+  }
+
+  // Files dragged onto the app, or pasted, go to Drop; so does text pasted while Drop is open.
+  function hasFiles(event) {
+    return Boolean(event.dataTransfer && [...event.dataTransfer.types].includes("Files"));
+  }
+
+  let dragging = 0;
+  window.addEventListener("dragenter", (event) => {
+    if (!canDrop() || !hasFiles(event)) return;
+    dragging += 1;
+    document.documentElement.classList.add("dragging");
+  });
+  window.addEventListener("dragleave", (event) => {
+    if (!hasFiles(event)) return;
+    dragging = Math.max(0, dragging - 1);
+    if (!dragging) document.documentElement.classList.remove("dragging");
+  });
+  window.addEventListener("dragover", (event) => {
+    if (canDrop() && hasFiles(event)) event.preventDefault();
+  });
+  window.addEventListener("drop", async (event) => {
+    dragging = 0;
+    document.documentElement.classList.remove("dragging");
+    if (!canDrop() || !hasFiles(event) || $("#view-chat").hidden) return;
+    event.preventDefault();
+    const files = [...event.dataTransfer.files];
+    await openDrop();
+    sendFiles(files);
+  });
+  document.addEventListener("paste", async (event) => {
+    if (!canDrop() || $("#view-chat").hidden || !event.clipboardData) return;
+    const typing = event.target instanceof Element && event.target.closest("input, textarea, [contenteditable]");
+    const files = [...event.clipboardData.files];
+    if (files.length && (!typing || dropShown())) {
+      event.preventDefault();
+      await openDrop();
+      sendFiles(files);
+      return;
+    }
+    const text = event.clipboardData.getData("text");
+    if (dropShown() && !typing && text.trim()) {
+      event.preventDefault();
+      sendText(text).catch((problem) => window.alert(problem.message));
+    }
+  });
+
+  function showDrop() {
+    $("#drop-open").hidden = !canDrop();
+    document.querySelector('[data-panel="drop"]').hidden = !canDrop();
+  }
+
+  function forgetDrop() {
+    for (const url of drop.previews.values()) URL.revokeObjectURL(url);
+    drop.previews.clear();
+    drop.items = [];
+    drop.list = null;
+  }
 
   // --- Siri on iPhone -----------------------------------------------------------------
 
@@ -1591,6 +1958,7 @@ const IraPersonal = (() => {
     if (event.target === event.currentTarget) close();
   });
   $("#panel").addEventListener("close", () => clearInterval(pairingTimer));
+  $("#drop-open").addEventListener("click", () => open("drop"));
 
   // A link such as /#panel=assistant (from Ira for Mac) opens that page once signed in.
   function openFromLink() {
@@ -1601,11 +1969,18 @@ const IraPersonal = (() => {
   }
 
   function entered() {
+    showDrop();
     startEvents();
     openFromLink();
+    takeShared().catch(() => {});
+  }
+
+  function left() {
+    stopEvents();
+    forgetDrop();
   }
 
   if (state.info) entered(); // app.js may have entered the chat already
 
-  return { entered, left: stopEvents, open, answered };
+  return { entered, left, open, answered };
 })();

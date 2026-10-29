@@ -154,12 +154,20 @@ class Drop:
         )
         return _item(row) if row else None
 
-    def list(self, user_id: int, *, after_id: int | None = None, limit: int = 50) -> list[Item]:
-        """Newest first; ``after_id`` keeps only items newer than it (to catch up)."""
+    def list(
+        self,
+        user_id: int,
+        *,
+        after_id: int | None = None,
+        before_id: int | None = None,
+        limit: int = 50,
+    ) -> list[Item]:
+        """Newest first; ``after_id`` keeps only items newer than it (to catch up),
+        ``before_id`` only older ones (the next page)."""
         rows = self.store.query(
-            "SELECT * FROM drop_items WHERE user_id = ? AND id > ? AND expires_at > ? "
-            "ORDER BY id DESC LIMIT ?",
-            (user_id, after_id or 0, self.clock(), limit),
+            "SELECT * FROM drop_items WHERE user_id = ? AND id > ? AND id < ? "
+            "AND expires_at > ? ORDER BY id DESC LIMIT ?",
+            (user_id, after_id or 0, before_id or 2**62, self.clock(), limit),
         )
         return [_item(r) for r in rows]
 

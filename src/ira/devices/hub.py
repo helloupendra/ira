@@ -388,6 +388,13 @@ class DeviceHub:
         except Exception:
             log.exception("an event notifier failed")
 
+    def tell_listeners(self, user_id: int, frame: dict[str, Any]) -> None:
+        """Send a Drop frame to the person's open event streams (the web app), which pass it
+        on only where the person may use Drop."""
+        for queue in list(self.listeners.get(user_id, ())):
+            with contextlib.suppress(asyncio.QueueFull):
+                queue.put_nowait({"drop": frame})
+
     def subscribe(self, user_id: int) -> asyncio.Queue[dict[str, Any]]:
         queue: asyncio.Queue[dict[str, Any]] = asyncio.Queue(LISTENER_QUEUE)
         self.listeners.setdefault(user_id, set()).add(queue)

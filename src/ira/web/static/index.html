@@ -58,6 +58,9 @@
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
         </button>
         <h1 class="title"><span class="brand-name">Ira</span></h1>
+        <button id="drop-open" type="button" class="icon-btn drop-btn" aria-label="Drop: send to your devices" title="Drop" hidden>
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 13h4l1.5 2.5h5L16 13h4M4 13l2.5-7h11L20 13v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1z"/></svg>
+        </button>
         <button id="new-chat" type="button" class="text-btn">New</button>
       </header>
 
@@ -157,6 +160,7 @@
     </div>
     <nav class="menu-nav" aria-label="Your Ira">
       <p class="menu-label">Your Ira</p>
+      <button type="button" class="menu-link" data-panel="drop" hidden>Drop: send to your devices</button>
       <button type="button" class="menu-link" data-panel="devices">Your devices</button>
       <button type="button" class="menu-link" data-panel="assistant">Your assistant: name, languages, web search</button>
       <button type="button" class="menu-link" data-panel="activity">What Ira did</button>

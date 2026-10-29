@@ -209,3 +209,48 @@ def test_a_key_that_may_only_ask_cannot_read_the_inbox(tmp_path):
             "the plan"
         ]
         assert client.get("/v1/me/drop", headers=login("viewer@example.com")).status_code == 403
+
+
+@pytest.mark.anyio
+async def test_the_web_app_hears_of_changes_but_not_an_ask_only_key(tmp_path):
+    from ira.accounts import Principal
+    from ira.channels.devices import my_event_stream
+    from ira.devices.protocol import Event
+
+    runtime = make_runtime(data_dir=tmp_path)
+    owner = runtime.accounts.create_first_owner("owner@example.com", PASSWORD)
+
+    class Request:
+        async def is_disconnected(self) -> bool:
+            return False
+
+    web = Principal(owner, "session", owner.permissions, "s1")
+    siri = Principal(owner, "token", frozenset({"ask"}), "t1")
+    streams = []
+    for who in (web, siri):
+        response = await my_event_stream(Request(), who, runtime)
+        streams.append(response.body_iterator)
+        assert await anext(response.body_iterator) == ": connected\n\n"
+
+    item = runtime.drop.add_text(owner.id, "the plan", from_label="Mac")
+    await runtime.drop_changed(owner.id, {"type": "drop", "event": "new", "item": item.public()})
+    await runtime.hub.publish(owner.id, None, Event("task_done", "Upload finished", "", {}))
+    heard = await anext(streams[0])
+    assert heard.startswith("event: drop\ndata: ") and '"the plan"' in heard
+    assert '"Upload finished"' in await anext(streams[0])
+    assert '"Upload finished"' in await anext(streams[1])  # the Drop frame was never sent
+    for stream in streams:
+        await stream.aclose()
+
+
+def test_older_pages(tmp_path):
+    drop, _ = drop_in(tmp_path)
+    ids = [drop.add_text(1, f"note {n}", from_label="Web").id for n in range(5)]
+    assert [i.id for i in drop.list(1, before_id=ids[3], limit=2)] == [ids[2], ids[1]]
+    assert [i.id for i in drop.list(1, after_id=ids[1], before_id=ids[4])] == [ids[3], ids[2]]
+
+
+def test_a_share_before_the_app_was_ever_opened_still_lands_in_drop():
+    with TestClient(create_app(make_runtime(), start_channels=False)) as client:
+        shared = client.post("/share", data={"text": "hi"}, follow_redirects=False)
+    assert shared.status_code == 303 and shared.headers["location"] == "/#panel=drop"

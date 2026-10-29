@@ -104,6 +104,8 @@ async def test_new_items_come_to_the_chat_unless_switched_off(world):
         assert client.get("/v1/me/drop/settings", headers=me).json() == {
             "telegram": True,
             "telegram_ready": True,
+            "max_file_mb": 95,
+            "max_text": 100000,
         }
         off = client.patch("/v1/me/drop/settings", json={"telegram": False}, headers=me)
         assert off.json()["telegram"] is False

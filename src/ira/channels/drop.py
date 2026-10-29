@@ -132,6 +132,8 @@ class DropSettings(BaseModel):
     telegram_ready: bool = Field(
         description="This server forwards to Telegram, and you have a paired chat."
     )
+    max_file_mb: int = Field(description="The largest file this server takes.")
+    max_text: int = Field(description="The longest text, in characters.")
 
 
 class DropSettingsChange(BaseModel):
@@ -145,6 +147,8 @@ def _settings(runtime: Runtime, user_id: int) -> DropSettings:
     return DropSettings(
         telegram=runtime.assistant.user_settings.get(user_id).drop_telegram,
         telegram_ready=bool(paired) and runtime.settings.drop.telegram_forward,
+        max_file_mb=runtime.settings.drop.max_file_mb,
+        max_text=runtime.settings.drop.max_text,
     )
 
 
@@ -171,11 +175,12 @@ def change_drop_settings(
 @router.get("", response_model=DropList, summary="Your Drop, newest first")
 def list_drop(
     after_id: int | None = Query(None, ge=0, description="Only items newer than this one."),
+    before_id: int | None = Query(None, ge=1, description="Only items older than this one."),
     limit: int = Query(50, ge=1, le=200),
     who: Principal = Depends(require("drop")),
     runtime: Runtime = Depends(get_runtime),
 ) -> DropList:
-    items = runtime.drop.list(who.user.id, after_id=after_id, limit=limit + 1)
+    items = runtime.drop.list(who.user.id, after_id=after_id, before_id=before_id, limit=limit + 1)
     return DropList(
         items=[DropItem(**i.public()) for i in items[:limit]], has_more=len(items) > limit
     )

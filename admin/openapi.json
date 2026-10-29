@@ -6305,7 +6305,7 @@
                 "tags": [
                     "devices"
                 ],
-                "summary": "Your devices' events as server-sent events, as they happen",
+                "summary": "Your devices' events as server-sent events, as they happen; Drop changes as `event: drop`",
                 "operationId": "my_event_stream",
                 "responses": {
                     "200": {
@@ -9254,6 +9254,25 @@
                         "description": "Only items newer than this one."
                     },
                     {
+                        "name": "before_id",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "anyOf": [
+                                {
+                                    "type": "integer",
+                                    "minimum": 1
+                                },
+                                {
+                                    "type": "null"
+                                }
+                            ],
+                            "description": "Only items older than this one.",
+                            "title": "Before Id"
+                        },
+                        "description": "Only items older than this one."
+                    },
+                    {
                         "name": "limit",
                         "in": "query",
                         "required": false,
@@ -12027,12 +12046,24 @@
                         "type": "boolean",
                         "title": "Telegram Ready",
                         "description": "This server forwards to Telegram, and you have a paired chat."
+                    },
+                    "max_file_mb": {
+                        "type": "integer",
+                        "title": "Max File Mb",
+                        "description": "The largest file this server takes."
+                    },
+                    "max_text": {
+                        "type": "integer",
+                        "title": "Max Text",
+                        "description": "The longest text, in characters."
                     }
                 },
                 "type": "object",
                 "required": [
                     "telegram",
-                    "telegram_ready"
+                    "telegram_ready",
+                    "max_file_mb",
+                    "max_text"
                 ],
                 "title": "DropSettings"
             },

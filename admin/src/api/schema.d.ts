@@ -1311,7 +1311,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Your devices' events as server-sent events, as they happen */
+        /** Your devices' events as server-sent events, as they happen; Drop changes as `event: drop` */
         get: operations["my_event_stream"];
         put?: never;
         post?: never;
@@ -3181,6 +3181,16 @@ export interface components {
              * @description This server forwards to Telegram, and you have a paired chat.
              */
             telegram_ready: boolean;
+            /**
+             * Max File Mb
+             * @description The largest file this server takes.
+             */
+            max_file_mb: number;
+            /**
+             * Max Text
+             * @description The longest text, in characters.
+             */
+            max_text: number;
         };
         /** DropSettingsChange */
         DropSettingsChange: {
@@ -11734,6 +11744,8 @@ export interface operations {
             query?: {
                 /** @description Only items newer than this one. */
                 after_id?: number | null;
+                /** @description Only items older than this one. */
+                before_id?: number | null;
                 limit?: number;
             };
             header?: never;

@@ -279,6 +279,7 @@ class Runtime:
         came from), and their Telegram chat of a new one; the offline catch up later."""
         if self.hub is not None:
             await self.hub.send_to_person(user_id, frame, except_device=except_device)
+            self.hub.tell_listeners(user_id, frame)
         if self.drop_notifier is not None and frame.get("event") == "new":
             # In the background: a slow Telegram never holds up the upload that made it.
             task = asyncio.create_task(self._forward_drop(user_id, frame["item"]))

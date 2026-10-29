@@ -97,7 +97,7 @@ OUTCOME_STATUS = {
 }
 
 CSP = (
-    "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; "
+    "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data: blob:; "
     "media-src 'self' blob:; connect-src 'self'; worker-src 'self'; "
     "frame-ancestors 'none'; base-uri 'none'; form-action 'self'"
 )
@@ -642,6 +642,12 @@ def create_app(runtime: Runtime, *, start_channels: bool = True) -> FastAPI:
     def pair_page() -> FileResponse:
         """Where a pairing QR code leads: it shows the code to type on the device."""
         return FileResponse(STATIC_DIR / "pair.html")
+
+    @app.post("/share", include_in_schema=False)
+    def share_fallback() -> RedirectResponse:
+        """Where the installed app's Share goes. The app's service worker keeps what was
+        shared and sends it to Drop; this answers only when no service worker ran yet."""
+        return RedirectResponse("/#panel=drop", status_code=303)
 
     if (web.ADMIN_DIR / "index.html").is_file():
         # The mount below only matches "/admin/...", and the catch-all "/" mount would

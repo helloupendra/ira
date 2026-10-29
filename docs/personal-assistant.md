@@ -108,8 +108,12 @@ delete it.
 ## Drop: send anything to your other devices
 
 Drop is your own inbox, shared by your devices: text, a link or a file sent
-from one is on the others at once, kept 30 days. Ask Ira ("send this link
-to my phone"), send `/drop` and the text, or a file with `/drop` as its
+from one is on the others at once, kept 30 days. In the Ira app, tap the
+tray at the top: type or paste, choose files, or drag files anywhere onto
+the app. Text and links come with **Copy** first; files with **Save**. On
+Android, install the app from Chrome (Add to Home screen) and **Share →
+Ira** from any app sends it to your Drop. You can also ask Ira ("send this
+link to my phone"), send `/drop` and the text, or a file with `/drop` as its
 caption, to your Telegram chat, or use a terminal:
 
 ```bash

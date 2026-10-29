@@ -7,6 +7,20 @@
   "display": "standalone",
   "background_color": "#f6f4ef",
   "theme_color": "#f6f4ef",
+  "share_target": {
+    "action": "/share",
+    "method": "POST",
+    "enctype": "multipart/form-data",
+    "params": {
+      "title": "title",
+      "text": "text",
+      "url": "url",
+      "files": [{ "name": "files", "accept": ["*/*"] }]
+    }
+  },
+  "shortcuts": [
+    { "name": "Drop", "short_name": "Drop", "description": "Send to your devices", "url": "/#panel=drop" }
+  ],
   "icons": [
     { "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" },
     { "src": "/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },

@@ -131,9 +131,11 @@ encryption**. Nobody but you sees your items in Ira, not even its owner or
 admins; logs keep only an item's number, kind and size, never its words
 or file name. **Delete my data** removes every item and file. A file is
 limited to 95 MB, and the key a Siri Shortcut uses cannot read your Drop.
-If you paired a Telegram chat, what you send from your other devices is
-also sent there, through Telegram's servers; switch that off in your Drop's
-settings (`PATCH /v1/me/drop/settings`).
+When you share to the installed app on Android, the phone's browser keeps
+the shared text and files only until the app has sent them to your Drop,
+then deletes them. If you paired a Telegram chat, what you send from your
+other devices is also sent there, through Telegram's servers; switch that
+off in the app's Drop, or with `PATCH /v1/me/drop/settings`.
 
 ## The Ira app for Android
 
