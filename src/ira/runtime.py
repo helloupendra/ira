@@ -572,8 +572,16 @@ def build_runtime(
         if tool is None or tool.kind != "action":
             log.warning("actions.tools names '%s', which is not a registered action tool", name)
     conversations = Conversations(store)
+    # A tier name that is not there would fail every turn: refuse to start instead.
+    known = ", ".join(settings.models.tiers) or "none"
+    if settings.assistant.tier not in settings.models.tiers:
+        raise ConfigError(
+            f"assistant.tier '{settings.assistant.tier}' is not a tier in models.tiers ({known})"
+        )
     if settings.voice.tier and settings.voice.tier not in settings.models.tiers:
-        raise ConfigError(f"voice.tier '{settings.voice.tier}' is not a tier in models.tiers")
+        raise ConfigError(
+            f"voice.tier '{settings.voice.tier}' is not a tier in models.tiers ({known})"
+        )
     assistant = Assistant(
         gateway,
         registry,

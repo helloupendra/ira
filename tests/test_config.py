@@ -31,6 +31,16 @@ def test_unknown_keys_are_rejected(tmp_path):
         load_settings(tmp_path / "ira.yaml")
 
 
+def test_a_tier_that_is_not_there_stops_the_start_not_every_turn(tmp_path):
+    for typo in ("assistant:\n  tier: fastt\n", "voice:\n  tier: fastt\n"):
+        (tmp_path / "ira.yaml").write_text(typo, encoding="utf-8")
+        settings = load_settings(tmp_path / "ira.yaml")
+        with pytest.raises(
+            ConfigError, match=r"tier 'fastt' is not a tier in models.tiers \(default\)"
+        ):
+            build_runtime(settings, registry=ToolRegistry(), store=Store(":memory:"))
+
+
 def test_missing_secret_names_the_variable_not_a_value(tmp_path, monkeypatch):
     monkeypatch.delenv("IRA_TEST_KEY", raising=False)
     (tmp_path / "ira.yaml").write_text(
