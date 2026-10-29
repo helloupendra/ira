@@ -124,7 +124,9 @@ fun ApprovalsScreen(app: IraApp, onBack: () -> Unit) {
 @Composable
 private fun FingerprintCard(app: IraApp, onMessage: (String?) -> Unit) {
     val scope = rememberCoroutineScope()
-    var enrolled by remember { mutableStateOf(app.settings.approvalsEnrolled && DeviceKey.exists()) }
+    val context = LocalContext.current
+    // A fingerprint added since enrolling voids the key: then it is not enrolled any more.
+    var enrolled by remember { mutableStateOf(app.settings.approvalsEnrolled && DeviceKey.usable()) }
     var pin by remember { mutableStateOf("") }
     var busy by remember { mutableStateOf(false) }
     Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)) {
@@ -138,7 +140,13 @@ private fun FingerprintCard(app: IraApp, onMessage: (String?) -> Unit) {
                     enrolled = false
                 }) { Text("Stop using the fingerprint here") }
             } else {
-                Text("Enroll this phone once with your PIN. Its key stays in the phone's secure hardware.")
+                if (app.settings.approvalsEnrolled) {
+                    Text(
+                        "A fingerprint was added to this phone since it was enrolled, so its key stopped working. Enroll it again.",
+                        color = MaterialTheme.colorScheme.error,
+                    )
+                }
+                Text("Enroll this phone once with your PIN. Its key stays in the phone's secure hardware. Only a fingerprint unlocks it, never the screen lock.")
                 OutlinedTextField(
                     value = pin,
                     onValueChange = { value -> pin = value.filter { it.isDigit() }.take(12) },
@@ -151,12 +159,18 @@ private fun FingerprintCard(app: IraApp, onMessage: (String?) -> Unit) {
                 Button(enabled = pin.length >= 4 && !busy, onClick = {
                     val typed = pin
                     pin = ""
+                    DeviceKey.unsupported(context)?.let { return@Button onMessage(it) }
                     busy = true
                     scope.launch {
                         val problem =
                             withContext(Dispatchers.IO) {
-                                val publicKey = DeviceKey.create()
-                                app.enrollKey(publicKey, typed)?.also { DeviceKey.delete() }
+                                try {
+                                    val publicKey = DeviceKey.create()
+                                    app.enrollKey(publicKey, typed)?.also { DeviceKey.delete() }
+                                } catch (exc: Exception) {
+                                    DeviceKey.delete()
+                                    "This phone could not make an approval key. Approve with your PIN."
+                                }
                             }
                         busy = false
                         if (problem == null) {
