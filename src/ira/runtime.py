@@ -97,6 +97,8 @@ class Runtime:
     approval_keys: ApprovalKeys = field(init=False)
     # Each person's private inbox, shared by their own devices.
     drop: Drop = field(init=False)
+    # Forwards a new Drop item to the person's Telegram chat, when Telegram is on.
+    drop_notifier: Any = None
     # Each person's connections to other services (MCP servers).
     connectors: Any = None
 
@@ -214,6 +216,7 @@ class Runtime:
             tools += reminder_tools(self.learning, user_id, self.learner.zone(user_id))
             tools += people_tools(self.learning.data, user_id)
             tools += self.businesses.tools(user_id)
+            tools += self.drop_tools(user_id)
         if self.connectors is not None:
             tools += self.connectors.tools_for(user_id)
         return tools
@@ -266,6 +269,80 @@ class Runtime:
             )
         if covered(pending.tool, skill):
             self.approvals.open(pending.user_id, pending.device_id, pending.id)
+
+    async def drop_changed(
+        self, user_id: int, frame: dict[str, Any], *, except_device: int | None = None
+    ) -> None:
+        """Tell the person's devices of a new or deleted Drop item at once (not the one it
+        came from), and their Telegram chat of a new one; the offline catch up later."""
+        if self.hub is not None:
+            await self.hub.send_to_person(user_id, frame, except_device=except_device)
+        if self.drop_notifier is not None and frame.get("event") == "new":
+            try:
+                await self.drop_notifier(user_id, frame["item"])
+            except Exception:
+                log.exception("forwarding a Drop item failed")
+
+    def drop_tools(self, user_id: int) -> list[Any]:
+        """Ira's own Drop tools for one person: what is in it, and putting text in it."""
+        from ira.tools.personal import PersonalTool
+
+        async def listed(arguments: dict[str, Any]) -> Any:
+            limit = max(1, min(int(arguments.get("limit") or 10), 30))
+            items = []
+            for item in self.drop.list(user_id, limit=limit):
+                view = item.public()
+                if view["text"] and len(view["text"]) > 500:
+                    view["text"] = view["text"][:500] + " ..."
+                items.append(view)
+            return {"items": items}
+
+        async def send(arguments: dict[str, Any]) -> Any:
+            from ira.drop import DropError
+            from ira.tools.registry import ToolError
+
+            try:
+                item = self.drop.add_text(
+                    user_id, str(arguments.get("text") or ""), from_label="Ira"
+                )
+            except DropError as exc:
+                raise ToolError(str(exc)) from None
+            await self.drop_changed(
+                user_id, {"type": "drop", "event": "new", "item": item.public()}
+            )
+            return {"summary": f"Put in your Drop: {item.text[:80]}"}
+
+        return [
+            PersonalTool(
+                name="drop_list",
+                description="The latest items in the person's Drop, their own inbox shared by "
+                "their devices: text, links and files, newest first, with where each came from.",
+                parameters={
+                    "type": "object",
+                    "properties": {"limit": {"type": "integer", "minimum": 1, "maximum": 30}},
+                },
+                tier=0,
+                source="ira",
+                label="Drop",
+                run=listed,
+                skill="drop",
+            ),
+            PersonalTool(
+                name="drop_send",
+                description="Put text or a link in the person's Drop, so it is on all their "
+                'devices ("send this to my phone"). Say what you put there.',
+                parameters={
+                    "type": "object",
+                    "properties": {"text": {"type": "string"}},
+                    "required": ["text"],
+                },
+                tier=1,
+                source="ira",
+                label="Drop",
+                run=send,
+                skill="drop",
+            ),
+        ]
 
     async def going_away(self) -> None:
         """The server was asked to stop: tell devices and live calls first (1001, going away)

@@ -54,11 +54,7 @@ async def announce(
     runtime: Runtime, user_id: int, frame: dict[str, Any], except_device: int | None
 ) -> None:
     """Tell the person's other devices at once; the offline ones catch up with after_id."""
-    if runtime.hub is not None:
-        await runtime.hub.send_to_person(user_id, frame, except_device=except_device)
-    notify = getattr(runtime, "drop_notifier", None)
-    if notify is not None and frame.get("event") == "new":
-        await notify(user_id, frame["item"], except_device)
+    await runtime.drop_changed(user_id, frame, except_device=except_device)
 
 
 def _refused(exc: DropError) -> HTTPException:

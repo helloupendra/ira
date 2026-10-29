@@ -338,6 +338,11 @@ Connected devices are told at once with a `{"type": "drop", "event": "new",
 their WebSocket (not the device it came from); one that was offline catches
 up with `after_id`. Someone else's item is always `404`.
 
+Ira has two tools of its own for it: `drop_list` (what is in your Drop) and
+`drop_send` (put text or a link there, "send this to my phone"). After a
+turn has read text others wrote, `drop_send` is refused: only your own
+words in a new message put something in your Drop.
+
 ### Approvals
 
 `GET /v1/me/approvals`, `DELETE /v1/me/approvals[/{id}]` and
