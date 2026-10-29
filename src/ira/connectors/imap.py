@@ -14,6 +14,7 @@ import email.policy
 import html
 import imaplib
 import re
+import socket
 import ssl
 from email.message import EmailMessage
 from typing import Any
@@ -83,14 +84,37 @@ def _text(message: EmailMessage) -> str:
     return re.sub(r"\n\s*\n+", "\n\n", content).strip()
 
 
+class _Pinned(imaplib.IMAP4_SSL):
+    """IMAP over TLS to an address checked just before, the certificate checked against the
+    mail server's name: DNS cannot point a saved mailbox at this machine later."""
+
+    def __init__(self, host: str, port: int, address: str, **kwargs: Any) -> None:
+        self._address = address
+        super().__init__(host, port, **kwargs)
+
+    def _create_socket(self, timeout: float | None) -> Any:
+        sock = socket.create_connection((self._address, self.port), timeout)
+        return self.ssl_context.wrap_socket(sock, server_hostname=self.host)
+
+
 class Mailbox:
-    def __init__(self, host: str, user: str, password: str, port: int = 993) -> None:
+    def __init__(
+        self, host: str, user: str, password: str, port: int = 993, allow_private: bool = False
+    ) -> None:
         self.host, self.user, self.password, self.port = host, user, password, port
+        self.allow_private = allow_private
 
     def _open(self) -> imaplib.IMAP4_SSL:
+        from ira.connectors.mcp import resolve
+
+        address = resolve(self.host, self.port, self.allow_private)
         try:
-            box = imaplib.IMAP4_SSL(
-                self.host, self.port, ssl_context=ssl.create_default_context(), timeout=TIMEOUT
+            box = _Pinned(
+                self.host,
+                self.port,
+                address,
+                ssl_context=ssl.create_default_context(),
+                timeout=TIMEOUT,
             )
             box.login(self.user, self.password)
             box.select("INBOX", readonly=True)  # reading never marks anything as read

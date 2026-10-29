@@ -34,9 +34,12 @@ yes or your PIN (below).
 **Connect a service** takes a name, the server's address and a token (sent
 as `Authorization: Bearer`). The address must be `https://` and on the
 public internet: the server refuses private and local addresses, so a
-connection cannot make it reach machines on its own network. Its owner can
-allow them (`connectors.allow_private: true`), for example to reach a
-server on the same machine.
+connection cannot make it reach machines on its own network. The check is
+made each time it connects, to the address it then uses, for every request
+and redirect, and for a mailbox too: a name that later points at the server
+itself or at the cloud's metadata service (`169.254.169.254`) gets nothing.
+Its owner can allow private addresses (`connectors.allow_private: true`),
+for example to reach a server on the same machine.
 
 A server's owner can also offer **local** MCP servers, which run on the
 server, in `ira.yaml`. People can never add a command themselves:

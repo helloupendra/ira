@@ -77,27 +77,75 @@ def check_url(url: str, allow_private: bool = False) -> str:
         raise ToolError("the address must start with https://")
     if parts.scheme == "http" and not allow_private:
         raise ToolError("use https:// for a server on another machine")
-    if allow_private:
-        return url.strip()
-    try:
-        infos = socket.getaddrinfo(parts.hostname, parts.port or 443, proto=socket.IPPROTO_TCP)
-    except OSError:
-        raise ToolError(f"{parts.hostname} could not be found") from None
-    for info in infos:
-        address = ipaddress.ip_address(info[4][0])
-        if (
-            address.is_private
-            or address.is_loopback
-            or address.is_link_local
-            or address.is_multicast
-            or address.is_reserved
-            or address.is_unspecified
-        ):
-            raise ToolError(
-                f"{parts.hostname} is on a private network; the server's operator can allow "
-                "that with connectors.allow_private"
-            )
+    if not allow_private:
+        resolve(parts.hostname, parts.port or 443)
     return url.strip()
+
+
+def _private(address: str) -> bool:
+    ip = ipaddress.ip_address(address.split("%")[0])
+    return (
+        ip.is_private
+        or ip.is_loopback
+        or ip.is_link_local
+        or ip.is_multicast
+        or ip.is_reserved
+        or ip.is_unspecified
+    )
+
+
+def resolve(host: str, port: int, allow_private: bool = False) -> str:
+    """The address to connect to for [host], checked now: every address the name has must be
+    public (unless allowed), and the connection is then made to the one returned. Checking
+    only when a connection is added is not enough: a name can later answer with this machine
+    or the cloud's metadata service (169.254.169.254)."""
+    try:
+        infos = socket.getaddrinfo(host, port, proto=socket.IPPROTO_TCP)
+    except OSError:
+        raise ToolError(f"{host} could not be found") from None
+    addresses = [str(info[4][0]) for info in infos]
+    if not addresses:
+        raise ToolError(f"{host} could not be found")
+    if not allow_private and any(_private(a) for a in addresses):
+        raise ToolError(
+            f"{host} is on a private network; the server's operator can allow that with "
+            "connectors.allow_private"
+        )
+    return addresses[0]
+
+
+def pinned_backend(allow_private: bool) -> Any:
+    """httpcore's network backend for a connection's client: each connection, the first and
+    any a redirect leads to, goes to an address checked just before, so DNS cannot change it
+    in between. TLS still checks the certificate against the name."""
+    import httpcore2
+    from httpcore2._backends.auto import AutoBackend
+
+    class Pinned(httpcore2.AsyncNetworkBackend):
+        def __init__(self) -> None:
+            self.inner = AutoBackend()
+
+        async def connect_tcp(
+            self, host: str, port: int, timeout: float | None = None,
+            local_address: str | None = None, socket_options: Any = None,
+        ) -> Any:  # fmt: skip
+            try:
+                address = await asyncio.to_thread(resolve, host, port, allow_private)
+            except ToolError as exc:
+                raise httpcore2.ConnectError(str(exc)) from None
+            return await self.inner.connect_tcp(
+                address, port, timeout, local_address, socket_options
+            )
+
+        async def connect_unix_socket(
+            self, path: str, timeout: float | None = None, socket_options: Any = None
+        ) -> Any:
+            raise httpcore2.ConnectError("a connection never uses a local socket")
+
+        async def sleep(self, seconds: float) -> None:
+            await self.inner.sleep(seconds)
+
+    return Pinned()
 
 
 def result_text(result: Any) -> str:
@@ -123,13 +171,31 @@ def result_text(result: Any) -> str:
     return text[:MAX_RESULT_CHARS]
 
 
-def http_transport(url: str, headers: dict[str, str], auth: Any = None) -> Any:
+def pinned_client(headers: dict[str, str], auth: Any = None, allow_private: bool = False) -> Any:
+    """The HTTP client for a connection: every connection it makes (sign-in, calls, redirects)
+    goes to an address checked just before."""
+    import httpcore2
     import httpx2
+
+    transport = httpx2.AsyncHTTPTransport()
+    pool = transport._pool
+    if not isinstance(pool, httpcore2.AsyncConnectionPool):
+        raise ToolError("connections cannot go through a proxy")
+    pool._network_backend = pinned_backend(allow_private)
+    return httpx2.AsyncClient(
+        headers=headers,
+        auth=auth,
+        timeout=httpx2.Timeout(30.0, read=CALL_SECONDS),
+        transport=transport,
+    )
+
+
+def http_transport(
+    url: str, headers: dict[str, str], auth: Any = None, allow_private: bool = False
+) -> Any:
     from mcp.client.streamable_http import streamable_http_client
 
-    client = httpx2.AsyncClient(
-        headers=headers, auth=auth, timeout=httpx2.Timeout(30.0, read=CALL_SECONDS)
-    )
+    client = pinned_client(headers, auth, allow_private)
     return streamable_http_client(url, http_client=client)
 
 

@@ -185,7 +185,7 @@ class Connectors:
             return self._mailbox(host, user, password, port)
         from ira.connectors.imap import Mailbox
 
-        return Mailbox(host, user, password, port)
+        return Mailbox(host, user, password, port, allow_private=self.config.allow_private)
 
     def telegram(self, api_id: int, api_hash: str, session: str = "") -> Any:
         if self._telegram is not None:
@@ -479,7 +479,9 @@ class Connectors:
             return self._target_factory(connection, secret)
         if connection.kind == "mcp_http":
             auth = self._oauth(connection) if "oauth" in secret else None
-            return mcp.http_transport(str(connection.url), secret.get("headers") or {}, auth)
+            return mcp.http_transport(
+                str(connection.url), secret.get("headers") or {}, auth, self.config.allow_private
+            )
         cfg = self.config.mcp_servers.get(str(connection.server))
         if cfg is None:
             raise ConnectionError_(f"this server no longer offers {connection.server}")
