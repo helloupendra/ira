@@ -450,7 +450,8 @@ class ActionGuard:
                 device_id,
             ),
         )
-        self._audit(pending.id, tool, "proposed", actor, channel, summary)
+        detail = None if self.private(tool, user_id, device_id) else summary
+        self._audit(pending.id, tool, "proposed", actor, channel, detail)
         return pending
 
     def get(self, action_id: str) -> PendingAction | None:
@@ -690,11 +691,12 @@ class ActionGuard:
     def personal(self, pending: PendingAction) -> bool:
         """An action on someone's own device or connection, or one that needs only their
         yes (Tier 2): theirs to answer, never another person's."""
-        return (
-            pending.device_id is not None
-            or pending.tier == 2
-            or (pending.user_id is not None and self.registry.get(pending.tool) is None)
-        )
+        return pending.tier == 2 or self.private(pending.tool, pending.user_id, pending.device_id)
+
+    def private(self, tool: str, user_id: int | None, device_id: int | None) -> bool:
+        """An action on a person's own device or connection: what it says (a message, a
+        file name) is theirs, kept out of the audit log that admins and viewers read."""
+        return device_id is not None or (user_id is not None and self.registry.get(tool) is None)
 
     def may_answer(self, pending: PendingAction, user_id: int | None) -> bool:
         """Whether this person may confirm or cancel it: anyone allowed, for a business's
@@ -890,13 +892,16 @@ class ActionGuard:
         channel: str | None,
         **extra: Any,
     ) -> Outcome:
+        private = pending is not None and self.private(
+            pending.tool, pending.user_id, pending.device_id
+        )
         self._audit(
             pending.id if pending else None,
             pending.tool if pending else None,
             status,
             actor,
             channel,
-            message,
+            None if private else message,  # only the tool and the outcome, for a private one
         )
         return Outcome(status=status, message=message, action=pending, **extra)
 

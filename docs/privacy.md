@@ -23,8 +23,10 @@ their pairing codes and their events, **What Ira did**, your settings, what
 Ira noticed and learned about you, your reminders, the people you told Ira
 about, your reported answers, your business profiles, your connections
 to other services with their tokens, the actions Ira proposed on your
-devices or through your connections, and your approvals: open approval
-windows, fingerprint approval keys and trusted apps.
+devices or through your connections, with their entries in the audit log,
+and your approvals: open approval windows, fingerprint approval keys and
+trusted apps. (The audit log never held what those actions said: only the
+tool and its outcome.)
 
 **Kept:** your account (email and password) until the server's owner
 removes it; personal access keys you made (for example **Siri on iPhone**),

@@ -427,17 +427,14 @@ async def delete_my_data(
         conversations = store.execute(
             "DELETE FROM conversations WHERE user_id = ?", (user_id,)
         ).rowcount
-        # Actions on the person's own devices and connections are theirs; actions by the
-        # business's own tools (its registry) stay its records.
-        store.execute(
-            "DELETE FROM pending_actions WHERE user_id = ? AND device_id IS NOT NULL", (user_id,)
-        )
-        business_tools = {tool.name for tool in runtime.registry}
+        # Actions on the person's own devices and connections are theirs, and so is their
+        # trail in the audit log; actions by the business's own tools (its registry) stay
+        # its records.
         for row in store.query(
-            "SELECT id, tool FROM pending_actions WHERE user_id = ? AND device_id IS NULL",
-            (user_id,),
+            "SELECT id, tool, device_id FROM pending_actions WHERE user_id = ?", (user_id,)
         ):
-            if row["tool"] not in business_tools:
+            if runtime.guard.private(row["tool"], user_id, row["device_id"]):
+                store.execute("DELETE FROM audit_log WHERE action_id = ?", (row["id"],))
                 store.execute("DELETE FROM pending_actions WHERE id = ?", (row["id"],))
         for table in ("approval_windows", "approval_keys", "trusted_apps"):
             store.execute(f"DELETE FROM {table} WHERE user_id = ?", (user_id,))

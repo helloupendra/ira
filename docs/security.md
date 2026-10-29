@@ -219,6 +219,12 @@ there runs without asking:
   the device is removed. Another PIN on a covered action makes it start
   again from then.
 
+Ira never acts in Terminal, iTerm, Script Editor, Automator or the like,
+where whatever is typed runs as a command: not inside a window, not in a
+trusted app, not with the PIN. Such apps cannot be trusted, and a step that
+lands in one ends the window on that device. A step that names an app to act
+in is trusted only if that app is the trusted one in front.
+
 Inside a window, what Ira reads on the screen may lead to more taps and
 typing on that device: that is the point of it. It can never lead to
 anything on the never-list, which still needs a yes or the PIN, and after

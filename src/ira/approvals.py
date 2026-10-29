@@ -26,6 +26,23 @@ NEVER = re.compile(
     r"(^|_)(send|reply|call|place|pay|payment|buy|transfer|delete|remove|push|grant|pair)(_|$)"
 )
 MINUTES_CHOICES = (0, 5, 10, 15, 20, 30, 45, 60)
+# Apps Ira never acts in, by name or bundle id: whatever is typed there runs as a command.
+NEVER_APPS = ("terminal", "iterm", "script editor", "scripteditor", "automator", "termux")
+NEVER_IDS = frozenset(
+    {"com.apple.terminal", "com.googlecode.iterm2", "com.apple.scripteditor2",
+     "com.apple.automator", "dev.warp.warp-stable", "com.mitchellh.ghostty",
+     "net.kovidgoyal.kitty", "org.alacritty", "com.termux"}
+)  # fmt: skip
+
+
+def never_app(app: str | None) -> bool:
+    """Terminal, iTerm, Script Editor, Automator and the like: never acted in, never trusted."""
+    if not app:
+        return False
+    name = app.strip().lower().removesuffix(".app")
+    return name in NEVER_IDS or any(word in name for word in NEVER_APPS)
+
+
 # An app as a device names it: an Android package or a macOS bundle id.
 APP_ID = re.compile(r"[A-Za-z][A-Za-z0-9_]*(\.[A-Za-z0-9_-]+){1,8}")
 
@@ -142,8 +159,8 @@ class Approvals:
             return self._close("user_id = ?", (user_id,), "stopped")
         return self._close("user_id = ? AND id = ?", (user_id, window_id), "stopped")
 
-    def end_for_device(self, device_id: int) -> None:
-        self._close("device_id = ?", (device_id,), "device removed")
+    def end_for_device(self, device_id: int, why: str = "device removed") -> None:
+        self._close("device_id = ?", (device_id,), why)
 
     def _close(self, where: str, params: tuple[Any, ...], why: str) -> int:
         cursor = self.store.execute(
@@ -173,7 +190,9 @@ class Approvals:
         return found
 
     def set_trusted(self, user_id: int, device_id: int, apps: list[str]) -> list[str]:
-        clean = sorted({a.strip() for a in apps if APP_ID.fullmatch(a.strip())})
+        clean = sorted(
+            {a.strip() for a in apps if APP_ID.fullmatch(a.strip()) and not never_app(a)}
+        )
         with self.store.transaction():
             self.store.execute(
                 "DELETE FROM trusted_apps WHERE user_id = ? AND device_id = ?",

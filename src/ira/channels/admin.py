@@ -322,8 +322,9 @@ def actions(
         item["actor"], item["channel"] = split_actor(row["actor"], row["channel"])
         item["params"] = json.loads(row["params"])
         item["result"] = json.loads(row["result"]) if row["result"] else None
-        if row["device_id"] is not None and row["user_id"] != principal.user.id:
-            # What someone asked their own device to do is theirs alone.
+        private = runtime.guard.private(row["tool"], row["user_id"], row["device_id"])
+        if private and row["user_id"] != principal.user.id:
+            # What someone asked their own device or connection to do is theirs alone.
             item.update(params={}, result=None, summary=PRIVATE_ACTION)
         decided = decisions.get(row["id"])
         if decided:
