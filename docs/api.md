@@ -327,6 +327,7 @@ merging or pushing is 3. See [Your connections](connectors.md).
 | --- | --- | --- |
 | `POST /v1/me/drop` | `drop` (a session, a paired device, or an API token made with it) | JSON `{"text": "..."}` (a link when the whole text is one address), or multipart with `file` and an optional `text` caption. `201` and the item; `413` too large (95 MB, 100,000 characters), `507` your Drop is full (2 GB) |
 | `GET /v1/me/drop?after_id=&limit=50` | `drop` | `{"items": [...], "has_more"}`, newest first; `after_id` gives only newer items, to catch up |
+| `GET /v1/me/drop/{id}` | `drop` | one item |
 | `GET /v1/me/drop/{id}/file` | `drop` | a file's bytes, always as an attachment |
 | `DELETE /v1/me/drop/{id}` | `drop` | `204`; it is gone from every device |
 | `GET /v1/me/drop/settings` | `drop` | `DropSettings`: `telegram` (new items from your other devices go to your paired Telegram chat; on by default) and `telegram_ready` (this server forwards, and you have a paired chat) |

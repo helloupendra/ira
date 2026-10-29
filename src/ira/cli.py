@@ -12,6 +12,7 @@ ira token list | revoke ID|LABEL
 ira telegram pair                 print a one-time pairing code
 ira demo seed                     create demo data for the configured tools
 ira eval language [--spoken]      measure Hindi, English and Hinglish understanding
+ira drop login | send | list | get | rm   your Drop, from any computer (see ira.dropcli)
 """
 
 from __future__ import annotations
@@ -23,7 +24,7 @@ import sys
 from collections.abc import Callable
 from typing import Any
 
-from ira import __version__
+from ira import __version__, dropcli
 from ira.accounts import ROLES, TOKEN_SCOPES, AccountError, Accounts, User, parse_scopes
 from ira.config import ConfigError, Settings, load_settings
 from ira.security import PIN_RULE, valid_pin
@@ -629,6 +630,9 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--transcribe", metavar="REGION", help="use Transcribe in REGION for this run")
     p.add_argument("--tier", help="the model tier for the calls (default: voice.tier)")
     p.add_argument("--json", action="store_true", help="every result as JSON")
+
+    drop = sub.add_parser("drop", help="your Drop: send to and fetch from your devices")
+    dropcli.add_commands(drop.add_subparsers(dest="drop_command", required=True), add)
 
     add("version", cmd_version, "print the version")
     return parser

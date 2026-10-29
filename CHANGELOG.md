@@ -13,7 +13,8 @@ switch it on.
   each, encrypted at rest with the server's key (not end to end), removed with
   your data. Its own permission, `drop`: a Siri key cannot read it. Ira can
   list it and send to it. On Telegram, `/drop` puts text or a file in it, and
-  new items come to the paired chat unless switched off.
+  new items come to the paired chat unless switched off. From a terminal:
+  `ira drop login`, then `send`, `list`, `get` and `rm`.
   `POST/GET/DELETE /v1/me/drop`, `/v1/me/drop/settings`.
 - **Devices.** A person pairs a Mac (later, an Android phone) with a one-time
   code or QR code and their PIN. The device trades the code for its own

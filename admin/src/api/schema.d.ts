@@ -1984,6 +1984,24 @@ export interface paths {
         patch: operations["change_drop_settings"];
         trace?: never;
     };
+    "/v1/me/drop/{item_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** One item in your Drop */
+        get: operations["drop_item"];
+        put?: never;
+        post?: never;
+        /** Delete an item from every device */
+        delete: operations["delete_drop"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/me/drop/{item_id}/file": {
         parameters: {
             query?: never;
@@ -1996,23 +2014,6 @@ export interface paths {
         put?: never;
         post?: never;
         delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/v1/me/drop/{item_id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        post?: never;
-        /** Delete an item from every device */
-        delete: operations["delete_drop"];
         options?: never;
         head?: never;
         patch?: never;
@@ -11846,7 +11847,7 @@ export interface operations {
             };
         };
     };
-    drop_file: {
+    drop_item: {
         parameters: {
             query?: never;
             header?: never;
@@ -11863,7 +11864,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/octet-stream": unknown;
+                    "application/json": components["schemas"]["DropItem"];
                 };
             };
             /** @description Validation Error */
@@ -11894,6 +11895,37 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    drop_file: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                item_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/octet-stream": unknown;
+                };
             };
             /** @description Validation Error */
             422: {

@@ -188,6 +188,15 @@ def _own(runtime: Runtime, who: Principal, item_id: int) -> Item:
     return item
 
 
+@router.get("/{item_id}", response_model=DropItem, summary="One item in your Drop")
+def drop_item(
+    item_id: int,
+    who: Principal = Depends(require("drop")),
+    runtime: Runtime = Depends(get_runtime),
+) -> DropItem:
+    return DropItem(**_own(runtime, who, item_id).public())
+
+
 @router.get(
     "/{item_id}/file",
     response_class=StreamingResponse,

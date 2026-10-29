@@ -255,9 +255,9 @@ ira token revoke phone           # by label or id
 ```
 
 The token is printed once; only its SHA-256 hash is stored. Scopes are
-`ask`, `voice`, `actions` and `admin.read`, and they can only narrow the
-owning user's role. Writing settings and managing users always need a signed-in
-session, never a token.
+`ask`, `voice`, `actions`, `observe`, `drop` and `admin.read`, and they can
+only narrow the owning user's role. Writing settings and managing users always
+need a signed-in session, never a token.
 
 ### Telegram
 

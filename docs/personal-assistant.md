@@ -105,6 +105,28 @@ delete it.
 ![What Ira did: each tool, the device, and when](images/personal-activity-phone-light.png){ width="300" }
 ![Your data: export, or delete with your password](images/personal-data-phone-light.png){ width="300" }
 
+## Drop: send anything to your other devices
+
+Drop is your own inbox, shared by your devices: text, a link or a file sent
+from one is on the others at once, kept 30 days. Ask Ira ("send this link
+to my phone"), send `/drop` and the text, or a file with `/drop` as its
+caption, to your Telegram chat, or use a terminal:
+
+```bash
+ira drop login --url https://ira.example.com   # once: email, password, PIN
+ira drop send plan.pdf --caption "v2"
+ira drop send --text "call the CA at 4"
+pbpaste | ira drop send -
+ira drop list
+ira drop get 42                  # saves a file here, prints text
+ira drop rm 42
+```
+
+`login` keeps a token in `~/.config/ira/client.json`, readable by you alone;
+it may ask and use your Drop, nothing else. Scripts can set `IRA_URL` and
+`IRA_TOKEN` instead. Files are limited to 95 MB. See
+[Privacy](privacy.md#drop) for how they are kept.
+
 ## Talk to Ira like a phone call
 
 When the server has a streaming speech-to-text and a voice set up, the Ira
