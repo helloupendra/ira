@@ -183,6 +183,32 @@ def check_config(report: Report, config: Path | None) -> Settings | None:
 # --- data folder -----------------------------------------------------------------------
 
 
+# What Drop and connections need at runtime, by the name each installs as; an install older
+# than these being in the base set may lack them.
+NEEDED_PACKAGES = {
+    "python-multipart": ("python_multipart", "multipart"),
+    "cryptography": ("cryptography",),
+}
+
+
+def check_packages(report: Report) -> None:
+    import importlib.util
+
+    missing = [
+        name
+        for name, modules in NEEDED_PACKAGES.items()
+        if not any(importlib.util.find_spec(module) for module in modules)
+    ]
+    if missing:
+        report.add(
+            "fail",
+            "packages",
+            f"{', '.join(missing)} missing (Drop needs them): pip install --upgrade ira-assistant",
+        )
+    else:
+        report.add("ok", "packages", "everything Drop and connections need is installed")
+
+
 def check_data_dir(report: Report, settings: Settings) -> None:
     data = settings.data_dir
     if not data.exists():
@@ -578,6 +604,7 @@ def run(
     settings = check_config(report, config)
     if settings is None:
         return report
+    check_packages(report)
     check_data_dir(report, settings)
     check_port(report, settings, port_probe or probe_port)
     check_tools(report, settings)

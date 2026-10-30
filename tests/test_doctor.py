@@ -93,6 +93,7 @@ def test_a_ready_demo_folder_passes(tmp_path):
     assert report.failed == 0, report.text()
     seen = lines(report)
     assert seen["config"] == [("ok", "parses: Ira for your business")]
+    assert statuses(report, "packages") == ["ok"]
     assert seen["tools"] == [("ok", "./tools.py: find_notes (read), add_note (action)")]
     assert statuses(report, "model default 1/1") == ["ok"]
     assert statuses(report, "speech-to-text") == ["ok"]
@@ -100,6 +101,23 @@ def test_a_ready_demo_folder_passes(tmp_path):
     assert seen["owner"] == [("ok", "owner@example.com has an action PIN")]
     assert statuses(report, "public url") == ["skip"]
     assert report.text().endswith("All good.")
+
+
+def test_an_install_without_what_drop_needs_says_how_to_fix_it(tmp_path, monkeypatch):
+    import importlib.util
+
+    config = make_folder(tmp_path)
+    add_owner(config)
+    real = importlib.util.find_spec
+    monkeypatch.setattr(
+        importlib.util,
+        "find_spec",
+        lambda name, *a: None if name == "cryptography" else real(name, *a),
+    )
+    report = run(config, port_probe=lambda host, port: FREE)
+    [(status, detail)] = lines(report)["packages"]
+    assert status == "fail" and detail.startswith("cryptography missing")
+    assert "pip install --upgrade ira-assistant" in detail
 
 
 def test_each_bedrock_model_is_asked_once(tmp_path):

@@ -8,7 +8,8 @@ Ira talks to connected services through the
 [Model Context Protocol](https://modelcontextprotocol.io) (MCP), with the
 official Python SDK, which speaks the current version of the protocol
 (2026-07-28) and the earlier ones. Install it on the server with the
-`connectors` extra:
+`connectors` extra (the encryption of connections' secrets is in every
+install, as Drop uses it too):
 
 ```bash
 pip install "ira-assistant[connectors]"
