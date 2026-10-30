@@ -1,0 +1,7 @@
+<Solution>
+  <Project Path="Ira.Windows/Ira.Windows.csproj">
+    <Platform Project="x64" />
+  </Project>
+  <Project Path="IraKit.Windows.Tests/IraKit.Windows.Tests.csproj" />
+  <Project Path="IraKit.Windows/IraKit.Windows.csproj" />
+</Solution>

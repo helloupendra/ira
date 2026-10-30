@@ -1,0 +1,10 @@
+# Build output and local machine settings
+bin/
+obj/
+.vs/
+*.user
+TestResults/
+
+# Signing keys never enter the repository
+*.pfx
+*.p12

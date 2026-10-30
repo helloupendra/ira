@@ -1,0 +1,117 @@
+<Window
+    x:Class="Ira.PanelWindow"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    Title="Ira">
+    <Window.SystemBackdrop>
+        <MicaBackdrop />
+    </Window.SystemBackdrop>
+
+    <Grid x:Name="Root" KeyDown="OnRootKeyDown">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+
+        <!-- Header: who, whether the PC is connected, keep-open pin, more -->
+        <Grid Padding="16,12,8,8" ColumnSpacing="4">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+            <StackPanel>
+                <TextBlock x:Name="AssistantName" Text="Ira" Style="{StaticResource SubtitleTextBlockStyle}" />
+                <StackPanel Orientation="Horizontal" Spacing="6">
+                    <Ellipse x:Name="StateDot" Width="8" Height="8" VerticalAlignment="Center" Fill="Gray" />
+                    <TextBlock x:Name="StateText" Text="Not paired" Style="{StaticResource CaptionTextBlockStyle}"
+                               Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextTrimming="CharacterEllipsis" />
+                </StackPanel>
+            </StackPanel>
+            <ToggleButton x:Name="PinButton" Grid.Column="1" Click="OnPinClick"
+                          ToolTipService.ToolTip="Keep Ira open" Background="Transparent" BorderThickness="0">
+                <FontIcon Glyph="&#xE718;" FontSize="14" />
+            </ToggleButton>
+            <Button Grid.Column="2" ToolTipService.ToolTip="More" Background="Transparent" BorderThickness="0">
+                <FontIcon Glyph="&#xE712;" FontSize="14" />
+                <Button.Flyout>
+                    <MenuFlyout Placement="BottomEdgeAlignedRight">
+                        <MenuFlyoutItem Text="New conversation" Click="OnNewConversation" />
+                        <MenuFlyoutItem Text="Pair again…" Click="OnPairAgain" />
+                        <MenuFlyoutItem x:Name="ForgetItem" Text="Forget this pairing…" Click="OnForget" />
+                        <MenuFlyoutSeparator />
+                        <MenuFlyoutItem Text="Quit Ira" Click="OnQuit" />
+                    </MenuFlyout>
+                </Button.Flyout>
+            </Button>
+        </Grid>
+
+        <!-- Pairing -->
+        <ScrollViewer x:Name="PairView" Grid.Row="1" Visibility="Collapsed">
+            <StackPanel Padding="16,8,16,16" Spacing="12">
+                <TextBlock Text="Pair this PC with your Ira" Style="{StaticResource BodyStrongTextBlockStyle}" />
+                <TextBlock TextWrapping="Wrap" Foreground="{ThemeResource TextFillColorSecondaryBrush}">
+                    In Ira, open Devices, press Pair a device and choose Windows PC. Copy the link it shows:
+                    Ira for Windows finds it by itself. Or type the address and the code.
+                </TextBlock>
+                <InfoBar x:Name="PairNotice" IsClosable="False" IsOpen="False" />
+                <TextBox x:Name="ServerBox" Header="Your Ira's address" PlaceholderText="https://ira.example.com"
+                         InputScope="Url" IsSpellCheckEnabled="False" />
+                <TextBox x:Name="CodeBox" Header="Pairing code" PlaceholderText="ABCD-EFGH"
+                         CharacterCasing="Upper" MaxLength="9" IsSpellCheckEnabled="False" KeyDown="OnCodeKeyDown" />
+                <StackPanel Orientation="Horizontal" Spacing="8">
+                    <Button x:Name="PairButton" Content="Pair" Style="{StaticResource AccentButtonStyle}" Click="OnPairClick" />
+                    <Button x:Name="PasteButton" Content="Use copied link" Click="OnPasteClick" />
+                    <Button x:Name="BackButton" Content="Back" Click="OnBackClick" Visibility="Collapsed" />
+                    <ProgressRing x:Name="PairRing" IsActive="False" Width="20" Height="20" />
+                </StackPanel>
+                <TextBlock TextWrapping="Wrap" Style="{StaticResource CaptionTextBlockStyle}"
+                           Foreground="{ThemeResource TextFillColorTertiaryBrush}">
+                    The skills you turn on in Ira (with your PIN) are what Ira may do on this PC.
+                    The device key stays in Windows Credential Manager.
+                </TextBlock>
+            </StackPanel>
+        </ScrollViewer>
+
+        <!-- Chat -->
+        <Grid x:Name="ChatView" Grid.Row="1" Visibility="Collapsed">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="*" />
+                <RowDefinition Height="Auto" />
+            </Grid.RowDefinitions>
+            <!-- Skills the server turned on wait here until the person allows them on this PC -->
+            <Border x:Name="SkillsBar" Margin="12,0,12,8" Padding="12" CornerRadius="8" BorderThickness="1"
+                    Visibility="Collapsed" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                    BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}">
+                <StackPanel Spacing="8">
+                    <TextBlock Text="New skills for this PC" Style="{StaticResource BodyStrongTextBlockStyle}" />
+                    <TextBlock x:Name="SkillsText" TextWrapping="Wrap" />
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <Button x:Name="AllowSkillsButton" Content="Allow" Click="OnAllowSkills" />
+                        <Button x:Name="NotNowButton" Content="Not now" Click="OnNotNowSkills" />
+                    </StackPanel>
+                </StackPanel>
+            </Border>
+            <ScrollViewer x:Name="Scroller" Grid.Row="1" Padding="12,0">
+                <StackPanel x:Name="Messages" Spacing="8" Padding="0,4,0,12">
+                    <TextBlock x:Name="EmptyHint" TextWrapping="Wrap" Margin="4,24,4,0" HorizontalTextAlignment="Center"
+                               Foreground="{ThemeResource TextFillColorTertiaryBrush}"
+                               Text="Ask anything. Ira asks before it does something on this PC." />
+                </StackPanel>
+            </ScrollViewer>
+            <Grid Grid.Row="2" Padding="12" ColumnSpacing="8">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <TextBox x:Name="AskBox" PlaceholderText="Ask Ira" AcceptsReturn="False" TextWrapping="Wrap"
+                         MaxHeight="120" KeyDown="OnAskKeyDown" />
+                <Button x:Name="SendButton" Grid.Column="1" Click="OnSendClick" Style="{StaticResource AccentButtonStyle}"
+                        VerticalAlignment="Bottom" ToolTipService.ToolTip="Send (Enter)">
+                    <FontIcon Glyph="&#xE724;" FontSize="14" />
+                </Button>
+            </Grid>
+        </Grid>
+    </Grid>
+</Window>
