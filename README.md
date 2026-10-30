@@ -179,6 +179,11 @@ Ira:  Chrome has 3 tabs: Inbox, Upload - Example Drive, Build #812.
   browser tabs, contacts, calendar, reminders, mail, notes, messages, apps,
   Shortcuts and coding tasks, each behind a skill and a tier. See [Ira for
   Mac](docs/clients/macos.md).
+- **Ira for Windows**, a tray app (Ctrl+Alt+Space), pairs with a link or a
+  code, keeps its key in Windows Credential Manager, and offers files, the
+  screen's text, browser tabs, apps and the clipboard, each behind a skill
+  you allow on the PC too, and Drop. See [Ira for
+  Windows](docs/clients/windows.md).
 - **Web and news search** through the Brave Search API and RSS feeds, with
   sources named by site and date.
 - **Tiers**: reading runs at once, small changes are reported, outward ones

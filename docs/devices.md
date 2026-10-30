@@ -1,8 +1,9 @@
 # Devices
 
 A **device** is something a person pairs with their own Ira: a Mac running
-[Ira for Mac](clients/macos.md), an Android phone, or an iPhone running
-[Ira for iPhone](clients/iphone.md) (kind `ios`). A device connects to
+[Ira for Mac](clients/macos.md), a Windows PC running
+[Ira for Windows](clients/windows.md) (kind `windows`), an Android phone, or
+an iPhone running [Ira for iPhone](clients/iphone.md) (kind `ios`). A device connects to
 the server over one WebSocket, offers tools, runs them when Ira calls, and
 announces events ("the coding task is done").
 
