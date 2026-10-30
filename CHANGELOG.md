@@ -34,6 +34,9 @@ switch it on.
   clipboard and ⌃⌥⌘C to copy the newest item, a notification with Copy, and
   files saved to ~/Downloads/Ira. Ira for Mac now refuses a tool whose skill
   is off for it, whatever the server asks, and `~/LIBRARY` like `~/Library`.
+  On the iPhone: a Drop screen with Copy first, files fetched then saved or
+  opened through the share sheet, and a notification with Copy while Ira is
+  open.
   From a terminal:
   `ira drop login`, then `send`, `list`, `get` and `rm`.
   `POST/GET/DELETE /v1/me/drop`, `/v1/me/drop/settings`.

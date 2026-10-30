@@ -63,6 +63,8 @@ extension DeviceClient {
             case .skills(let now):
                 log.info("skills now \(now)")
                 onState(.connected(deviceID: deviceID, skills: now))
+            case .drop(let change):
+                onDrop(change)
             case .error(let reason):
                 log.warning("the server said: \(reason)")
             case .welcome, .pong, .other:
