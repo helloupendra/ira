@@ -23,6 +23,8 @@ import java.util.concurrent.ConcurrentHashMap
  * last one ends. Nothing is written to storage, and a sentence is forgotten once played.
  * Create it, and call it, on the main thread.
  */
+// Playing from memory takes media3's byte-array source, which it marks as unstable API.
+@androidx.annotation.OptIn(markerClass = [androidx.media3.common.util.UnstableApi::class])
 class SentencePlayer(context: Context, private val listener: Listener) {
     interface Listener {
         fun onSentenceStarted(turn: Int, seq: Int)

@@ -12,6 +12,7 @@ import android.net.Uri
 import android.os.Build
 import android.provider.Settings
 import android.service.notification.Condition
+import androidx.annotation.RequiresApi
 import io.github.helloupendra.ira.core.Args
 import io.github.helloupendra.ira.core.ToolFailure
 import io.github.helloupendra.ira.ui.MainActivity
@@ -97,6 +98,7 @@ class SettingsTools(private val context: Context) {
         return Results.of("dnd" to on, "summary" to "Do Not Disturb ${if (on) "on" else "off"}.")
     }
 
+    @RequiresApi(35)
     private fun rule(nm: NotificationManager): String {
         nm.automaticZenRules.entries.firstOrNull { it.value.conditionId == RULE_URI }?.let { return it.key }
         val rule =

@@ -7,6 +7,7 @@ import android.app.Service
 import android.content.Context
 import android.content.Intent
 import android.content.pm.ServiceInfo
+import android.os.Build
 import android.os.IBinder
 import androidx.core.app.NotificationCompat
 import androidx.core.app.ServiceCompat
@@ -37,7 +38,9 @@ class ConversationService : Service() {
             stopSelf()
             return START_NOT_STICKY
         }
-        ServiceCompat.startForeground(this, ID, notification(), ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE)
+        // The microphone type is Android 11's; Android 10 has no such limit on a foreground service.
+        val type = if (Build.VERSION.SDK_INT >= 30) ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE else 0
+        ServiceCompat.startForeground(this, ID, notification(), type)
         if (app.startLive() == null) stopSelf()
         return START_NOT_STICKY
     }

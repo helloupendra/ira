@@ -32,14 +32,23 @@ object DeviceKey {
     fun usable(): Boolean = exists() && signature() != null
 
     /** Why this phone cannot use a fingerprint for approvals, or null when it can. */
-    fun unsupported(context: Context): String? =
-        when (context.getSystemService(BiometricManager::class.java)?.canAuthenticate(Authenticators.BIOMETRIC_STRONG)) {
+    fun unsupported(context: Context): String? {
+        val manager = context.getSystemService(BiometricManager::class.java)
+        // Asking for a strong one by name needs Android 11; Android 10 counts only strong ones anyway.
+        val answer =
+            when {
+                manager == null -> BiometricManager.BIOMETRIC_ERROR_NO_HARDWARE
+                Build.VERSION.SDK_INT >= 30 -> manager.canAuthenticate(Authenticators.BIOMETRIC_STRONG)
+                else -> @Suppress("DEPRECATION") manager.canAuthenticate()
+            }
+        return when (answer) {
             BiometricManager.BIOMETRIC_SUCCESS -> null
             BiometricManager.BIOMETRIC_ERROR_NONE_ENROLLED -> "Add a fingerprint to this phone first (in its Security settings)."
             BiometricManager.BIOMETRIC_ERROR_NO_HARDWARE, BiometricManager.BIOMETRIC_ERROR_HW_UNAVAILABLE ->
                 "This phone has no fingerprint reader Ira can use. Approve with your PIN."
             else -> "This phone cannot use a fingerprint for approvals now. Approve with your PIN."
         }
+    }
 
     /** Make the key (replacing any old one); returns its public key, X.509, in base64. */
     fun create(): String {
