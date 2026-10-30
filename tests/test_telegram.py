@@ -145,6 +145,27 @@ async def test_a_typed_pin_is_deleted_and_never_sent_to_a_model(
     assert all(PIN not in text for text in every_message_sent_to_models)
 
 
+@pytest.mark.parametrize("typed", [f"{PIN}.", " ".join(PIN), f"PIN {PIN}"])
+async def test_a_pin_typed_with_a_full_stop_or_spaces_still_confirms(
+    bot, api, runtime, owner, provider, ledger, typed
+):
+    """A phone's keyboard adds a full stop; people space digits out. The bot deletes such a
+    message as a PIN, so it must also confirm with it, never count it as a wrong one."""
+    await pair(bot, runtime, owner)
+    provider.script = [
+        ChatResponse(
+            text="", tool_calls=[ToolCall("c1", "refund", '{"order_id": "A1", "amount": 9}')]
+        ),
+        "Type your PIN to confirm.",
+        "Done.",
+    ]
+    await bot.handle_update(update("refund A1 by 9", message_id=10))
+    await bot.handle_update(update(typed, message_id=11))
+    assert 11 in api.deleted()
+    assert ledger.refunds == [("A1", 9)]
+    assert runtime.guard.wrong_pins(owner.id) == 0
+
+
 async def test_a_pin_with_nothing_pending_is_still_deleted(bot, api, runtime, owner, provider):
     await pair(bot, runtime, owner)
     await bot.handle_update(update("98765", message_id=20))

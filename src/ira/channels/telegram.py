@@ -25,7 +25,7 @@ from ira.config import secret
 from ira.models.base import ProviderError
 from ira.models.http import scrub
 from ira.runtime import Runtime
-from ira.security import looks_like_pin, sha256_hex
+from ira.security import looks_like_pin, sha256_hex, spoken_digits
 from ira.store import Store
 from ira.voice.audio import AudioError, ogg_to_wav
 from ira.voice.shorten import speakable
@@ -375,7 +375,8 @@ class TelegramBot:
         if text and looks_like_pin(text):
             # Delete first: the PIN must not sit in the chat history, whatever happens next.
             await self._delete(chat_id, message_id)
-            await self._confirm(principal, chat_id, conversation_id, text)
+            # Its digits only: "4321." or "4 3 2 1" is the PIN, never a wrong one.
+            await self._confirm(principal, chat_id, conversation_id, spoken_digits(text) or text)
             return
 
         command, _, caption = (message.get("caption") or "").strip().partition(" ")
