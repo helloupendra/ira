@@ -58,6 +58,10 @@ public partial class App : Application
         {
             _notes.Show("Ctrl+Alt+Space is taken", "Another app uses that shortcut. Open Ira from its icon in the tray.");
         }
+        if (!_panel.DropHotkeysRegistered)
+        {
+            _notes.Show("A Drop shortcut is taken", "Another app uses Ctrl+Alt+Shift+V or C. Both are in the tray icon's menu too.");
+        }
         if (!Controller.IsPaired) _panel.ShowPanel(); // the first run opens on the pairing page
         else if (dropped.Length > 0) _ = _drop.SendFilesAsync(dropped);
     }
@@ -67,8 +71,8 @@ public partial class App : Application
         var menu = new MenuFlyout();
         menu.Items.Add(Item("Open Ira", () => _panel!.ShowPanel()));
         menu.Items.Add(new MenuFlyoutSeparator());
-        menu.Items.Add(Item("Send clipboard to your devices", () => Paired(() => _ = _drop!.SendClipboardAsync())));
-        menu.Items.Add(Item("Copy latest from Drop", () => Paired(() => _ = _drop!.CopyLatestAsync())));
+        menu.Items.Add(Item("Send clipboard to your devices (Ctrl+Alt+Shift+V)", () => Paired(() => _ = _drop!.SendClipboardAsync())));
+        menu.Items.Add(Item("Copy latest from Drop (Ctrl+Alt+Shift+C)", () => Paired(() => _ = _drop!.CopyLatestAsync())));
         menu.Items.Add(Item(@"Open Downloads\Ira", DropBox.OpenFolder));
         menu.Items.Add(new MenuFlyoutSeparator());
         menu.Items.Add(Item("Pair again…", () => _panel!.ShowPairAgain()));

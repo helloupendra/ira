@@ -27,6 +27,8 @@ public sealed partial class PanelWindow : Window
     private readonly Action _quit;
     private readonly IntPtr _hwnd;
     private readonly GlobalHotkey _hotkey;
+    private readonly GlobalHotkey _sendClipboardKey;
+    private readonly GlobalHotkey _copyLatestKey;
     private bool _pairAgain;   // the pairing page was asked for while already paired
     private bool _closing;
     private DateTime _hiddenAt;
@@ -60,6 +62,11 @@ public sealed partial class PanelWindow : Window
 
         _hotkey = new GlobalHotkey(_hwnd);
         _hotkey.Pressed += TogglePanel;
+        // Drop from any app, as on the Mac: send the clipboard, or copy the newest item.
+        _sendClipboardKey = new GlobalHotkey(_hwnd, 0x1A2, GlobalHotkey.MOD_SHIFT, GlobalHotkey.VK_V);
+        _sendClipboardKey.Pressed += () => { if (_controller.IsPaired) _ = _drop.SendClipboardAsync(); };
+        _copyLatestKey = new GlobalHotkey(_hwnd, 0x1A3, GlobalHotkey.MOD_SHIFT, GlobalHotkey.VK_C);
+        _copyLatestKey.Pressed += () => { if (_controller.IsPaired) _ = _drop.CopyLatestAsync(); };
 
         _controller.Changed += Render;
         _controller.SkillsToAllow += OnSkillsToAllow;
@@ -69,6 +76,9 @@ public sealed partial class PanelWindow : Window
 
     /// <summary>False when another app already has Ctrl+Alt+Space.</summary>
     public bool HotkeyRegistered => _hotkey.Registered;
+
+    /// <summary>False when another app already has one of Drop's two shortcuts.</summary>
+    public bool DropHotkeysRegistered => _sendClipboardKey.Registered && _copyLatestKey.Registered;
 
     public void ShowPanel()
     {
@@ -105,6 +115,8 @@ public sealed partial class PanelWindow : Window
         _closing = true;
         _asking?.Cancel();
         _hotkey.Dispose();
+        _sendClipboardKey.Dispose();
+        _copyLatestKey.Dispose();
         Close();
     }
 
