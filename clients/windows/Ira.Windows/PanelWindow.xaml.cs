@@ -3,6 +3,7 @@ using IraKit;
 using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
 using Windows.ApplicationModel.DataTransfer;
@@ -14,13 +15,15 @@ namespace Ira;
 
 /// <summary>
 /// The one window: a panel above the tray that pairs the PC, then asks Ira and shows its
-/// Yes/No and PIN cards. It hides when it loses focus unless pinned, and on Esc.
+/// Yes/No and PIN cards, and holds the Drop. It hides when it loses focus (unless pinned, or
+/// while the Drop is open, so files can be dragged in), and on Esc.
 /// </summary>
 public sealed partial class PanelWindow : Window
 {
     private const int WidthDip = 420, HeightDip = 640, MarginDip = 12;
 
     private readonly IraController _controller;
+    private readonly DropBox _drop;
     private readonly Action _quit;
     private readonly IntPtr _hwnd;
     private readonly GlobalHotkey _hotkey;
@@ -32,10 +35,11 @@ public sealed partial class PanelWindow : Window
     private CancellationTokenSource? _asking;
     private IReadOnlyList<string> _skillsToAllow = [];
 
-    public PanelWindow(IraController controller, Action quit)
+    public PanelWindow(IraController controller, DropBox drop, Action quit)
     {
         InitializeComponent();
         _controller = controller;
+        _drop = drop;
         _quit = quit;
         _hwnd = WindowNative.GetWindowHandle(this);
 
@@ -59,6 +63,7 @@ public sealed partial class PanelWindow : Window
 
         _controller.Changed += Render;
         _controller.SkillsToAllow += OnSkillsToAllow;
+        _drop.Changed += RenderDrop;
         Render();
     }
 
@@ -109,8 +114,11 @@ public sealed partial class PanelWindow : Window
     {
         var paired = _controller.IsPaired;
         var pairing = !paired || _pairAgain;
+        var dropping = !pairing && DropTab.IsSelected;
         PairView.Visibility = pairing ? Visibility.Visible : Visibility.Collapsed;
-        ChatView.Visibility = pairing ? Visibility.Collapsed : Visibility.Visible;
+        Tabs.Visibility = pairing ? Visibility.Collapsed : Visibility.Visible;
+        ChatView.Visibility = !pairing && !dropping ? Visibility.Visible : Visibility.Collapsed;
+        DropView.Visibility = dropping ? Visibility.Visible : Visibility.Collapsed;
         BackButton.Visibility = paired && _pairAgain ? Visibility.Visible : Visibility.Collapsed;
         ForgetItem.IsEnabled = paired;
         AssistantName.Text = _controller.Settings?.Assistant ?? "Ira";
@@ -162,7 +170,15 @@ public sealed partial class PanelWindow : Window
     private void FocusTyping()
     {
         if (ChatView.Visibility == Visibility.Visible) AskBox.Focus(FocusState.Programmatic);
+        else if (DropView.Visibility == Visibility.Visible) DropText.Focus(FocusState.Programmatic);
         else ServerBox.Focus(FocusState.Programmatic);
+    }
+
+    private void OnTabChanged(SelectorBar sender, SelectorBarSelectionChangedEventArgs args)
+    {
+        Render();
+        FocusTyping();
+        if (DropTab.IsSelected && _drop.Items.Count == 0) _ = _drop.RefreshAsync();
     }
 
     private void OnRootKeyDown(object sender, KeyRoutedEventArgs e)
@@ -335,6 +351,141 @@ public sealed partial class PanelWindow : Window
         SkillsBar.Visibility = Visibility.Collapsed;
         FocusTyping();
     }
+
+    // --- drop ------------------------------------------------------------------------
+
+    private void RenderDrop()
+    {
+        DropList.Children.Clear();
+        if (_drop.Items.Count == 0)
+        {
+            DropList.Children.Add(Caption("Nothing yet. Text, links and files you send from any of your devices show here for 30 days."));
+            return;
+        }
+        foreach (var item in _drop.Items) DropList.Children.Add(DropRow(item));
+    }
+
+    private Border DropRow(DropItem item)
+    {
+        var glyph = item.IsFile ? "" : item.Link is not null ? "" : "";
+        var grid = new Grid { ColumnSpacing = 10 };
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        grid.Children.Add(new FontIcon { Glyph = glyph, FontSize = 16, VerticalAlignment = VerticalAlignment.Top, Margin = new Thickness(0, 2, 0, 0) });
+
+        var words = new StackPanel { Spacing = 2 };
+        words.Children.Add(new TextBlock { Text = item.Preview, TextWrapping = TextWrapping.Wrap, MaxLines = 3, TextTrimming = TextTrimming.CharacterEllipsis });
+        words.Children.Add(Caption($"From {(item.FromLabel.Length > 0 ? item.FromLabel : "a device")} · {When(item.CreatedAt)}"));
+        Grid.SetColumn(words, 1);
+        grid.Children.Add(words);
+
+        var buttons = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Top };
+        buttons.Children.Add(IconButton("", item.IsFile ? "Copy the file" : "Copy", () => _ = _drop.CopyAsync(item)));
+        if (item.IsFile || item.Link is not null)
+        {
+            buttons.Children.Add(IconButton(item.IsFile ? "" : "",
+                item.IsFile ? "Save and show in folder" : "Open in the browser", () => _ = _drop.OpenAsync(item)));
+        }
+        buttons.Children.Add(IconButton("", "Delete from every device", () => _ = _drop.DeleteAsync(item)));
+        Grid.SetColumn(buttons, 2);
+        grid.Children.Add(buttons);
+
+        return new Border
+        {
+            Child = grid,
+            Padding = new Thickness(10),
+            CornerRadius = new CornerRadius(8),
+            Background = Brush("CardBackgroundFillColorDefaultBrush"),
+        };
+    }
+
+    private static Button IconButton(string glyph, string tip, Action click)
+    {
+        var button = new Button
+        {
+            Content = new FontIcon { Glyph = glyph, FontSize = 14 },
+            Background = new SolidColorBrush(Microsoft.UI.Colors.Transparent),
+            BorderThickness = new Thickness(0),
+            Padding = new Thickness(6),
+        };
+        ToolTipService.SetToolTip(button, tip);
+        AutomationProperties.SetName(button, tip);
+        button.Click += (_, _) => click();
+        return button;
+    }
+
+    /// <summary>"just now", "5 min ago", "3 h ago", "yesterday", or the date.</summary>
+    private static string When(string? created)
+    {
+        if (!DateTimeOffset.TryParse(created, System.Globalization.CultureInfo.InvariantCulture,
+            System.Globalization.DateTimeStyles.AssumeUniversal, out var at))
+        {
+            return "";
+        }
+        var ago = DateTimeOffset.Now - at;
+        if (ago < TimeSpan.FromMinutes(1)) return "just now";
+        if (ago < TimeSpan.FromHours(1)) return $"{(int)ago.TotalMinutes} min ago";
+        if (ago < TimeSpan.FromHours(24)) return $"{(int)ago.TotalHours} h ago";
+        return ago < TimeSpan.FromHours(48) ? "yesterday" : at.ToLocalTime().ToString("d MMM");
+    }
+
+    private void OnDropTextKeyDown(object sender, KeyRoutedEventArgs e)
+    {
+        if (e.Key != VirtualKey.Enter) return;
+        e.Handled = true;
+        OnDropSendClick(sender, e);
+    }
+
+    private async void OnDropSendClick(object sender, RoutedEventArgs e)
+    {
+        var text = DropText.Text;
+        DropText.Text = "";
+        if (!await _drop.SendTextAsync(text)) DropText.Text = text;
+    }
+
+    private async void OnDropFilesClick(object sender, RoutedEventArgs e)
+    {
+        var picker = new Windows.Storage.Pickers.FileOpenPicker();
+        InitializeWithWindow.Initialize(picker, _hwnd);
+        picker.FileTypeFilter.Add("*");
+        var files = await picker.PickMultipleFilesAsync();
+        if (files.Count > 0) await _drop.SendFilesAsync(files.Select(f => f.Path).ToList());
+    }
+
+    private void OnDragOver(object sender, DragEventArgs e)
+    {
+        if (!_controller.IsPaired) return;
+        if (e.DataView.Contains(StandardDataFormats.StorageItems) || e.DataView.Contains(StandardDataFormats.Text))
+        {
+            e.AcceptedOperation = DataPackageOperation.Copy;
+            e.DragUIOverride.Caption = "Send to your devices";
+        }
+    }
+
+    private async void OnDrop(object sender, DragEventArgs e)
+    {
+        if (!_controller.IsPaired) return;
+        var deferral = e.GetDeferral();
+        try
+        {
+            DropTab.IsSelected = true;
+            if (e.DataView.Contains(StandardDataFormats.StorageItems))
+            {
+                var items = await e.DataView.GetStorageItemsAsync();
+                await _drop.SendFilesAsync(items.OfType<Windows.Storage.StorageFile>().Select(f => f.Path).ToList());
+            }
+            else if (e.DataView.Contains(StandardDataFormats.Text))
+            {
+                await _drop.SendTextAsync(await e.DataView.GetTextAsync());
+            }
+        }
+        finally
+        {
+            deferral.Complete();
+        }
+    }
+
 
     // --- asking ----------------------------------------------------------------------
 

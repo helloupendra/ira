@@ -39,6 +39,9 @@ public sealed class DeviceConnection(
     public event Action<IReadOnlyList<string>>? ServerSkillsChanged;
     public event Action<DeviceEvent>? EventReceived;
 
+    /// <summary>Something new in the person's Drop from another device, or an item deleted.</summary>
+    public event Action<DropFrame>? DropChanged;
+
     /// <summary>Skills the server has on and this PC allows: the only ones a call may use.</summary>
     public IReadOnlySet<string> EffectiveSkills => _serverSkills.Intersect(localSkills()).ToHashSet();
 
@@ -150,6 +153,9 @@ public sealed class DeviceConnection(
                             frame["event"]?.GetValue<string>() ?? "",
                             frame["title"]?.GetValue<string>() ?? "",
                             frame["text"]?.GetValue<string>() ?? ""));
+                        break;
+                    case "drop":
+                        if (DropFrame.From(frame) is { } drop) DropChanged?.Invoke(drop);
                         break;
                     // "pong", "error" (a refused event, say) and frames from newer servers: nothing to do.
                 }

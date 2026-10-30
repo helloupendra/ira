@@ -26,6 +26,12 @@ public sealed class IraController
 
     public event Action<DeviceEvent>? EventReceived;
 
+    /// <summary>Something new in the Drop from another device, or an item deleted.</summary>
+    public event Action<DropFrame>? DropChanged;
+
+    /// <summary>The connection is (back) up: catch up on what arrived meanwhile.</summary>
+    public event Action? Connected;
+
     public ConnectionState State { get; private set; } = ConnectionState.Stopped;
     public string? StateDetail { get; private set; }
 
@@ -36,6 +42,8 @@ public sealed class IraController
     public ServerAddress? Server => _settings is null ? null : ServerAddress.Parse(_settings.Server);
 
     public AskClient? Ask => IsPaired ? new AskClient(_http, Server!, _token!) : null;
+
+    public DropClient? Drop => IsPaired ? new DropClient(_http, Server!, _token!) : null;
 
     public void Start(DispatcherQueue ui)
     {
@@ -113,9 +121,14 @@ public sealed class IraController
             if (state == ConnectionState.Revoked) Unpair("Ira removed this PC. Pair it again to use it.");
             else Raise();
         });
-        connection.Welcomed += welcome => OnUi(() => AskToAllow(welcome.Skills));
+        connection.Welcomed += welcome => OnUi(() =>
+        {
+            AskToAllow(welcome.Skills);
+            Connected?.Invoke();
+        });
         connection.ServerSkillsChanged += skills => OnUi(() => AskToAllow(skills));
         connection.EventReceived += e => OnUi(() => EventReceived?.Invoke(e));
+        connection.DropChanged += frame => OnUi(() => DropChanged?.Invoke(frame));
         _running = new CancellationTokenSource();
         _ = connection.RunAsync(_running.Token);
     }

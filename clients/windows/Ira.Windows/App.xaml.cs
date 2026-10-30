@@ -15,6 +15,9 @@ public partial class App : Application
 {
     private PanelWindow? _panel;
     private TaskbarIcon? _tray;
+    private Notifier? _notes;
+    private DropBox? _drop;
+    private readonly Inbox _inbox = new();
     private Mutex? _onlyOne;
 
     public static IraController Controller { get; } = new();
@@ -23,31 +26,50 @@ public partial class App : Application
 
     protected override void OnLaunched(LaunchActivatedEventArgs args)
     {
+        var dropped = Inbox.DroppedFiles(Environment.GetCommandLineArgs());
         // One Ira per signed-in person: a second copy would fight the first for the hotkey and
-        // the device connection (the server keeps only the newest).
+        // the device connection (the server keeps only the newest). It hands over what it was
+        // started for (files from Send to, or "show the panel") and leaves.
         _onlyOne = new Mutex(initiallyOwned: true, @"Local\IraForWindows", out var first);
         if (!first)
         {
+            Inbox.Send(new Inbox.Message(dropped.Length == 0, dropped));
             Exit();
             return;
         }
 
-        _panel = new PanelWindow(Controller, Quit);
+        var ui = DispatcherQueue.GetForCurrentThread();
+        ForegroundTracker.Start();
         _tray = CreateTray();
-        Controller.EventReceived += e => _tray.ShowNotification(e.Title, e.Text);
-        Controller.Start(DispatcherQueue.GetForCurrentThread());
+        _notes = new Notifier(_tray, ui);
+        _drop = new DropBox(Controller, _notes);
+        _panel = new PanelWindow(Controller, _drop, Quit);
+        Controller.EventReceived += e => _notes.Show(e.Title, e.Text);
+        _inbox.Received += message =>
+        {
+            if (message.Files.Length > 0) _ = _drop.SendFilesAsync(message.Files);
+            else _panel.ShowPanel();
+        };
+        _inbox.Start(ui);
+        SendTo.Install();
+
+        Controller.Start(ui);
         if (!_panel.HotkeyRegistered)
         {
-            _tray.ShowNotification("Ctrl+Alt+Space is taken",
-                "Another app uses that shortcut. Open Ira from its icon in the tray.");
+            _notes.Show("Ctrl+Alt+Space is taken", "Another app uses that shortcut. Open Ira from its icon in the tray.");
         }
         if (!Controller.IsPaired) _panel.ShowPanel(); // the first run opens on the pairing page
+        else if (dropped.Length > 0) _ = _drop.SendFilesAsync(dropped);
     }
 
     private TaskbarIcon CreateTray()
     {
         var menu = new MenuFlyout();
         menu.Items.Add(Item("Open Ira", () => _panel!.ShowPanel()));
+        menu.Items.Add(new MenuFlyoutSeparator());
+        menu.Items.Add(Item("Send clipboard to your devices", () => Paired(() => _ = _drop!.SendClipboardAsync())));
+        menu.Items.Add(Item("Copy latest from Drop", () => Paired(() => _ = _drop!.CopyLatestAsync())));
+        menu.Items.Add(Item(@"Open Downloads\Ira", DropBox.OpenFolder));
         menu.Items.Add(new MenuFlyoutSeparator());
         menu.Items.Add(Item("Pair again…", () => _panel!.ShowPairAgain()));
         menu.Items.Add(Item("Quit Ira", Quit));
@@ -72,11 +94,21 @@ public partial class App : Application
         return tray;
     }
 
+    /// <summary>Runs a Drop action, or opens the pairing page when there is nothing to send with.</summary>
+    private void Paired(Action action)
+    {
+        if (Controller.IsPaired) action();
+        else _panel!.ShowPanel();
+    }
+
     private static MenuFlyoutItem Item(string text, Action run) => new() { Text = text, Command = new Command(run) };
 
     private void Quit()
     {
         Controller.Stop();
+        ForegroundTracker.Stop();
+        _inbox.Dispose();
+        _notes?.Dispose();
         _tray?.Dispose();
         _panel?.Shutdown();
         _onlyOne?.ReleaseMutex();

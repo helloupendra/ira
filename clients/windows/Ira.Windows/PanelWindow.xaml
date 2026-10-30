@@ -7,8 +7,9 @@
         <MicaBackdrop />
     </Window.SystemBackdrop>
 
-    <Grid x:Name="Root" KeyDown="OnRootKeyDown">
+    <Grid x:Name="Root" KeyDown="OnRootKeyDown" AllowDrop="True" DragOver="OnDragOver" Drop="OnDrop">
         <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
         </Grid.RowDefinitions>
@@ -46,8 +47,14 @@
             </Button>
         </Grid>
 
+        <!-- Chat or Drop, once paired -->
+        <SelectorBar x:Name="Tabs" Grid.Row="1" Margin="8,0,8,4" SelectionChanged="OnTabChanged" Visibility="Collapsed">
+            <SelectorBarItem x:Name="ChatTab" Text="Chat" IsSelected="True" />
+            <SelectorBarItem x:Name="DropTab" Text="Drop" />
+        </SelectorBar>
+
         <!-- Pairing -->
-        <ScrollViewer x:Name="PairView" Grid.Row="1" Visibility="Collapsed">
+        <ScrollViewer x:Name="PairView" Grid.Row="2" Visibility="Collapsed">
             <StackPanel Padding="16,8,16,16" Spacing="12">
                 <TextBlock Text="Pair this PC with your Ira" Style="{StaticResource BodyStrongTextBlockStyle}" />
                 <TextBlock TextWrapping="Wrap" Foreground="{ThemeResource TextFillColorSecondaryBrush}">
@@ -74,7 +81,7 @@
         </ScrollViewer>
 
         <!-- Chat -->
-        <Grid x:Name="ChatView" Grid.Row="1" Visibility="Collapsed">
+        <Grid x:Name="ChatView" Grid.Row="2" Visibility="Collapsed">
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="*" />
@@ -112,6 +119,37 @@
                     <FontIcon Glyph="&#xE724;" FontSize="14" />
                 </Button>
             </Grid>
+        </Grid>
+
+        <!-- Drop: what goes between this PC and the person's other devices -->
+        <Grid x:Name="DropView" Grid.Row="2" Visibility="Collapsed">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="*" />
+                <RowDefinition Height="Auto" />
+            </Grid.RowDefinitions>
+            <Grid Padding="12,0,12,8" ColumnSpacing="8">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <TextBox x:Name="DropText" PlaceholderText="Send text or a link to your devices" TextWrapping="Wrap"
+                         MaxHeight="120" KeyDown="OnDropTextKeyDown" />
+                <Button Grid.Column="1" Click="OnDropSendClick" Style="{StaticResource AccentButtonStyle}"
+                        VerticalAlignment="Bottom" ToolTipService.ToolTip="Send (Enter)">
+                    <FontIcon Glyph="&#xE724;" FontSize="14" />
+                </Button>
+                <Button Grid.Column="2" Click="OnDropFilesClick" VerticalAlignment="Bottom" ToolTipService.ToolTip="Send files">
+                    <FontIcon Glyph="&#xE723;" FontSize="14" />
+                </Button>
+            </Grid>
+            <ScrollViewer Grid.Row="1" Padding="12,0">
+                <StackPanel x:Name="DropList" Spacing="6" Padding="0,0,0,12" />
+            </ScrollViewer>
+            <TextBlock Grid.Row="2" Margin="16,4,16,12" TextWrapping="Wrap" Style="{StaticResource CaptionTextBlockStyle}"
+                       Foreground="{ThemeResource TextFillColorTertiaryBrush}"
+                       Text="Drop files here, or right-click files in File Explorer: Send to › Ira. Files from your other devices go to DownloadsIra." />
         </Grid>
     </Grid>
 </Window>

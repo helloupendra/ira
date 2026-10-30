@@ -2,9 +2,9 @@ using System.Diagnostics;
 using System.Net;
 using System.Net.Http.Json;
 using System.Net.Sockets;
-using System.Text.Json.Nodes;
 using System.Text.RegularExpressions;
 using IraKit;
+using IraKit.Tools;
 using Xunit.Abstractions;
 
 namespace IraKit.Windows.Tests;
@@ -51,28 +51,27 @@ public partial class LiveIraTests(ITestOutputHelper output)
             }
 
             var printed = Run(ira, folder, "device", "code", "--email", "owner@example.com", "--kind", "windows",
-                "--days", "1", "--uses", "1", "--skills", "files");
+                "--days", "1", "--uses", "1", "--skills", "files,screen,browser,clipboard");
             var link = PairingLink.Find(printed);
             Assert.NotNull(link?.Server);
 
             var paired = await Pairing.PairAsync(http, link!.Server!, link.Code);
             Assert.Equal("windows", paired.Kind);
             Assert.StartsWith("irad_", paired.Token);
-            Assert.Equal(["files"], paired.Skills);
+            string[] skills = ["browser", "clipboard", "files", "screen"];
+            Assert.Equal(skills, paired.Skills.Order());
 
-            var toolbox = new Toolbox([
-                new DeviceTool("files_find", "Find files.", "files", 0, new JsonObject { ["type"] = "object" },
-                    (_, _) => Task.FromResult<JsonNode>(new JsonObject { ["summary"] = "Found nothing." })),
-            ]);
+            // The PC's real tools (the reading ones are asked for below; nothing opens).
+            var toolbox = PcTools.Create(Native.GetForegroundWindow);
             var connection = new DeviceConnection(address, paired.Token, "Test PC", "0.1.0", toolbox,
-                () => new HashSet<string> { "files" });
+                () => skills.ToHashSet());
             var welcomed = new TaskCompletionSource<Welcome>();
             connection.Welcomed += w => welcomed.TrySetResult(w);
             using var stop = new CancellationTokenSource();
             var running = connection.RunAsync(stop.Token);
             var welcome = await welcomed.Task.WaitAsync(TimeSpan.FromSeconds(20));
-            Assert.Equal(["files"], welcome.Skills);
-            Assert.Equal(["files"], connection.EffectiveSkills);
+            Assert.Equal(skills, welcome.Skills.Order());
+            Assert.Equal(skills, connection.EffectiveSkills.Order());
 
             var ask = new AskClient(http, address, paired.Token);
             var events = new List<AskEvent>();
@@ -81,11 +80,50 @@ public partial class LiveIraTests(ITestOutputHelper output)
             Assert.IsType<AskEvent.Started>(events.First());
             Assert.IsType<AskEvent.Done>(events.Last());
 
-            // Ira calls the PC's own tool over the device connection, and hears its answer.
-            events.Clear();
-            await foreach (var e in ask.AskAsync("files find report", null)) events.Add(e);
-            output.WriteLine(string.Join("\n", events));
-            Assert.Contains(events, e => e is AskEvent.ToolFinished { Name: "files_find", Ok: true });
+            // Ira calls each of the PC's reading tools over the device connection, and hears its
+            // answer. Only the tool events are printed: the answers hold this PC's own text.
+            foreach (var (question, tool) in new[]
+            {
+                ("files find report", "files_find"), ("browser tabs", "browser_tabs"),
+                ("screen read", "screen_read"), ("clipboard read", "clipboard_read"),
+            })
+            {
+                events.Clear();
+                await foreach (var e in ask.AskAsync(question, null)) events.Add(e);
+                output.WriteLine($"{question}: " + string.Join(", ", events.Where(e => e is AskEvent.ToolCalled or AskEvent.ToolFinished)));
+                Assert.Contains(events, e => e is AskEvent.ToolFinished finished && finished.Name == tool && finished.Ok);
+            }
+
+            // Drop: this PC sends text and a file; something dropped on the web arrives here at
+            // once; a file saves checked and marked as downloaded; an item is deleted.
+            var drop = new DropClient(http, address, paired.Token);
+            var arrived = new TaskCompletionSource<DropFrame>();
+            connection.DropChanged += frame => arrived.TrySetResult(frame);
+            var sentText = await drop.SendTextAsync("buy milk");
+            Assert.Equal("text", sentText.Kind);
+            var plan = Path.Combine(folder, "plan.txt");
+            File.WriteAllText(plan, "the plan for Monday");
+            var sentFile = await drop.SendFileAsync(plan, "for the meeting");
+            Assert.Equal(("file", "plan.txt", "for the meeting"), (sentFile.Kind, sentFile.Name, sentFile.Text));
+
+            using (var web = new HttpClient(new HttpClientHandler { CookieContainer = new CookieContainer() }))
+            {
+                web.DefaultRequestHeaders.Add("X-Ira-Request", "1");
+                (await web.PostAsJsonAsync(address.Api("/v1/auth/login"), new { email = "owner@example.com", password = Password })).EnsureSuccessStatusCode();
+                (await web.PostAsJsonAsync(address.Api("/v1/me/drop"), new { text = "from the web" })).EnsureSuccessStatusCode();
+            }
+            var fromWeb = Assert.IsType<DropFrame.New>(await arrived.Task.WaitAsync(TimeSpan.FromSeconds(10))).Item;
+            Assert.Equal(("from the web", "Web"), (fromWeb.Text, fromWeb.FromLabel));
+
+            var saved = await drop.SaveAsync(sentFile, Path.Combine(folder, "saved"));
+            Assert.Equal("the plan for Monday", File.ReadAllText(saved));
+            Assert.Contains("ZoneId=3", File.ReadAllText(saved + ":Zone.Identifier"));
+
+            Assert.Equal(3, (await drop.ListAsync()).Items.Count);
+            await drop.DeleteAsync(sentText.Id);
+            await drop.DeleteAsync(sentText.Id); // twice: gone already is fine
+            Assert.Equal([fromWeb.Id, sentFile.Id], (await drop.ListAsync()).Items.Select(i => i.Id));
+            output.WriteLine("drop: sent text and a file, received from the web, saved, listed, deleted");
 
             await stop.CancelAsync();
             await running.WaitAsync(TimeSpan.FromSeconds(10));
