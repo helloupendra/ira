@@ -197,4 +197,3 @@ final class DropNotes: NSObject, UNUserNotificationCenterDelegate {
         [.banner, .sound]
     }
 }
-}
