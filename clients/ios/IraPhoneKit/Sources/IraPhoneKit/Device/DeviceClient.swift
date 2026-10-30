@@ -60,6 +60,8 @@ public final class DeviceClient: @unchecked Sendable {
     let timing: Timing
     let onState: @Sendable (DeviceState) -> Void
     let log: IraLog
+    /// A change in the person's Drop, from another of their devices.
+    public var onDrop: @Sendable (DropFrame) -> Void = { _ in }
 
     let lock = NSLock()
     var runner: Task<Void, Never>?

@@ -15,6 +15,8 @@ final class AppModel {
     let eventKit = EventKitTools()
     let permissions: SystemPermissions
     let talk: TalkController
+    /// The person's Drop, shared by their devices.
+    let drop = DropBox()
 
     /// Paired, not paired, or a key iOS will not hand over yet.
     private(set) var pairing: PairingRecord.Status = .unpaired
@@ -46,6 +48,7 @@ final class AppModel {
         pairing = record.status
         showingSetup = pairing != .paired || !settings.setupDone
         talk.model = self
+        DropNotes.shared.install()
     }
 
     // MARK: Pairing
@@ -95,6 +98,12 @@ final class AppModel {
 
     // MARK: The server
 
+    func dropClient() -> DropClient? {
+        guard pairing == .paired, !settings.server.isEmpty else { return nil }
+        let secrets = self.secrets
+        return DropClient(server: settings.server, token: { secrets.load(SecretAccount.device) })
+    }
+
     func client() -> AskClient? {
         guard pairing == .paired, !settings.server.isEmpty else { return nil }
         let secrets = self.secrets
@@ -141,6 +150,7 @@ final class AppModel {
         let client = DeviceClient(
             url: url, token: { secrets.load(SecretAccount.device) }, tools: toolbox, label: settings.deviceLabel,
             onState: { state in Task { @MainActor in AppModel.shared.deviceChanged(state) } })
+        client.onDrop = { change in Task { @MainActor in AppModel.shared.drop.handle(change) } }
         device = client
         client.start()
     }
@@ -152,8 +162,13 @@ final class AppModel {
     }
 
     private func deviceChanged(_ state: DeviceState) {
+        var wasConnected = false
+        if case .connected = deviceState { wasConnected = true }
         deviceState = state
-        if case .connected(_, let skills) = state { skillsOn = skills }
+        if case .connected(_, let skills) = state {
+            skillsOn = skills
+            if !wasConnected { Task { await drop.catchUp() } }  // what arrived while away
+        }
         if state == .refused { refreshPairing() }
     }
 

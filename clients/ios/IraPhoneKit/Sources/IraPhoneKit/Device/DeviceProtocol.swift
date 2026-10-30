@@ -18,6 +18,8 @@ public enum DeviceProtocol {
         case ping
         case pong
         case skills([String])
+        /// Something new in the person's Drop, or one deleted, on another of their devices.
+        case drop(DropFrame)
         case error(String)
         /// A frame of a type this version does not know: ignored.
         case other(String)
@@ -58,6 +60,17 @@ public enum DeviceProtocol {
         case "ping": return .ping
         case "pong": return .pong
         case "skills": return .skills(strings(frame["skills"]))
+        case "drop":
+            switch frame["event"]?.stringValue {
+            case "new":
+                guard let item = frame["item"].flatMap(DropItem.init) else { throw BadFrame(reason: "a new drop needs its item") }
+                return .drop(.new(item))
+            case "deleted":
+                guard let id = frame["id"]?.intValue else { throw BadFrame(reason: "a deleted drop needs its id") }
+                return .drop(.deleted(id))
+            default:
+                return .other("drop")
+            }
         case "error": return .error(String((frame["error"]?.stringValue ?? "").prefix(200)))
         default: return .other(String(type.prefix(40)))
         }

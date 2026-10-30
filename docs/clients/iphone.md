@@ -118,6 +118,15 @@ proposes something that needs your yes, Siri reads it back and asks; say
 open Ira and type it there, within two minutes. Through Siri, Ira can use the
 iPhone's own tools only while the app is open on the iPhone (see below).
 
+### Drop: send anything to your other devices
+
+**Drop** (the tray at the top) lists what you sent from any of your devices,
+newest first: text and links with **Copy** first (and **Open** for a link),
+files with **Get**, then **Save or open** through the share sheet. Type or
+**Paste** and **Send**, or pick **Files**. Swipe left to delete an item from
+every device. While Ira is open, something new from another device comes as
+a notification with **Copy**. See [Privacy](../privacy.md#drop).
+
 ### What Ira can do on your iPhone
 
 Each tool belongs to a skill you switch on for this iPhone, and each has a
@@ -430,6 +439,7 @@ phone if one is paired, and in Telegram if you linked it.
 | Call for you | the iPhone's Call prompt, after your yes; you tap Call | no | yes, after your yes |
 | Read your calls, SMS, notifications | **no**: iOS lets no app read them | no | yes, with each skill switched on |
 | Alarms, timers | reminders that alert on time; alarms through Siri | through Siri | yes |
+| Drop | yes: the inbox, send text and files, Copy | yes, in the web app | yes, with Share → Ira Drop and a clipboard tile |
 
 ## What was tested where
 

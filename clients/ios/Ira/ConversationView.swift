@@ -40,6 +40,14 @@ struct ConversationView: View {
                 }
             }
             ToolbarItem(placement: .topBarTrailing) {
+                NavigationLink {
+                    DropView()
+                } label: {
+                    Label("Drop", systemImage: "tray.and.arrow.down")
+                }
+                .accessibilityIdentifier("drop")
+            }
+            ToolbarItem(placement: .topBarTrailing) {
                 Button {
                     showingSettings = true
                 } label: {
