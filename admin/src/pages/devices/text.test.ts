@@ -33,6 +33,8 @@ describe('words', () => {
     expect(kindWord('android')).toBe('Android phone');
     expect(kindWord('ios')).toBe('iPhone');
     expect(setupSteps('ios').join(' ')).toContain('Ira for iPhone');
+    expect(kindWord('windows')).toBe('Windows PC');
+    expect(setupSteps('windows').join(' ')).toContain('Ira for Windows');
     expect(grantTitle({ kind: 'device_skill', skill: 'browser', device: 'Studio Mac' })).toBe('Browser on Studio Mac');
     expect(grantTitle({ kind: 'web_search', skill: 'web', device: null })).toBe('Web and news search');
     expect(remaining(NOW + 598, NOW)).toBe('9:58');

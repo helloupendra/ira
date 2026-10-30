@@ -71,7 +71,12 @@ SKILLS: dict[str, str] = {
     "location": "Location: where this device is, when you ask. Never tracked.",
     "media": "Media: play, pause and skip what is playing.",
 }
-DEFAULT_LABELS = {"mac": "My Mac", "android": "My Android phone", "ios": "My iPhone"}
+DEFAULT_LABELS = {
+    "mac": "My Mac",
+    "android": "My Android phone",
+    "ios": "My iPhone",
+    "windows": "My Windows PC",
+}
 
 
 class DeviceError(ValueError):

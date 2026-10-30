@@ -373,7 +373,9 @@ class DeviceHub:
                 queue.put_nowait(row)
         frame = {"type": "event", **{k: row[k] for k in ("event", "title", "text", "at")}}
         for connection in list(self.connections.values()):
-            if connection.device.user_id == user_id and connection.device.kind == "android":
+            # The kinds that show events themselves (a notification); a Mac hears them elsewhere.
+            device = connection.device
+            if device.user_id == user_id and device.kind in ("android", "windows"):
                 with contextlib.suppress(Exception):
                     await connection.send(frame)
         for notify in self.notifiers:

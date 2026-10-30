@@ -33,6 +33,9 @@ dependencies = [
     # The device WebSocket (uvicorn serves WebSockets through it) and pairing QR codes.
     "websockets>=14",
     "segno>=1.6",
+    # Windows has no time-zone database of its own; without this every ask fails there
+    # (ZoneInfoNotFoundError, even for UTC).
+    "tzdata; sys_platform == 'win32'",
 ]
 
 [project.optional-dependencies]

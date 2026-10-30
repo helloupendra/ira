@@ -1135,9 +1135,9 @@ class ActivityRow(BaseModel):
     seconds: float | None = None
 
 
-# Devices: a person's own Mac, Android phone or iPhone, paired with a one-time code.
+# Devices: a person's own Mac, Android phone, iPhone or Windows PC, paired with a one-time code.
 
-DeviceKind = Literal["mac", "android", "ios"]
+DeviceKind = Literal["mac", "android", "ios", "windows"]
 
 
 class SkillState(BaseModel):

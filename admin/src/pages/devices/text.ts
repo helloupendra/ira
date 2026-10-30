@@ -12,6 +12,7 @@ export function kindWord(kind: string): string {
   if (kind === 'mac') return 'Mac';
   if (kind === 'android') return 'Android phone';
   if (kind === 'ios') return 'iPhone';
+  if (kind === 'windows') return 'Windows PC';
   return kind;
 }
 
@@ -66,6 +67,13 @@ export function setupSteps(kind: string): string[] {
       'On the iPhone, scan the QR code with the Camera and tap Open in Ira for iPhone.',
       'Or, in Ira for iPhone, paste the pairing link, or type the code and your Ira\'s address.',
       'Follow Get Ira ready, then ask Ira: "kal ka schedule kya hai?"',
+    ];
+  }
+  if (kind === 'windows') {
+    return [
+      'Open Ira for Windows: the Ira mark next to the clock, or Ctrl+Alt+Space.',
+      'Ira opens on its pairing page and finds the link you copied: press Pair. Or type the code and your Ira\'s address.',
+      'Allow what it asks for, then ask Ira: "screen pe kya hai?"',
     ];
   }
   return ['Open the Ira app on the phone and scan the QR code.'];

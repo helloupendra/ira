@@ -11627,7 +11627,8 @@
                         "enum": [
                             "mac",
                             "android",
-                            "ios"
+                            "ios",
+                            "windows"
                         ],
                         "title": "Kind"
                     },
@@ -11760,7 +11761,8 @@
                         "enum": [
                             "mac",
                             "android",
-                            "ios"
+                            "ios",
+                            "windows"
                         ],
                         "title": "Kind"
                     },
@@ -13905,7 +13907,8 @@
                                 "enum": [
                                     "mac",
                                     "android",
-                                    "ios"
+                                    "ios",
+                                    "windows"
                                 ]
                             },
                             {
@@ -13929,7 +13932,8 @@
                         "enum": [
                             "mac",
                             "android",
-                            "ios"
+                            "ios",
+                            "windows"
                         ],
                         "title": "Kind"
                     },
@@ -14028,7 +14032,8 @@
                         "enum": [
                             "mac",
                             "android",
-                            "ios"
+                            "ios",
+                            "windows"
                         ],
                         "title": "Kind"
                     },

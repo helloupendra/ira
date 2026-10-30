@@ -181,7 +181,7 @@ const IraPersonal = (() => {
       "li",
       { className: "card" },
       el("p", { className: "card-title" }, device.label, " ", el("span", { className: device.connected ? "chip ok" : "chip", text: status })),
-      el("p", { className: "muted small", text: `${device.kind === "mac" ? "Mac" : "Android phone"}${device.version ? ` · version ${device.version}` : ""}` }),
+      el("p", { className: "muted small", text: `${KIND_WORDS[device.kind] || "Device"}${device.version ? ` · version ${device.version}` : ""}` }),
     );
     if (device.skills.length) card.append(skillsForm(device, body));
     if (device.tools.length) {
@@ -284,6 +284,7 @@ const IraPersonal = (() => {
 
   // Switched on at pairing unless the person unticks them: the asks people start with.
   const FIRST_SKILLS = ["files", "screen", "browser"];
+  const KIND_WORDS = { mac: "Mac", android: "Android phone", ios: "iPhone", windows: "Windows PC" };
 
   function addDeviceForm(body, downloads, skills) {
     const kind = el(
@@ -292,6 +293,7 @@ const IraPersonal = (() => {
       el("option", { value: "mac", text: "Mac (Ira for Mac)" }),
       el("option", { value: "android", text: "Android phone" }),
       el("option", { value: "ios", text: "iPhone (Ira for iPhone)" }),
+      el("option", { value: "windows", text: "Windows PC (Ira for Windows)" }),
     );
     const boxes = el("fieldset", { className: "stack skills" }, el("legend", { text: "What it may do (you can change this later)" }));
     const showSkills = () => {
@@ -372,13 +374,28 @@ const IraPersonal = (() => {
               el("li", { text: "Follow Get Ira ready, allowing what you want Ira to use." }),
               el("li", {}, "Ask Ira: ", el("q", { text: "kal ka schedule kya hai?" })),
             )
-          : el("p", { className: "muted", text: "Open the Ira app on your phone and scan this code." });
+          : pairing.kind === "windows"
+            ? el(
+                "ol",
+                { className: "steps" },
+                el("li", { text: "Open Ira for Windows: the Ira mark next to the clock, or Ctrl+Alt+Space." }),
+                el("li", { text: "Ira opens on its pairing page and finds the link you copied; press Pair. Or type the code and your Ira's address." }),
+                el("li", { text: "Allow what it asks for, then try it:" }),
+                el("li", {}, "Ask Ira: ", el("q", { text: "screen pe kya hai?" })),
+              )
+            : el("p", { className: "muted", text: "Open the Ira app on your phone and scan this code." });
     const card = el(
       "div",
       { className: "card pairing" },
       el("h3", { text: `Pair ${pairing.label}` }),
       el("div", { className: "row" }, copyButton(pairing.pair_url, "Copy the pairing link", "btn btn-primary")),
-      el("p", { className: pairing.kind === "mac" ? "muted" : "muted", text: pairing.kind === "mac" ? "Ira for Mac finds the copied link by itself. Or type this code:" : "Or type this code:" }),
+      el("p", {
+        className: "muted",
+        text:
+          pairing.kind === "mac" || pairing.kind === "windows"
+            ? `${pairing.kind === "mac" ? "Ira for Mac" : "Ira for Windows"} finds the copied link by itself. Or type this code:`
+            : "Or type this code:",
+      }),
       el("p", { className: "pair-code", text: pairing.code }),
       el("img", { className: "qr", src: pairing.qr_svg, alt: `QR code for pairing ${pairing.label}`, width: "180", height: "180" }),
       left,

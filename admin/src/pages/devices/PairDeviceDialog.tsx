@@ -5,7 +5,12 @@ import { Dialog } from '../../ui/Dialog';
 import { failure } from '../tokens/text';
 import { FIRST_SKILLS, remaining, setupSteps } from './text';
 
-const PLACEHOLDERS: Record<string, string> = { mac: 'My Mac', android: 'My Android phone', ios: 'My iPhone' };
+const PLACEHOLDERS: Record<string, string> = {
+  mac: 'My Mac',
+  android: 'My Android phone',
+  ios: 'My iPhone',
+  windows: 'My Windows PC',
+};
 
 // Add a device: kind, name, the skills it may use, and your PIN (a new device is a new
 // grant). The answer is a one-time pairing code with its QR code, good for 10 minutes;
@@ -81,6 +86,7 @@ function PairForm({ onMade, onCancel }: { onMade: (p: PairingView) => void; onCa
           <option value="mac">Mac: Ira for Mac</option>
           <option value="android">Android phone: the always-on ear (its app comes later)</option>
           <option value="ios">iPhone: Ira for iPhone</option>
+          <option value="windows">Windows PC: Ira for Windows</option>
         </select>
       </div>
       <div className="field">

@@ -600,7 +600,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     p = add("code", cmd_device_code, "a pairing code that lasts days (app reviewers)", device)
     p.add_argument("--email", required=True, help="the account the device will speak for")
-    p.add_argument("--kind", choices=["android", "mac", "ios"], default="android")
+    p.add_argument("--kind", choices=["android", "mac", "ios", "windows"], default="android")
     p.add_argument("--days", type=int, default=7, help="1 to 14 (default 7)")
     p.add_argument("--uses", type=int, default=3, help="devices it may pair (default 3)")
     p.add_argument("--label", help="the device's name (default: My Android phone, My iPhone)")

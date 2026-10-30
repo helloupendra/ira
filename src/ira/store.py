@@ -197,11 +197,12 @@ CREATE TABLE IF NOT EXISTS telegram_chats (
     name      TEXT  -- the chat's name as Telegram gives it, for the console
 );
 
--- A person's own devices (a Mac, an Android phone, an iPhone). Only the token's hash is kept.
+-- A person's own devices (a Mac, an Android phone, an iPhone, a Windows PC). Only the token's
+-- hash is kept.
 CREATE TABLE IF NOT EXISTS devices (
     id           INTEGER PRIMARY KEY AUTOINCREMENT,
     user_id      INTEGER NOT NULL REFERENCES users (id),
-    kind         TEXT NOT NULL CHECK (kind IN ('mac', 'android', 'ios')),
+    kind         TEXT NOT NULL CHECK (kind IN ('mac', 'android', 'ios', 'windows')),
     label        TEXT NOT NULL,
     token_hash   TEXT NOT NULL UNIQUE,
     created_at   REAL NOT NULL,
@@ -443,6 +444,12 @@ CREATE TABLE IF NOT EXISTS pairing_codes (
 """
 
 
+def _device_kinds(create_sql: str) -> set[str]:
+    """The device kinds a devices table's CHECK allows, read from its CREATE statement."""
+    match = re.search(r"kind IN \(([^)]*)\)", create_sql)
+    return set(re.findall(r"'([a-z]+)'", match.group(1))) if match else set()
+
+
 class Store:
     """Thread-safe helpers over one SQLite connection. ``":memory:"`` works for tests."""
 
@@ -495,7 +502,7 @@ class Store:
             self._link_old_proposals()
 
     def _widen_device_kinds(self) -> None:
-        """Let a database made before iPhones were a device kind keep one.
+        """Let a database made before a device kind existed (iPhones, then Windows PCs) keep one.
 
         SQLite cannot change a CHECK constraint in place, so the devices table is
         copied into one made with today's schema, as SQLite's documentation
@@ -504,10 +511,11 @@ class Store:
         row = self._conn.execute(
             "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'devices'"
         ).fetchone()
-        if row is None or "'ios'" in row["sql"]:
-            return
         create = re.search(r"CREATE TABLE IF NOT EXISTS devices \(.*?\n\);", SCHEMA, re.S)
         assert create is not None
+        # Rebuild only when the stored table allows fewer kinds than today's schema.
+        if row is None or _device_kinds(row["sql"]) >= _device_kinds(create.group(0)):
+            return
         columns = ", ".join(r["name"] for r in self._conn.execute("PRAGMA table_info(devices)"))
         counter = self._conn.execute(
             "SELECT seq FROM sqlite_sequence WHERE name = 'devices'"

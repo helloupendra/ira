@@ -99,7 +99,9 @@ def test_a_database_from_before_iphones_takes_one_and_keeps_its_devices(tmp_path
     # The schema as it was: the same tables, with a devices CHECK that knew two kinds.
     path = tmp_path / "ira.db"
     old = sqlite3.connect(path)
-    old.executescript(SCHEMA.replace("('mac', 'android', 'ios')", "('mac', 'android')"))
+    today = "('mac', 'android', 'ios', 'windows')"
+    assert today in SCHEMA  # else this test no longer builds an older database
+    old.executescript(SCHEMA.replace(today, "('mac', 'android')"))
     for label, kind in (("Office Mac", "mac"), ("Pixel", "android")):
         old.execute(
             "INSERT INTO devices (user_id, kind, label, token_hash, created_at) "

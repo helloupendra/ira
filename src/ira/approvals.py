@@ -27,16 +27,25 @@ NEVER = re.compile(
 )
 MINUTES_CHOICES = (0, 5, 10, 15, 20, 30, 45, 60)
 # Apps Ira never acts in, by name or bundle id: whatever is typed there runs as a command.
-NEVER_APPS = ("terminal", "iterm", "script editor", "scripteditor", "automator", "termux")
+NEVER_APPS = (
+    "terminal", "iterm", "script editor", "scripteditor", "automator", "termux",
+    # Windows: its shells, and the tools that change the system itself.
+    "powershell", "command prompt", "registry editor", "regedit", "windows subsystem for linux",
+)  # fmt: skip
 NEVER_IDS = frozenset(
     {"com.apple.terminal", "com.googlecode.iterm2", "com.apple.scripteditor2",
      "com.apple.automator", "dev.warp.warp-stable", "com.mitchellh.ghostty",
-     "net.kovidgoyal.kitty", "org.alacritty", "com.termux"}
+     "net.kovidgoyal.kitty", "org.alacritty", "com.termux",
+     # Windows programs, as Ira for Windows names the app in front (its program file).
+     "cmd", "cmd.exe", "powershell.exe", "pwsh", "pwsh.exe", "wt", "wt.exe",
+     "windowsterminal.exe", "openconsole.exe", "conhost.exe", "wsl", "wsl.exe", "bash.exe",
+     "regedit.exe", "mmc.exe", "microsoft.windowsterminal_8wekyb3d8bbwe!app"}
 )  # fmt: skip
 
 
 def never_app(app: str | None) -> bool:
-    """Terminal, iTerm, Script Editor, Automator and the like: never acted in, never trusted.
+    """Terminal, iTerm, Script Editor, Automator, and on Windows the Command Prompt, PowerShell,
+    Windows Terminal and the Registry Editor: never acted in, never trusted.
 
     Names match by any part ("terminal" anywhere in it): an app that merely has such a word
     in its name is refused too. That errs on the safe side on purpose; do not narrow it
