@@ -336,7 +336,8 @@ class Runtime:
                     "properties": {"limit": {"type": "integer", "minimum": 1, "maximum": 30}},
                 },
                 tier=0,
-                source="ira",
+                # Items came from Telegram, other devices or a share: data, never instructions.
+                source="drop",
                 label="Drop",
                 run=listed,
                 skill="drop",

@@ -179,7 +179,7 @@ def taints(tool: PersonalTool) -> bool:
     """Whether what this tool returns is text written by others, so that an action that
     needs a yes or a PIN may then come only from the person's own words. A tool that acts
     (Tier 1, run at once) returns its own status ("Opened YouTube"), which does not."""
-    if tool.source in ("web", "connector"):
+    if tool.source in ("web", "connector", "drop"):
         return True
     if tool.source != "device" or tool.tier >= 1:
         return False

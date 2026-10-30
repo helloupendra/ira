@@ -356,7 +356,10 @@ it, and the web inbox previews only images it can draw safely (PNG, JPEG,
 GIF, WebP) from a blob, never HTML or SVG, which could run script.
 
 Ira has two tools of its own for it: `drop_list` (what is in your Drop) and
-`drop_send` (put text or a link there, "send this to my phone"). After a
+`drop_send` (put text or a link there, "send this to my phone"). What
+`drop_list` returns reaches the model marked as data, like a web page: an
+item may have come from Telegram or another device, so it can never ask Ira
+for anything, and a turn that read it cannot propose an action. After a
 turn has read text others wrote, `drop_send` is refused: only your own
 words in a new message put something in your Drop.
 
