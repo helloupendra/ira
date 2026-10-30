@@ -107,6 +107,22 @@ jobs:
           path: clients/android/app/build/outputs/apk/*/debug/*.apk
           if-no-files-found: error
 
+  windows-app:
+    # Ira for Windows: the library's tests and the tray app's build. The Live tests need a
+    # running Ira (IRA_LIVE_TESTS=1), so they are left out here.
+    runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: clients/windows
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: "10.0.x"
+      - run: dotnet --version
+      - run: dotnet test IraKit.Windows.Tests/IraKit.Windows.Tests.csproj -c Release --filter "Category!=Live"
+      - run: dotnet build Ira.Windows/Ira.Windows.csproj -c Release -p:Platform=x64
+
   ios-app:
     # Ira for iPhone: the kit's tests and the app's UI tests on an iOS simulator,
     # against a local Ira with the demo model and fake speech, and an unsigned
