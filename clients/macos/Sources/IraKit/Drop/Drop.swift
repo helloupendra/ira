@@ -1,6 +1,7 @@
 import CoreServices
 import CryptoKit
 import Foundation
+import UniformTypeIdentifiers
 
 /// One item in the person's Drop (docs/api.md): text, a link or a file.
 public struct DropItem: Equatable, Sendable, Identifiable {
