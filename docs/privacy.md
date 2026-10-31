@@ -139,9 +139,21 @@ Ira for Mac saves a file that arrives from another device to
 **Save**.
 When you share to the installed app on Android, the phone's browser keeps
 the shared text and files only until the app opens; it shows them, and
-sends them to your Drop only when you tap **Send to Drop**. If you paired a Telegram chat, what you send from your
-other devices is also sent there, through Telegram's servers; switch that
-off in the app's Drop, or with `PATCH /v1/me/drop/settings`.
+sends them to your Drop only when you tap **Send to Drop**.
+
+**Drop and Telegram: on unless switched off.** If you paired a Telegram
+chat, each new item you send from your other devices is also sent to that
+chat (a file up to 45 MB as a document; a bigger one only by its name and
+size). It then passes through Telegram's
+servers and stays in the chat until you delete it there; deleting it from
+Drop does not remove it from Telegram. Two switches turn this off:
+
+- **yours**: in the Ira app's Drop, untick **Also send what arrives to my
+  Telegram chat** (or `PATCH /v1/me/drop/settings` with
+  `{"telegram": false}`). It shows only when the server forwards and you
+  have a paired chat;
+- **the server's**, for everyone on it: `drop.telegram_forward: false` in
+  `ira.yaml`, set by whoever runs the server.
 
 ## The Ira app for Android
 
