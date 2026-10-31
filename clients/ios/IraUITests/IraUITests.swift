@@ -37,6 +37,21 @@ final class IraUITests: XCTestCase {
     }
 
     @MainActor
+    func testAPairingLinkAsksFirst() throws {
+        let app = XCUIApplication()
+        app.launch()
+        app.open(URL(string: "ira://pair?server=https://ira.example.invalid&code=ABCD-EFGH")!)
+        let server = app.staticTexts["link-server"]
+        XCTAssertTrue(server.waitForExistence(timeout: 10))
+        XCTAssertEqual(server.label, "https://ira.example.invalid")
+        XCTAssertTrue(app.buttons["link-pair"].exists)
+        app.buttons["link-cancel"].tap()
+        let gone = expectation(for: NSPredicate(format: "exists == false"), evaluatedWith: server)
+        wait(for: [gone], timeout: 5)
+        XCTAssertFalse(app.staticTexts["busy"].exists)
+    }
+
+    @MainActor
     func testPairAskAndUseAToolOnThisIPhone() throws {
         let link = ProcessInfo.processInfo.environment["IRA_UITEST_LINK"] ?? ""
         try XCTSkipIf(link.isEmpty, "no local Ira to pair with (CI starts one)")

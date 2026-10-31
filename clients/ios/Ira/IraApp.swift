@@ -20,6 +20,7 @@ struct RootView: View {
     @Environment(AppModel.self) private var model
 
     var body: some View {
+        @Bindable var model = model
         NavigationStack {
             if model.showingSetup {
                 SetupView()
@@ -35,6 +36,55 @@ struct RootView: View {
             }
         }
         .animation(.default, value: model.busy)
+        .sheet(item: $model.linkToConfirm) { link in LinkPairSheet(link: link) }
+    }
+}
+
+/// "Pair with this Ira?": a pairing link opened from another app or a web page. Pairing
+/// sends what this iPhone asks, and what Ira may use on it, to that server.
+struct LinkPairSheet: View {
+    @Environment(AppModel.self) private var model
+    let link: LinkPair
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section {
+                    Text(link.server)
+                        .font(.body.monospaced())
+                        .textSelection(.enabled)
+                        .accessibilityIdentifier("link-server")
+                } header: {
+                    Text("A link asks to pair this iPhone with")
+                } footer: {
+                    Text("Pair only if you made this code yourself, on your own Ira, just now.")
+                }
+                if let current = link.current {
+                    Section {
+                        Text(current)
+                            .font(.body.monospaced())
+                            .accessibilityIdentifier("link-current")
+                    } header: {
+                        Text("It is paired with")
+                    } footer: {
+                        Text("Pairing with the link forgets that Ira on this iPhone. Your data there stays.")
+                    }
+                }
+            }
+            .navigationTitle("Pair with this Ira?")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { model.linkToConfirm = nil }
+                        .accessibilityIdentifier("link-cancel")
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Pair") { Task { await model.pairWithLink() } }
+                        .accessibilityIdentifier("link-pair")
+                }
+            }
+        }
+        .interactiveDismissDisabled()
     }
 }
 
