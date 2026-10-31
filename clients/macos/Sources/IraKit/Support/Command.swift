@@ -24,6 +24,8 @@ public final class Command: @unchecked Sendable {
     public let stderr: FileHandle
     private let lock = NSLock()
     private var exitStatus: Int32?
+    /// Its stdin, while kept open (`keepInput`).
+    private var input: FileHandle?
 
     private init(pid: pid_t, stdout: FileHandle, stderr: FileHandle) {
         self.pid = pid
@@ -31,9 +33,11 @@ public final class Command: @unchecked Sendable {
         self.stderr = stderr
     }
 
-    /// Start `argv` in `directory`, with `environment`, and `input` on its stdin.
+    /// Start `argv` in `directory`, with `environment`, and `input` on its stdin; with
+    /// `keepInput`, its stdin stays open for `write` until `closeInput`.
     public static func start(
-        _ argv: [String], directory: String? = nil, environment: [String: String]? = nil, input: String? = nil
+        _ argv: [String], directory: String? = nil, environment: [String: String]? = nil, input: String? = nil,
+        keepInput: Bool = false
     ) throws -> Command {
         guard let program = argv.first else { throw ToolFailure("nothing to run") }
         var actions: posix_spawn_file_actions_t?
@@ -42,9 +46,20 @@ public final class Command: @unchecked Sendable {
         var attributes: posix_spawnattr_t?
         posix_spawnattr_init(&attributes)
         defer { posix_spawnattr_destroy(&attributes) }
-        // A process group of its own (pgid = its pid), so it can be stopped whole.
-        posix_spawnattr_setflags(&attributes, Int16(POSIX_SPAWN_SETPGROUP | POSIX_SPAWN_CLOEXEC_DEFAULT))
+        // A process group of its own (pgid = its pid), so it can be stopped whole. It starts
+        // with no signal blocked and the stopping signals at their defaults: a thread of
+        // Dispatch or Swift's concurrency blocks most signals, and a child would inherit that,
+        // so `stop` would do nothing.
+        posix_spawnattr_setflags(
+            &attributes, Int16(POSIX_SPAWN_SETPGROUP | POSIX_SPAWN_CLOEXEC_DEFAULT | POSIX_SPAWN_SETSIGMASK | POSIX_SPAWN_SETSIGDEF))
         posix_spawnattr_setpgroup(&attributes, 0)
+        var unblocked = sigset_t()
+        sigemptyset(&unblocked)
+        posix_spawnattr_setsigmask(&attributes, &unblocked)
+        var defaults = sigset_t()
+        sigemptyset(&defaults)
+        for signal in [SIGTERM, SIGINT, SIGHUP, SIGQUIT, SIGPIPE] { sigaddset(&defaults, signal) }
+        posix_spawnattr_setsigdefault(&attributes, &defaults)
 
         let stdin = Pipe(), out = Pipe(), err = Pipe()
         posix_spawn_file_actions_adddup2(&actions, stdin.fileHandleForReading.fileDescriptor, 0)
@@ -68,7 +83,13 @@ public final class Command: @unchecked Sendable {
             throw ToolFailure("could not start \((program as NSString).lastPathComponent): \(String(cString: strerror(status)))")
         }
         let writer = stdin.fileHandleForWriting
-        if let input {
+        // A program that ended before reading its input: an error to Ira, never a SIGPIPE.
+        _ = fcntl(writer.fileDescriptor, F_SETNOSIGPIPE, 1)
+        let command = Command(pid: pid, stdout: out.fileHandleForReading, stderr: err.fileHandleForReading)
+        if keepInput {
+            command.input = writer
+            if let input { try? command.write(input) }
+        } else if let input {
             DispatchQueue.global().async {
                 try? writer.write(contentsOf: Data(input.utf8))
                 try? writer.close()
@@ -76,7 +97,32 @@ public final class Command: @unchecked Sendable {
         } else {
             try? writer.close()
         }
-        return Command(pid: pid, stdout: out.fileHandleForReading, stderr: err.fileHandleForReading)
+        return command
+    }
+
+    /// Whether its stdin is still open for `write`.
+    public var acceptsInput: Bool { lock.locked { input != nil } }
+
+    /// Send text to its stdin (kept open with `keepInput`).
+    public func write(_ text: String) throws {
+        try lock.locked {
+            guard let input else { throw ToolFailure("it is no longer reading what it is told") }
+            do {
+                try input.write(contentsOf: Data(text.utf8))
+            } catch {
+                self.input = nil
+                try? input.close()
+                throw ToolFailure("it is no longer reading what it is told")
+            }
+        }
+    }
+
+    /// Close its stdin: the program sees the end of its input.
+    public func closeInput() {
+        lock.locked {
+            try? input?.close()
+            input = nil
+        }
     }
 
     /// Wait for the program to end; its exit status (128 + signal when killed).
@@ -95,10 +141,15 @@ public final class Command: @unchecked Sendable {
         return status
     }
 
-    /// Stop the program and everything it started.
+    /// Stop the program and everything it started; one that ignores SIGTERM is killed
+    /// 5 seconds later.
     public func stop(_ signal: Int32 = SIGTERM) {
-        if lock.locked({ exitStatus }) == nil {
-            kill(-pid, signal)
+        guard lock.locked({ exitStatus }) == nil else { return }
+        kill(-pid, signal)
+        guard signal != SIGKILL else { return }
+        let group = pid
+        DispatchQueue.global().asyncAfter(deadline: .now() + 5) { [weak self] in
+            if let self, self.lock.locked({ self.exitStatus }) == nil { kill(-group, SIGKILL) }
         }
     }
 

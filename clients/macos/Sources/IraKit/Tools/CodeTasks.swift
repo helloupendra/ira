@@ -57,6 +57,16 @@ public struct TaskSettings: Equatable, Sendable {
             self.command = command
             self.resume = resume
         }
+
+        /// It reads stream-json on its stdin (`--input-format stream-json`): Ira sends it the
+        /// task that way, and the person's words while it works.
+        public var streamsInput: Bool {
+            command.contains("--input-format=stream-json")
+                || zip(command, command.dropFirst()).contains { $0 == "--input-format" && $1 == "stream-json" }
+        }
+
+        /// It can continue an earlier session: a pause loses nothing.
+        public var resumes: Bool { !(resume ?? []).isEmpty }
     }
 
     public var command: [String]
@@ -277,6 +287,13 @@ public final class CodeTasks: @unchecked Sendable {
         public var done: Int?
         public var total: Int?
         public var current: String?
+        /// Messages sent on a stream-json agent's stdin, and its results so far: its input
+        /// closes when every message has its answer, so it can finish.
+        var sent = 0
+        var answered = 0
+        /// Which run of its agent is current: a resume starts another, and the one it
+        /// replaced (still ending) must not touch the task.
+        var runs = 0
 
         func view() -> JSONValue {
             [
@@ -412,12 +429,101 @@ public final class CodeTasks: @unchecked Sendable {
 
     public func stop(_ raw: JSONValue) async throws -> JSONValue {
         let task = try task(try ToolArgs(raw, allowed: ["id"]))
+        if task.status == "paused" {
+            update(task.id) { $0.status = "stopped" }
+            return ["id": .string(task.id), "summary": .string("Stopped task \(task.id), which was paused. Its worktree and branch stay.")]
+        }
         guard ["starting", "running"].contains(task.status) else {
             return ["id": .string(task.id), "summary": .string("Task \(task.id) had already \(task.status).")]
         }
         update(task.id) { $0.status = "stopped" }
         lock.locked { commands[task.id] }?.stop()
         return ["id": .string(task.id), "summary": .string("Stopped task \(task.id). Its worktree and branch stay.")]
+    }
+
+    /// One user turn on a stream-json agent's stdin.
+    static func message(_ text: String) -> String {
+        (["type": "user", "message": ["role": "user", "content": [["type": "text", "text": .string(text)]]]] as JSONValue).encoded() + "\n"
+    }
+
+    /// The person's words, cleaned and held to the task's own limit.
+    func words(_ args: ToolArgs, _ name: String, required: Bool) throws -> String? {
+        let raw = required ? try args.required(name, limit: 100_000, what: "what to tell it") : try args.text(name, limit: 100_000)
+        guard let raw else { return nil }
+        let text = raw.split(whereSeparator: \.isWhitespace).joined(separator: " ")
+        guard text.count <= CodeTasks.maxInstruction else { throw ToolFailure("keep it under \(CodeTasks.maxInstruction) characters") }
+        return text
+    }
+
+    /// Tell a running task something ("write the tests first"): it reads it after its current step.
+    public func say(_ raw: JSONValue) async throws -> JSONValue {
+        let args = try ToolArgs(raw, allowed: ["id", "text"])
+        let task = try task(args)
+        let text = try words(args, "text", required: true)!
+        let agent = settings()?.agent(task.agent)
+        guard ["starting", "running"].contains(task.status) else {
+            throw ToolFailure("task \(task.id) is \(task.status); to give it more to do, use code_task_resume with your words")
+        }
+        guard let agent, agent.streamsInput else {
+            let other = agent?.resumes == true ? "pause it, then resume it with your words" : "stop it and start a new task"
+            throw ToolFailure("this task's agent cannot be told anything while it works; \(other)")
+        }
+        try lock.locked {
+            guard let command = commands[task.id], command.acceptsInput else {
+                throw ToolFailure("it has just finished its work; when it is done, resume it with your words")
+            }
+            try command.write(CodeTasks.message(text))
+            if var job = tasks[task.id] {
+                job.sent += 1
+                job.progress = Array((job.progress + ["you said: \(AgentOutput.short(text, 120))"]).suffix(5))
+                tasks[task.id] = job
+            }
+        }
+        return ["id": .string(task.id), "summary": .string("Told task \(task.id): “\(AgentOutput.short(text, 120))”. It reads it after its current step.")]
+    }
+
+    /// Pause a running task: its agent stops, and its session is kept for code_task_resume.
+    public func pause(_ raw: JSONValue) async throws -> JSONValue {
+        let task = try task(try ToolArgs(raw, allowed: ["id"]))
+        guard ["starting", "running"].contains(task.status) else {
+            throw ToolFailure("task \(task.id) is \(task.status), not running")
+        }
+        guard settings()?.agent(task.agent)?.resumes == true, task.session != nil else {
+            throw ToolFailure("this task's agent cannot continue later, so a pause would lose its place; stop it instead (code_task_stop)")
+        }
+        update(task.id) { $0.status = "paused" }
+        lock.locked { commands[task.id] }?.stop()
+        return ["id": .string(task.id), "summary": .string("Paused task \(task.id). Resume it with code_task_resume, with words for it if you like.")]
+    }
+
+    /// Continue a paused (or finished) task in its worktree, from where its agent left off.
+    public func resume(_ raw: JSONValue) async throws -> JSONValue {
+        let args = try ToolArgs(raw, allowed: ["id", "text"])
+        let task = try task(args)
+        let text = try words(args, "text", required: false)
+        let settings = try current()
+        guard ["paused", "done", "failed", "stopped"].contains(task.status) else {
+            throw ToolFailure("task \(task.id) is \(task.status); tell a running task something with code_task_say")
+        }
+        guard let agent = settings.agent(task.agent), agent.resumes else {
+            throw ToolFailure("this task's agent is not set up to continue a session (\"resume\" in tasks.json); start a new task")
+        }
+        guard let session = task.session else {
+            throw ToolFailure("its agent never said its session id, so it cannot continue; start a new task")
+        }
+        let running = lock.locked { tasks.values.filter { ["starting", "running"].contains($0.status) }.count }
+        guard running < CodeTasks.maxRunning else {
+            throw ToolFailure("\(CodeTasks.maxRunning) tasks are running already; wait or stop one")
+        }
+        update(task.id) {
+            $0.status = "starting"
+            $0.error = ""
+            $0.result = ""
+            $0.finished = nil
+            if let text { $0.progress = Array(($0.progress + ["you said: \(AgentOutput.short(text, 120))"]).suffix(5)) }
+        }
+        Task { await self.run(task.id, settings: settings, words: text ?? "Continue where you left off.", session: session) }
+        return ["id": .string(task.id), "summary": .string("Task \(task.id) goes on in \(task.repo.name) with \(agent.name). Ira says when it is done.")]
     }
 
     public func push(_ raw: JSONValue) async throws -> JSONValue {
@@ -485,21 +591,43 @@ public final class CodeTasks: @unchecked Sendable {
         return command + [prompt]
     }
 
-    private func run(_ id: String, settings: TaskSettings) async {
+    /// The agent's command line: the task in it (or, for a stream-json agent, on its stdin),
+    /// and what continues `session` when there is one.
+    static func argv(_ agent: TaskSettings.Agent, prompt: String, session: String?) -> [String] {
+        var argv = agent.streamsInput ? agent.command.filter { !$0.contains("{prompt}") } : argv(agent.command, prompt: prompt)
+        if let session, let resume = agent.resume {
+            argv += resume.map { $0.replacingOccurrences(of: "{session}", with: session) }
+        }
+        return argv
+    }
+
+    /// Run the task's agent: from the start, or with `words` continuing `session`.
+    private func run(_ id: String, settings: TaskSettings, words: String? = nil, session: String? = nil) async {
         guard let task = lock.locked({ tasks[id] }) else { return }
         guard let agent = settings.agent(task.agent) else {
             update(id) { $0.error = "the agent \($0.agent) is no longer set up on this Mac" }
             await finish(id)
             return
         }
-        let prompt = CodeTasks.prompt.replacingOccurrences(of: "{repo}", with: task.repo.name)
+        let run: Int = lock.locked {
+            tasks[id]?.runs += 1
+            return tasks[id]?.runs ?? 0
+        }
+        let prompt = session != nil ? (words ?? "") : CodeTasks.prompt.replacingOccurrences(of: "{repo}", with: task.repo.name)
             .replacingOccurrences(of: "{branch}", with: task.branch)
             .replacingOccurrences(of: "{instruction}", with: task.instruction)
         do {
             let command = try Command.start(
-                sandboxed(CodeTasks.argv(agent.command, prompt: prompt), task: task, settings: settings),
-                directory: task.worktree.path, environment: environment())
-            lock.locked { commands[id] = command }
+                sandboxed(CodeTasks.argv(agent, prompt: prompt, session: session), task: task, settings: settings),
+                directory: task.worktree.path, environment: environment(), keepInput: agent.streamsInput)
+            try lock.locked {
+                commands[id] = command
+                if agent.streamsInput {
+                    try command.write(CodeTasks.message(prompt))
+                    tasks[id]?.sent = 1
+                    tasks[id]?.answered = 0
+                }
+            }
             update(id) { if $0.status == "starting" { $0.status = "running" } }
             let timer = Task {
                 try await Task.sleep(nanoseconds: UInt64(settings.minutes * 60 * 1_000_000_000))
@@ -512,7 +640,8 @@ public final class CodeTasks: @unchecked Sendable {
             var steps = StepTracker()
             var lastStepEvent: Date?
             for await line in Command.lines(command.stdout) {
-                if let session = AgentOutput.session(line) { update(id) { if $0.session == nil { $0.session = session } } }
+                // The latest: a resumed agent may go on under a new session id.
+                if let session = AgentOutput.session(line) { update(id) { $0.session = session } }
                 let advanced = steps.feed(line)
                 if steps.counting {
                     update(id) {
@@ -538,11 +667,25 @@ public final class CodeTasks: @unchecked Sendable {
                                  progress, ["id": .string(task.id), "repo": .string(task.repo.name)])
                     }
                 }
-                if let result { final = result }
+                if let result {
+                    final = result
+                    // Every message answered: close its input, so it finishes.
+                    lock.locked {
+                        tasks[id]?.answered += 1
+                        if let job = tasks[id], job.answered >= job.sent { command.closeInput() }
+                    }
+                }
             }
             let code = await command.wait()
             timer.cancel()
             let stderr = await errors
+            let (current, paused): (Bool, Bool) = lock.locked {
+                let current = tasks[id]?.runs == run
+                if current, commands[id] === command, tasks[id]?.status == "paused" { commands[id] = nil }
+                return (current, tasks[id]?.status == "paused")
+            }
+            // Paused (its session is kept for code_task_resume), or already resumed by another run.
+            if !current || paused { return }
             update(id) { task in
                 if task.status == "stopped" {
                     task.error = task.error.isEmpty ? "stopped" : task.error
@@ -562,8 +705,12 @@ public final class CodeTasks: @unchecked Sendable {
         } catch {
             update(id) { $0.error = AgentOutput.short((error as? ToolFailure)?.message ?? "\(error)") }
         }
-        lock.locked { commands[id] = nil }
-        await finish(id)
+        let current: Bool = lock.locked {
+            guard tasks[id]?.runs == run else { return false }
+            commands[id] = nil
+            return true
+        }
+        if current { await finish(id) }
     }
 
     private func finish(_ id: String) async {

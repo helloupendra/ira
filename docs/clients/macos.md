@@ -399,6 +399,25 @@ and the last one at once. An agent without a list says how it is going after 5
 minutes, then every 10. `code_task_status` shows the agent, the steps and the
 latest progress.
 
+**Steer, pause and go on.** While a task works you can tell it something
+("write the tests first") with `code_task_say`, if its agent reads messages
+as it works: give it `"--input-format", "stream-json"` in its command, and
+Ira sends it the task, and your words, that way (it reads them after its
+current step). `code_task_pause` stops the agent and keeps its session, and
+`code_task_resume`, with your words if you like ("now update the docs"),
+goes on from there in the same worktree. Pausing and going on need the
+agent's own way to continue a session, in `tasks.json`:
+
+```json
+"main": {"command": ["/path/to/agent", "-p", "--input-format", "stream-json",
+                     "--output-format", "stream-json"],
+         "resume": ["--resume", "{session}"]}
+```
+
+An agent that cannot do these says so instead. Telling a task something and
+going on with it need your yes, as starting one does; Ira acts only on its
+own tasks, never on a session it did not start.
+
 The safety rules:
 
 - The agent runs in macOS's sandbox: it can write only in its worktree, the
@@ -534,7 +553,7 @@ SDKs make a macro whose plugin ships with Xcode only.
 | `Tests/IraKitTests/` | pairing against a URLProtocol stub, device and live-voice frames against a fake WebSocket, the deny list, a tiny `.docx` fixture, a PDF drawn in the test, tool schemas and deadlines, the browser scripts, the routine readings, taking over the companion, the wake phrase, and the voice detector on synthetic audio. No test opens a network connection |
 | `Tests/IraAppTests/` | the window and menus: the standard menu bar, Cmd-V reaching the Ask field through the Edit menu (with the pasteboard put back after), the four bars' menu holding only Open and Quit, and the pane kept for the next launch |
 
-The tools the app offers (32 with coding tasks set up). A server's welcome
+The tools the app offers (35 with coding tasks set up). A server's welcome
 says how many it takes (40); until one has, the app offers its oldest 30, so an
 older server keeps the tools it always had:
 
@@ -554,6 +573,7 @@ older server keeps the tools it always had:
 | `shortcuts_list {}`, `shortcuts_run {name, input?}` | `shortcuts` | 0, 2 |
 | `mac_type {text, pressReturn?}`, `mac_keys {keys}`, `mac_click {label, role?, index?}`, `mac_scroll {direction, amount?}`, `mac_menu {path}`, each also `{app?, task?}` | `control` | 3 |
 | `code_task_start {repo, instruction, openInVSCode?, agent?}`, `code_task_status {id?}` (without `id`, lists them, the repositories and the agents), `code_task_stop {id}`, `code_task_push {id}` | `tasks` | 2, 0, 1, 3 |
+| `code_task_say {id, text}`, `code_task_pause {id}`, `code_task_resume {id, text?}` | `tasks` | 2, 1, 2 |
 | `ai_sessions {hours?}`, `ai_session_detail {id}` | `agents` | 0, 0 |
 
 The coding-task tools are in the hello only when `tasks.json` is set up.

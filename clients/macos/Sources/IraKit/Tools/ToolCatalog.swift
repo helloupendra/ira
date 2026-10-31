@@ -240,6 +240,19 @@ public enum ToolCatalog {
              properties: ["id": text("The task's id.")], required: ["id"]),
     ]
 
+    /// Steering a coding task while it works, pausing it, and going on with it later.
+    public static let taskControl: [JSONValue] = [
+        tool("code_task_say", skill: "tasks", tier: 2,
+             "Tell a running coding task something, in the person's words ('write the tests first'): its agent reads it after its current step. Only agents that take messages while they work; others say so.",
+             properties: ["id": text("The task's id."), "text": text("What to tell it.")], required: ["id", "text"]),
+        tool("code_task_pause", skill: "tasks", tier: 1,
+             "Pause a running coding task: its agent stops, and its session is kept so code_task_resume goes on from there. Its worktree and branch stay.",
+             properties: ["id": text("The task's id.")], required: ["id"]),
+        tool("code_task_resume", skill: "tasks", tier: 2,
+             "Go on with a paused or finished coding task in its worktree, where its agent left off, with the person's words if they gave any ('now update the docs'). Ira says when it is done.",
+             properties: ["id": text("The task's id."), "text": text("What to tell it as it goes on (default: carry on).")], required: ["id"]),
+    ]
+
     // MARK: AI sessions
 
     public static let agents: [JSONValue] = [
@@ -255,6 +268,6 @@ public enum ToolCatalog {
     /// The oldest come first, so a server that takes 30 (as before the welcome said how
     /// many) still gets the same 30 as ever.
     public static func all(tasksConfigured: Bool) -> [JSONValue] {
-        files + browser + personal + apps + control + (tasksConfigured ? tasks : []) + agents
+        files + browser + personal + apps + control + (tasksConfigured ? tasks : []) + agents + (tasksConfigured ? taskControl : [])
     }
 }

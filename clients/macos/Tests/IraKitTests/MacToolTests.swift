@@ -14,7 +14,7 @@ struct CatalogTests {
         // A server takes 40 when its welcome says so; an older one gets the first 30.
         #expect(names.count <= 40)
         #expect(Set(names).count == names.count)
-        #expect(ToolCatalog.all(tasksConfigured: false).count == names.count - ToolCatalog.tasks.count)
+        #expect(ToolCatalog.all(tasksConfigured: false).count == names.count - ToolCatalog.tasks.count - ToolCatalog.taskControl.count)
         let hello = DeviceProtocol.hello(label: "Studio Mac", tools: CatalogTests.everything).encoded()
         #expect(hello.utf8.count < 64 * 1024)
         for tool in CatalogTests.everything {
@@ -61,6 +61,7 @@ struct CatalogTests {
             "code_task_start": "tasks 2", "code_task_status": "tasks 0",
             "code_task_stop": "tasks 1", "code_task_push": "tasks 3",
             "ai_sessions": "agents 0", "ai_session_detail": "agents 0",
+            "code_task_say": "tasks 2", "code_task_pause": "tasks 1", "code_task_resume": "tasks 2",
         ])
     }
 
@@ -587,6 +588,183 @@ struct CodeTaskTests {
         #expect(tasks.jobs().first?.session == "s-42")
         let list = try await tasks.list([:])
         #expect(list["agents"] == ["first", "second"] && list["defaultAgent"] == "first")
+    }
+
+    func tasks(_ root: URL, _ repo: URL, agents: [TaskSettings.Agent], events: EventLog<String>) -> CodeTasks {
+        var settings = TaskSettings(
+            command: [], repos: ["shop": .init(name: "shop", path: repo, test: nil, protected: false)],
+            worktrees: root.appendingPathComponent("tasks"), writable: [], minutes: 1, sandbox: false,
+            openVSCode: false, promptURI: nil)
+        settings.agents = Dictionary(uniqueKeysWithValues: agents.map { ($0.name, $0) })
+        settings.defaultAgent = agents[0].name
+        let frozen = settings
+        return CodeTasks(settings: { frozen }, openVSCode: { _ in }, stepSpacing: 0,
+                         announce: { event, title, _, _ in events.add("\(event) | \(title)") })
+    }
+
+    func waitFor(_ condition: () -> Bool) async -> Bool {
+        for _ in 0..<500 {
+            if condition() { return true }
+            try? await Task.sleep(nanoseconds: 10_000_000)
+        }
+        return condition()
+    }
+
+    /// A stream-json agent hears the person while it works, and finishes once every
+    /// message has its answer.
+    @Test func steeringARunningTask() async throws {
+        let root = try temporaryFolder()
+        let repo = try await repository(in: root)
+        let agent = root.appendingPathComponent("listening.sh")
+        try script(agent, """
+            read first
+            echo '{"type":"system","subtype":"init","session_id":"s-7"}'
+            echo '{"type":"assistant","message":{"content":[{"type":"text","text":"Working"}]}}'
+            read second
+            echo "$second" > STEER.txt
+            echo '{"type":"result","result":"one","is_error":false}'
+            echo '{"type":"result","result":"two","is_error":false}'
+            read rest
+            echo ended > ENDED.txt
+
+            """)
+        let events = EventLog<String>()
+        let tasks = tasks(root, repo, agents: [.init(name: "live", command: [agent.path, "--input-format", "stream-json", "{prompt}"])], events: events)
+        let started = try await tasks.start(["repo": "shop", "instruction": "Fix the total"])
+        let id = try #require(started["id"]?.stringValue)
+        #expect(await waitFor { tasks.jobs().first?.progress.contains("Working") == true })
+        let told = try await tasks.say(["id": .string(id), "text": "pehle   tests likho"])
+        #expect(told["summary"]?.stringValue?.contains("“pehle tests likho”") == true)
+        #expect(await events.waitFor { $0.contains { $0.hasPrefix("task_done") } })
+        let worktree = URL(fileURLWithPath: try #require(started["worktree"]?.stringValue))
+        let heard = try String(contentsOf: worktree.appendingPathComponent("STEER.txt"), encoding: .utf8)
+        let message = try #require(JSONValue.parse(heard.trimmingCharacters(in: .whitespacesAndNewlines)))
+        #expect(message["type"] == "user" && message["message"]?["content"]?.arrayValue?.first?["text"] == "pehle tests likho")
+        #expect(FileManager.default.fileExists(atPath: worktree.appendingPathComponent("ENDED.txt").path))
+        let status = try await tasks.status(["id": .string(id)])
+        #expect(status["status"] == "done" && status["summary"]?.stringValue?.contains("done") == true)
+        #expect(tasks.jobs().first?.result == "two")
+        await #expect(throws: ToolFailure.self) { try await tasks.say(["id": .string(id), "text": "too late"]) }
+    }
+
+    /// A paused task keeps its session; resuming goes on from there with the person's words.
+    @Test func pausingAndResuming() async throws {
+        let root = try temporaryFolder()
+        let repo = try await repository(in: root)
+        let agent = root.appendingPathComponent("resumable.sh")
+        try script(agent, """
+            echo '{"type":"system","subtype":"init","session_id":"s-9"}'
+            case "$*" in *--resume*) echo "$*" > RESUMED.txt; echo '{"type":"result","result":"resumed"}'; exit 0;; esac
+            echo '{"type":"assistant","message":{"content":[{"type":"text","text":"Long work"}]}}'
+            sleep 30
+
+            """)
+        let plain = root.appendingPathComponent("plain.sh")
+        try script(plain, "echo '{\"type\":\"system\",\"session_id\":\"s-1\"}'\nsleep 30\n")
+        let events = EventLog<String>()
+        let tasks = tasks(root, repo, agents: [
+            .init(name: "main", command: [agent.path, "{prompt}"], resume: ["--resume", "{session}"]),
+            .init(name: "plain", command: [plain.path, "{prompt}"]),
+        ], events: events)
+
+        let started = try await tasks.start(["repo": "shop", "instruction": "Write the docs"])
+        let id = try #require(started["id"]?.stringValue)
+        #expect(await waitFor { tasks.jobs().first { $0.id == id }?.progress.contains("Long work") == true })
+        #expect(tasks.jobs().first { $0.id == id }?.session == "s-9")
+        // It does not read messages while it works.
+        await #expect(throws: ToolFailure.self) { try await tasks.say(["id": .string(id), "text": "hi"]) }
+        await #expect(throws: ToolFailure.self) { try await tasks.resume(["id": .string(id)]) }  // still running
+        let paused = try await tasks.pause(["id": .string(id)])
+        #expect(paused["summary"]?.stringValue?.hasPrefix("Paused task") == true)
+        try await Task.sleep(nanoseconds: 300_000_000)
+        #expect(tasks.jobs().first { $0.id == id }?.status == "paused")
+        #expect(!events.all.contains { $0.hasPrefix("task_failed") })  // a pause is not a failure
+
+        let resumed = try await tasks.resume(["id": .string(id), "text": "ab docs bhi"])
+        #expect(resumed["summary"]?.stringValue?.contains("goes on") == true)
+        #expect(await events.waitFor { $0.contains { $0.hasPrefix("task_done") } })
+        let worktree = URL(fileURLWithPath: try #require(started["worktree"]?.stringValue))
+        let args = try String(contentsOf: worktree.appendingPathComponent("RESUMED.txt"), encoding: .utf8)
+        #expect(args.trimmingCharacters(in: .whitespacesAndNewlines) == "ab docs bhi --resume s-9")
+        #expect(tasks.jobs().first { $0.id == id }?.result == "resumed")
+
+        // An agent that cannot continue later is never paused: that would lose its place.
+        let other = try await tasks.start(["repo": "shop", "instruction": "x", "agent": "plain"])
+        let otherID = try #require(other["id"]?.stringValue)
+        #expect(await waitFor { tasks.jobs().first { $0.id == otherID }?.session == "s-1" })
+        await #expect(throws: ToolFailure.self) { try await tasks.pause(["id": .string(otherID)]) }
+        _ = try await tasks.stop(["id": .string(otherID)])
+        #expect(await events.waitFor { $0.contains("task_failed | Task \(otherID) in shop stopped") })
+        await #expect(throws: ToolFailure.self) { try await tasks.resume(["id": .string(otherID)]) }
+    }
+
+    /// Resumed before the paused agent has quite ended: the old run must not fail the new one.
+    @Test func resumingRightAfterAPause() async throws {
+        let root = try temporaryFolder()
+        let repo = try await repository(in: root)
+        let agent = root.appendingPathComponent("resumable.sh")
+        try script(agent, """
+            echo '{"type":"system","subtype":"init","session_id":"s-5"}'
+            case "$*" in *--resume*) sleep 0.5; echo '{"type":"result","result":"resumed"}'; exit 0;; esac
+            sleep 30
+
+            """)
+        let events = EventLog<String>()
+        let tasks = tasks(root, repo, agents: [.init(name: "main", command: [agent.path, "{prompt}"], resume: ["--resume", "{session}"])], events: events)
+        let id = try #require(try await tasks.start(["repo": "shop", "instruction": "x"])["id"]?.stringValue)
+        #expect(await waitFor { tasks.jobs().first?.session == "s-5" })
+        _ = try await tasks.pause(["id": .string(id)])
+        _ = try await tasks.resume(["id": .string(id), "text": "go on"])
+        #expect(await events.waitFor { $0.contains { $0.hasPrefix("task_done") } })
+        #expect(!events.all.contains { $0.hasPrefix("task_failed") })
+        #expect(tasks.jobs().first?.status == "done" && tasks.jobs().first?.result == "resumed")
+        _ = try await tasks.stop(["id": .string(id)])  // nothing left running: says it had finished
+    }
+
+    @Test func stoppingAPausedTask() async throws {
+        let root = try temporaryFolder()
+        let repo = try await repository(in: root)
+        let agent = root.appendingPathComponent("resumable.sh")
+        try script(agent, "echo '{\"type\":\"system\",\"session_id\":\"s-3\"}'\nsleep 30\n")
+        let events = EventLog<String>()
+        let tasks = tasks(root, repo, agents: [.init(name: "main", command: [agent.path], resume: ["--resume", "{session}"])], events: events)
+        let id = try #require(try await tasks.start(["repo": "shop", "instruction": "x"])["id"]?.stringValue)
+        #expect(await waitFor { tasks.jobs().first?.session == "s-3" })
+        _ = try await tasks.pause(["id": .string(id)])
+        #expect(await waitFor { tasks.jobs().first?.status == "paused" })
+        let stopped = try await tasks.stop(["id": .string(id)])
+        #expect(stopped["summary"]?.stringValue?.contains("which was paused") == true)
+        #expect(tasks.jobs().first?.status == "stopped")
+    }
+
+    /// Stopping ends the agent and what it started at once, wherever Ira started it from (a
+    /// thread that blocks signals passed that on to the agent, and SIGTERM did nothing).
+    @Test func stopEndsTheAgentAtOnce() async throws {
+        let root = try temporaryFolder()
+        let agent = root.appendingPathComponent("sleepy.sh")
+        try script(agent, "echo started\nsleep 30\n")
+        for keepInput in [false, true] {
+            let command = try Command.start([agent.path], directory: root.path, keepInput: keepInput)
+            try await Task.sleep(nanoseconds: 200_000_000)
+            command.stop()
+            let since = Date()
+            let code = await command.wait()
+            #expect(code == 128 + SIGTERM)
+            #expect(Date().timeIntervalSince(since) < 3)
+        }
+    }
+
+    @Test func agentsThatReadMessagesAndTheirCommandLines() {
+        let live = TaskSettings.Agent(name: "a", command: ["agent", "-p", "--input-format", "stream-json", "{prompt}"], resume: ["--resume", "{session}"])
+        #expect(live.streamsInput && live.resumes)
+        #expect(CodeTasks.argv(live, prompt: "do it", session: nil) == ["agent", "-p", "--input-format", "stream-json"])
+        #expect(CodeTasks.argv(live, prompt: "go on", session: "s-1") == ["agent", "-p", "--input-format", "stream-json", "--resume", "s-1"])
+        let plain = TaskSettings.Agent(name: "b", command: ["agent", "-p", "{prompt}"])
+        #expect(!plain.streamsInput && !plain.resumes)
+        #expect(CodeTasks.argv(plain, prompt: "do it", session: "s-1") == ["agent", "-p", "do it"])
+        #expect(TaskSettings.Agent(name: "c", command: ["agent", "--input-format=stream-json"]).streamsInput)
+        let line = CodeTasks.message("hi")
+        #expect(line.hasSuffix("\n") && JSONValue.parse(line)?["message"]?["role"] == "user")
     }
 }
 

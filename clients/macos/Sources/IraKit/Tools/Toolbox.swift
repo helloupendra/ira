@@ -54,6 +54,9 @@ public struct Activity: Equatable, Identifiable, Sendable {
         case "code_task_status": return "Checked a coding task"
         case "code_task_stop": return "Stopped a coding task"
         case "code_task_push": return "Pushed a task's branch"
+        case "code_task_say": return "Told a coding task something"
+        case "code_task_pause": return "Paused a coding task"
+        case "code_task_resume": return "Went on with a coding task"
         case "ai_sessions": return "Checked the AI sessions"
         case "ai_session_detail": return "Read an AI session's steps"
         default: return tool
@@ -131,7 +134,7 @@ public final class Toolbox: ToolRunner, @unchecked Sendable {
         case "files_find", "ai_sessions", "ai_session_detail": return 12
         case "mac_type", "mac_keys", "mac_click", "mac_scroll", "mac_menu": return 20
         case "mail_search", "mail_draft", "notes_search", "notes_add", "messages_send",
-            "shortcuts_run", "code_task_start", "code_task_push", "browser_tabs", "browser_show_tab":
+            "shortcuts_run", "code_task_start", "code_task_push", "code_task_resume", "browser_tabs", "browser_show_tab":
             return 22
         default: return 10
         }
@@ -230,6 +233,9 @@ public final class Toolbox: ToolRunner, @unchecked Sendable {
                 content = args["id"] == nil ? try await tasks.list(args) : try await tasks.status(args)
             case "code_task_stop": content = try await tasks.stop(args)
             case "code_task_push": content = try await tasks.push(args)
+            case "code_task_say": content = try await tasks.say(args)
+            case "code_task_pause": content = try await tasks.pause(args)
+            case "code_task_resume": content = try await tasks.resume(args)
             case "ai_sessions": content = try await agents.list(args)
             case "ai_session_detail": content = try await agents.detail(args)
             default:
@@ -269,7 +275,7 @@ public final class Toolbox: ToolRunner, @unchecked Sendable {
         case "mac_menu": return (text("path") ?? "") + (text("app").map { " in \($0)" } ?? "")
         case "code_task_start": return text("repo") ?? ""
         case "code_task_status": return text("id") ?? "all tasks"
-        case "code_task_stop", "code_task_push": return text("id") ?? ""
+        case "code_task_stop", "code_task_push", "code_task_say", "code_task_pause", "code_task_resume": return text("id") ?? ""
         case "ai_sessions": return "last \(args["hours"]?.intValue ?? AISessions.defaultHours) hours"
         case "ai_session_detail": return text("id").map { String($0.prefix(8)) } ?? ""
         default: return ""
