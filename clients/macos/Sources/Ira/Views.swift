@@ -289,7 +289,7 @@ struct ChatView: View {
                     .frame(maxWidth: 560)
                 nowCards
                     .frame(maxWidth: 560)
-                Text("\(model.assistant) reads and acts only when you ask. Try “vo PDF kahan hai jo kal download kiya?”")
+                Text("Ask in your own words, in any language. Try “vo PDF kahan hai jo kal download kiya?”")
                     .font(.system(size: 12))
                     .foregroundStyle(Presence.faint)
                     .multilineTextAlignment(.center)
