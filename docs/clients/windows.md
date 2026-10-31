@@ -98,6 +98,7 @@ allow here.
 | browser | list the tabs in Chrome, Edge, Brave, Firefox, Vivaldi and Opera; bring one to the front | 0, 1 |
 | apps | open an app from the Start menu; open a web link | 1, 2 |
 | clipboard | read what you copied | 0 |
+| control | type, press keys, click a control by its label, scroll: in the window you are in or an app you name, each step after your PIN or within an approval it opened | 3 |
 
 Ira **cannot**:
 
@@ -117,7 +118,11 @@ Ira **cannot**:
 - open a terminal, PowerShell, the Command Prompt or Task Manager, a
   program, script or shortcut file, or a link that is not a plain
   `https://` or `http://` address;
-- read what a password manager copied and marked as private.
+- read what a password manager copied and marked as private;
+- type, press keys or click in a terminal, PowerShell, the Command Prompt,
+  Task Manager, a password manager or the sign-in or administrator prompt
+  (the PC checks the program itself, whatever your Ira asks); type into a
+  password field; or press the Windows key, which opens Run.
 
 What Ira reads goes to your own Ira server, marked as data that can never
 give Ira orders, and is kept only in that conversation.

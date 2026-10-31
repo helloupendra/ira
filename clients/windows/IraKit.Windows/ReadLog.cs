@@ -17,6 +17,10 @@ public sealed record ReadEntry(DateTimeOffset At, string Tool, string Target, bo
         "app_open" => "Opened an app",
         "url_open" => "Opened a web page",
         "clipboard_read" => "Read the clipboard",
+        "pc_type" => "Typed on your PC",
+        "pc_keys" => "Pressed keys",
+        "pc_click" => "Clicked",
+        "pc_scroll" => "Scrolled",
         _ => Tool,
     };
 
@@ -70,6 +74,11 @@ public sealed class ReadLog
                 ? Cut(text.Trim(), limit)
                 : null;
 
+        // The app it acted in: from the result (the program), else as the call named it.
+        string In() => (result?["app"] is JsonValue app && app.TryGetValue(out string? program) ? program : Text("app")) is { } where
+            ? $" in {where}"
+            : "";
+
         return tool switch
         {
             "files_find" => Search(args, Text),
@@ -78,6 +87,10 @@ public sealed class ReadLog
             "browser_tabs" => Text("browser") ?? "all browsers",
             "browser_show_tab" => Text("match") ?? Text("id") ?? "",
             "app_open" => Text("name") ?? "",
+            "pc_type" => $"{(args["text"] is JsonValue typed && typed.TryGetValue(out string? text) ? text.Length : 0)} characters" + In(),
+            "pc_keys" => (Text("keys") ?? "") + In(),
+            "pc_click" => (Text("label") is { } label ? $"“{label}”" : "") + In(),
+            "pc_scroll" => (Text("direction") ?? "") + In(),
             "url_open" => Text("url", 2000) is { } url && Uri.TryCreate(url.Contains("://") ? url : "https://" + url, UriKind.Absolute, out var uri)
                 ? uri.Host
                 : "",

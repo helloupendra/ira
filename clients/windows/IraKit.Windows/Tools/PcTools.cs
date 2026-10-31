@@ -2,7 +2,7 @@ namespace IraKit.Tools;
 
 /// <summary>
 /// Every tool this PC offers Ira, as the hello lists them. The names, parameters and tiers are
-/// the Mac's, so Ira treats both alike: files, screen, browser, apps and clipboard.
+/// the Mac's, so Ira treats both alike: files, screen, browser, apps, clipboard and control.
 /// </summary>
 public static class PcTools
 {
@@ -20,6 +20,7 @@ public static class PcTools
             new ScreenTools(targetWindow).Tool(),
             .. BrowserTools.Tools(),
             .. AppTools.Tools(apps.Get),
+            .. new ControlTools(targetWindow).Tools(),
         ]);
     }
 
