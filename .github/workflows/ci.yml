@@ -173,7 +173,14 @@ jobs:
         run: scripts/ci.sh kit
         timeout-minutes: 25
       - name: The app and its UI tests
-        run: scripts/ci.sh app
+        # Build errors and failed tests also as annotations, so they show on the run's page.
+        run: |
+          set -o pipefail
+          mkdir -p build
+          scripts/ci.sh app 2>&1 | tee build/app.log || {
+            grep -E "error:|' failed \(" build/app.log | head -10 | sed 's/^/::error::/'
+            exit 1
+          }
         timeout-minutes: 25
       - name: An unsigned Release build for the simulator
         run: scripts/ci.sh release
