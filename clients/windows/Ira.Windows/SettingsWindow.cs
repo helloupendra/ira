@@ -34,6 +34,8 @@ internal sealed class SettingsWindow : Window
     private readonly TextBlock _shortcutProblem = Note("");
     private readonly StackPanel _folders = new() { Spacing = 4 };
     private readonly StackPanel _skills = new() { Spacing = 4 };
+    private readonly StackPanel _hello = new() { Spacing = 8 };
+    private bool? _helloShown; // what the Hello section shows: null not paired, then off or on
     private readonly ListView _reads = new() { SelectionMode = ListViewSelectionMode.None };
     private readonly SelectorBarItem _readTab = new() { Text = "What I read" };
     private readonly SelectorBar _tabs = new();
@@ -111,6 +113,10 @@ internal sealed class SettingsWindow : Window
             addFolder,
             Heading("Starting"),
             startAtLogin,
+            Heading("Approving with Windows Hello"),
+            Note("Confirm what needs your PIN with your face, finger or Windows Hello PIN instead. Setting it up asks "
+                + "your Ira PIN once."),
+            _hello,
             Heading("What Ira may use on this PC"),
             Note("A skill works here only when it is on for this PC in Your devices on your Ira (with your PIN) and "
                 + "allowed here. Switch one off here and this PC refuses it, whatever your Ira asks."),
@@ -161,6 +167,7 @@ internal sealed class SettingsWindow : Window
             _folders.Children.Add(Row(new TextBlock { Text = folder, VerticalAlignment = VerticalAlignment.Center }, remove));
         }
 
+        RenderHello();
         _skills.Children.Clear();
         if (_controller.Settings is not { } paired)
         {
@@ -178,6 +185,65 @@ internal sealed class SettingsWindow : Window
             toggle.Toggled += (_, _) => _controller.SetAllowed(skill, toggle.IsOn);
             _skills.Children.Add(toggle);
         }
+    }
+
+    /// <summary>Built again only when it changes, so a PIN being typed is not wiped by a reconnect.</summary>
+    private void RenderHello()
+    {
+        var state = _controller.Settings?.HelloApprovals;
+        if (_hello.Children.Count > 0 && state == _helloShown) return;
+        _helloShown = state;
+        _hello.Children.Clear();
+        if (state is null)
+        {
+            _hello.Children.Add(Note("Pair this PC with your Ira first."));
+            return;
+        }
+        if (state == true)
+        {
+            var off = new Button { Content = "Turn off" };
+            off.Click += async (_, _) =>
+            {
+                await HelloKey.DeleteAsync();
+                _controller.SetHello(false);
+            };
+            _hello.Children.Add(Row(new TextBlock { Text = "On for this PC.", VerticalAlignment = VerticalAlignment.Center }, off));
+            return;
+        }
+        var pin = new PasswordBox { PlaceholderText = "Your Ira PIN", Width = 160, MaxLength = 12 };
+        var setUp = new Button { Content = "Set up Windows Hello" };
+        var problem = Note("");
+        setUp.Click += async (_, _) =>
+        {
+            setUp.IsEnabled = false;
+            try
+            {
+                if (pin.Password.Length == 0) problem.Text = "Type your Ira PIN first.";
+                else if (!await HelloKey.IsSupportedAsync())
+                    problem.Text = "Windows Hello is not set up on this PC: set it up in Windows Settings, Accounts, Sign-in options.";
+                else if (_controller.Ask is { } ask)
+                {
+                    var publicKey = await HelloKey.CreateAsync();
+                    await ask.EnrolHelloAsync(publicKey, pin.Password);
+                    _controller.SetHello(true);
+                }
+            }
+            catch (DeviceRevokedError error)
+            {
+                _controller.Unpair(error.Message);
+            }
+            catch (IraError error)
+            {
+                problem.Text = error.Message;
+            }
+            finally
+            {
+                pin.Password = "";
+                setUp.IsEnabled = true;
+            }
+        };
+        _hello.Children.Add(Row(pin, setUp));
+        _hello.Children.Add(problem);
     }
 
     // --- what I read -----------------------------------------------------------------

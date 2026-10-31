@@ -17,6 +17,9 @@ public sealed record DeviceSettings
     public string Websocket { get; init; } = "/v1/devices/ws";
     public IReadOnlyList<string> AllowedSkills { get; init; } = [];
 
+    /// <summary>A Tier 3 action can be confirmed here with Windows Hello (its key is enrolled).</summary>
+    public bool HelloApprovals { get; init; }
+
     public static string DefaultPath => Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Ira", "device.json");
 
