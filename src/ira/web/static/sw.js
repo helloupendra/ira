@@ -3,7 +3,7 @@
 // audio and actions must always come from the server, never from a cache.
 // It also takes what is shared to the installed app (Share → Ira) for Drop.
 
-const CACHE = "ira-shell-v24";
+const CACHE = "ira-shell-v25";
 const SHARE = "ira-share";
 const SHELL = [
   "/",
@@ -20,7 +20,8 @@ const SHELL = [
 ];
 
 self.addEventListener("install", (event) => {
-  event.waitUntil(caches.open(CACHE).then((cache) => cache.addAll(SHELL)));
+  const fresh = SHELL.map((path) => new Request(path, { cache: "reload" }));
+  event.waitUntil(caches.open(CACHE).then((cache) => cache.addAll(fresh)));
   self.skipWaiting();
 });
 
@@ -63,8 +64,11 @@ self.addEventListener("fetch", (event) => {
   if (event.request.method !== "GET" || url.origin !== self.location.origin) return;
   if (url.pathname.startsWith("/v1/") || url.pathname.startsWith("/admin")) return;
   // Network first, so a new version shows up at once; the cache is the offline fallback.
+  // Cloudflare tells browsers to keep a file four hours whatever the server says, so
+  // "no-cache" makes the browser ask the server (a page load already does).
+  const request = event.request.mode === "navigate" ? event.request : new Request(event.request, { cache: "no-cache" });
   event.respondWith(
-    fetch(event.request)
+    fetch(request)
       .then((response) => {
         if (response.ok && SHELL.includes(url.pathname)) {
           const copy = response.clone();

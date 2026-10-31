@@ -184,8 +184,10 @@ switch it on.
   folder or contact with at most three forms of the name, then says so.
 - **A deploy shows at once.** The web app's files say `no-cache`, so a browser or
   Cloudflare asks the server before using a copy; sent with no rule, Cloudflare
-  kept the old script and styles for four hours beside a new page. The
-  console's built assets, named by their content, are kept for a year.
+  kept the old script and styles for four hours beside a new page. Cloudflare
+  still tells browsers to keep a file four hours, so the service worker asks
+  the server before using one. The console's built assets, named by their
+  content, are kept for a year.
 - **Ira on iPhone.** The web app installs to the Home Screen and its live
   call works in Safari: sound starts on the tap, the silent switch does not
   mute a call, and the screen stays on. "Hey Siri, Ask Ira" is a Shortcut
