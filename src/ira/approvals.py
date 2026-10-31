@@ -182,7 +182,7 @@ class Approvals:
         """The open window for this person on this device; it ends when the device is gone."""
         row = self.store.one(
             "SELECT * FROM approval_windows WHERE user_id = ? AND device_id = ? "
-            "AND closed_at IS NULL AND expires_at > ? ORDER BY opened_at DESC LIMIT 1",
+            "AND closed_at IS NULL AND expires_at > ? ORDER BY opened_at DESC, rowid DESC LIMIT 1",
             (user_id, device_id, self.clock()),
         )
         if row is None:

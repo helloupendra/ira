@@ -179,6 +179,24 @@ async def test_only_the_asker_may_approve_and_tier_three_needs_the_pin(tiered, l
     assert ledger.refunds == []
 
 
+async def test_a_yes_goes_to_the_newest_proposal_even_on_a_coarse_clock(tiered, ledger):
+    provider = ScriptedProvider(
+        [
+            call("send_invoice", {"order_id": "A1"}),
+            "Send?",
+            call("refund", {"order_id": "A1", "amount": 5}),
+            "PIN?",
+        ]
+    )
+    runtime = make_runtime(provider=provider, registry=tiered)
+    runtime.guard.clock = lambda: 1000.0  # Windows' clock moves in steps: both share a time
+    user = owner(runtime)
+    await runtime.assistant.ask("invoice", conversation_id="t", user_id=user.id)
+    second = await runtime.assistant.ask("refund", conversation_id="t", user_id=user.id)
+    assert runtime.guard.latest_pending("t").id == second.action.id
+    assert runtime.guard.awaiting_yes("t", user.id) is None  # the newest needs the PIN
+
+
 # --- untrusted content cannot start Tier 2 or 3 ------------------------------------
 
 

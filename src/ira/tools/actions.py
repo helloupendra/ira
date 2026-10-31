@@ -479,10 +479,12 @@ class ActionGuard:
         return pending.status == "expired"
 
     def latest_pending(self, conversation_id: str) -> PendingAction | None:
-        """The newest still-valid proposal in a conversation (used by chat channels)."""
+        """The newest still-valid proposal in a conversation (used by chat channels). rowid
+        breaks ties: on Windows the clock moves in steps, so two proposals can share a time,
+        and a "yes" must never go to the older one."""
         row = self.store.one(
             "SELECT * FROM pending_actions WHERE conversation_id = ? AND status = 'pending' "
-            "AND expires_at > ? ORDER BY created_at DESC LIMIT 1",
+            "AND expires_at > ? ORDER BY created_at DESC, rowid DESC LIMIT 1",
             (conversation_id, self.clock()),
         )
         return _row_to_action(row) if row else None
