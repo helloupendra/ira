@@ -66,6 +66,9 @@ struct Lens: View {
     /// The voice level, 0 to about 0.1 (the microphone's RMS); the bars follow it.
     var level: Float = 0
     var breathing = false
+    /// While listening: a pulse every 1.2 s and a ring that spreads and fades, even in
+    /// silence, so the person always sees Ira is on. A slow fade instead with Reduce Motion.
+    var heartbeat = false
     /// Hairline rings around it: one at rest, two while listening, none as an avatar.
     var rings = 0
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -74,11 +77,24 @@ struct Lens: View {
     private static let bars: [CGFloat] = [0.17, 0.33, 0.42, 0.25]
 
     var body: some View {
-        TimelineView(.animation(minimumInterval: 1.0 / 30, paused: !breathing && level <= 0)) { context in
+        TimelineView(.animation(minimumInterval: 1.0 / 30, paused: !breathing && !heartbeat && level <= 0)) { context in
             let t = context.date.timeIntervalSinceReferenceDate
-            // Scale 1 to 1.02 and back over 4 seconds; still when the person prefers less motion.
-            let breathe = breathing && !reduceMotion ? 1 + 0.01 * (1 - cos(t * .pi / 2)) : 1
+            // Where in the 1.2 s beat: 0 at rest, 1 at its fullest.
+            let beat = Lens.beat(t)
+            // Scale 1 to 1.02 and back over 4 seconds, or 1 to 1.04 with each beat; still when
+            // the person prefers less motion.
+            let breathe =
+                reduceMotion ? 1
+                : heartbeat ? 1 + 0.04 * beat
+                : breathing ? 1 + 0.01 * (1 - cos(t * .pi / 2)) : 1
             ZStack {
+                if heartbeat && !reduceMotion {
+                    // The ring each beat sends out: from the sphere's edge to half again, fading.
+                    let spread = Lens.spread(t)
+                    Circle()
+                        .stroke(Presence.green.opacity(0.45 * (1 - spread)), lineWidth: 1.5)
+                        .frame(width: size * (1 + 0.5 * spread), height: size * (1 + 0.5 * spread))
+                }
                 ForEach(0..<rings, id: \.self) { ring in
                     Circle()
                         .stroke(Presence.line, lineWidth: 1)
@@ -96,9 +112,20 @@ struct Lens: View {
                 }
             }
             .scaleEffect(breathe)
+            .opacity(heartbeat && reduceMotion ? 1 - 0.25 * beat : 1)
         }
         .frame(width: size + CGFloat(rings) * size * 0.22, height: size + CGFloat(rings) * size * 0.22)
         .accessibilityHidden(true)
+    }
+
+    /// The beat, every 1.2 s: 0 at rest, up to 1 and back, smoothly.
+    static func beat(_ t: TimeInterval) -> CGFloat {
+        CGFloat(0.5 - 0.5 * cos(2 * .pi * t / 1.2))
+    }
+
+    /// How far the beat's ring has spread, 0 to 1, starting again every 1.2 s.
+    static func spread(_ t: TimeInterval) -> CGFloat {
+        CGFloat(t.truncatingRemainder(dividingBy: 1.2) / 1.2)
     }
 
     private var sphere: some View {

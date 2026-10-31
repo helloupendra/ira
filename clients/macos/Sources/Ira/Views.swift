@@ -501,7 +501,7 @@ struct ListeningView: View {
                 colors: [Color(hex: 0x1F6F5C, opacity: scheme == .dark ? 0.22 : 0.12), .clear],
                 center: .center, startRadius: 0, endRadius: 440)
             VStack(spacing: 22) {
-                Lens(size: 168, level: conversation.level, breathing: true, rings: 2)
+                Lens(size: 168, level: conversation.level, heartbeat: true, rings: 2)
                 Text(label)
                     .font(Presence.label)
                     .tracking(1.6)
@@ -544,6 +544,9 @@ struct ListeningView: View {
                 .font(Presence.serif(26))
                 .foregroundStyle(Presence.ink)
                 .multilineTextAlignment(.center)
+        } else if conversation.micSilent {
+            // In place of "Speak now" or Ira's answer, so the stack never outgrows the window.
+            silentMic
         } else if [.thinking, .speaking].contains(conversation.mode),
             let answer = conversation.entries.last(where: { $0.role == .ira })?.text, !answer.isEmpty
         {
@@ -557,6 +560,21 @@ struct ListeningView: View {
                 .font(Presence.serif(26))
                 .foregroundStyle(Presence.faint)
         }
+    }
+
+    /// The microphone gave nothing for 3 s: say so, and where to look.
+    private var silentMic: some View {
+        VStack(spacing: 10) {
+            Text(
+                "Ira hears nothing from your microphone. Check System Settings → Privacy & Security → Microphone, or the input device (\(conversation.micName))."
+            )
+            .font(Presence.secondary)
+            .foregroundStyle(Presence.warn)
+            .multilineTextAlignment(.center)
+            Button("Open Microphone Settings") { PermissionCenter.openPane("Privacy_Microphone") }
+                .buttonStyle(PillButtonStyle())
+        }
+        .frame(maxWidth: 520)
     }
 
     private func cancel() {

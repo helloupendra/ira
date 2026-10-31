@@ -1,4 +1,5 @@
 import AVFoundation
+import CoreAudio
 import Foundation
 import IraKit
 
@@ -52,6 +53,24 @@ final class AudioIO: NSObject {
 
     nonisolated static func askMicPermission() async -> Bool {
         await AVCaptureDevice.requestAccess(for: .audio)
+    }
+
+    /// The input the engine listens to: the Mac's default input, named as Sound settings names it.
+    nonisolated static var inputName: String {
+        var device = AudioObjectID(kAudioObjectUnknown)
+        var size = UInt32(MemoryLayout<AudioObjectID>.size)
+        var address = AudioObjectPropertyAddress(
+            mSelector: kAudioHardwarePropertyDefaultInputDevice, mScope: kAudioObjectPropertyScopeGlobal,
+            mElement: kAudioObjectPropertyElementMain)
+        guard AudioObjectGetPropertyData(AudioObjectID(kAudioObjectSystemObject), &address, 0, nil, &size, &device) == noErr,
+            device != kAudioObjectUnknown
+        else { return "no input device" }
+        var name: Unmanaged<CFString>?
+        size = UInt32(MemoryLayout<Unmanaged<CFString>?>.size)
+        address.mSelector = kAudioObjectPropertyName
+        let status = withUnsafeMutablePointer(to: &name) { AudioObjectGetPropertyData(device, &address, 0, nil, &size, $0) }
+        guard status == noErr, let name else { return "the default input" }
+        return name.takeRetainedValue() as String
     }
 
     // MARK: Listening

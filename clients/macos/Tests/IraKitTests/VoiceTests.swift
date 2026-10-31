@@ -108,6 +108,68 @@ struct VADTests {
     }
 }
 
+@Suite("Silent microphone")
+struct MicSilenceTests {
+    /// Feed frames from `from` ms; the times at which `check` said the input is silent.
+    static func run(_ silence: inout MicSilence, _ frames: [[Float]], from: Double = 0) -> [Double] {
+        var told: [Double] = []
+        for (index, frame) in frames.enumerated() {
+            let at = from + Double(index) * 20
+            silence.feed(frame)
+            if silence.check(at: at + 20) { told.append(at + 20) }
+        }
+        return told
+    }
+
+    @Test func zerosForThreeSecondsAreSaidOnce() {
+        var silence = MicSilence()
+        silence.start(at: 0)
+        let told = MicSilenceTests.run(&silence, Array(repeating: Synth.silence(), count: 250))
+        #expect(told == [3000])
+        #expect(silence.silent)
+    }
+
+    @Test func noFramesAtAllIsSilentToo() {
+        var silence = MicSilence()
+        silence.start(at: 1000)
+        let told = [3990, 4000, 5000].map { silence.check(at: $0) }
+        #expect(told == [false, true, false])
+    }
+
+    @Test func aQuietRoomIsNotSilent() {
+        var silence = MicSilence()
+        var seed: UInt64 = 7
+        silence.start(at: 0)
+        let room = (0..<250).map { _ in Synth.noise(0.0005, seed: &seed) }
+        let told = MicSilenceTests.run(&silence, room)
+        #expect(told.isEmpty)
+        #expect(!silence.silent)
+    }
+
+    @Test func soundAfterTheWarningClearsItAndANewListenWatchesAgain() {
+        var silence = MicSilence()
+        silence.start(at: 0)
+        let first = MicSilenceTests.run(&silence, Array(repeating: Synth.silence(), count: 160))
+        #expect(first == [3000])
+        silence.feed(Synth.tone(0.1))
+        #expect(!silence.silent)
+        let again = silence.check(at: 9000)
+        silence.start(at: 10_000)
+        let nextListen = silence.check(at: 13_000)
+        silence.reset()
+        let afterStop = silence.check(at: 20_000)
+        #expect([again, nextListen, afterStop] == [false, true, false])
+        #expect(!silence.silent)
+    }
+
+    @Test func nothingIsWatchedBeforeListening() {
+        var silence = MicSilence()
+        silence.feed(Synth.silence())
+        let told = silence.check(at: 60_000)
+        #expect(!told)
+    }
+}
+
 @Suite("Streamed answers")
 struct StreamingTests {
     @Test func sentencesCompleteAsTheyArrive() {

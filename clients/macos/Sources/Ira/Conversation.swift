@@ -38,6 +38,10 @@ final class Conversation: ObservableObject {
     @Published var mode: Mode = .idle
     @Published var listening = false
     @Published var level: Float = 0
+    /// Listening has run 3 s and the microphone gave nothing: macOS may have silenced it.
+    @Published var micSilent = false
+    /// The input Ira listens to, for that warning.
+    @Published var micName = ""
     @Published var notice: String?
     @Published var transportKind: String?
     /// What this Mac's key may do for its person (from /v1/info): ask, voice, actions.
@@ -77,6 +81,8 @@ final class Conversation: ObservableObject {
     private var interruptedTurn = 0
     private var lastActivity = Date()
     private var idleTimer: Timer?
+    private var silence = MicSilence()
+    private var silenceWatch: Task<Void, Never>?
     /// Called when listening stops, so "Hey Ira" can listen again.
     var onListeningEnded: (() -> Void)?
     /// Called after an action was confirmed here: it may have opened an approval window.
@@ -304,6 +310,7 @@ final class Conversation: ObservableObject {
             notice = nil
             lastActivity = Date()
             startIdleTimer()
+            watchSilence()
         }
     }
 
@@ -316,6 +323,9 @@ final class Conversation: ObservableObject {
         level = 0
         caption = ""
         idleTimer?.invalidate()
+        silenceWatch?.cancel()
+        silence.reset()
+        micSilent = false
         if mode == .listening || mode == .hearing { mode = .idle }
         onListeningEnded?()
     }
@@ -343,7 +353,31 @@ final class Conversation: ObservableObject {
         }
     }
 
+    /// A microphone that gives nothing is said within 3 s, frames or not.
+    private func watchSilence() {
+        silence.start(at: monotonicMs())
+        micSilent = false
+        silenceWatch?.cancel()
+        silenceWatch = Task { [weak self] in
+            try? await Task.sleep(nanoseconds: 3_100_000_000)
+            guard let self, !Task.isCancelled, self.listening else { return }
+            self.checkSilence(at: monotonicMs())
+        }
+    }
+
+    private func checkSilence(at time: Double) {
+        if silence.check(at: time) {
+            micName = AudioIO.inputName
+            micSilent = true
+            IraLog.shared.warning("mic silent for 3 s: \(micName)")
+        } else if micSilent, !silence.silent {
+            micSilent = false
+        }
+    }
+
     private func frame(_ samples: [Float], at: Double) {
+        silence.feed(samples)
+        checkSilence(at: at + 20)
         vad.replying = audio.playing
         for output in vad.process(samples, at: at) {
             switch output {

@@ -46,8 +46,17 @@ enum Snapshot {
             wait(1)
             save(main.window, to: folder.appendingPathComponent("listening-\(dark ? "dark" : "light").png"))
         }
-        model.conversation.listening = false
+        // Listening to a microphone that gives nothing.
         model.conversation.caption = ""
+        model.conversation.micName = AudioIO.inputName
+        model.conversation.micSilent = true
+        for dark in [false, true] {
+            main.window.appearance = NSAppearance(named: dark ? .darkAqua : .aqua)
+            wait(1)
+            save(main.window, to: folder.appendingPathComponent("listening-silent-\(dark ? "dark" : "light").png"))
+        }
+        model.conversation.micSilent = false
+        model.conversation.listening = false
         // A new conversation: what an empty Chat says.
         model.conversation.clear()
         main.state.selection = .pane(.chat)
