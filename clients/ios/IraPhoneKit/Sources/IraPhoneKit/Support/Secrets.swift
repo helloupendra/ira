@@ -29,6 +29,9 @@ extension SecretStore {
 public enum SecretAccount {
     /// This iPhone's device token (`irad_...`), from pairing.
     public static let device = "device"
+    /// The address of the Ira it is paired with, kept beside the token for the share
+    /// extension, which cannot read the app's settings. Not a secret.
+    public static let server = "server"
 }
 
 public struct SecretError: LocalizedError {
@@ -42,9 +45,17 @@ public struct SecretError: LocalizedError {
 /// request can still use it while the phone is locked.
 public struct KeychainStore: SecretStore {
     public let service: String
+    /// The Keychain group the app shares with its share extension; nil: the app's own.
+    public let accessGroup: String?
 
-    public init(service: String = IraPhone.bundleID) {
+    public init(service: String = IraPhone.bundleID, accessGroup: String? = nil) {
         self.service = service
+        self.accessGroup = accessGroup
+    }
+
+    /// The group this app or extension names in its Info.plist (`IraKeychainGroup`).
+    public static var sharedGroup: String? {
+        (Bundle.main.object(forInfoDictionaryKey: "IraKeychainGroup") as? String).flatMap { $0.isEmpty ? nil : $0 }
     }
 
     /// The protection every item gets.
@@ -66,6 +77,7 @@ public struct KeychainStore: SecretStore {
         add[kSecAttrAccessible as String] = KeychainStore.accessible
         add[kSecAttrSynchronizable as String] = kCFBooleanFalse
         add[kSecAttrLabel as String] = "Ira for iPhone (\(account))"
+        if let accessGroup { add[kSecAttrAccessGroup as String] = accessGroup }
         return add
     }
 
@@ -98,6 +110,12 @@ public struct KeychainStore: SecretStore {
         var status = SecItemUpdate(query(account) as CFDictionary, update as CFDictionary)
         if status == errSecItemNotFound {
             status = SecItemAdd(addQuery(account, data: data) as CFDictionary, nil)
+            if status == errSecMissingEntitlement, accessGroup != nil {
+                // A build without the shared group (unsigned, say): the app's own group still works.
+                var own = addQuery(account, data: data)
+                own.removeValue(forKey: kSecAttrAccessGroup as String)
+                status = SecItemAdd(own as CFDictionary, nil)
+            }
         }
         guard status == errSecSuccess else {
             throw SecretError(message: "the Keychain did not keep it (error \(status))")
@@ -108,6 +126,16 @@ public struct KeychainStore: SecretStore {
     public func delete(_ account: String) -> Bool {
         let status = SecItemDelete(query(account) as CFDictionary)
         return status == errSecSuccess || status == errSecItemNotFound
+    }
+
+    /// A copy of [account] in the shared group when it is only in the app's own (a pairing made
+    /// before the share extension existed), so the extension can read it. Nothing is removed.
+    public func share(_ account: String) {
+        guard let accessGroup, case .found(let value) = read(account) else { return }
+        var inGroup = query(account)
+        inGroup[kSecAttrAccessGroup as String] = accessGroup
+        guard SecItemCopyMatching(inGroup as CFDictionary, nil) == errSecItemNotFound else { return }
+        SecItemAdd(addQuery(account, data: Data(value.utf8)) as CFDictionary, nil)
     }
 }
 
@@ -189,6 +217,7 @@ public struct PairingRecord: Sendable {
             throw SecretError(message: "the server's answer did not hold a device token")
         }
         try secrets.save(paired.token, account: SecretAccount.device)
+        try? secrets.save(paired.server, account: SecretAccount.server)  // for the share extension
         settings.server = paired.server
         settings.deviceID = paired.deviceID
         settings.deviceLabel = paired.label
@@ -198,7 +227,21 @@ public struct PairingRecord: Sendable {
     /// The person chose "Remove this iPhone from Ira": forget the key and the server.
     public func removeOnPurpose() {
         secrets.delete(SecretAccount.device)
+        secrets.delete(SecretAccount.server)
         settings.forgetPairing()
+    }
+
+    /// Let the share extension reach this pairing: the server's address beside the key, and
+    /// both in the group the app shares with it (for a pairing made before it existed).
+    public func shareWithExtension() {
+        guard status == .paired else { return }
+        if secrets.load(SecretAccount.server) != settings.server {
+            try? secrets.save(settings.server, account: SecretAccount.server)
+        }
+        if let keychain = secrets as? KeychainStore {
+            keychain.share(SecretAccount.device)
+            keychain.share(SecretAccount.server)
+        }
     }
 
     /// The sentence the app shows for an unreadable key.
