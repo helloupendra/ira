@@ -29,7 +29,7 @@ from typing import Any
 from pydantic import ValidationError
 
 from ira import toollog
-from ira.approvals import never_app
+from ira.approvals import never_app, open_refusal
 from ira.conversations import Conversations
 from ira.models.base import ChatResponse, Message, StreamDone, TextDelta, ToolCall
 from ira.models.gateway import Gateway, GatewayError
@@ -936,6 +936,12 @@ class Assistant:
         if tainted and extra.skill == "drop" and extra.tier >= 1:
             # Text others wrote must not be sent on to the person's devices unasked.
             run = _failed(REFUSED_DROP, safe_call)
+            run.outcome = "refused"
+            return run
+        refusal = open_refusal(extra.name, arguments) if extra.source == "device" else None
+        if refusal is not None:
+            # Terminal and the like, or a file that runs something: never, whatever was asked.
+            run = _failed(refusal, safe_call)
             run.outcome = "refused"
             return run
         if tainted and extra.skill == "memory":

@@ -299,7 +299,8 @@ Ira **cannot**:
 - read outside your home folder, unless you add a folder (a drive, say) in
   **Settings → Folders**. You can also narrow Ira to a few folders there;
 - open scripts, installers, programs or web links: these could run
-  something;
+  something; nor open or act in Terminal, Script Editor, Automator,
+  Shortcuts or the like, where whatever is typed runs as a command;
 - see the screen at all unless the **Screen** skill is on and you allowed
   Screen Recording;
 - type, press keys or click in any app unless the **control** skill is on,

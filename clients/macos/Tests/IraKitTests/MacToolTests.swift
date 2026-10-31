@@ -750,6 +750,16 @@ struct ControlTests {
         #expect(MacControl.refusal(bundleID: "com.apple.systempreferences", app: "System Settings", window: nil) != nil)
         #expect(MacControl.refusal(bundleID: "com.apple.systempreferences", app: "System Settings", window: "Appearance") == nil)
         #expect(MacControl.refusal(bundleID: "com.apple.Safari", app: "Safari", window: "YouTube") == nil)
+        // Whatever is typed there runs as a command, whatever the server says.
+        for (id, app) in [("com.apple.Terminal", "Terminal"), ("com.apple.shortcuts", "Shortcuts"),
+                          ("com.apple.ScriptEditor2", "Script Editor"), ("com.github.wez.wezterm", "WezTerm")] {
+            #expect(MacControl.refusal(bundleID: id, app: app, window: nil) == NeverApps.refusal, "\(app)")
+        }
+        #expect(!NeverApps.contains(bundleID: "com.apple.Notes", name: "Notes"))
+        let policy = PathPolicy(home: FileManager.default.homeDirectoryForCurrentUser)
+        #expect(Toolbox.openRefusal("/System/Applications/Utilities/Terminal.app", policy: policy) == NeverApps.refusal)
+        #expect(Toolbox.openRefusal("/System/Applications/Shortcuts.app", policy: policy) == NeverApps.refusal)
+        #expect(Toolbox.openRefusal("/System/Applications/Notes.app", policy: policy) == nil)
         #expect(MacControl.isSecure(role: "AXTextField", subrole: "AXSecureTextField"))
         #expect(MacControl.isSecure(role: "AXSecureTextField", subrole: nil))
         #expect(!MacControl.isSecure(role: "AXTextField", subrole: "AXSearchField"))

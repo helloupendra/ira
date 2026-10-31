@@ -53,6 +53,9 @@ public enum AppTools {
         }
         guard let url else { throw ToolFailure("no app called \(wanted) is installed on this Mac") }
         let name = url.deletingPathExtension().lastPathComponent
+        if NeverApps.contains(bundleID: Bundle(url: url)?.bundleIdentifier, name: name) {
+            throw ToolFailure(NeverApps.refusal)
+        }
         do {
             _ = try await NSWorkspace.shared.openApplication(at: url, configuration: NSWorkspace.OpenConfiguration())
         } catch {

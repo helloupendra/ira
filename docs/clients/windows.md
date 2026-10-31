@@ -90,8 +90,9 @@ Ira **cannot**:
   even if you ask; links and junctions are followed first, and network
   paths, device paths and alternate data streams are refused;
 - read outside your user folder;
-- open a terminal, PowerShell or the Command Prompt, or a link that is not
-  a plain `https://` or `http://` address;
+- open a terminal, PowerShell, the Command Prompt or Task Manager, a
+  program, script or shortcut file, or a link that is not a plain
+  `https://` or `http://` address;
 - read what a password manager copied and marked as private.
 
 What Ira reads goes to your own Ira server, marked as data that can never

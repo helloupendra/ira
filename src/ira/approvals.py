@@ -29,18 +29,63 @@ MINUTES_CHOICES = (0, 5, 10, 15, 20, 30, 45, 60)
 # Apps Ira never acts in, by name or bundle id: whatever is typed there runs as a command.
 NEVER_APPS = (
     "terminal", "iterm", "script editor", "scripteditor", "automator", "termux",
-    # Windows: its shells, and the tools that change the system itself.
+    # Shortcuts can be given a "Run Shell Script" step by typing and clicking.
+    "shortcuts",
+    # Windows: its shells, the tools that change the system itself, and Task Manager, whose
+    # "Run new task" runs a command.
     "powershell", "command prompt", "registry editor", "regedit", "windows subsystem for linux",
+    "task manager", "taskmgr",
 )  # fmt: skip
 NEVER_IDS = frozenset(
     {"com.apple.terminal", "com.googlecode.iterm2", "com.apple.scripteditor2",
      "com.apple.automator", "dev.warp.warp-stable", "com.mitchellh.ghostty",
-     "net.kovidgoyal.kitty", "org.alacritty", "com.termux",
+     "net.kovidgoyal.kitty", "org.alacritty", "com.termux", "com.apple.shortcuts",
+     "com.github.wez.wezterm", "co.zeit.hyper", "org.tabby",
      # Windows programs, as Ira for Windows names the app in front (its program file).
      "cmd", "cmd.exe", "powershell.exe", "pwsh", "pwsh.exe", "wt", "wt.exe",
      "windowsterminal.exe", "openconsole.exe", "conhost.exe", "wsl", "wsl.exe", "bash.exe",
-     "regedit.exe", "mmc.exe", "microsoft.windowsterminal_8wekyb3d8bbwe!app"}
+     "regedit.exe", "mmc.exe", "microsoft.windowsterminal_8wekyb3d8bbwe!app",
+     "taskmgr.exe", "wscript.exe", "cscript.exe", "mshta.exe"}
 )  # fmt: skip
+
+# Files that run something when opened, on a Mac or a PC: file_open never opens them, and an
+# app on the never list is not opened as a file either (Terminal.app).
+RUNNABLE = frozenset(
+    {"command", "tool", "terminal", "sh", "zsh", "bash", "csh", "fish", "workflow", "action",
+     "scpt", "scptd", "applescript", "osascript", "pkg", "mpkg", "shortcut", "webloc", "inetloc",
+     "fileloc", "mobileconfig", "jar", "py", "pyw", "rb", "pl", "js", "jse", "vbs", "vbe", "wsf",
+     "wsh", "hta", "exe", "com", "bat", "cmd", "ps1", "psm1", "msi", "msc", "cpl", "scr", "pif",
+     "lnk", "url", "reg", "inf", "appref-ms", "settingcontent-ms", "library-ms", "search-ms"}
+)  # fmt: skip
+
+NEVER_OPEN_REFUSAL = (
+    "refused: Ira never opens Terminal, PowerShell, Task Manager, Shortcuts or the like, nor a "
+    "file that runs something when opened. Tell the person to do it themselves."
+)
+
+
+URL_REFUSAL = "refused: Ira opens only web addresses (https://...), never a file or an app's link."
+
+
+def open_refusal(tool: str, arguments: dict[str, object]) -> str | None:
+    """Why a device must not open this, or None. The devices refuse these too; this is the
+    server's own check, so an older app or a server-side mistake cannot get round them."""
+    if tool == "app_open":
+        named = [arguments.get(key) for key in ("name", "package", "app")]
+        if any(isinstance(value, str) and never_app(value) for value in named):
+            return NEVER_OPEN_REFUSAL
+    if tool == "file_open" and isinstance(arguments.get("path"), str):
+        # Windows drops trailing dots and spaces, so "run.bat. " opens as run.bat.
+        name = str(arguments["path"]).replace("\\", "/").rstrip("/").rsplit("/", 1)[-1].rstrip(". ")
+        stem, dot, extension = name.rpartition(".")
+        extension = extension.lower() if dot else ""
+        if extension in RUNNABLE or (extension == "app" and never_app(stem)):
+            return NEVER_OPEN_REFUSAL
+    if tool == "url_open" and isinstance(arguments.get("url"), str):
+        address = str(arguments["url"]).strip()
+        if "://" in address and address.split("://", 1)[0].lower() not in ("http", "https"):
+            return URL_REFUSAL
+    return None
 
 
 def never_app(app: str | None) -> bool:

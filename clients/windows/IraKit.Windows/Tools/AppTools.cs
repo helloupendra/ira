@@ -22,6 +22,8 @@ internal static class AppTools
         "windows subsystem for linux", "wsl", "bash", "git bash", "ubuntu", "debian", "kali",
         "opensuse", "fedora", "alpine", "developer command", "native tools command", "mmc.exe",
         "openconsole", "conhost", "pwsh",
+        // Task Manager's "Run new task" runs a command; the script hosts run scripts.
+        "task manager", "taskmgr", "wscript", "cscript", "mshta",
     ];
 
     public static IEnumerable<DeviceTool> Tools(Func<IReadOnlyList<App>> apps) =>

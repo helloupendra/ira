@@ -459,6 +459,9 @@ public final class Toolbox: ToolRunner, @unchecked Sendable {
         let real = PathPolicy.resolve(url)
         let ext = real.pathExtension.lowercased()
         if ext == "app" || url.pathExtension.lowercased() == "app" {
+            if NeverApps.contains(bundleID: Bundle(url: real)?.bundleIdentifier, name: real.deletingPathExtension().lastPathComponent) {
+                return NeverApps.refusal
+            }
             // Safari and other system apps are links into a sealed volume: accept either path.
             let folders = appFolders.map { URL(fileURLWithPath: $0) } + [policy.home.appendingPathComponent("Applications")]
             let inside = folders.contains { PathPolicy.isInside(real, $0) || PathPolicy.isInside(url.standardizedFileURL, $0) }

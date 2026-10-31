@@ -184,6 +184,8 @@ public sealed class PcToolsTests : IDisposable
         Assert.True(AppTools.IsNever(apps[3]));
         Assert.True(AppTools.IsNever(apps[4]));
         Assert.True(AppTools.IsNever(new("Developer PowerShell for VS 2022", "x")));
+        Assert.True(AppTools.IsNever(new("Task Manager", "Microsoft.Windows.TaskManager")));
+        Assert.True(AppTools.IsNever(new("Windows Script Host", "wscript.exe")));
         Assert.False(AppTools.IsNever(apps[2]));
     }
 

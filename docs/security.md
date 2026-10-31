@@ -229,9 +229,14 @@ there runs without asking:
   the device is removed. Another PIN on a covered action makes it start
   again from then.
 
-Ira never acts in Terminal, iTerm, Script Editor, Automator or the like,
-where whatever is typed runs as a command: not inside a window, not in a
-trusted app, not with the PIN. Such apps cannot be trusted, and a step that
+Ira never acts in Terminal, iTerm, Script Editor, Automator, Shortcuts or
+the like, where whatever is typed runs as a command: not inside a window, not
+in a trusted app, not with the PIN. On Windows the same goes for the Command
+Prompt, PowerShell, Windows Terminal, the Registry Editor and Task Manager
+(its "Run new task" runs a command). Ira does not open them either, by name
+or as a file (`Terminal.app`), nor a file that runs something when opened
+(`.command`, `.terminal`, `.bat`, `.ps1` and the like): your Ira refuses
+these before asking the device, and the Mac and the PC refuse them again. Such apps cannot be trusted, and a step that
 lands in one ends the window on that device. A step that names an app to act
 in is trusted only if that app is the trusted one in front.
 

@@ -9,7 +9,7 @@ from typing import Any
 import pytest
 from fastapi.testclient import TestClient
 
-from ira.approvals import never_app
+from ira.approvals import NEVER_OPEN_REFUSAL, URL_REFUSAL, never_app, open_refusal
 from ira.channels.http import create_app
 from ira.devices.hub import Connection
 from ira.models.base import ChatResponse, ToolCall
@@ -103,6 +103,63 @@ def test_terminal_and_the_like_are_never_trusted():
         alice.id, mac.id, ["com.apple.Terminal", "com.apple.Notes"]
     )
     assert trusted == ["com.apple.Notes"]
+
+
+def test_no_other_way_round_the_terminal_block():
+    for app in ("Shortcuts", "com.apple.shortcuts", "Task Manager", "taskmgr.exe", "mshta.exe"):
+        assert never_app(app), app
+    refused = [
+        ("app_open", {"name": "Terminal"}),
+        ("app_open", {"name": "Task Manager"}),
+        ("app_open", {"package": "com.termux"}),
+        ("file_open", {"path": "~/Downloads/setup.command"}),
+        ("file_open", {"path": "~/Desktop/run.terminal"}),
+        ("file_open", {"path": "C:\\Users\\me\\Downloads\\fix.bat"}),
+        ("file_open", {"path": "C:\\Users\\me\\x.PS1"}),
+        ("file_open", {"path": "/System/Applications/Utilities/Terminal.app"}),
+        ("file_open", {"path": "/System/Applications/Shortcuts.app/"}),
+        ("file_open", {"path": "C:\\Users\\me\\run.bat. "}),
+    ]
+    for tool, arguments in refused:
+        assert open_refusal(tool, arguments) == NEVER_OPEN_REFUSAL, arguments
+    for url in (
+        "file:///Users/me/Downloads/setup.command",
+        "x-apple.systempreferences://",
+        "ms-settings://",
+    ):
+        assert open_refusal("url_open", {"url": url}) == URL_REFUSAL, url
+    for tool, arguments in [
+        ("app_open", {"name": "Notes"}),
+        ("file_open", {"path": "~/Documents/plan.pdf"}),
+        ("file_open", {"path": "/Applications/Safari.app"}),
+        ("url_open", {"url": "https://example.com"}),
+        ("url_open", {"url": "example.com/menu"}),
+    ]:
+        assert open_refusal(tool, arguments) is None, arguments
+
+
+async def test_the_device_is_never_asked_to_open_a_terminal():
+    runtime, _, alice, mac, ran, _ = mac_world([])
+
+    async def run(arguments: dict[str, Any]) -> Any:
+        ran.append(arguments)
+        return {"opened": arguments.get("name")}
+
+    schema = {"type": "object", "properties": {"name": {"type": "string"}}}
+    app_open = PersonalTool(
+        "app_open", "Open an app", schema, 1,
+        source="device", label="Mac", run=run, device_id=mac.id, skill="apps",
+    )  # fmt: skip
+    refused = await runtime.assistant._run_personal(
+        app_open,
+        ToolCall("c", "app_open", '{"name": "Terminal"}'),
+        "t",
+        "api",
+        "a",
+        alice.id,
+        False,
+    )
+    assert refused.outcome == "refused" and "never opens Terminal" in refused.content and ran == []
 
 
 def stepper():

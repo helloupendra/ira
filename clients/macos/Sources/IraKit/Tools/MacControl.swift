@@ -54,6 +54,9 @@ public enum MacControl {
             if let window, everydaySettings.contains(window) { return nil }
             return "I don't work in System Settings' \(window.map { "“\($0)” page" } ?? "window") myself: only on everyday pages such as Appearance, Displays, Sound or Notifications. Privacy, security, passwords and accounts stay yours"
         }
+        if NeverApps.contains(bundleID: bundleID, name: app) {
+            return NeverApps.refusal
+        }
         if let bundleID, ScreenText.systemUI.contains(bundleID) {
             return "a macOS prompt is in front (\(app)). Answer it yourself"
         }
