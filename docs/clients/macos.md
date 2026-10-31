@@ -112,7 +112,8 @@ You can change any of these in **System Settings → Privacy & Security**.
     (in Privacy & Security, remove the old Ira with "−" and switch the new
     one on), and ask once whether Ira may use its key in your Keychain
     (choose **Always Allow**). You do not need to pair again. If you build
-    Ira yourself, a signing identity made once keeps the permissions: see
+    Ira yourself, a signing identity made once keeps the permissions, though
+    the Keychain still asks once after each build: see
     [building from source](#for-developers-building-from-source).
 
 ## The window
@@ -449,8 +450,11 @@ hoc, and macOS sees each build as a new app: it asks again for every
 permission, and for the Keychain item. `make-signing-identity.sh` makes a
 self-signed code-signing certificate ("Ira Local Signing", ten years) in
 your login keychain, once; `make-app.sh` signs with it whenever it is there,
-so builds made on that Mac keep their permissions and Keychain access.
-Nothing is sent anywhere. (`--remove` deletes it.)
+so builds made on that Mac keep their permissions. Nothing is sent anywhere.
+(`--remove` deletes it.) The Keychain is stricter: a signature without a team
+ID ties Ira's key to that exact build, so the first time a new build reads
+it, macOS asks once whether Ira may use it. Choose **Always Allow** (not
+Allow), and that build doesn't ask again.
 
 **Notarization** is the owner's decision: a Developer ID certificate and
 Apple's notary service need the Apple Developer Program ($99 a year). With

@@ -5,7 +5,9 @@
 # looks like a new app to macOS, so it asks again for the microphone, Screen
 # Recording, Contacts and the rest, and for Ira's key in the Keychain. Signed
 # with the same identity every time, each build is the same app to macOS, and
-# the permissions stay.
+# the permissions stay. The Keychain still asks once per build: a signature
+# without a team ID ties Ira's key to the exact build, so a new build asks
+# whether Ira may use it (choose Always Allow).
 #
 # This makes a self-signed certificate for code signing ("Ira Local Signing"),
 # valid for ten years, and puts it with its private key in your login

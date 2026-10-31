@@ -12,8 +12,9 @@
 # Launchpad and Spotlight never show a second Ira that is not installed.
 #
 # Signing: with the identity scripts/make-signing-identity.sh makes (once per
-# Mac), every build is the same app to macOS, so its permissions and its
-# Keychain access stay. Without it, the app is signed ad hoc, and macOS asks
+# Mac), every build is the same app to macOS, so its permissions stay; the
+# Keychain still asks once per build whether Ira may use its key (Always
+# Allow). Without it, the app is signed ad hoc, and macOS asks for everything
 # again after each build. Either way a dmg needs right-click, Open the first
 # time on another Mac; a Developer ID and notarization need the paid Apple
 # Developer Program (docs/clients/macos.md).
@@ -115,7 +116,7 @@ else
   codesign --force --sign - --identifier "$bundle_id" --timestamp=none "$app"
 fi
 codesign --verify --strict "$app"
-# What macOS will match permissions and the Keychain against.
+# What macOS will match permissions against.
 codesign -d -r- "$app" 2>&1 | sed -n 's/^#* *designated => /Designated requirement: /p'
 codesign -dvv "$app" 2>&1 | sed -n 's/^Authority=/Signed by: /p' | head -1
 
