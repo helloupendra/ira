@@ -54,7 +54,7 @@ class Prefs:
     nudges: bool = False
     timezone: str | None = None  # an IANA name, such as Asia/Kolkata; None: the server's
     approval_minutes: int | None = None  # None: the server's actions.approval_minutes
-    drop_telegram: bool = True  # new Drop items go to the person's paired Telegram chat
+    drop_telegram: bool = False  # new Drop items go to the person's paired Telegram chat
 
 
 def clean_name(value: str, limit: int) -> str:
@@ -161,7 +161,8 @@ class UserSettings:
         prefs.nudges = raw.get("nudges") is True
         if isinstance(raw.get("timezone"), str) and valid_timezone(raw["timezone"]):
             prefs.timezone = raw["timezone"]
-        prefs.drop_telegram = raw.get("drop_telegram") is not False
+        # Off unless switched on. An older "off" row (False) stays off; on was never stored.
+        prefs.drop_telegram = raw.get("drop_telegram") is True
         minutes = raw.get("approval_minutes")
         if isinstance(minutes, int) and (minutes == 0 or 5 <= minutes <= 60):
             prefs.approval_minutes = minutes

@@ -330,8 +330,8 @@ merging or pushing is 3. See [Your connections](connectors.md).
 | `GET /v1/me/drop/{id}` | `drop` | one item |
 | `GET /v1/me/drop/{id}/file` | `drop` | a file's bytes, always as an attachment |
 | `DELETE /v1/me/drop/{id}` | `drop` | `204`; it is gone from every device |
-| `GET /v1/me/drop/settings` | `drop` | `DropSettings`: `telegram` (new items from your other devices go to your paired Telegram chat; on by default) and `telegram_ready` (this server forwards, and you have a paired chat) |
-| `PATCH /v1/me/drop/settings` | `drop` | `{"telegram": false}` to stop forwarding, `true` to start again. Both answer with `max_file_mb` and `max_text` too |
+| `GET /v1/me/drop/settings` | `drop` | `DropSettings`: `telegram` (new items from your other devices go to your paired Telegram chat; off until you switch it on) and `telegram_ready` (this server forwards, and you have a paired chat) |
+| `PATCH /v1/me/drop/settings` | `drop` | `{"telegram": true}` to start forwarding, `false` to stop. Both answer with `max_file_mb` and `max_text` too |
 
 An item: `id`, `kind` (`text`, `link`, `file`), `text`, and for a file `name`,
 `mime`, `size`, `sha256`; `from_device_id` and `from_label` (the device's

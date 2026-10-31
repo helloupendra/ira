@@ -98,7 +98,7 @@ each person switches web search on for themselves.
 | YouTube Data API (`video_find`, if you switched search on and the owner set a key) | your words for the video | [Google privacy policy](https://policies.google.com/privacy) |
 | Brave Search (web search, if you switched it on) | your search words only | [Brave Search API privacy notice](https://api-dashboard.search.brave.com/privacy-policy) (queries kept up to 90 days for billing, not linked to a person) |
 | News feeds listed by the owner | nothing about you: Ira fetches the feeds and searches them on the server | the feeds' own sites |
-| Telegram, if you paired a chat | the messages of that chat, your device's event notes, and new Drop items unless you switched that off | [Telegram privacy policy](https://telegram.org/privacy) |
+| Telegram, if you paired a chat | the messages of that chat, your device's event notes, and new Drop items if you switched that on | [Telegram privacy policy](https://telegram.org/privacy) |
 
 With the demo provider and no keys, nothing leaves your computer at all.
 The providers above were chosen because their business terms say they do
@@ -139,9 +139,19 @@ Ira for Mac saves a file that arrives from another device to
 **Save**.
 When you share to the installed app on Android, the phone's browser keeps
 the shared text and files only until the app opens; it shows them, and
-sends them to your Drop only when you tap **Send to Drop**. If you paired a Telegram chat, what you send from your
-other devices is also sent there, through Telegram's servers; switch that
-off in the app's Drop, or with `PATCH /v1/me/drop/settings`.
+sends them to your Drop only when you tap **Send to Drop**.
+
+**Drop and Telegram: off unless you switch it on.** Nothing in your Drop goes
+to Telegram by default. If you paired a Telegram chat, you can have each new
+item from your other devices sent there too (a file up to 45 MB as a
+document; a bigger one only by its name and size): in the Ira app's Drop,
+tick **Also send what arrives to my Telegram chat** (or
+`PATCH /v1/me/drop/settings` with `{"telegram": true}`). Those items then
+pass through Telegram's servers and stay in the chat until you delete them
+there; deleting one from Drop does not remove it from Telegram. Untick it to
+stop. The switch shows only when you have a paired chat and the server
+allows forwarding; whoever runs the server can stop it for everyone with
+`drop.telegram_forward: false` in `ira.yaml`.
 
 ## The Ira app for Android
 

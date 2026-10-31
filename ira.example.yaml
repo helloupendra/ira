@@ -101,7 +101,8 @@ drop:
   max_file_mb: 95                 # a Cloudflare tunnel refuses bodies over 100 MB
   quota_mb: 2048                  # per person
   keep_days: 30                   # then deleted
-  telegram_forward: true          # new items go to the person's paired Telegram chat
+  telegram_forward: true          # allows forwarding to a person's paired Telegram chat;
+                                  # each person switches it on in Drop (off by default)
 
 # How long the logs that only grow are kept, in days (null: kept). Conversations stay
 # until their person deletes them; the cost log, "What Ira did" and the audit log are kept

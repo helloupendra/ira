@@ -127,7 +127,8 @@ async def drop(
 
 class DropSettings(BaseModel):
     telegram: bool = Field(
-        description="New items from your other devices go to your paired Telegram chat."
+        description="New items from your other devices go to your paired Telegram chat "
+        "(off until you switch it on)."
     )
     telegram_ready: bool = Field(
         description="This server forwards to Telegram, and you have a paired chat."
@@ -165,9 +166,9 @@ def change_drop_settings(
     who: Principal = Depends(require("drop")),
     runtime: Runtime = Depends(get_runtime),
 ) -> DropSettings:
-    # Your own chat only, so no PIN: off or on as you like.
+    # Your own chat only, so no PIN: on or off as you like. Off is the default.
     runtime.assistant.user_settings.set(
-        who.user.id, "drop_telegram", None if body.telegram else False
+        who.user.id, "drop_telegram", True if body.telegram else None
     )
     return _settings(runtime, who.user.id)
 

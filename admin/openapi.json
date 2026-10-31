@@ -12067,7 +12067,7 @@
                     "telegram": {
                         "type": "boolean",
                         "title": "Telegram",
-                        "description": "New items from your other devices go to your paired Telegram chat."
+                        "description": "New items from your other devices go to your paired Telegram chat (off until you switch it on)."
                     },
                     "telegram_ready": {
                         "type": "boolean",

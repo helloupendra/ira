@@ -297,8 +297,9 @@ Commands: `/help`, `/new` (fresh context), `/drop <text>` (put it in your
 Drop; or send a file or photo with `/drop` as its caption, up to the 20 MB a
 bot may fetch), `/cancel` (drop the pending action), `/name <new name>`
 (owner or admin). New Drop items from the person's other devices come to
-their chat (a file as a document, up to 45 MB), unless the server sets
-`drop.telegram_forward: false` or they switch it off. To confirm an action, type the
+their chat (a file as a document, up to 45 MB) once they switch that on in
+the Ira app's Drop; it is off until they do, and
+`drop.telegram_forward: false` stops it for everyone. To confirm an action, type the
 PIN as a message on its own: the bot deletes it immediately and never sends it
 to a model. A PIN said in a voice note is refused and that note deleted.
 

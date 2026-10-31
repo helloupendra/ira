@@ -3193,7 +3193,7 @@ export interface components {
         DropSettings: {
             /**
              * Telegram
-             * @description New items from your other devices go to your paired Telegram chat.
+             * @description New items from your other devices go to your paired Telegram chat (off until you switch it on).
              */
             telegram: boolean;
             /**

@@ -70,17 +70,38 @@ async def test_a_role_without_drop_is_told_so(world):
     assert "cannot use Drop" in api.sent()[-1] and runtime.drop.list(viewer.id) == []
 
 
-async def test_new_items_come_to_the_chat_unless_switched_off(world):
+async def test_new_items_come_to_the_chat_only_once_switched_on(world):
     runtime, owner, api, bot = world
     await pair(bot, runtime, owner)
     notify = drop_notifier(runtime, api)
+    runtime.drop_notifier = notify  # as the server does when Telegram is on
     before = len(api.calls)
 
+    async def arrive(item):
+        await runtime.drop_changed(owner.id, {"type": "drop", "event": "new", "item": item})
+        await asyncio.gather(*runtime._drop_forwards)  # sent in the background
+
+    # Off until the person switches it on.
     text = runtime.drop.add_text(owner.id, "call the CA", from_label="Mac")
-    runtime.drop_notifier = notify  # as the server does when Telegram is on
-    await runtime.drop_changed(owner.id, {"type": "drop", "event": "new", "item": text.public()})
-    await asyncio.gather(*runtime._drop_forwards)  # sent in the background
+    await arrive(text.public())
+    assert len(api.calls) == before
+
+    with TestClient(create_app(runtime, start_channels=False)) as client:
+        body = {"email": "owner@example.com", "password": PASSWORD, "use_cookie": False}
+        token = client.post("/v1/auth/login", json=body).json()["session_token"]
+        me = {"Authorization": f"Bearer {token}"}
+        assert client.get("/v1/me/drop/settings", headers=me).json() == {
+            "telegram": False,
+            "telegram_ready": True,
+            "max_file_mb": 95,
+            "max_text": 100000,
+        }
+        on = client.patch("/v1/me/drop/settings", json={"telegram": True}, headers=me)
+        assert on.json()["telegram"] is True
+
+    await arrive(text.public())
     assert api.calls[-1] == ("sendMessage", CHAT, "In your Drop, from Mac:\ncall the CA")
+    before = len(api.calls) - 1
     data = os.urandom(2000)
     file = runtime.drop.add_file(
         owner.id, io.BytesIO(data), "plan.pdf", None, caption="v2", from_label="Pixel 7"
@@ -98,16 +119,10 @@ async def test_new_items_come_to_the_chat_unless_switched_off(world):
     assert len(api.calls) == before + 2
 
     with TestClient(create_app(runtime, start_channels=False)) as client:
-        body = {"email": "owner@example.com", "password": PASSWORD, "use_cookie": False}
-        token = client.post("/v1/auth/login", json=body).json()["session_token"]
-        me = {"Authorization": f"Bearer {token}"}
-        assert client.get("/v1/me/drop/settings", headers=me).json() == {
-            "telegram": True,
-            "telegram_ready": True,
-            "max_file_mb": 95,
-            "max_text": 100000,
-        }
         off = client.patch("/v1/me/drop/settings", json={"telegram": False}, headers=me)
         assert off.json()["telegram"] is False
     await notify(owner.id, text.public())
     assert len(api.calls) == before + 2
+    # Switched off before forwarding was off by default: still off.
+    runtime.assistant.user_settings.set(owner.id, "drop_telegram", False)
+    assert runtime.assistant.user_settings.get(owner.id).drop_telegram is False

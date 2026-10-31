@@ -222,7 +222,8 @@ class DropConfig(_Strict):
     max_text: int = Field(default=100_000, ge=100, le=1_000_000)
     quota_mb: int = Field(default=2048, ge=1)  # per person
     keep_days: int = Field(default=30, ge=1, le=3650)
-    # Items sent from other devices are forwarded to the person's paired Telegram chat.
+    # Whether a person may have items from their other devices forwarded to their paired
+    # Telegram chat. Each person switches it on themselves; it is off until they do.
     telegram_forward: bool = True
 
 
