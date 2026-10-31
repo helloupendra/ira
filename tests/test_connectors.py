@@ -102,7 +102,8 @@ def test_secrets_are_sealed_and_bound_to_their_row(tmp_path, monkeypatch):
     monkeypatch.delenv(ENV, raising=False)
     key = load_key(tmp_path)
     assert len(key) == 32 and load_key(tmp_path) == key
-    assert stat.S_IMODE(os.stat(tmp_path / "secret.key").st_mode) == 0o600
+    if os.name == "posix":  # Windows guards it with the folder's NTFS permissions
+        assert stat.S_IMODE(os.stat(tmp_path / "secret.key").st_mode) == 0o600
     sealer = Sealer(key)
     blob = sealer.seal({"headers": {"Authorization": TOKEN}}, "1:con_a")
     assert TOKEN.encode() not in blob

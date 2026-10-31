@@ -11,6 +11,9 @@ from pathlib import Path
 
 import pytest
 
+# A script for macOS servers; on Windows "bash" is WSL's launcher.
+pytestmark = pytest.mark.skipif(sys.platform == "win32", reason="needs bash")
+
 SCRIPT = Path(__file__).resolve().parent.parent / "deploy" / "mac" / "install-server.sh"
 
 
