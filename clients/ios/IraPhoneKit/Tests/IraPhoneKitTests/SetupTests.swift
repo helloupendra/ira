@@ -55,6 +55,20 @@ struct KeychainRuleTests {
         #expect(record.settings.server == "https://other.example.com")
     }
 
+    @Test func theShareExtensionCanFindTheServerBesideTheKey() throws {
+        let settings = freshSettings()
+        let secrets = MemorySecretStore()
+        let record = PairingRecord(settings: settings, secrets: secrets)
+        try record.adopt(paired())
+        #expect(secrets.load(SecretAccount.server) == "https://ira.example.com")
+        // Paired before the extension existed: the address is added at the next start.
+        secrets.delete(SecretAccount.server)
+        record.shareWithExtension()
+        #expect(secrets.load(SecretAccount.server) == "https://ira.example.com")
+        record.removeOnPurpose()
+        #expect(secrets.load(SecretAccount.server) == nil && secrets.load(SecretAccount.device) == nil)
+    }
+
     @Test func onlyADeviceTokenIsKept() {
         let secrets = MemorySecretStore()
         let record = PairingRecord(settings: freshSettings(), secrets: secrets)
@@ -73,7 +87,7 @@ struct KeychainRuleTests {
         try record.adopt(paired())
         record.removeOnPurpose()
         #expect(record.status == .unpaired)
-        #expect(secrets.deletions == [SecretAccount.device])
+        #expect(secrets.deletions == [SecretAccount.device, SecretAccount.server])
         #expect(settings.server.isEmpty)
     }
 
