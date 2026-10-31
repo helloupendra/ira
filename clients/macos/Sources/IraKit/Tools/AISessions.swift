@@ -200,6 +200,26 @@ public enum TranscriptSummary {
             if todosAt > tasksAt { return todos }
             return tasksAt >= 0 ? tasks.map(\.item) : nil
         }
+
+        /// One tool step; true when it was one of the task-list tools.
+        @discardableResult
+        mutating func use(_ name: String, _ input: JSONValue, useID: String?, at index: Int) -> Bool {
+            switch name {
+            case "TodoWrite": todoWrite(input, at: index)
+            case "TaskCreate": create(input, useID: useID, at: index)
+            case "TaskUpdate": update(input, at: index)
+            default: return false
+            }
+            return true
+        }
+
+        /// A tool's answer, for the id a created task was given.
+        mutating func answered(_ part: JSONValue) {
+            guard let useID = part["tool_use_id"]?.stringValue else { return }
+            let text = part["content"]?.stringValue
+                ?? part["content"]?.arrayValue?.compactMap { $0["text"]?.stringValue }.joined(separator: " ") ?? ""
+            created(useID: useID, result: text)
+        }
     }
 
     enum Last: Equatable {
@@ -247,12 +267,7 @@ public enum TranscriptSummary {
             let content = entry["message"]?["content"]
             if type == "user" {
                 if let parts = content?.arrayValue, parts.contains(where: { $0["type"] == "tool_result" }) {
-                    for part in parts where part["type"] == "tool_result" {
-                        guard let useID = part["tool_use_id"]?.stringValue else { continue }
-                        let text = part["content"]?.stringValue
-                            ?? part["content"]?.arrayValue?.compactMap { $0["text"]?.stringValue }.joined(separator: " ") ?? ""
-                        list.created(useID: useID, result: text)
-                    }
+                    for part in parts where part["type"] == "tool_result" { list.answered(part) }
                     last = .toolResult
                     continue
                 }
@@ -287,12 +302,7 @@ public enum TranscriptSummary {
                     case "tool_use":
                         let name = part["name"]?.stringValue ?? "a tool"
                         let input = part["input"] ?? .object([:])
-                        switch name {
-                        case "TodoWrite": list.todoWrite(input, at: index)
-                        case "TaskCreate": list.create(input, useID: part["id"]?.stringValue, at: index)
-                        case "TaskUpdate": list.update(input, at: index)
-                        default: break
-                        }
+                        list.use(name, input, useID: part["id"]?.stringValue, at: index)
                         tool = name
                         let phrase = phrase(name, input)
                         doing = phrase
@@ -549,5 +559,53 @@ extension TranscriptSummary {
             guard line.contains("\"cwd\"") else { return nil }
             return JSONValue.parse(line)?["cwd"]?.stringValue
         }.first
+    }
+}
+
+/// A running coding agent's task list, from its stream-json output: progress counted in steps
+/// ("4 of 7 done: tests written; now fixing the total"), not only in minutes.
+public struct StepTracker: Sendable {
+    private var list = TranscriptSummary.TaskList()
+    private var lines = 0
+    public private(set) var done = 0
+    public private(set) var total = 0
+    /// The item in progress.
+    public private(set) var current: String?
+    /// The item done last.
+    public private(set) var finished: String?
+
+    public init() {}
+
+    /// The agent keeps a task list: report steps rather than minutes.
+    public var counting: Bool { total > 0 }
+
+    /// One line of output; true when another item was done.
+    public mutating func feed(_ line: String) -> Bool {
+        lines += 1
+        guard line.contains("\"type\""), let entry = JSONValue.parse(line) else { return false }
+        let parts = entry["message"]?["content"]?.arrayValue ?? []
+        var changed = false
+        for part in parts {
+            if part["type"] == "tool_result" { list.answered(part) }
+            if part["type"] == "tool_use", let name = part["name"]?.stringValue {
+                changed = list.use(name, part["input"] ?? .object([:]), useID: part["id"]?.stringValue, at: lines) || changed
+            }
+        }
+        guard changed, let items = list.items else { return false }
+        let before = done
+        let completed = items.filter { $0.status == "completed" }
+        done = completed.count
+        total = items.count
+        current = items.first(where: { $0.status == "in_progress" }).map { TranscriptSummary.clip($0.active ?? $0.text, 120) }
+        if done > before, let last = completed.last { finished = TranscriptSummary.clip(last.text, 120) }
+        return done > before
+    }
+
+    /// "4 of 7 done: tests written; now fixing the total."
+    public var sentence: String {
+        var text = "\(done) of \(total) done"
+        if let finished { text += ": \(finished)" }
+        if let current { text += "; now \(current.prefix(1).lowercased() + current.dropFirst())" }
+        return text + "."
     }
 }

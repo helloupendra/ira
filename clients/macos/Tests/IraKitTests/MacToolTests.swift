@@ -348,6 +348,63 @@ struct CodeTaskTests {
         #expect(TaskSettings.parse(Data(#"{"repos": {"a": "~/a"}}"#.utf8)) == nil)  // no command: not set up
         #expect(CodeTasks.argv(["agent", "-p", "{prompt}", "--json"], prompt: "do it") == ["agent", "-p", "do it", "--json"])
         #expect(CodeTasks.argv(["agent"], prompt: "do it") == ["agent", "do it"])
+        // One command is the agent "default".
+        #expect(settings.agentNames == ["default"] && settings.defaultAgent == "default")
+        #expect(settings.agent()?.command == ["agent", "-p", "{prompt}"])
+        #expect(settings.agent("other") == nil)
+    }
+
+    @Test func severalAgentsAndADefault() throws {
+        let json = """
+            {"agents": {"main": {"command": ["main-agent", "-p", "{prompt}"], "resume": ["--resume", "{session}"]},
+                        "other": ["other-agent", "{prompt}"], "empty": {"command": []}, "bad name!": ["x"]},
+             "default_agent": "other",
+             "repos": {"shop": "~/code/shop"}}
+            """
+        let settings = try #require(TaskSettings.parse(Data(json.utf8)))
+        #expect(settings.agentNames == ["main", "other"])
+        #expect(settings.defaultAgent == "other")
+        #expect(settings.agent()?.command == ["other-agent", "{prompt}"])
+        #expect(settings.agent("main")?.resume == ["--resume", "{session}"])
+        #expect(settings.command == ["other-agent", "{prompt}"])
+        let fallback = try #require(TaskSettings.parse(Data(#"{"agents": {"b": ["b"], "a": ["a"]}, "default_agent": "zzz", "repos": {"r": "~/r"}}"#.utf8)))
+        #expect(fallback.defaultAgent == "a")  // an unknown default: the first by name
+        let both = try #require(TaskSettings.parse(Data(#"{"command": ["old"], "agents": {"new": ["new"]}, "repos": {"r": "~/r"}}"#.utf8)))
+        #expect(both.agentNames == ["default", "new"] && both.defaultAgent == "default")
+        #expect(TaskSettings.parse(Data(#"{"agents": {"a": []}, "repos": {"r": "~/r"}}"#.utf8)) == nil)
+    }
+
+    @Test func stepsDoneFromTheAgentsTaskList() {
+        func line(_ parts: JSONValue) -> String { (["type": "assistant", "session_id": "s-1", "message": ["content": parts]] as JSONValue).encoded() }
+        func todos(_ statuses: [String]) -> String {
+            let names = ["write tests", "fix the total", "update docs"]
+            return line([["type": "tool_use", "name": "TodoWrite", "input": ["todos": .array(zip(names, statuses).map {
+                ["content": .string($0.0), "activeForm": .string("Doing " + $0.0), "status": .string($0.1)]
+            })]]])
+        }
+        var steps = StepTracker()
+        let initLine = #"{"type":"system","subtype":"init","session_id":"s-1"}"#
+        #expect(AgentOutput.session(initLine) == "s-1")
+        #expect(AgentOutput.session("plain words") == nil)
+        let fed = [
+            steps.feed(initLine),
+            steps.feed(todos(["in_progress", "pending", "pending"])),
+        ]
+        #expect(fed == [false, false])
+        #expect(steps.counting && steps.done == 0 && steps.total == 3)
+        let one = steps.feed(todos(["completed", "in_progress", "pending"]))
+        #expect(one)
+        #expect(steps.sentence == "1 of 3 done: write tests; now doing fix the total.")
+        let same = steps.feed(todos(["completed", "in_progress", "pending"]))  // nothing new done
+        let all = steps.feed(todos(["completed", "completed", "completed"]))
+        #expect(!same && all)
+        #expect(steps.sentence == "3 of 3 done: update docs.")
+
+        let start = Date(timeIntervalSince1970: 1_000_000)
+        #expect(CodeTasks.stepDue(done: 1, total: 5, last: nil, now: start, spacing: 60))
+        #expect(!CodeTasks.stepDue(done: 2, total: 5, last: start, now: start.addingTimeInterval(30), spacing: 60))
+        #expect(CodeTasks.stepDue(done: 5, total: 5, last: start, now: start.addingTimeInterval(30), spacing: 60))
+        #expect(CodeTasks.stepDue(done: 3, total: 5, last: start, now: start.addingTimeInterval(61), spacing: 60))
     }
 
     @Test func longTasksSayHowTheyAreGoing() {
@@ -465,6 +522,71 @@ struct CodeTaskTests {
         await #expect(throws: ToolFailure.self) { try await tasks.start(["repo": "elsewhere", "instruction": "x"]) }
         let list = try await tasks.list([:])
         #expect(list["repos"] == ["shop"])
+    }
+
+    /// A repository with one commit, for a task to work in.
+    func repository(in root: URL) async throws -> URL {
+        let repo = root.appendingPathComponent("shop")
+        try FileManager.default.createDirectory(at: repo, withIntermediateDirectories: true)
+        try await git(repo, "init", "-b", "main")
+        try await git(repo, "config", "user.email", "tests@example.com")
+        try await git(repo, "config", "user.name", "Tests")
+        try "hello\n".write(to: repo.appendingPathComponent("README.md"), atomically: true, encoding: .utf8)
+        try await git(repo, "add", ".")
+        try await git(repo, "commit", "-m", "Start")
+        return repo
+    }
+
+    func script(_ url: URL, _ body: String) throws {
+        try ("#!/bin/sh\n" + body).write(to: url, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: url.path)
+    }
+
+    /// The person picks another agent by name; it keeps a task list, so its progress is
+    /// said in steps, and its session id is kept for a resume.
+    @Test func anotherAgentAndItsStepsDone() async throws {
+        let root = try temporaryFolder()
+        let repo = try await repository(in: root)
+        let first = root.appendingPathComponent("first.sh"), second = root.appendingPathComponent("second.sh")
+        try script(first, "echo first > FIRST.txt\necho '{\"type\":\"result\",\"result\":\"ok\"}'\n")
+        func todo(_ a: String, _ b: String) -> String {
+            #"echo '{"type":"assistant","session_id":"s-42","message":{"content":[{"type":"tool_use","name":"TodoWrite","input":{"todos":[{"content":"write tests","activeForm":"Writing tests","status":"\#(a)"},{"content":"fix the total","activeForm":"Fixing the total","status":"\#(b)"}]}}]}}'"#
+        }
+        try script(second, """
+            echo '{"type":"system","subtype":"init","session_id":"s-42"}'
+            \(todo("in_progress", "pending"))
+            echo second > SECOND.txt
+            \(todo("completed", "in_progress"))
+            \(todo("completed", "completed"))
+            echo '{"type":"result","result":"Both done.","is_error":false}'
+
+            """)
+        var settings = TaskSettings(
+            command: [first.path], repos: ["shop": .init(name: "shop", path: repo, test: nil, protected: false)],
+            worktrees: root.appendingPathComponent("tasks"), writable: [], minutes: 1, sandbox: false,
+            openVSCode: false, promptURI: nil)
+        settings.agents = ["first": .init(name: "first", command: [first.path]), "second": .init(name: "second", command: [second.path])]
+        settings.defaultAgent = "first"
+        let frozen = settings
+        let events = EventLog<String>()
+        let tasks = CodeTasks(settings: { frozen }, openVSCode: { _ in }, stepSpacing: 0,
+                              announce: { event, title, text, _ in events.add("\(event) | \(title) | \(text)") })
+
+        await #expect(throws: ToolFailure.self) { try await tasks.start(["repo": "shop", "instruction": "x", "agent": "nobody"]) }
+        let started = try await tasks.start(["repo": "shop", "instruction": "Fix the total", "agent": "second"])
+        #expect(started["agent"] == "second")
+        let id = try #require(started["id"]?.stringValue)
+        #expect(await events.waitFor { $0.contains { $0.hasPrefix("task_done") } })
+        #expect(events.all.filter { $0.hasPrefix("task_progress") } == [
+            "task_progress | Task \(id) in shop: 1 of 2 done | 1 of 2 done: write tests; now fixing the total.",
+            "task_progress | Task \(id) in shop: 2 of 2 done | 2 of 2 done: fix the total.",
+        ])
+        let status = try await tasks.status(["id": .string(id)])
+        #expect(status["agent"] == "second" && status["steps"] == "2 of 2 done")
+        #expect(status["files"] == ["SECOND.txt"])
+        #expect(tasks.jobs().first?.session == "s-42")
+        let list = try await tasks.list([:])
+        #expect(list["agents"] == ["first", "second"] && list["defaultAgent"] == "first")
     }
 }
 

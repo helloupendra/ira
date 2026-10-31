@@ -366,7 +366,11 @@ repository, never on the server):
 
 ```json
 {
-  "command": ["/path/to/agent", "-p", "{prompt}", "--output-format", "stream-json"],
+  "agents": {
+    "main": {"command": ["/path/to/agent", "-p", "{prompt}", "--output-format", "stream-json"]},
+    "other": {"command": ["/path/to/other-agent", "-p", "{prompt}"]}
+  },
+  "default_agent": "main",
   "repos": {
     "shop": {"path": "~/code/shop", "test": "pytest -q"},
     "site": {"path": "~/code/site", "protected": true}
@@ -377,13 +381,23 @@ repository, never on the server):
 }
 ```
 
-- `command` is your coding agent's command line; `{prompt}` is replaced by
-  the task. Its output may be plain lines or stream-json.
+- `agents` are your coding agents' command lines, by a name you choose;
+  `{prompt}` is replaced by the task. Their output may be plain lines or
+  stream-json. Ask for one by name ("do it with other") or get
+  `default_agent`. A single `"command": [...]` instead of `agents` still works,
+  as the agent named `default`.
 - `repos` are the only repositories tasks may use. `test` runs after the
   agent finishes.
 - `protected: true` is for a repository that deploys when its main branch
   moves. Ira then pushes only its own `ira/task-...` branches there.
 - Then choose **Settings → Reload tools** so Ira learns about the tasks.
+
+**How it is going.** An agent that writes stream-json and keeps a task list
+reports in steps: Ira tells you, on your phone too, when items are done ("4 of
+7 done: tests written; now fixing the invoice total"), at most once a minute
+and the last one at once. An agent without a list says how it is going after 5
+minutes, then every 10. `code_task_status` shows the agent, the steps and the
+latest progress.
 
 The safety rules:
 
@@ -460,7 +474,7 @@ disconnects at once.
 | Option-Space does nothing | Another app took it: choose a new shortcut in **Settings → Shortcut** |
 | Ira says it may not use Mail, Notes or Messages | **System Settings → Privacy & Security → Automation**, switch on Ira's apps |
 | Ira says Contacts, Calendars or Reminders are off | **System Settings → Privacy & Security**, the matching page, switch Ira on |
-| Ira does not offer coding tasks | Check `tasks.json` lists a `command` and at least one repository, then **Settings → Reload tools** |
+| Ira does not offer coding tasks | Check `tasks.json` lists `agents` (or a `command`) and at least one repository, then **Settings → Reload tools** |
 | macOS asks for every permission again after an update | See the note under [Grant permissions](#grant-permissions) |
 
 ## For developers: building from source
@@ -539,7 +553,7 @@ older server keeps the tools it always had:
 | `clipboard_read {}` | `clipboard` | 0 |
 | `shortcuts_list {}`, `shortcuts_run {name, input?}` | `shortcuts` | 0, 2 |
 | `mac_type {text, pressReturn?}`, `mac_keys {keys}`, `mac_click {label, role?, index?}`, `mac_scroll {direction, amount?}`, `mac_menu {path}`, each also `{app?, task?}` | `control` | 3 |
-| `code_task_start {repo, instruction, openInVSCode?}`, `code_task_status {id?}` (without `id`, lists them), `code_task_stop {id}`, `code_task_push {id}` | `tasks` | 2, 0, 1, 3 |
+| `code_task_start {repo, instruction, openInVSCode?, agent?}`, `code_task_status {id?}` (without `id`, lists them, the repositories and the agents), `code_task_stop {id}`, `code_task_push {id}` | `tasks` | 2, 0, 1, 3 |
 | `ai_sessions {hours?}`, `ai_session_detail {id}` | `agents` | 0, 0 |
 
 The coding-task tools are in the hello only when `tasks.json` is set up.

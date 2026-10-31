@@ -9,7 +9,12 @@ import Foundation
 ///
 /// ```json
 /// {
-///   "command": ["/path/to/agent", "-p", "{prompt}", "--output-format", "stream-json"],
+///   "agents": {
+///     "main": {"command": ["/path/to/agent", "-p", "{prompt}", "--output-format", "stream-json"],
+///              "resume": ["--resume", "{session}"]},
+///     "other": {"command": ["/path/to/other-agent", "-p", "{prompt}"]}
+///   },
+///   "default_agent": "main",
 ///   "repos": {
 ///     "shop": {"path": "~/code/shop", "test": "pytest -q"},
 ///     "site": {"path": "~/code/site", "protected": true}
@@ -20,6 +25,8 @@ import Foundation
 ///   "vscode": {"open": true, "promptURI": "vscode://publisher.extension/open?prompt={prompt}"}
 /// }
 /// ```
+///
+/// A single `"command": [...]` still works: it is the agent named "default".
 ///
 /// The agent runs in macOS's sandbox (`sandbox-exec`), which lets it write only
 /// to its worktree, the repository's `.git`, temporary folders and the
@@ -37,6 +44,21 @@ public struct TaskSettings: Equatable, Sendable {
         public let protected: Bool
     }
 
+    /// A coding agent this Mac may run.
+    public struct Agent: Equatable, Sendable {
+        public let name: String
+        /// Its command line; `{prompt}` is replaced by the task.
+        public let command: [String]
+        /// What continues one of its earlier sessions; `{session}` is the session's id.
+        public let resume: [String]?
+
+        public init(name: String, command: [String], resume: [String]? = nil) {
+            self.name = name
+            self.command = command
+            self.resume = resume
+        }
+    }
+
     public var command: [String]
     public var repos: [String: Repo]
     public var worktrees: URL
@@ -45,6 +67,19 @@ public struct TaskSettings: Equatable, Sendable {
     public var sandbox: Bool
     public var openVSCode: Bool
     public var promptURI: String?
+    /// The agents by name; empty means `command` alone, as the agent "default".
+    public var agents: [String: Agent] = [:]
+    public var defaultAgent = "default"
+
+    /// The agent `name` (the default one when nil).
+    public func agent(_ name: String? = nil) -> Agent? {
+        let wanted = name ?? defaultAgent
+        if let agent = agents[wanted] { return agent }
+        guard agents.isEmpty, wanted == "default", !command.isEmpty else { return nil }
+        return Agent(name: "default", command: command)
+    }
+
+    public var agentNames: [String] { agents.isEmpty ? ["default"] : agents.keys.sorted() }
 
     public static var defaultPath: URL {
         FileManager.default.homeDirectoryForCurrentUser
@@ -55,28 +90,45 @@ public struct TaskSettings: Equatable, Sendable {
         PathPolicy.expand(path, home: home) ?? URL(fileURLWithPath: path)
     }
 
+    static func validName(_ name: String) -> Bool {
+        name.range(of: #"^[A-Za-z0-9._-]{1,60}$"#, options: .regularExpression) != nil
+    }
+
     /// The settings in a tasks.json; nil when tasks are not set up on this Mac.
     public static func parse(_ data: Data, home: URL = FileManager.default.homeDirectoryForCurrentUser) -> TaskSettings? {
         guard let raw = JSONValue.parse(data), raw.objectValue != nil else { return nil }
-        let command = (raw["command"]?.arrayValue ?? []).compactMap(\.stringValue)
         var repos: [String: Repo] = [:]
         for (name, entry) in raw["repos"]?.objectValue ?? [:] {
             let path = entry.stringValue ?? entry["path"]?.stringValue
-            guard let path, !path.isEmpty, name.range(of: #"^[A-Za-z0-9._-]{1,60}$"#, options: .regularExpression) != nil else { continue }
+            guard let path, !path.isEmpty, validName(name) else { continue }
             repos[name] = Repo(
                 name: name, path: expand(path, home: home), test: entry["test"]?.stringValue,
                 protected: entry["protected"]?.boolValue ?? false)
         }
-        guard !command.isEmpty, !repos.isEmpty else { return nil }
+        var agents: [String: Agent] = [:]
+        for (name, entry) in raw["agents"]?.objectValue ?? [:] {
+            let command = (entry.arrayValue ?? entry["command"]?.arrayValue ?? []).compactMap(\.stringValue)
+            guard !command.isEmpty, validName(name) else { continue }
+            agents[name] = Agent(name: name, command: command, resume: entry["resume"]?.arrayValue?.compactMap(\.stringValue))
+        }
+        let single = (raw["command"]?.arrayValue ?? []).compactMap(\.stringValue)
+        if !single.isEmpty, agents["default"] == nil {
+            agents["default"] = Agent(name: "default", command: single, resume: raw["resume"]?.arrayValue?.compactMap(\.stringValue))
+        }
+        let named = raw["default_agent"]?.stringValue.flatMap { agents[$0] == nil ? nil : $0 }
+        guard let chosen = named ?? (agents["default"] != nil ? "default" : agents.keys.sorted().first),
+            let main = agents[chosen], !repos.isEmpty
+        else { return nil }
         let vscode = raw["vscode"]
         return TaskSettings(
-            command: command, repos: repos,
+            command: main.command, repos: repos,
             worktrees: expand(raw["worktrees"]?.stringValue ?? "~/ira-tasks", home: home),
             writable: (raw["writable"]?.arrayValue ?? []).compactMap(\.stringValue).map { expand($0, home: home) },
             minutes: raw["minutes"]?.doubleValue ?? 60,
             sandbox: raw["sandbox"]?.boolValue ?? true,
             openVSCode: vscode?["open"]?.boolValue ?? true,
-            promptURI: vscode?["promptURI"]?.stringValue)
+            promptURI: vscode?["promptURI"]?.stringValue,
+            agents: agents, defaultAgent: chosen)
     }
 
     public static func load(from url: URL = defaultPath) -> TaskSettings? {
@@ -141,6 +193,12 @@ public enum AgentOutput {
         return joined.count <= limit ? joined : String(joined.prefix(limit - 1)) + "…"
     }
 
+    /// The agent's own session id, which a stream-json line carries.
+    public static func session(_ line: String) -> String? {
+        guard line.contains("session_id"), let item = JSONValue.parse(line) else { return nil }
+        return item["session_id"]?.stringValue.flatMap { $0.isEmpty ? nil : String($0.prefix(100)) }
+    }
+
     /// (a progress line, the final result) from one line.
     public static func progress(_ line: String) -> (String?, JSONValue?) {
         let line = line.trimmingCharacters(in: .whitespaces)
@@ -166,6 +224,8 @@ public final class CodeTasks: @unchecked Sendable {
     /// A long task says how it is going: first after 5 minutes, then every 10.
     public static let progressAfter: Double = 300
     public static let progressEvery: Double = 600
+    /// Steps done close together are said together: at most one a minute, and the last at once.
+    public static let stepSpacing: Double = 60
     public static let maxInstruction = 4000
     public static let maxFiles = 50
     static let noPushURL = "ira-task-cannot-push:"
@@ -209,6 +269,14 @@ public final class CodeTasks: @unchecked Sendable {
         public var error = ""
         public var files: [String] = []
         public var tests = "not run"
+        /// Which agent works on it.
+        public var agent = "default"
+        /// The agent's own session id, from its output: what a resume continues.
+        public var session: String?
+        /// Its task list's progress, when the agent keeps one.
+        public var done: Int?
+        public var total: Int?
+        public var current: String?
 
         func view() -> JSONValue {
             [
@@ -216,6 +284,8 @@ public final class CodeTasks: @unchecked Sendable {
                 "instruction": .string(String(instruction.prefix(200))), "worktree": .string(worktree.path),
                 "progress": .array(progress.map { .string($0) }), "summary": .string(String(result.prefix(2000))),
                 "error": .string(error), "files": .array(files.map { .string($0) }), "tests": .string(tests),
+                "agent": .string(agent), "steps": done.flatMap { done in total.map { .string("\(done) of \($0) done") } } ?? .null,
+                "current": current.map { .string($0) } ?? .null,
             ]
         }
     }
@@ -227,13 +297,16 @@ public final class CodeTasks: @unchecked Sendable {
     private var tasks: [String: Job] = [:]
     private var commands: [String: Command] = [:]
     private let hooks: URL
+    private let stepSpacing: Double
 
     public init(
         settings: @escaping @Sendable () -> TaskSettings? = { TaskSettings.load() },
         openVSCode: @escaping @Sendable (URL) async -> Void = { try? await AppTools.openInVSCode($0) },
+        stepSpacing: Double = CodeTasks.stepSpacing,
         announce: @escaping Announce = { _, _, _, _ in }
     ) {
         self.settings = settings
+        self.stepSpacing = stepSpacing
         self.openVSCode = openVSCode
         self.announce = announce
         hooks = FileManager.default.temporaryDirectory.appendingPathComponent("ira-task-hooks-\(getpid())")
@@ -276,11 +349,14 @@ public final class CodeTasks: @unchecked Sendable {
     // MARK: The tools
 
     public func start(_ raw: JSONValue) async throws -> JSONValue {
-        let args = try ToolArgs(raw, allowed: ["repo", "instruction", "openInVSCode"])
+        let args = try ToolArgs(raw, allowed: ["repo", "instruction", "openInVSCode", "agent"])
         let settings = try current()
         let name = try args.required("repo", limit: 60, what: "which repository")
         guard let repo = settings.repos[name] else {
             throw ToolFailure("that repository is not allowed here; allowed: \(settings.repos.keys.sorted().joined(separator: ", "))")
+        }
+        guard let agent = settings.agent(try args.text("agent", limit: 60)) else {
+            throw ToolFailure("no agent by that name on this Mac; agents: \(settings.agentNames.joined(separator: ", "))")
         }
         let instruction = (try args.required("instruction", limit: 100_000, what: "what the task is"))
             .split(whereSeparator: \.isWhitespace).joined(separator: " ")
@@ -297,14 +373,16 @@ public final class CodeTasks: @unchecked Sendable {
         let base = try await git(repo.path, ["rev-parse", "HEAD"])
         try FileManager.default.createDirectory(at: settings.worktrees, withIntermediateDirectories: true)
         _ = try await git(repo.path, ["worktree", "add", "-b", branch, worktree.path, base])
-        let task = Job(id: id, repo: repo, instruction: instruction, branch: branch, worktree: worktree, base: base, started: Date())
+        var task = Job(id: id, repo: repo, instruction: instruction, branch: branch, worktree: worktree, base: base, started: Date())
+        task.agent = agent.name
         lock.locked { tasks[id] = task }
         let open = try args.bool("openInVSCode") ?? settings.openVSCode
         if open { await openVSCode(worktree) }
         Task { await self.run(id, settings: settings) }
         return [
             "id": .string(id), "repo": .string(repo.name), "branch": .string(branch), "worktree": .string(worktree.path),
-            "summary": .string("Task \(id) started in \(repo.name) on \(branch)\(open ? ", with VS Code open on it" : ""). Ira says when it is done."),
+            "agent": .string(agent.name),
+            "summary": .string("Task \(id) started in \(repo.name) with \(agent.name) on \(branch)\(open ? ", with VS Code open on it" : ""). Ira says when it is done."),
         ]
     }
 
@@ -313,7 +391,8 @@ public final class CodeTasks: @unchecked Sendable {
         var view = task.view()
         if case .object(var fields) = view {
             let latest = task.progress.last.map { " Latest: \($0)" } ?? ""
-            fields["summary"] = .string("Task \(task.id) in \(task.repo.name) is \(task.status).\(latest)")
+            let steps = task.done.flatMap { done in task.total.map { " \(done) of \($0) steps done." } } ?? ""
+            fields["summary"] = .string("Task \(task.id) in \(task.repo.name) (\(task.agent)) is \(task.status).\(steps)\(latest)")
             view = .object(fields)
         }
         return view
@@ -325,7 +404,8 @@ public final class CodeTasks: @unchecked Sendable {
         let all = lock.locked { tasks.values.sorted { $0.started > $1.started } }
         return [
             "repos": .array(settings.repos.keys.sorted().map { .string($0) }),
-            "tasks": .array(all.map { ["id": .string($0.id), "repo": .string($0.repo.name), "status": .string($0.status), "instruction": .string(String($0.instruction.prefix(200)))] }),
+            "agents": .array(settings.agentNames.map { .string($0) }), "defaultAgent": .string(settings.defaultAgent),
+            "tasks": .array(all.map { ["id": .string($0.id), "repo": .string($0.repo.name), "agent": .string($0.agent), "status": .string($0.status), "instruction": .string(String($0.instruction.prefix(200)))] }),
             "summary": .string(all.isEmpty ? "No tasks yet. Allowed repositories: \(settings.repos.keys.sorted().joined(separator: ", "))." : "\(all.count) task\(all.count == 1 ? "" : "s"); \(all.filter { $0.status == "running" }.count) running."),
         ]
     }
@@ -356,6 +436,13 @@ public final class CodeTasks: @unchecked Sendable {
     }
 
     // MARK: Running
+
+    /// Whether another step done should be said now: the first at once, then at most one a
+    /// `spacing`, and the last step always.
+    public static func stepDue(done: Int, total: Int, last: Date?, now: Date, spacing: Double) -> Bool {
+        guard let last else { return true }
+        return done >= total || now.timeIntervalSince(last) >= spacing
+    }
 
     /// Whether a running task should say how it is going now.
     public static func progressDue(started: Date, last: Date, now: Date) -> Bool {
@@ -400,12 +487,17 @@ public final class CodeTasks: @unchecked Sendable {
 
     private func run(_ id: String, settings: TaskSettings) async {
         guard let task = lock.locked({ tasks[id] }) else { return }
+        guard let agent = settings.agent(task.agent) else {
+            update(id) { $0.error = "the agent \($0.agent) is no longer set up on this Mac" }
+            await finish(id)
+            return
+        }
         let prompt = CodeTasks.prompt.replacingOccurrences(of: "{repo}", with: task.repo.name)
             .replacingOccurrences(of: "{branch}", with: task.branch)
             .replacingOccurrences(of: "{instruction}", with: task.instruction)
         do {
             let command = try Command.start(
-                sandboxed(CodeTasks.argv(settings.command, prompt: prompt), task: task, settings: settings),
+                sandboxed(CodeTasks.argv(agent.command, prompt: prompt), task: task, settings: settings),
                 directory: task.worktree.path, environment: environment())
             lock.locked { commands[id] = command }
             update(id) { if $0.status == "starting" { $0.status = "running" } }
@@ -417,12 +509,29 @@ public final class CodeTasks: @unchecked Sendable {
             async let errors = Command.readAll(command.stderr, limit: 16 * 1024)
             var final: JSONValue?
             var lastProgressEvent = task.started
+            var steps = StepTracker()
+            var lastStepEvent: Date?
             for await line in Command.lines(command.stdout) {
+                if let session = AgentOutput.session(line) { update(id) { if $0.session == nil { $0.session = session } } }
+                let advanced = steps.feed(line)
+                if steps.counting {
+                    update(id) {
+                        $0.done = steps.done
+                        $0.total = steps.total
+                        $0.current = steps.current
+                    }
+                }
+                let now = Date()
+                if advanced, CodeTasks.stepDue(done: steps.done, total: steps.total, last: lastStepEvent, now: now, spacing: stepSpacing) {
+                    lastStepEvent = now
+                    announce("task_progress", "Task \(task.id) in \(task.repo.name): \(steps.done) of \(steps.total) done",
+                             steps.sentence, ["id": .string(task.id), "repo": .string(task.repo.name)])
+                }
                 let (progress, result) = AgentOutput.progress(line)
                 if let progress {
                     update(id) { $0.progress = Array(($0.progress + [progress]).suffix(5)) }
-                    let now = Date()
-                    if CodeTasks.progressDue(started: task.started, last: lastProgressEvent, now: now) {
+                    // Agents without a task list say how it is going by the clock.
+                    if !steps.counting, CodeTasks.progressDue(started: task.started, last: lastProgressEvent, now: now) {
                         lastProgressEvent = now
                         let minutes = Int(now.timeIntervalSince(task.started) / 60)
                         announce("task_progress", "Task \(task.id) in \(task.repo.name): \(minutes) minutes in",
