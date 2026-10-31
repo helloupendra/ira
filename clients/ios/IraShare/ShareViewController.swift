@@ -26,7 +26,9 @@ final class ShareViewController: UIViewController {
     }
 }
 
-/// What came in, and sending it.
+/// What came in, and sending it. On the main actor: the sheet reads it, and the item
+/// providers' callbacks only fill a `Found`, which is handed over on the main queue.
+@MainActor
 final class ShareModel: ObservableObject {
     enum Phase: Equatable {
         case reading, ready, sending, sent
@@ -40,7 +42,7 @@ final class ShareModel: ObservableObject {
     var cancelled: () -> Void = {}
 
     /// Copies of the shared files, readable after the share sheet's own access ends.
-    private static let folder = FileManager.default.temporaryDirectory.appendingPathComponent("IraShare", isDirectory: true)
+    nonisolated private static let folder = FileManager.default.temporaryDirectory.appendingPathComponent("IraShare", isDirectory: true)
 
     /// This iPhone's pairing, as the app keeps it in the shared Keychain group.
     static func client() -> DropClient? {
@@ -50,8 +52,9 @@ final class ShareModel: ObservableObject {
     }
 
     func collect(_ items: [NSExtensionItem]) {
-        try? FileManager.default.removeItem(at: Self.folder)
-        try? FileManager.default.createDirectory(at: Self.folder, withIntermediateDirectories: true)
+        let folder = Self.folder
+        try? FileManager.default.removeItem(at: folder)
+        try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
         let group = DispatchGroup()
         let found = Found()
         for provider in items.flatMap({ $0.attachments ?? [] }) {
@@ -72,22 +75,25 @@ final class ShareModel: ObservableObject {
                 let type = provider.registeredTypeIdentifiers.first ?? UTType.data.identifier
                 provider.loadFileRepresentation(forTypeIdentifier: type) { url, _ in
                     // The file is readable only inside this handler: keep a copy.
-                    if let url { found.keep(url, in: Self.folder) }
+                    if let url { found.keep(url, in: folder) }
                     group.leave()
                 }
             }
         }
         group.notify(queue: .main) {
-            let (words, copies) = found.all
-            self.text = words.joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
-            self.files = copies
-            if Self.client() == nil {
-                self.phase = .failed("Open Ira and pair this iPhone first.")
-            } else if self.text.isEmpty && self.files.isEmpty {
-                self.phase = .failed("Nothing came with this share.")
-            } else {
-                self.phase = .ready
-            }
+            MainActor.assumeIsolated { self.show(found.all) }
+        }
+    }
+
+    private func show(_ all: (words: [String], copies: [URL])) {
+        text = all.words.joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
+        files = all.copies
+        if Self.client() == nil {
+            phase = .failed("Open Ira and pair this iPhone first.")
+        } else if text.isEmpty && files.isEmpty {
+            phase = .failed("Nothing came with this share.")
+        } else {
+            phase = .ready
         }
     }
 
@@ -105,11 +111,11 @@ final class ShareModel: ObservableObject {
                         _ = try await client.send(file: file, caption: index == 0 && !text.isEmpty ? text : nil)
                     }
                 }
-                await MainActor.run { self.phase = .sent }
+                self.phase = .sent
                 try? await Task.sleep(nanoseconds: 1_200_000_000)
-                await MainActor.run { self.done() }
+                self.done()
             } catch {
-                await MainActor.run { self.phase = .failed(error.localizedDescription) }
+                self.phase = .failed(error.localizedDescription)
             }
         }
     }
@@ -121,7 +127,7 @@ private final class Found: @unchecked Sendable {
     private var words: [String] = []
     private var copies: [URL] = []
 
-    var all: ([String], [URL]) { lock.withLock { (words, copies) } }
+    var all: (words: [String], copies: [URL]) { lock.withLock { (words, copies) } }
 
     func add(word: String) {
         lock.withLock { words.append(word) }
