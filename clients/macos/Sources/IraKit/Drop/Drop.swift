@@ -60,6 +60,17 @@ public struct DropItem: Equatable, Sendable, Identifiable {
     }
 }
 
+/// What this Mac does when something arrives from another device: text and links come with
+/// Copy; a file is only offered, and written to disk when the person chooses Save.
+public enum DropArrival: Equatable, Sendable {
+    case copy(String)
+    case offerSave(itemID: Int)
+
+    public init(_ item: DropItem) {
+        self = item.isFile ? .offerSave(itemID: item.id) : .copy(item.text ?? "")
+    }
+}
+
 /// A change in the Drop, from the device WebSocket: something new, or one deleted.
 public enum DropFrame: Equatable, Sendable {
     case new(DropItem)

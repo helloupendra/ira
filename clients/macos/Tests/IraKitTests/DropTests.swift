@@ -25,6 +25,13 @@ struct DropTests {
         #expect(DropItem(id: 1, kind: "link", text: text).link == nil)
     }
 
+    @Test func aFileIsOnlyOfferedNeverSavedOnArrival() throws {
+        let file = try #require(DropItem(DropTests.file))
+        #expect(DropArrival(file) == .offerSave(itemID: 42))
+        #expect(DropArrival(DropItem(id: 5, kind: "text", text: "hi")) == .copy("hi"))
+        #expect(DropArrival(DropItem(id: 6, kind: "link", text: "https://example.com")) == .copy("https://example.com"))
+    }
+
     @Test func aLinkOpens() {
         #expect(DropItem(id: 1, kind: "link", text: " https://example.com/a ").link?.absoluteString == "https://example.com/a")
         #expect(DropItem(id: 1, kind: "text", text: "https://example.com/a").link == nil)

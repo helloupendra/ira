@@ -182,9 +182,11 @@ Link**), and **Save to Downloads/Ira and Show** for a file.
   **⌃⌥⌘C** copies the newest item. Both are in the menu too, with **Send
   Files to Drop…**.
 - Text from another device comes as a notification with **Copy**. A file
-  is saved to `~/Downloads/Ira` at once (never over a file already there,
-  checked against its fingerprint, and marked as downloaded, so macOS
-  checks it before it opens), with **Show in Finder**.
+  comes as a notification with **Save**, and nothing is written to disk
+  until you click it (or the notification). Then it goes to
+  `~/Downloads/Ira` (never over a file already there, checked against its
+  fingerprint, and marked as downloaded, so macOS checks it before it
+  opens), with **Show in Finder**.
 
 ## What Ira can do on your Mac
 

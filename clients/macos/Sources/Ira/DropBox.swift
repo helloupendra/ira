@@ -5,7 +5,7 @@ import UserNotifications
 
 /// The person's Drop on this Mac: the newest items for the menu, kept current by the device
 /// connection's `drop` frames. Text from another device comes as a notification with Copy;
-/// a file is saved to ~/Downloads/Ira at once and announced with Show in Finder.
+/// a file as one with Save, and only Save writes it to ~/Downloads/Ira (then Show in Finder).
 @MainActor
 final class DropBox: NSObject, ObservableObject {
     @Published private(set) var items: [DropItem] = []
@@ -19,6 +19,9 @@ final class DropBox: NSObject, ObservableObject {
         self.secrets = secrets
         super.init()
         DropNotes.shared.install()
+        DropNotes.shared.onSave = { [weak self] id in
+            Task { await self?.saveArrived(id) }
+        }
     }
 
     /// ~/Downloads/Ira, where files from Drop go.
@@ -70,17 +73,25 @@ final class DropBox: NSObject, ObservableObject {
 
     private func arrived(_ item: DropItem) {
         let from = item.fromLabel.isEmpty ? "a device" : item.fromLabel
-        guard item.isFile else {
-            DropNotes.shared.post(title: "In your Drop, from \(from)", body: item.preview, copy: item.text)
-            return
+        switch DropArrival(item) {
+        case .copy(let text):
+            DropNotes.shared.post(title: "In your Drop, from \(from)", body: item.preview, copy: text)
+        case .offerSave(let id):
+            DropNotes.shared.post(title: "In your Drop, from \(from)", body: item.preview, save: id)
         }
-        Task {
-            do {
-                let saved = try await save(item)
-                DropNotes.shared.post(title: "From \(from), in Downloads/Ira", body: item.preview, reveal: saved)
-            } catch {
-                DropNotes.shared.post(title: "In your Drop, from \(from)", body: "\(item.preview). It did not save: \(error.localizedDescription)")
-            }
+    }
+
+    /// Save on a file's notification: only now is it written to ~/Downloads/Ira.
+    private func saveArrived(_ id: Int) async {
+        if !items.contains(where: { $0.id == id }) { await refresh() }
+        guard let item = items.first(where: { $0.id == id && $0.isFile }) else {
+            return DropNotes.shared.post(title: "Not saved", body: "That file is no longer in your Drop.")
+        }
+        do {
+            let saved = try await save(item)
+            DropNotes.shared.post(title: "Saved to Downloads/Ira", body: item.preview, reveal: saved)
+        } catch {
+            DropNotes.shared.post(title: "Not saved", body: "\(item.preview): \(error.localizedDescription)")
         }
     }
 
@@ -180,13 +191,17 @@ final class DropBox: NSObject, ObservableObject {
     }
 }
 
-/// Drop's notifications: Copy on text and links, Show in Finder on a saved file.
+/// Drop's notifications: Copy on text and links, Save on a file that arrived, Show in Finder
+/// once it is saved.
 @MainActor
 final class DropNotes: NSObject, UNUserNotificationCenterDelegate {
     static let shared = DropNotes()
     private static let copyCategory = "drop.text"
+    private static let saveCategory = "drop.offer"
     private static let fileCategory = "drop.file"
     private var installed = false
+    /// Save was chosen on a file's notification: the item's id.
+    var onSave: ((Int) -> Void)?
 
     /// Notification Center needs an app bundle: a bare `swift run` has none.
     private var available: Bool { Bundle.main.bundleIdentifier != nil }
@@ -201,12 +216,15 @@ final class DropNotes: NSObject, UNUserNotificationCenterDelegate {
                 identifier: DropNotes.copyCategory, actions: [UNNotificationAction(identifier: "copy", title: "Copy")],
                 intentIdentifiers: []),
             UNNotificationCategory(
+                identifier: DropNotes.saveCategory, actions: [UNNotificationAction(identifier: "save", title: "Save")],
+                intentIdentifiers: []),
+            UNNotificationCategory(
                 identifier: DropNotes.fileCategory,
                 actions: [UNNotificationAction(identifier: "reveal", title: "Show in Finder")], intentIdentifiers: []),
         ])
     }
 
-    func post(title: String, body: String, copy: String? = nil, reveal: URL? = nil) {
+    func post(title: String, body: String, copy: String? = nil, save: Int? = nil, reveal: URL? = nil) {
         guard available else { return }
         let center = UNUserNotificationCenter.current()
         center.requestAuthorization(options: [.alert, .sound]) { granted, _ in
@@ -217,6 +235,9 @@ final class DropNotes: NSObject, UNUserNotificationCenterDelegate {
             if let copy {
                 content.categoryIdentifier = DropNotes.copyCategory
                 content.userInfo = ["copy": copy]
+            } else if let save {
+                content.categoryIdentifier = DropNotes.saveCategory
+                content.userInfo = ["save": save]
             } else if let reveal {
                 content.categoryIdentifier = DropNotes.fileCategory
                 content.userInfo = ["reveal": reveal.path]
@@ -232,11 +253,17 @@ final class DropNotes: NSObject, UNUserNotificationCenterDelegate {
         let info = response.notification.request.content.userInfo
         let action = response.actionIdentifier
         let copy = info["copy"] as? String
+        let save = info["save"] as? Int
         let reveal = info["reveal"] as? String
         DispatchQueue.main.async {
             if let copy, action == "copy" || action == UNNotificationDefaultActionIdentifier {
                 NSPasteboard.general.clearContents()
                 NSPasteboard.general.setString(copy, forType: .string)
+            } else if let save {
+                // Save, or a click on the notification itself: the person chose it either way.
+                if action == "save" || action == UNNotificationDefaultActionIdentifier {
+                    MainActor.assumeIsolated { DropNotes.shared.onSave?(save) }
+                }
             } else if let reveal {
                 NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: reveal)])
             }

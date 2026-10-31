@@ -134,9 +134,9 @@ encryption**. Nobody but you sees your items in Ira, not even its owner or
 admins; logs keep only an item's number, kind and size, never its words
 or file name. **Delete my data** removes every item and file. A file is
 limited to 95 MB, and the key a Siri Shortcut uses cannot read your Drop.
-Ira for Mac saves a file that arrives from another device to
-`~/Downloads/Ira` at once; the Android app saves one only when you tap
-**Save**.
+Ira for Mac and the Android app save a file that arrives from another
+device only when you choose **Save** (on the Mac, in its notification or
+the menu, to `~/Downloads/Ira`).
 When you share to the installed app on Android, the phone's browser keeps
 the shared text and files only until the app opens; it shows them, and
 sends them to your Drop only when you tap **Send to Drop**. On the iPhone,
