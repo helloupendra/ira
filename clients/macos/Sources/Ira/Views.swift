@@ -305,7 +305,7 @@ struct ChatView: View {
                 center: UnitPoint(x: 0.5, y: 0.28), startRadius: 0, endRadius: 380))
     }
 
-    /// "Good evening, Upendra." with the name from this Mac's account, in italic green.
+    /// "Good evening, <first name>." with the name from this Mac's account, in italic green.
     private var greeting: Text {
         let hour = Calendar.current.component(.hour, from: Date())
         let part = hour < 12 ? "Good morning" : hour < 17 ? "Good afternoon" : "Good evening"
