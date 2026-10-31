@@ -33,6 +33,15 @@ def no_network(monkeypatch, isolated_tools):
     def refuse(*args, **kwargs):
         raise AssertionError("doctor tests must not touch the network")
 
+    real_connect, real_socketpair = socket.socket.connect, socket.socketpair
+
+    def socketpair(*args, **kwargs):
+        # An event loop's own wake-up pair: on Windows socketpair() connects over loopback.
+        with monkeypatch.context() as inside:
+            inside.setattr(socket.socket, "connect", real_connect)
+            return real_socketpair(*args, **kwargs)
+
+    monkeypatch.setattr(socket, "socketpair", socketpair)
     monkeypatch.setattr(socket.socket, "connect", refuse)
     monkeypatch.setattr(socket.socket, "connect_ex", refuse)
     monkeypatch.setattr(socket, "create_connection", refuse)

@@ -47,7 +47,11 @@ def test_a_file_is_stored_encrypted_and_any_tampering_is_caught(tmp_path):
     stored = (tmp_path / "drop" / "1" / f"{item.id}.bin").read_bytes()
     assert (
         data[:64] not in stored
-        and oct(os.stat(tmp_path / "drop" / "1" / f"{item.id}.bin").st_mode)[-3:] == "600"
+        # Windows guards it with the folder's NTFS permissions instead.
+        and (
+            os.name != "posix"
+            or oct(os.stat(tmp_path / "drop" / "1" / f"{item.id}.bin").st_mode)[-3:] == "600"
+        )
     )
     assert b"".join(drop.read(item)) == data
 
