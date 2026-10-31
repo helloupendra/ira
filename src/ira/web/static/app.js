@@ -388,12 +388,12 @@ async function loadPinStatus() {
     text.textContent = `Actions are locked after wrong PINs until ${clockTime(until)}.`;
   } else if (pin.has_pin) {
     text.textContent = pin.pin_set_at
-      ? `Your action PIN is set (since ${new Date(pin.pin_set_at * 1000).toLocaleDateString(undefined, { day: "numeric", month: "short" })}).`
-      : "Your action PIN is set.";
+      ? `Action PIN · set ${new Date(pin.pin_set_at * 1000).toLocaleDateString(undefined, { day: "numeric", month: "short" })}`
+      : "Action PIN · set";
   } else {
-    text.textContent = "You have no action PIN yet. You need one to confirm actions.";
+    text.textContent = "No action PIN yet: you need one to confirm actions.";
   }
-  open.textContent = pin.has_pin ? "Change your PIN" : "Set your PIN";
+  open.textContent = pin.has_pin ? "Change" : "Set PIN";
   open.hidden = false;
 }
 
@@ -429,7 +429,7 @@ $("#pin-form").addEventListener("submit", async (event) => {
       form.hidden = true;
       $("#pin-status").textContent = "PIN saved. Wrong PINs lock actions after three tries.";
       $("#pin-status").className = "menu-user ok";
-      $("#pin-open").textContent = "Change your PIN";
+      $("#pin-open").textContent = "Change";
       $("#pin-open").hidden = false;
     }
   } catch (problem) {

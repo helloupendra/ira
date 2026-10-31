@@ -138,40 +138,51 @@
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg>
       </button>
     </div>
-    <p class="menu-user"><span id="menu-email"></span> <span id="menu-role" class="chip"></span></p>
-    <div class="menu-history">
-      <p class="menu-label">Today's conversations</p>
-      <ul id="history-list" class="history" aria-label="Today's conversations"></ul>
-    </div>
-    <label class="switch"><input id="speak-toggle" type="checkbox"> <span>Speak replies aloud</span></label>
-    <label class="switch"><input id="handsfree-toggle" type="checkbox"> <span>Hands-free: listen again after each spoken reply</span></label>
-    <div class="menu-pin">
-      <p id="pin-status" class="menu-user"></p>
-      <button id="pin-open" type="button" class="btn btn-ghost" hidden>Set your PIN</button>
-      <form id="pin-form" class="stack" hidden>
-        <label>Your password <input name="password" type="password" autocomplete="current-password" required></label>
-        <label>New action PIN (<span id="pin-rule">4 to 12 digits</span>) <input name="pin" type="password" inputmode="numeric" pattern="[0-9]{4,12}" minlength="4" maxlength="12" autocomplete="off" required></label>
-        <div class="row">
-          <button type="submit" class="btn btn-primary">Save PIN</button>
-          <button type="button" id="pin-cancel" class="btn btn-ghost">Cancel</button>
+    <div class="menu-body">
+      <p class="menu-account"><span id="menu-email"></span> <span id="menu-role" class="chip"></span></p>
+      <div class="menu-section menu-history">
+        <p class="menu-label">Today's conversations</p>
+        <ul id="history-list" class="history" aria-label="Today's conversations"></ul>
+      </div>
+      <div class="menu-section menu-prefs">
+        <label class="switch"><span>Speak replies aloud</span> <input id="speak-toggle" type="checkbox" role="switch"></label>
+        <label class="switch"><span>Hands-free: listen again after each spoken reply</span> <input id="handsfree-toggle" type="checkbox" role="switch"></label>
+      </div>
+      <div class="menu-section menu-pin">
+        <div class="pin-row">
+          <p id="pin-status" class="menu-user"></p>
+          <button id="pin-open" type="button" class="btn btn-ghost" hidden>Set PIN</button>
         </div>
-        <p class="error" role="alert"></p>
-      </form>
+        <form id="pin-form" class="stack" hidden>
+          <label>Your password <input name="password" type="password" autocomplete="current-password" required></label>
+          <label><span>New action PIN (<span id="pin-rule">4 to 12 digits</span>)</span> <input name="pin" type="password" inputmode="numeric" pattern="[0-9]{4,12}" minlength="4" maxlength="12" autocomplete="off" required></label>
+          <div class="row">
+            <button type="submit" class="btn btn-primary">Save PIN</button>
+            <button type="button" id="pin-cancel" class="btn btn-ghost">Cancel</button>
+          </div>
+          <p class="error" role="alert"></p>
+        </form>
+      </div>
+      <nav class="menu-section menu-nav" aria-label="Your Ira">
+        <p class="menu-label">Devices</p>
+        <button type="button" class="menu-link" data-panel="drop" hidden>Drop: send to your devices</button>
+        <button type="button" class="menu-link" data-panel="devices">Your devices</button>
+        <p class="menu-label">Assistant</p>
+        <button type="button" class="menu-link" data-panel="assistant">Name, languages, web search</button>
+        <button type="button" class="menu-link" data-panel="activity">What Ira did</button>
+        <button type="button" class="menu-link" data-panel="knows">What Ira knows about you</button>
+        <p class="menu-label">Connections</p>
+        <button type="button" class="menu-link" data-panel="connections">GitHub and other services</button>
+        <button type="button" class="menu-link" data-panel="businesses">Your businesses</button>
+        <button type="button" class="menu-link" data-panel="siri">Siri on iPhone</button>
+        <p class="menu-label">Your data</p>
+        <button type="button" class="menu-link" data-panel="data">Export or delete</button>
+      </nav>
+      <div class="menu-section menu-foot">
+        <a id="menu-admin" class="menu-link" href="/admin/" hidden>Admin console</a>
+        <button id="logout" type="button" class="menu-link menu-quiet">Sign out</button>
+      </div>
     </div>
-    <nav class="menu-nav" aria-label="Your Ira">
-      <p class="menu-label">Your Ira</p>
-      <button type="button" class="menu-link" data-panel="drop" hidden>Drop: send to your devices</button>
-      <button type="button" class="menu-link" data-panel="devices">Your devices</button>
-      <button type="button" class="menu-link" data-panel="assistant">Your assistant: name, languages, web search</button>
-      <button type="button" class="menu-link" data-panel="activity">What Ira did</button>
-      <button type="button" class="menu-link" data-panel="knows">What Ira knows about you</button>
-      <button type="button" class="menu-link" data-panel="connections">Your connections: GitHub and other services</button>
-      <button type="button" class="menu-link" data-panel="businesses">Your businesses</button>
-      <button type="button" class="menu-link" data-panel="siri">Siri on iPhone</button>
-      <button type="button" class="menu-link" data-panel="data">Your data: export or delete</button>
-    </nav>
-    <a id="menu-admin" class="menu-link" href="/admin/" hidden>Open the admin console</a>
-    <button id="logout" type="button" class="btn btn-ghost">Sign out</button>
   </dialog>
 
   <dialog id="panel" class="menu panel" aria-labelledby="panel-title">
