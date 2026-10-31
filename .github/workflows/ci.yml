@@ -142,8 +142,21 @@ jobs:
         with:
           dotnet-version: "10.0.x"
       - run: dotnet --version
-      - run: dotnet test IraKit.Windows.Tests/IraKit.Windows.Tests.csproj -c Release --filter "Category!=Live"
-      - run: dotnet build Ira.Windows/Ira.Windows.csproj -c Release -p:Platform=x64
+      # Build errors and failed tests also as annotations, so they show on the run's page.
+      - shell: bash
+        run: |
+          set -o pipefail
+          dotnet test IraKit.Windows.Tests/IraKit.Windows.Tests.csproj -c Release --filter "Category!=Live" 2>&1 | tee test.log || {
+            grep -E "error [A-Z]+[0-9]+|\[FAIL\]|^ *Failed " test.log | sort -u | head -10 | sed 's/^/::error::/'
+            exit 1
+          }
+      - shell: bash
+        run: |
+          set -o pipefail
+          dotnet build Ira.Windows/Ira.Windows.csproj -c Release -p:Platform=x64 2>&1 | tee build.log || {
+            grep -E "error [A-Z]+[0-9]+" build.log | sort -u | head -10 | sed 's/^/::error::/'
+            exit 1
+          }
 
   ios-app:
     # Ira for iPhone: the kit's tests and the app's UI tests on an iOS simulator,
