@@ -13,6 +13,20 @@ final class DropBox: NSObject, ObservableObject {
     @Published private(set) var hasMore = false
     /// Where each file saved on this Mac went, for Show in Finder.
     @Published private(set) var saved: [Int: URL] = [:]
+    /// The newest item the person has seen in the Drop pane.
+    @Published private(set) var seenID = UserDefaults.standard.integer(forKey: "dropSeenID")
+
+    /// Items from other devices that came after the person last looked: "Drop · 2 new".
+    var unseen: Int {
+        items.filter { $0.id > seenID && $0.fromDeviceID != settings.deviceID }.count
+    }
+
+    /// The Drop pane is showing: everything in it has been seen.
+    func markSeen() {
+        guard let newest = items.first?.id, newest > seenID else { return }
+        seenID = newest
+        UserDefaults.standard.set(newest, forKey: "dropSeenID")
+    }
 
     private let settings: AppSettings
     private let secrets: SecretStore

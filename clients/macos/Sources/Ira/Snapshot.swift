@@ -31,6 +31,23 @@ enum Snapshot {
                 save(main.window, to: folder.appendingPathComponent("\(pane.rawValue)-\(dark ? "dark" : "light").png"))
             }
         }
+        // A conversation with receipts and an action waiting, then listening, from sample lines.
+        main.state.selection = .pane(.chat)
+        model.conversation.entries = sample
+        for dark in [false, true] {
+            main.window.appearance = NSAppearance(named: dark ? .darkAqua : .aqua)
+            wait(1)
+            save(main.window, to: folder.appendingPathComponent("chat-conversation-\(dark ? "dark" : "light").png"))
+        }
+        model.conversation.listening = true
+        model.conversation.caption = "Kal subah dus baje CA ko call karna yaad dila dena"
+        for dark in [false, true] {
+            main.window.appearance = NSAppearance(named: dark ? .darkAqua : .aqua)
+            wait(1)
+            save(main.window, to: folder.appendingPathComponent("listening-\(dark ? "dark" : "light").png"))
+        }
+        model.conversation.listening = false
+        model.conversation.caption = ""
         // A new conversation: what an empty Chat says.
         model.conversation.clear()
         main.state.selection = .pane(.chat)
@@ -48,6 +65,22 @@ enum Snapshot {
         print("after reopening: window shown \(main.window.isVisible)")
         save(main.window, to: folder.appendingPathComponent("reopened.png"))
         exit(0)
+    }
+
+    /// A short conversation to draw: a question, an answer with its receipts, and an action
+    /// waiting for the PIN.
+    private static var sample: [Entry] {
+        var answer = Entry(
+            role: .ira,
+            text: "It is Invoice-INV-7.pdf in your Downloads, from yesterday at 4:04 PM: the signed copy for Sunrise Dental Clinic. Shall I email it to them?")
+        answer.receipts = ["files find · 0.4 s", "file read · 1.1 s"]
+        let action = PendingAction(id: "snapshot", summary: "Email Invoice-INV-7.pdf to Sunrise Dental Clinic", tier: 3, status: "pending")
+        return [
+            Entry(role: .you, text: "vo PDF kahan hai jo kal download kiya?"),
+            answer,
+            Entry(role: .you, text: "haan, bhej do"),
+            Entry(role: .note, text: action.summary, action: action),
+        ]
     }
 
     private static func wait(_ seconds: TimeInterval) {

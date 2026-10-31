@@ -49,7 +49,11 @@ struct ThisMacPane: View {
                         .foregroundStyle(.secondary)
                 }
                 ForEach(skills, id: \.self) { skill in
-                    Label(ThisMacPane.title(skill), systemImage: ThisMacPane.symbol(skill))
+                    Label {
+                        Text(ThisMacPane.title(skill)).foregroundStyle(Presence.ink)
+                    } icon: {
+                        Image(systemName: ThisMacPane.symbol(skill)).foregroundStyle(Presence.green)
+                    }
                 }
                 if let devices = devicesPage {
                     Button("Change them in Your devices…") { NSWorkspace.shared.open(devices) }
@@ -95,6 +99,8 @@ struct ThisMacPane: View {
             }
         }
         .formStyle(.grouped)
+        .scrollContentBackground(.hidden)
+        .background(Presence.bg)
         .navigationTitle("This Mac")
         .onAppear { permissions.refresh() }
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in

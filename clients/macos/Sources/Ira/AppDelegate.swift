@@ -30,6 +30,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let last = QuitReason.takeLast() ?? "it did not say (it crashed, was force-quit, or the Mac shut down)"
         IraLog.shared.info("Ira \(IraApp.version) started; last time Ira quit because of \(last)")
         model = AppModel()
+        NSApp.appearance = Presence.appearance(model.settings.look)
         AppMenu.install()
         main = MainWindowController(model: model, hotKeyChanged: { [weak self] in self?.registerHotKey() })
         main.onClose = { [weak self] in self?.model.conversation.stopListening() }

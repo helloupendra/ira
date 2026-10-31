@@ -24,6 +24,7 @@ public final class AppSettings: @unchecked Sendable {
         static let conversationAt = "conversationAt"
         static let networkSalt = "networkSalt"
         static let wakeWord = "wakeWord"
+        static let look = "look"
     }
 
     /// Salts this Mac's network codes (the routine skill), so the server can only
@@ -41,6 +42,12 @@ public final class AppSettings: @unchecked Sendable {
     }
 
     /// "Hey Ira": off until the person switches it on.
+    /// How the window looks: "dark" (the default), "light", or "system" to follow macOS.
+    public var look: String {
+        get { defaults.string(forKey: Key.look).flatMap { ["dark", "light", "system"].contains($0) ? $0 : nil } ?? "dark" }
+        set { defaults.set(newValue, forKey: Key.look) }
+    }
+
     public var wakeWord: Bool {
         get { defaults.bool(forKey: Key.wakeWord) }
         set { defaults.set(newValue, forKey: Key.wakeWord) }

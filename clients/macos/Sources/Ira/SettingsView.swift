@@ -3,6 +3,7 @@ import IraKit
 import SwiftUI
 
 final class SettingsState: ObservableObject {
+    @Published var look = "dark"
     @Published var recording = false
     var monitor: Any?
     @Published var speak = true
@@ -28,6 +29,18 @@ struct SettingsView: View {
 
     var body: some View {
         Form {
+            Section("Look") {
+                Picker("Ira looks", selection: $state.look) {
+                    Text("Dark").tag("dark")
+                    Text("Light").tag("light")
+                    Text("As macOS").tag("system")
+                }
+                .pickerStyle(.segmented)
+                .onChange(of: state.look) { _, look in
+                    model.settings.look = look
+                    NSApp.appearance = Presence.appearance(look)
+                }
+            }
             Section("Open Ira") {
                 HStack {
                     Text("Shortcut")
@@ -119,7 +132,10 @@ struct SettingsView: View {
             }
         }
         .formStyle(.grouped)
+        .scrollContentBackground(.hidden)
+        .background(Presence.bg)
         .onAppear {
+            state.look = model.settings.look
             state.speak = model.settings.speakReplies
             state.wake = model.settings.wakeWord
             state.login = LoginItem.enabled
