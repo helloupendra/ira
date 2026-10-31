@@ -35,6 +35,8 @@ final class AppModel {
     var showingSetup = false
     /// A Siri request to start a call, waiting for the app to be on screen.
     var callRequested = false
+    /// A pairing link opened from outside, waiting for the person's yes.
+    var linkToConfirm: LinkPair?
 
     @ObservationIgnored private var device: DeviceClient?
     private(set) var foreground = true
@@ -87,11 +89,26 @@ final class AppModel {
         }
     }
 
-    /// An `ira://pair?server=...&code=...` link from the pair page.
+    /// An `ira://pair?server=...&code=...` link from the pair page. Any app or web page can
+    /// open one, so nothing changes until the person says yes on a sheet that names the
+    /// new Ira, and the one this iPhone would leave.
     func open(_ url: URL) async {
         guard url.scheme == "ira" else { return }
+        do {
+            let target = try Pairing.parse(url.absoluteString, server: nil)
+            let current = pairing == .paired && !settings.server.isEmpty ? settings.server : nil
+            linkToConfirm = LinkPair(server: target.server, code: target.code, current: current)
+        } catch {
+            notice = (error as? Pairing.Failure)?.message ?? error.localizedDescription
+        }
+    }
+
+    /// The person said yes to the pairing link.
+    func pairWithLink() async {
+        guard let link = linkToConfirm else { return }
+        linkToConfirm = nil
         showingSetup = true
-        if let problem = await pair(entry: url.absoluteString, server: nil) {
+        if let problem = await pair(entry: link.code, server: link.server) {
             notice = problem
         }
     }
@@ -284,4 +301,12 @@ final class AppModel {
 struct EmptyTools: ToolRunner {
     var definitions: [JSONValue] { [] }
     func call(_ name: String, args: JSONValue) async throws -> JSONValue { throw ToolFailure("no tools") }
+}
+
+/// A pairing link to confirm: the Ira it pairs with, and the one this iPhone is paired with now.
+struct LinkPair: Identifiable, Equatable {
+    let server: String
+    let code: String
+    let current: String?
+    var id: String { server + code }
 }
