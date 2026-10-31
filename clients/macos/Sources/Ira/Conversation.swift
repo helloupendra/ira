@@ -50,6 +50,8 @@ final class Conversation: ObservableObject {
     @Published var stalled = false
     /// macOS needs Ira restarted before the screen can be read.
     @Published var needsRestart = false
+    /// Today's conversations, for the window's sidebar (the web app's too).
+    @Published var today: [ConversationSummary] = []
     /// The answer, complete: for a notification while the window is hidden.
     var onAnswer: ((String) -> Void)?
     private var lastQuestion: String?
@@ -494,6 +496,37 @@ final class Conversation: ObservableObject {
         conversationID = Conversation.newID()
         settings.rememberConversation(conversationID)
         disconnect()
+    }
+
+    /// Today's conversations from the server, quietly: the list is a convenience.
+    func loadToday() async {
+        guard let token = secrets.load(SecretAccount.device), !settings.server.isEmpty else { return }
+        let client = AskClient(server: settings.server, token: { token })
+        if let rows = try? await client.conversations() { today = ConversationHistory.today(rows) }
+    }
+
+    /// Carry on with one of today's conversations: its lines in the window, and the next
+    /// question (typed or spoken) goes to it.
+    func open(_ id: String) async {
+        guard id != conversationID || entries.isEmpty, !busy else { return }
+        guard let token = secrets.load(SecretAccount.device), !settings.server.isEmpty else { return }
+        let client = AskClient(server: settings.server, token: { token })
+        do {
+            let lines = try await client.conversation(id)
+            stopListening()
+            disconnect()
+            conversationID = id
+            settings.rememberConversation(id)
+            entries = lines.map { line in
+                switch line.kind {
+                case .person: return Entry(role: .you, text: line.text)
+                case .ira: return Entry(role: .ira, text: line.text)
+                case .note: return Entry(role: .note, text: line.text)
+                }
+            }
+        } catch {
+            notice = "That conversation did not open: \(error.localizedDescription)"
+        }
     }
 
     /// Confirm a Tier 3 action with the PIN typed here; the PIN goes only to the

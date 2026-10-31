@@ -1,7 +1,7 @@
 import AppKit
 import IraKit
 
-// Ira for Mac: a menu-bar app (LSUIElement), so no Dock icon.
+// Ira for Mac: an app with its own window, a Dock icon and a small menu-bar icon.
 //
 // Two commands for scripts and support, run without any window:
 //   Ira --status          this Mac's pairing: paired, not paired, or a key the Keychain did not hand over
@@ -63,11 +63,16 @@ struct NoToolsAtAll: ToolRunner {
     func call(_ name: String, args: JSONValue) async throws -> JSONValue { throw ToolFailure("no tools") }
 }
 
+// IRA_SNAPSHOT=<folder>: the window drawn into PNGs, nothing on screen (see Snapshot).
+if let folder = ProcessInfo.processInfo.environment["IRA_SNAPSHOT"], !folder.isEmpty {
+    MainActor.assumeIsolated { Snapshot.run(into: URL(fileURLWithPath: folder)) }
+}
+
 MainActor.assumeIsolated {
     let app = NSApplication.shared
     let delegate = AppDelegate()
     app.delegate = delegate
-    app.setActivationPolicy(.accessory)
+    app.setActivationPolicy(.regular)
     withExtendedLifetime(delegate) {
         app.run()
     }

@@ -24,14 +24,6 @@ public final class AppSettings: @unchecked Sendable {
         static let conversationAt = "conversationAt"
         static let networkSalt = "networkSalt"
         static let wakeWord = "wakeWord"
-        static let panelPinned = "panelPinned"
-    }
-
-    /// Keep Ira's window on top while working in other apps (off: it hides when
-    /// another app is clicked).
-    public var panelPinned: Bool {
-        get { defaults.bool(forKey: Key.panelPinned) }
-        set { defaults.set(newValue, forKey: Key.panelPinned) }
     }
 
     /// Salts this Mac's network codes (the routine skill), so the server can only

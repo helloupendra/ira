@@ -16,23 +16,6 @@ extension Color {
     })
 }
 
-struct MainView: View {
-    @ObservedObject var model: AppModel
-    @ObservedObject var conversation: Conversation
-    let openSettings: () -> Void
-
-    var body: some View {
-        Group {
-            switch model.screen {
-            case .setup: SetupView(model: model, conversation: conversation)
-            case .keyProblem: KeyProblemView(model: model)
-            case .chat: ChatView(model: model, conversation: conversation, openSettings: openSettings)
-            }
-        }
-        .frame(minWidth: 340, minHeight: 420)
-    }
-}
-
 // MARK: Pairing
 
 /// A form's own state. SwiftUI's @State is a compiler macro in the newest SDKs,
@@ -223,14 +206,11 @@ struct PermissionRow: View {
 struct ChatView: View {
     @ObservedObject var model: AppModel
     @ObservedObject var conversation: Conversation
-    let openSettings: () -> Void
     @StateObject private var form = FormState()
     @FocusState private var focused: Bool
 
     var body: some View {
         VStack(spacing: 0) {
-            topBar
-            Divider()
             ApprovalBanner(approvals: model.approvals)
             transcript
             if conversation.needsRestart {
@@ -243,58 +223,30 @@ struct ChatView: View {
             Divider()
             composer
         }
+        .navigationTitle(model.assistant)
+        .navigationSubtitle(statusText)
+        .toolbar {
+            ToolbarItem {
+                Button {
+                    form.flag.toggle()
+                } label: {
+                    Label("What I read", systemImage: "list.bullet.rectangle")
+                }
+                .help("What I read")
+            }
+            ToolbarItem {
+                Button {
+                    conversation.clear()
+                    focused = true
+                } label: {
+                    Label("New conversation", systemImage: "square.and.pencil")
+                }
+                .help("New conversation")
+                .disabled(conversation.busy)
+            }
+        }
         .onReceive(NotificationCenter.default.publisher(for: .iraFocusInput)) { _ in focused = true }
-    }
-
-    private var topBar: some View {
-        HStack(spacing: 8) {
-            Circle()
-                .fill(statusColor)
-                .frame(width: 8, height: 8)
-                .help(AppDelegate.describe(model.deviceState, paired: model.paired))
-                .accessibilityLabel(AppDelegate.describe(model.deviceState, paired: model.paired))
-            Text(model.assistant).font(.headline)
-            Text(statusText)
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .lineLimit(1)
-            Spacer()
-            Button {
-                model.pinned.toggle()
-            } label: {
-                Image(systemName: model.pinned ? "pin.fill" : "pin")
-                    .foregroundStyle(model.pinned ? Color.iraText : Color.secondary)
-            }
-            .buttonStyle(.borderless)
-            .help(model.pinned ? "Kept on top: click to let it hide when you use another app" : "Keep on top while you work in other apps")
-            Button {
-                form.flag.toggle()
-            } label: {
-                Image(systemName: "list.bullet.rectangle")
-            }
-            .buttonStyle(.borderless)
-            .help("What I read")
-            Menu {
-                Button("New conversation") { conversation.clear() }
-                Button("Settings…", action: openSettings)
-            } label: {
-                Image(systemName: "ellipsis.circle")
-            }
-            .menuStyle(.borderlessButton)
-            .menuIndicator(.hidden)
-            .fixedSize()
-        }
-        .padding(.horizontal, 14)
-        .padding(.top, 30)
-        .padding(.bottom, 8)
-    }
-
-    private var statusColor: Color {
-        switch model.deviceState {
-        case .connected: return .green
-        case .connecting, .waiting: return .orange
-        case .refused, .stopped, .keyUnavailable: return .red
-        }
+        .onAppear { focused = true }
     }
 
     private var statusText: String {
@@ -331,7 +283,10 @@ struct ChatView: View {
                             .id("thinking")
                     }
                 }
-                .padding(14)
+                .padding(.horizontal, 20)
+                .padding(.vertical, 14)
+                .frame(maxWidth: 760)
+                .frame(maxWidth: .infinity)
             }
             .onChange(of: conversation.entries) { _, entries in
                 if let last = entries.last { withAnimation { proxy.scrollTo(last.id, anchor: .bottom) } }
@@ -422,6 +377,8 @@ struct ChatView: View {
             }
         }
         .padding(12)
+        .frame(maxWidth: 760)
+        .frame(maxWidth: .infinity)
     }
 
     private func send() {
