@@ -139,7 +139,9 @@ Ira for Mac saves a file that arrives from another device to
 **Save**.
 When you share to the installed app on Android, the phone's browser keeps
 the shared text and files only until the app opens; it shows them, and
-sends them to your Drop only when you tap **Send to Drop**.
+sends them to your Drop only when you tap **Send to Drop**. On the iPhone,
+**Share → Ira Drop** does the same: it shows what you shared and sends
+nothing until you tap **Send to Drop**.
 
 **Drop and Telegram: off unless you switch it on.** Nothing in your Drop goes
 to Telegram by default. If you paired a Telegram chat, you can have each new

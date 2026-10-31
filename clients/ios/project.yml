@@ -32,19 +32,42 @@ targets:
       - path: Ira
         excludes:
           - Info.plist
+          - Ira.entitlements
     dependencies:
       - package: IraPhoneKit
+      - target: IraShare
     settings:
       base:
         PRODUCT_NAME: Ira
         PRODUCT_BUNDLE_IDENTIFIER: io.github.helloupendra.ira
         INFOPLIST_FILE: Ira/Info.plist
+        # The Keychain group it shares with IraShare: this iPhone's key and its Ira's address.
+        CODE_SIGN_ENTITLEMENTS: Ira/Ira.entitlements
         GENERATE_INFOPLIST_FILE: NO
         TARGETED_DEVICE_FAMILY: "1"
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
         SUPPORTS_MACCATALYST: NO
         SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD: NO
+  # Share → Ira Drop: what another app shares, shown first and sent to Drop on a tap.
+  IraShare:
+    type: app-extension
+    platform: iOS
+    sources:
+      - path: IraShare
+        excludes:
+          - Info.plist
+          - IraShare.entitlements
+    dependencies:
+      - package: IraPhoneKit
+    settings:
+      base:
+        PRODUCT_NAME: IraShare
+        PRODUCT_BUNDLE_IDENTIFIER: io.github.helloupendra.ira.share
+        INFOPLIST_FILE: IraShare/Info.plist
+        GENERATE_INFOPLIST_FILE: NO
+        CODE_SIGN_ENTITLEMENTS: IraShare/IraShare.entitlements
+        TARGETED_DEVICE_FAMILY: "1"
   IraUITests:
     type: bundle.ui-testing
     platform: iOS

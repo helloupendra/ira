@@ -11,7 +11,8 @@ final class AppModel {
     static let shared = AppModel()
 
     let settings = AppSettings()
-    let secrets: SecretStore = KeychainStore()
+    /// In the Keychain group shared with the share extension (Share → Ira Drop).
+    let secrets: SecretStore = KeychainStore(accessGroup: KeychainStore.sharedGroup)
     let eventKit = EventKitTools()
     let permissions: SystemPermissions
     let talk: TalkController
@@ -48,6 +49,7 @@ final class AppModel {
         permissions = SystemPermissions(eventKit: eventKit)
         talk = TalkController(settings: settings)
         pairing = record.status
+        record.shareWithExtension()  // a pairing from before the share extension
         showingSetup = pairing != .paired || !settings.setupDone
         talk.model = self
         DropNotes.shared.install()
