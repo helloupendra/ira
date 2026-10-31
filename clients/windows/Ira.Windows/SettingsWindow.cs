@@ -21,6 +21,7 @@ internal sealed class SettingsWindow : Window
         ("browser", "Browser: list your tabs and bring one to the front"),
         ("apps", "Apps: open an app or a web link"),
         ("clipboard", "Clipboard: read what you copied"),
+        ("control", "Control: type, press keys, click and scroll, each step after your PIN"),
     ];
 
     private readonly IraController _controller;
