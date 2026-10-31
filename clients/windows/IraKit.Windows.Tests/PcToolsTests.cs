@@ -48,6 +48,10 @@ public sealed class PcToolsTests : IDisposable
             ["app_open"] = ("apps", 1),
             ["url_open"] = ("apps", 2),
             ["clipboard_read"] = ("clipboard", 0),
+            ["pc_type"] = ("control", 3),
+            ["pc_keys"] = ("control", 3),
+            ["pc_click"] = ("control", 3),
+            ["pc_scroll"] = ("control", 3),
         }, tools);
     }
 
