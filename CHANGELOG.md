@@ -173,8 +173,11 @@ switch it on.
   but the person has not switched on, and says so ("Calls is off on Pixel
   7: switch it on under Your devices") instead of looking elsewhere.
 - **A tool call written as text runs.** Some models write their call into
-  the answer; it now runs when it names an offered tool, and is never shown
-  or spoken.
+  the answer; it now runs when it names an offered tool, in the ways seen so
+  far (including the tool's name as a tag of its own, and GLM's key and value
+  pairs). While an answer streams, text that may be such markup is held back,
+  so it is never shown or spoken; markup that cannot run is asked for once
+  more, then cut.
 - **Out of steps, still an answer.** When a request uses up its tool rounds
   (now 8 by default, from 6), Ira says what it tried, what it found and
   what to do next, in the person's language. And it searches for a file,

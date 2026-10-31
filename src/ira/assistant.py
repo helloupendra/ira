@@ -33,7 +33,7 @@ from ira.approvals import never_app, open_refusal
 from ira.conversations import Conversations
 from ira.models.base import ChatResponse, Message, StreamDone, TextDelta, ToolCall
 from ira.models.gateway import Gateway, GatewayError
-from ira.models.leaked import recover
+from ira.models.leaked import MarkupGate, before_markup, recover
 from ira.security import looks_like_pin
 from ira.store import Store
 from ira.tools.actions import ActionGuard, PendingAction
@@ -95,6 +95,12 @@ FOREIGN_SCRIPT = re.compile(r"[\u3000-\u30ff\u3400-\u9fff\uac00-\ud7af\uff00-\uf
 AGAIN_RULE = (
     "Your last answer was in Chinese. Answer again only in the person's language: Hindi in "
     "Devanagari, Hinglish in Latin letters, or English, as they wrote."
+)
+# A call written as text that cannot run (a tool not offered, arguments that are no object):
+# the answer is asked for once more; if it comes so again, the markup is cut.
+CALL_AGAIN_RULE = (
+    "Your last answer wrote a tool call as text, which does not run. Make the call as a real "
+    "tool call, or answer in words."
 )
 SAY_AGAIN = {
     "hi": "माफ़ कीजिए, मैं समझ नहीं पाई। फिर से कहेंगे?",
@@ -578,6 +584,7 @@ class Assistant:
         tainted = text is None
 
         budget, tight = self.history_chars, False
+        asked_again = False
         # This turn begins at the new message; carrying on after a PIN, at the last one.
         current_from = start
         if text is None:
@@ -589,19 +596,25 @@ class Assistant:
             messages = [Message(role="system", content=system), *sent]
             if cue and history and history[-1].role != "tool":
                 messages.append(Message(role="user", content=cue))
+            # Markup first: the foreign-script filter would take DSML's full-width bars out.
+            gate = MarkupGate()
             try:
                 response: ChatResponse | None = None
                 if stream:
                     async for event in self.gateway.stream(messages, tools or None, tier=tier):
                         if isinstance(event, TextDelta):
-                            piece = _without_foreign(event.text, keep_foreign)
+                            piece = _without_foreign(gate.feed(event.text), keep_foreign)
                             if piece:
                                 yield {"type": "delta", "text": piece}
                         elif isinstance(event, StreamDone):
                             response = event.response
+                    piece = _without_foreign(gate.flush(), keep_foreign)
+                    if piece:
+                        yield {"type": "delta", "text": piece}
                 else:
                     response = await self.gateway.chat(messages, tools or None, tier=tier)
-                    piece = _without_foreign(response.text, keep_foreign)
+                    shown = gate.feed(response.text or "") + gate.flush()
+                    piece = _without_foreign(shown, keep_foreign)
                     if piece:
                         yield {"type": "delta", "text": piece}
             except GatewayError as exc:
@@ -627,6 +640,18 @@ class Assistant:
                 if recovered:  # a call written as text: run it, as the model meant
                     log.warning("%s wrote %d tool call(s) as text", model, len(recovered))
                     response.text, response.tool_calls = prose, recovered
+                elif (prose := before_markup(response.text)) is not None:
+                    log.warning("%s wrote a tool call as text that cannot run; it was cut", model)
+                    if not asked_again:  # what came before the markup was only a lead-in
+                        asked_again = True
+                        system += f"- {CALL_AGAIN_RULE}\n"
+                        continue
+                    response.text = prose
+                    if _letters(prose) < 2:
+                        from ira.language import detect
+
+                        response.text = SAY_AGAIN[detect(asked)]
+                        yield {"type": "delta", "text": response.text}
 
             if not keep_foreign and FOREIGN_SCRIPT.search(response.text or ""):
                 log.warning("%s answered in an unexpected script; it was taken out", model)
