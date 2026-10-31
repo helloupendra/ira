@@ -17,7 +17,8 @@ struct DropPane: View {
     @StateObject private var state = DropPaneState()
 
     var body: some View {
-        Group {
+        ZStack {
+            Presence.bg.ignoresSafeArea()
             if drop.items.isEmpty {
                 empty
             } else {
@@ -70,7 +71,11 @@ struct DropPane: View {
         } message: { item in
             Text(DropList.title(item))
         }
-        .task { await drop.refresh() }
+        .task {
+            await drop.refresh()
+            drop.markSeen()
+        }
+        .onChange(of: drop.items.first?.id) { _, _ in drop.markSeen() }
     }
 
     private var empty: some View {
@@ -87,10 +92,15 @@ struct DropPane: View {
     private var list: some View {
         List {
             ForEach(DropList.sections(drop.items)) { section in
-                Section(section.title) {
+                Section {
                     ForEach(section.items) { item in
                         DropRow(item: item, saved: drop.savedFile(item) != nil, drop: drop, delete: { state.deleting = item })
                     }
+                } header: {
+                    Text(section.title.uppercased())
+                        .font(Presence.label)
+                        .tracking(1.1)
+                        .foregroundStyle(Presence.faint)
                 }
             }
             if drop.hasMore {
@@ -100,6 +110,7 @@ struct DropPane: View {
             }
         }
         .listStyle(.inset)
+        .scrollContentBackground(.hidden)
     }
 
     private func chooseFiles() {
@@ -151,17 +162,19 @@ struct DropRow: View {
     var body: some View {
         HStack(alignment: .center, spacing: 12) {
             Image(systemName: DropList.symbol(item))
-                .font(.title3)
-                .foregroundStyle(Color.iraText)
+                .font(.system(size: 17))
+                .foregroundStyle(Presence.green)
                 .frame(width: 28)
-            VStack(alignment: .leading, spacing: 2) {
+            VStack(alignment: .leading, spacing: 3) {
                 Text(DropList.title(item))
+                    .font(Presence.body)
+                    .foregroundStyle(Presence.ink)
                     .lineLimit(2)
                     .truncationMode(.middle)
                     .textSelection(.enabled)
                 Text(DropList.detail(item))
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .font(.system(size: 12))
+                    .foregroundStyle(Presence.muted)
                     .lineLimit(1)
             }
             Spacer(minLength: 12)
@@ -200,6 +213,7 @@ struct DropRow: View {
     private func action(_ title: String, icon: String, help: String, run: @escaping () -> Void) -> some View {
         Button(action: run) {
             Image(systemName: icon)
+                .foregroundStyle(Presence.muted)
                 .frame(width: 22, height: 22)
         }
         .buttonStyle(.borderless)

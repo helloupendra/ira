@@ -206,41 +206,63 @@ struct PermissionRow: View {
 struct ChatView: View {
     @ObservedObject var model: AppModel
     @ObservedObject var conversation: Conversation
+    @ObservedObject var drop: DropBox
+    /// Show another part of the window (a Now card or the Drop pill).
+    let openPane: (Pane) -> Void
     @StateObject private var form = FormState()
     @FocusState private var focused: Bool
+    @Environment(\.colorScheme) private var scheme
+
+    init(model: AppModel, conversation: Conversation, openPane: @escaping (Pane) -> Void = { _ in }) {
+        self.model = model
+        self.conversation = conversation
+        self.drop = model.drop
+        self.openPane = openPane
+    }
 
     var body: some View {
-        VStack(spacing: 0) {
-            ApprovalBanner(approvals: model.approvals)
-            transcript
-            if conversation.needsRestart {
-                restartBanner
+        ZStack {
+            Presence.bg.ignoresSafeArea()
+            if conversation.entries.isEmpty && !conversation.busy {
+                hero
+            } else {
+                VStack(spacing: 0) {
+                    ApprovalBanner(approvals: model.approvals)
+                    transcript
+                    if conversation.needsRestart {
+                        restartBanner
+                    }
+                    if let notice = conversation.notice {
+                        noticeView(notice)
+                    }
+                    askPill("Reply, or just talk…")
+                        .frame(maxWidth: 720)
+                        .padding(.horizontal, 24)
+                        .padding(.vertical, 16)
+                }
             }
-            if let notice = conversation.notice {
-                noticeView(notice)
+            if conversation.listening {
+                ListeningView(conversation: conversation, hotKey: hotKeyText)
+                    .transition(.opacity)
             }
-            if form.flag { activityList }
-            Divider()
-            composer
         }
+        .animation(.easeOut(duration: 0.18), value: conversation.listening)
         .navigationTitle(model.assistant)
         .navigationSubtitle(statusText)
         .toolbar {
-            ToolbarItem {
-                Button {
-                    form.flag.toggle()
-                } label: {
-                    Label("What I read", systemImage: "list.bullet.rectangle")
+            if drop.unseen > 0 {
+                ToolbarItem {
+                    Button("Drop · \(drop.unseen) new") { openPane(.drop) }
+                        .buttonStyle(PillButtonStyle())
+                        .help("Something new arrived in your Drop")
                 }
-                .help("What I read")
             }
             ToolbarItem {
-                Button {
+                Button("New") {
                     conversation.clear()
                     focused = true
-                } label: {
-                    Label("New conversation", systemImage: "square.and.pencil")
                 }
+                .buttonStyle(PillButtonStyle())
                 .help("New conversation")
                 .disabled(conversation.busy)
             }
@@ -248,6 +270,84 @@ struct ChatView: View {
         .onReceive(NotificationCenter.default.publisher(for: .iraFocusInput)) { _ in focused = true }
         .onAppear { focused = true }
     }
+
+    // MARK: An empty conversation
+
+    /// The lens, the greeting, the ask pill and what is worth knowing now.
+    private var hero: some View {
+        ScrollView {
+            VStack(spacing: 22) {
+                Spacer(minLength: 36)
+                Lens(size: 96, breathing: true, rings: 1)
+                VStack(spacing: 8) {
+                    greeting
+                    Text(dateLine)
+                        .font(Presence.secondary)
+                        .foregroundStyle(Presence.muted)
+                }
+                askPill("Ask \(model.assistant) anything, or just start talking…")
+                    .frame(maxWidth: 560)
+                nowCards
+                    .frame(maxWidth: 560)
+                Text("\(model.assistant) reads and acts only when you ask. Try “vo PDF kahan hai jo kal download kiya?”")
+                    .font(.system(size: 12))
+                    .foregroundStyle(Presence.faint)
+                    .multilineTextAlignment(.center)
+                    .frame(maxWidth: 460)
+                Spacer(minLength: 24)
+            }
+            .padding(.horizontal, 24)
+            .frame(maxWidth: .infinity)
+        }
+        .background(
+            RadialGradient(
+                colors: [Color(hex: 0x1F6F5C, opacity: scheme == .dark ? 0.18 : 0.10), .clear],
+                center: UnitPoint(x: 0.5, y: 0.28), startRadius: 0, endRadius: 380))
+    }
+
+    /// "Good evening, Upendra." with the name from this Mac's account, in italic green.
+    private var greeting: Text {
+        let hour = Calendar.current.component(.hour, from: Date())
+        let part = hour < 12 ? "Good morning" : hour < 17 ? "Good afternoon" : "Good evening"
+        let name = NSFullUserName().split(separator: " ").first.map(String.init) ?? ""
+        let words = Text(name.isEmpty ? "\(part)." : "\(part), ").font(Presence.serif(32)).foregroundColor(Presence.ink)
+        guard !name.isEmpty else { return words }
+        return words + Text(name).font(Presence.serif(32)).italic().foregroundColor(Presence.green)
+            + Text(".").font(Presence.serif(32)).foregroundColor(Presence.ink)
+    }
+
+    private var dateLine: String {
+        let day = Date().formatted(.dateTime.weekday(.wide).day().month(.wide))
+        guard model.paired else { return "\(day) · this Mac is not paired yet" }
+        if case .connected = model.deviceState { return "\(day) · this Mac is connected" }
+        return "\(day) · \(AppDelegate.describe(model.deviceState, paired: true).lowercased())"
+    }
+
+    /// Only what is real now: the newest Drop item, and an approval that is open. Never filler.
+    @ViewBuilder private var nowCards: some View {
+        let latest = drop.items.first
+        let approval = model.approvals.banner
+        if latest != nil || approval != nil {
+            HStack(spacing: 10) {
+                if let latest {
+                    Button { openPane(.drop) } label: {
+                        NowCard(label: "Drop", value: DropList.title(latest), detail: DropList.detail(latest))
+                    }
+                    .buttonStyle(.plain)
+                    .frame(width: 200)
+                }
+                if let approval {
+                    Button { openPane(.thisMac) } label: {
+                        NowCard(label: "Approval", value: "Ira may use this Mac", detail: approval)
+                    }
+                    .buttonStyle(.plain)
+                    .frame(width: 200)
+                }
+            }
+        }
+    }
+
+    // MARK: The conversation
 
     private var statusText: String {
         switch conversation.mode {
@@ -262,18 +362,18 @@ struct ChatView: View {
     private var transcript: some View {
         ScrollViewReader { proxy in
             ScrollView {
-                LazyVStack(alignment: .leading, spacing: 10) {
-                    if conversation.entries.isEmpty {
-                        welcome
-                    }
+                LazyVStack(alignment: .leading, spacing: 22) {
                     ForEach(conversation.entries) { entry in
                         EntryView(entry: entry, conversation: conversation, server: model.settings.server)
                             .id(entry.id)
+                            .transition(.opacity.combined(with: .offset(y: 8)))
                     }
                     if !conversation.caption.isEmpty {
                         Text(conversation.caption)
+                            .font(Presence.body)
                             .italic()
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(Presence.muted)
+                            .frame(maxWidth: .infinity, alignment: .trailing)
                             .id("caption")
                     }
                     if conversation.busy {
@@ -281,8 +381,9 @@ struct ChatView: View {
                             .id("thinking")
                     }
                 }
-                .padding(.horizontal, 20)
-                .padding(.vertical, 14)
+                .animation(.easeOut(duration: 0.18), value: conversation.entries.count)
+                .padding(.horizontal, 28)
+                .padding(.vertical, 24)
                 .frame(maxWidth: 760)
                 .frame(maxWidth: .infinity)
             }
@@ -295,33 +396,6 @@ struct ChatView: View {
         }
     }
 
-    /// An empty conversation: how to reach Ira from anywhere, what it can do here, and a
-    /// few things to try (a click puts one in the Ask field).
-    private var welcome: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            Text("Ask \(model.assistant) anything").font(.title2.weight(.semibold))
-            Text("Type below or press the mic and talk. From any app, \(hotKeyText) brings this window up, ready to type.")
-                .foregroundStyle(.secondary)
-            VStack(alignment: .leading, spacing: 8) {
-                Label("Reads the window you were in, when you ask what is on your screen", systemImage: "macwindow")
-                Label("Finds and reads your files, and opens them", systemImage: "folder")
-                Label("Sends things to your phone and other devices with Drop", systemImage: "tray.and.arrow.down")
-            }
-            .foregroundStyle(.secondary)
-            HStack(spacing: 8) {
-                ForEach(["vo PDF kahan hai jo kal download kiya?", "screen pe kya hai?", "remind me at 6 to call the bank"], id: \.self) { example in
-                    Button(example) {
-                        form.entry = example
-                        focused = true
-                    }
-                    .buttonStyle(.bordered)
-                    .controlSize(.small)
-                }
-            }
-        }
-        .padding(.top, 24)
-    }
-
     private var hotKeyText: String {
         HotKey.describe(keyCode: model.settings.hotKeyCode, modifiers: model.settings.hotKeyModifiers)
     }
@@ -329,91 +403,165 @@ struct ChatView: View {
     private func noticeView(_ notice: String) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             Text(notice)
-                .font(.callout)
+                .font(Presence.secondary)
+                .foregroundStyle(Presence.ink)
                 .fixedSize(horizontal: false, vertical: true)
                 .textSelection(.enabled)
             HStack {
                 if conversation.stalled {
                     Button("Try again") { conversation.tryAgain() }
+                        .buttonStyle(PillButtonStyle(filled: true))
                 }
                 Button("Dismiss") { conversation.notice = nil }
-                    .buttonStyle(.link)
+                    .buttonStyle(PillButtonStyle())
             }
         }
-        .padding(10)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color.orange.opacity(0.12))
+        .padding(12)
+        .frame(maxWidth: 720, alignment: .leading)
+        .background(RoundedRectangle(cornerRadius: 12).fill(Presence.warn.opacity(0.06)))
+        .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(Presence.warn.opacity(0.45), lineWidth: 1))
+        .padding(.horizontal, 24)
     }
 
     private var restartBanner: some View {
         HStack(alignment: .firstTextBaseline) {
             Text("macOS needs Ira restarted after the Screen Recording permission.")
-                .font(.callout)
+                .font(Presence.secondary)
+                .foregroundStyle(Presence.ink)
                 .fixedSize(horizontal: false, vertical: true)
             Spacer()
             Button("Restart Ira") { PermissionCenter.reopen() }
+                .buttonStyle(PillButtonStyle(filled: true))
         }
-        .padding(10)
-        .background(Color.orange.opacity(0.12))
+        .padding(12)
+        .frame(maxWidth: 720)
+        .background(RoundedRectangle(cornerRadius: 12).fill(Presence.warn.opacity(0.06)))
+        .padding(.horizontal, 24)
     }
 
-    private var activityList: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text("What I read").font(.caption.weight(.semibold))
-            if model.activity.isEmpty {
-                Text("Nothing yet. Ira reads only when you ask.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-            ForEach(model.activity.prefix(8)) { entry in
-                HStack(alignment: .firstTextBaseline) {
-                    Image(systemName: entry.ok ? "checkmark" : "xmark")
-                        .foregroundStyle(entry.ok ? Color.secondary : Color.red)
-                        .font(.caption2)
-                    Text("\(entry.verb): \(entry.target)")
-                        .font(.caption)
-                        .lineLimit(1)
-                        .truncationMode(.middle)
-                    Spacer()
-                    Text(entry.at, style: .time)
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
-                }
-            }
-        }
-        .padding(10)
-        .background(Color.secondary.opacity(0.08))
-    }
-
-    private var composer: some View {
+    /// The ask pill: type, or press the mic and talk; the mic turns into Send while there is text.
+    private func askPill(_ placeholder: String) -> some View {
         HStack(spacing: 10) {
-            TextField("Ask \(model.assistant)…", text: $form.entry, axis: .vertical)
+            TextField(placeholder, text: $form.entry, axis: .vertical)
                 .textFieldStyle(.plain)
+                .font(Presence.body)
+                .foregroundStyle(Presence.ink)
                 .lineLimit(1...4)
                 .focused($focused)
+                .focusEffectDisabled()
                 .onSubmit(send)
             if conversation.mode == .speaking {
                 Button {
                     conversation.stopSpeaking()
                 } label: {
-                    Image(systemName: "stop.fill")
+                    Image(systemName: "stop.fill").foregroundStyle(Presence.muted)
                 }
-                .buttonStyle(.borderless)
+                .buttonStyle(.plain)
                 .help("Stop speaking")
             }
-            MicButton(listening: conversation.listening, level: conversation.level) {
-                conversation.toggleListening()
+            KeyHint(text: hotKeyText)
+            Button {
+                form.entry.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? conversation.toggleListening() : send()
+            } label: {
+                Image(systemName: form.entry.isEmpty ? "mic" : "arrow.up")
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundStyle(.white)
+                    .frame(width: 40, height: 40)
+                    .background(Circle().fill(Presence.greenDeep))
             }
+            .buttonStyle(.plain)
+            .help(form.entry.isEmpty ? "Talk to Ira" : "Send")
+            .accessibilityLabel(form.entry.isEmpty ? "Talk to Ira" : "Send")
         }
-        .padding(12)
-        .frame(maxWidth: 760)
-        .frame(maxWidth: .infinity)
+        .padding(.leading, 20)
+        .padding(.trailing, 6)
+        .padding(.vertical, 6)
+        .background(Capsule().fill(Presence.raised))
+        .overlay(Capsule().strokeBorder(Presence.line, lineWidth: 1))
     }
 
     private func send() {
         let message = form.entry
         form.entry = ""
         conversation.send(message)
+    }
+}
+
+/// Listening: the large lens with its rings and its bars on the voice, what Ira hears so far,
+/// and Cancel and Done. Over the whole conversation while the mic is on.
+struct ListeningView: View {
+    @ObservedObject var conversation: Conversation
+    let hotKey: String
+    @Environment(\.colorScheme) private var scheme
+
+    var body: some View {
+        ZStack {
+            Presence.bg
+            RadialGradient(
+                colors: [Color(hex: 0x1F6F5C, opacity: scheme == .dark ? 0.22 : 0.12), .clear],
+                center: .center, startRadius: 0, endRadius: 440)
+            VStack(spacing: 22) {
+                Lens(size: 168, level: conversation.level, breathing: true, rings: 2)
+                Text(label)
+                    .font(Presence.label)
+                    .tracking(1.6)
+                    .foregroundStyle(Presence.green)
+                words
+                    .frame(maxWidth: 620)
+                HStack(spacing: 12) {
+                    Button("Cancel", action: cancel)
+                        .buttonStyle(PillButtonStyle())
+                        .keyboardShortcut(.cancelAction)
+                    Button("Done") { conversation.stopListening() }
+                        .buttonStyle(PillButtonStyle(filled: true))
+                }
+            }
+            .padding(24)
+            VStack {
+                Spacer()
+                Text("\(hotKey) brings Ira back · Esc stops listening")
+                    .font(.system(size: 12))
+                    .foregroundStyle(Presence.faint)
+                    .padding(.bottom, 20)
+            }
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel(label)
+    }
+
+    private var label: String {
+        switch conversation.mode {
+        case .hearing: return "HEARING YOU"
+        case .thinking: return "THINKING"
+        case .speaking: return "SPEAKING"
+        default: return "LISTENING"
+        }
+    }
+
+    @ViewBuilder private var words: some View {
+        if !conversation.caption.isEmpty {
+            Text("“\(conversation.caption)”")
+                .font(Presence.serif(26))
+                .foregroundStyle(Presence.ink)
+                .multilineTextAlignment(.center)
+        } else if [.thinking, .speaking].contains(conversation.mode),
+            let answer = conversation.entries.last(where: { $0.role == .ira })?.text, !answer.isEmpty
+        {
+            Text(answer)
+                .font(Presence.body)
+                .foregroundStyle(Presence.muted)
+                .multilineTextAlignment(.center)
+                .lineLimit(5)
+        } else {
+            Text("Speak now")
+                .font(Presence.serif(26))
+                .foregroundStyle(Presence.faint)
+        }
+    }
+
+    private func cancel() {
+        conversation.stopSpeaking()
+        conversation.stopListening()
     }
 }
 
@@ -425,25 +573,18 @@ struct ThinkingRow: View {
     let stalled: Bool
 
     var body: some View {
-        TimelineView(.periodic(from: .now, by: 0.3)) { context in
-            HStack(spacing: 8) {
-                HStack(spacing: 4) {
-                    ForEach(0..<3) { index in
-                        let phase = Int(context.date.timeIntervalSinceReferenceDate / 0.3) % 3
-                        Circle()
-                            .fill(Color.iraText)
-                            .frame(width: 6, height: 6)
-                            .opacity(stalled ? 0.3 : (index == phase ? 1 : 0.35))
-                    }
-                }
+        TimelineView(.periodic(from: .now, by: 1)) { context in
+            HStack(spacing: 12) {
+                Lens(size: 30, breathing: !stalled)
                 Text(stalled ? "Still waiting…" : step)
-                    .foregroundStyle(.secondary)
+                    .font(Presence.body)
+                    .foregroundStyle(Presence.muted)
                 if let since {
                     let seconds = Int(context.date.timeIntervalSince(since))
                     if seconds >= 3 {
                         Text("\(seconds) s")
-                            .font(.caption.monospacedDigit())
-                            .foregroundStyle(.tertiary)
+                            .font(Presence.mono)
+                            .foregroundStyle(Presence.faint)
                     }
                 }
             }
@@ -453,56 +594,57 @@ struct ThinkingRow: View {
     }
 }
 
-struct MicButton: View {
-    let listening: Bool
-    let level: Float
-    let action: () -> Void
-
-    var body: some View {
-        Button(action: action) {
-            ZStack {
-                Circle()
-                    .stroke(Color.ira.opacity(listening ? 0.35 : 0), lineWidth: 6)
-                    .scaleEffect(1 + CGFloat(min(level * 8, 0.35)))
-                Circle()
-                    .fill(listening ? Color.red : Color.ira)
-                Image(systemName: listening ? "mic.fill" : "mic")
-                    .font(.system(size: 20, weight: .semibold))
-                    .foregroundStyle(.white)
-            }
-            .frame(width: 48, height: 48)
-        }
-        .buttonStyle(.plain)
-        .help(listening ? "Stop listening" : "Talk to Ira")
-        .accessibilityLabel(listening ? "Stop listening" : "Talk to Ira")
-    }
-}
-
 struct EntryView: View {
     let entry: Entry
     @ObservedObject var conversation: Conversation
     let server: String
 
+    private static let yours = UnevenRoundedRectangle(
+        topLeadingRadius: 18, bottomLeadingRadius: 18, bottomTrailingRadius: 6, topTrailingRadius: 18)
+
     var body: some View {
         switch entry.role {
         case .you:
             HStack {
-                Spacer(minLength: 40)
+                Spacer(minLength: 80)
                 Text(entry.text)
+                    .font(Presence.body)
+                    .foregroundStyle(Presence.ink)
                     .textSelection(.enabled)
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 7)
-                    .background(Color.ira.opacity(0.14), in: RoundedRectangle(cornerRadius: 10))
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 10)
+                    .background(EntryView.yours.fill(Presence.raised))
+                    .overlay(EntryView.yours.strokeBorder(Presence.line, lineWidth: 1))
             }
         case .ira:
-            Text(entry.text)
-                .textSelection(.enabled)
-                .frame(maxWidth: .infinity, alignment: .leading)
+            HStack(alignment: .top, spacing: 12) {
+                Lens(size: 30)
+                VStack(alignment: .leading, spacing: 10) {
+                    Text(entry.text)
+                        .font(Presence.body)
+                        .lineSpacing(5)
+                        .foregroundStyle(Presence.ink)
+                        .textSelection(.enabled)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    if !entry.receipts.isEmpty {
+                        HStack(spacing: 6) {
+                            ForEach(entry.receipts, id: \.self) { ReceiptChip(text: $0) }
+                        }
+                        .accessibilityElement(children: .combine)
+                        .accessibilityLabel("How Ira got this: " + entry.receipts.joined(separator: ", "))
+                    }
+                }
+                .padding(.top, 4)
+            }
         case .note:
             if let action = entry.action {
                 ActionCard(action: action, conversation: conversation, server: server)
+                    .padding(.leading, 42)
             } else {
-                Text(entry.text).font(.callout).foregroundStyle(.secondary)
+                Text(entry.text)
+                    .font(Presence.secondary)
+                    .foregroundStyle(Presence.muted)
+                    .padding(.leading, 42)
             }
         }
     }
@@ -521,53 +663,68 @@ struct ActionCard: View {
     @StateObject private var state = PinState()
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text(action.tier == 2 ? "Needs your yes" : "Needs your PIN")
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(Color.iraText)
+        VStack(alignment: .leading, spacing: 10) {
+            if action.status == "pending" {
+                DotLabel(text: "Waiting for you", color: Presence.warn)
+            } else {
+                DotLabel(text: ActionCard.outcome(action.status), color: action.status == "executed" ? Presence.green : Presence.muted)
+            }
             Text(action.summary)
+                .font(Presence.body)
+                .foregroundStyle(Presence.ink)
+                .fixedSize(horizontal: false, vertical: true)
             if action.status == "pending" {
                 if action.tier == 2 {
                     HStack {
+                        Spacer()
+                        Button("Not now") { conversation.answer(action, yes: false) }
+                            .buttonStyle(PillButtonStyle())
                         Button("Yes") { conversation.answer(action, yes: true) }
+                            .buttonStyle(PillButtonStyle(filled: true))
                             .keyboardShortcut(.defaultAction)
-                        Button("No") { conversation.answer(action, yes: false) }
                     }
                 } else {
-                    HStack {
-                        SecureField("Your PIN", text: $state.pin)
-                            .textFieldStyle(.roundedBorder)
-                            .frame(maxWidth: 140)
+                    HStack(spacing: 10) {
+                        SecureField("PIN", text: $state.pin)
+                            .textFieldStyle(.plain)
+                            .font(.system(size: 15, design: .monospaced))
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 8)
+                            .frame(width: 130)
+                            .background(RoundedRectangle(cornerRadius: 8).fill(Presence.card))
+                            .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(Presence.line, lineWidth: 1))
                             .onSubmit(confirm)
-                        Button(state.working ? "Checking…" : "Confirm", action: confirm)
-                            .disabled(state.working || state.pin.count < 4)
                         if conversation.touchIDReady(for: action) {
                             Button {
                                 touchID()
                             } label: {
                                 Label("Touch ID", systemImage: "touchid")
                             }
+                            .buttonStyle(PillButtonStyle())
                             .disabled(state.working)
                             .help("Approve with your fingerprint instead of the PIN.")
                         }
-                        Button("No") { conversation.answer(action, yes: false) }
+                        Spacer()
+                        Button("Not now") { conversation.answer(action, yes: false) }
+                            .buttonStyle(PillButtonStyle())
+                        Button(state.working ? "Checking…" : "Confirm", action: confirm)
+                            .buttonStyle(PillButtonStyle(filled: true))
+                            .disabled(state.working || state.pin.count < 4)
                     }
                     Text("Typed here, your PIN goes only to your Ira's confirm step, never to the assistant. Never say it aloud.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .font(.system(size: 12))
+                        .foregroundStyle(Presence.faint)
                 }
                 if let answer = state.answer {
-                    Text(answer).font(.callout)
+                    Text(answer).font(Presence.secondary).foregroundStyle(Presence.ink)
                 }
-            } else {
-                Text(ActionCard.outcome(action.status))
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
             }
         }
-        .padding(10)
+        .padding(16)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(RoundedRectangle(cornerRadius: 10).stroke(Color.ira.opacity(0.4)))
+        .background(RoundedRectangle(cornerRadius: 14).fill(action.status == "pending" ? Presence.warn.opacity(0.06) : Presence.card))
+        .overlay(RoundedRectangle(cornerRadius: 14).strokeBorder(
+            action.status == "pending" ? Presence.warn.opacity(0.55) : Presence.line, lineWidth: 1))
     }
 
     static func outcome(_ status: String) -> String {

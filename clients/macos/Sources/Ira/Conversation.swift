@@ -10,6 +10,8 @@ struct Entry: Identifiable, Equatable {
     var text: String
     var turn: Int?
     var action: PendingAction?
+    /// The tools Ira used for this answer and how long each took ("files find · 0.4 s").
+    var receipts: [String] = []
 }
 
 struct PendingAction: Equatable {
@@ -55,6 +57,7 @@ final class Conversation: ObservableObject {
     /// The answer, complete: for a notification while the window is hidden.
     var onAnswer: ((String) -> Void)?
     private var lastQuestion: String?
+    private var receipts = Receipts()
     private var lastProgress = Date()
     private var watchdog: Timer?
 
@@ -393,10 +396,12 @@ final class Conversation: ObservableObject {
             }
             typed = nil
             mode = .thinking
-        case .tool(_, let name):
+        case .tool(let turn, let name):
+            receipts.began(name, turn: turn)
             progressed(Conversation.phrase(name))
         case .delta(let turn, let text):
             caption = ""
+            receipts.ended(turn: turn)
             progressed()
             if let index = entryIndex(turn: turn) {
                 entries[index].text += text
@@ -413,6 +418,7 @@ final class Conversation: ObservableObject {
             vad.replying = true
             audio.say(text, turn: turn)
         case .action(let turn, let action):
+            receipts.ended(turn: turn)
             let pending = PendingAction(
                 id: action["id"]?.stringValue ?? "",
                 summary: action["summary"]?.stringValue ?? "Ira proposed an action",
@@ -426,6 +432,8 @@ final class Conversation: ObservableObject {
             } else if !text.isEmpty {
                 entries.append(Entry(role: .ira, text: text, turn: turn))
             }
+            let used = receipts.take(turn: turn)
+            if let index = entryIndex(turn: turn) { entries[index].receipts = used }
             finished()
             let answer = text.isEmpty ? (entryIndex(turn: turn).map { entries[$0].text } ?? "") : text
             onAnswer?(answer)

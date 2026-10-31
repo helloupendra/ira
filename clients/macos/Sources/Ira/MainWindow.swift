@@ -78,9 +78,11 @@ struct AppWindowView: View {
                 NavigationSplitView {
                     Sidebar(conversation: conversation, state: state)
                         .navigationSplitViewColumnWidth(min: 190, ideal: 220, max: 300)
+                        .scrollContentBackground(.hidden)
+                        .background(Presence.bg)
                 } detail: {
                     switch state.pane {
-                    case .chat: ChatView(model: model, conversation: conversation)
+                    case .chat: ChatView(model: model, conversation: conversation, openPane: { state.selection = .pane($0) })
                     case .drop: DropPane(drop: model.drop)
                     case .thisMac: ThisMacPane(model: model, conversation: conversation)
                     case .settings:
@@ -88,9 +90,13 @@ struct AppWindowView: View {
                             .navigationTitle("Settings")
                     }
                 }
+                .toolbarBackground(Presence.bg, for: .windowToolbar)
+                .toolbarBackground(.visible, for: .windowToolbar)
+                .tint(Presence.green)
             }
         }
         .frame(minWidth: 760, minHeight: 520)
+        .background(Presence.bg)
     }
 }
 
@@ -105,24 +111,28 @@ struct Sidebar: View {
                     Label(pane.title, systemImage: pane.icon).tag(SidebarItem.pane(pane))
                 }
             }
-            Section("Today") {
+            Section {
                 if conversation.today.isEmpty {
                     Text("No conversations yet today")
-                        .font(.callout)
-                        .foregroundStyle(.secondary)
+                        .font(Presence.secondary)
+                        .foregroundStyle(Presence.faint)
                 }
                 ForEach(conversation.today) { row in
                     VStack(alignment: .leading, spacing: 2) {
                         Text(row.title)
+                            .font(Presence.secondary)
+                            .foregroundStyle(Presence.ink)
                             .lineLimit(1)
                             .fontWeight(row.id == conversation.conversationID ? .semibold : .regular)
                         Text("\(row.turns) \(row.turns == 1 ? "turn" : "turns") · \(row.lastAt.formatted(date: .omitted, time: .shortened))")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
+                            .font(.system(size: 11))
+                            .foregroundStyle(Presence.faint)
                     }
                     .tag(SidebarItem.conversation(row.id))
                     .help(row.title)
                 }
+            } header: {
+                Text("TODAY").font(Presence.label).tracking(1.1).foregroundStyle(Presence.faint)
             }
         }
         .listStyle(.sidebar)
@@ -154,6 +164,8 @@ final class MainWindowController: NSObject, NSWindowDelegate {
             backing: .buffered, defer: false)
         super.init()
         window.title = "Ira"
+        window.backgroundColor = NSColor(Presence.bg)
+        window.titlebarAppearsTransparent = true
         window.isReleasedWhenClosed = false
         window.minSize = NSSize(width: 760, height: 520)
         window.collectionBehavior = [.moveToActiveSpace, .fullScreenAuxiliary]
