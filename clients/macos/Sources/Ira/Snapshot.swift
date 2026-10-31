@@ -40,7 +40,7 @@ enum Snapshot {
             save(main.window, to: folder.appendingPathComponent("chat-conversation-\(dark ? "dark" : "light").png"))
         }
         model.conversation.listening = true
-        model.conversation.caption = "Kal subah dus baje CA ko call karna yaad dila dena"
+        model.conversation.caption = "Remind me at six to send the invoice to Sunrise Dental Clinic"
         for dark in [false, true] {
             main.window.appearance = NSAppearance(named: dark ? .darkAqua : .aqua)
             wait(1)
