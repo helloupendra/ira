@@ -9,6 +9,10 @@ import UserNotifications
 @MainActor
 final class DropBox: NSObject, ObservableObject {
     @Published private(set) var items: [DropItem] = []
+    /// Older items wait on the server: the window offers to show them.
+    @Published private(set) var hasMore = false
+    /// Where each file saved on this Mac went, for Show in Finder.
+    @Published private(set) var saved: [Int: URL] = [:]
 
     private let settings: AppSettings
     private let secrets: SecretStore
@@ -42,7 +46,9 @@ final class DropBox: NSObject, ObservableObject {
     func refresh() async {
         guard let client else { return }
         do {
-            items = try await client.list(limit: 20).items
+            let page = try await client.list(limit: 50)
+            items = page.items
+            hasMore = page.hasMore
             loaded = true
         } catch {
             IraLog.shared.warning("drop: the list did not load (\(type(of: error)))")
@@ -65,10 +71,19 @@ final class DropBox: NSObject, ObservableObject {
         }
     }
 
+    /// The next older page, for the window's list.
+    func loadOlder() async {
+        guard let client, let oldest = items.last?.id else { return }
+        if let page = try? await client.list(before: oldest, limit: 50) {
+            merge(page.items)
+            hasMore = page.hasMore
+        }
+    }
+
     private func merge(_ more: [DropItem]) {
         var seen = Set<Int>()
         items = (more + items).filter { seen.insert($0.id).inserted }.sorted { $0.id > $1.id }
-        if items.count > 50 { items.removeLast(items.count - 50) }
+        if items.count > 500 { items.removeLast(items.count - 500) }
     }
 
     private func arrived(_ item: DropItem) {
@@ -168,8 +183,20 @@ final class DropBox: NSObject, ObservableObject {
     func save(_ item: DropItem) async throws -> URL {
         guard let client else { throw DropClient.Failure("this Mac is not paired") }
         let saved = try await client.save(item, into: DropBox.folder)
+        self.saved[item.id] = saved
         IraLog.shared.info("drop: saved a file")
         return saved
+    }
+
+    /// Where this file was saved on this Mac, if it still is there.
+    func savedFile(_ item: DropItem) -> URL? {
+        guard let url = saved[item.id], FileManager.default.fileExists(atPath: url.path) else { return nil }
+        return url
+    }
+
+    /// Show a saved file in the Finder.
+    func reveal(_ item: DropItem) {
+        if let url = savedFile(item) { NSWorkspace.shared.activateFileViewerSelecting([url]) }
     }
 
     func open(_ item: DropItem) async {
@@ -185,6 +212,7 @@ final class DropBox: NSObject, ObservableObject {
         do {
             try await client.delete(item.id)
             items.removeAll { $0.id == item.id }
+            saved[item.id] = nil
         } catch {
             DropNotes.shared.post(title: "Not deleted", body: error.localizedDescription)
         }

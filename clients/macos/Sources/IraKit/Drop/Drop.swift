@@ -17,10 +17,12 @@ public struct DropItem: Equatable, Sendable, Identifiable {
     public let fromDeviceID: Int?
     /// The device's name, or Web, CLI, Telegram, Ira.
     public let fromLabel: String
+    /// When it was sent.
+    public let createdAt: Date?
 
     public init(
         id: Int, kind: String, text: String? = nil, name: String? = nil, mime: String? = nil, size: Int? = nil,
-        sha256: String? = nil, fromDeviceID: Int? = nil, fromLabel: String = ""
+        sha256: String? = nil, fromDeviceID: Int? = nil, fromLabel: String = "", createdAt: Date? = nil
     ) {
         self.id = id
         self.kind = kind
@@ -31,6 +33,7 @@ public struct DropItem: Equatable, Sendable, Identifiable {
         self.sha256 = sha256
         self.fromDeviceID = fromDeviceID
         self.fromLabel = fromLabel
+        self.createdAt = createdAt
     }
 
     public init?(_ json: JSONValue) {
@@ -38,7 +41,8 @@ public struct DropItem: Equatable, Sendable, Identifiable {
         self.init(
             id: id, kind: kind, text: json["text"]?.stringValue, name: json["name"]?.stringValue,
             mime: json["mime"]?.stringValue, size: json["size"]?.intValue, sha256: json["sha256"]?.stringValue,
-            fromDeviceID: json["from_device_id"]?.intValue, fromLabel: json["from_label"]?.stringValue ?? "")
+            fromDeviceID: json["from_device_id"]?.intValue, fromLabel: json["from_label"]?.stringValue ?? "",
+            createdAt: json["created_at"]?.stringValue.flatMap { ISO8601DateFormatter().date(from: $0) })
     }
 
     public var isFile: Bool { kind == "file" }
