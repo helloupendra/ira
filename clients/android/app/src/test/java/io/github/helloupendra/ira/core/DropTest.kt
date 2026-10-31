@@ -1,5 +1,7 @@
 package io.github.helloupendra.ira.core
 
+import java.time.LocalDate
+import java.time.ZoneOffset
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -59,6 +61,21 @@ class DropTest {
         assertEquals(200, Drop.preview(Drop.Item(1, "text", "x".repeat(500), null, null, null, null, null, "Web", "")).length)
         assertEquals("512 B", Drop.size(512))
         assertEquals("1.5 MB", Drop.size(1572864))
+    }
+
+    @Test
+    fun `the list heads items by day and says where each came from`() {
+        val item = Drop.item(parseObject(file)!!)!!
+        val utc = ZoneOffset.UTC
+        assertEquals("Today", Drop.day(item, LocalDate.of(2026, 10, 30), utc))
+        assertEquals("Yesterday", Drop.day(item, LocalDate.of(2026, 10, 31), utc))
+        assertTrue(Drop.day(item, LocalDate.of(2026, 11, 5), utc).contains("2026"))
+        assertEquals("Earlier", Drop.day(item.copy(createdAt = "soon"), LocalDate.of(2026, 10, 30), utc))
+        assertEquals("plan.pdf", Drop.title(item))
+        assertEquals("a b", Drop.title(item.copy(kind = "text", text = " a\n b ")))
+        val detail = Drop.detail(item, utc)
+        assertTrue(detail, detail.startsWith("From Mac · ") && detail.endsWith(" · 2.9 KB"))
+        assertEquals("From a device", Drop.detail(item.copy(kind = "text", fromLabel = "", createdAt = ""), utc))
     }
 
     @Test

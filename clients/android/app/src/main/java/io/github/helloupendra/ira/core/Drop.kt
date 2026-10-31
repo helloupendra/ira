@@ -1,5 +1,10 @@
 package io.github.helloupendra.ira.core
 
+import java.time.Instant
+import java.time.LocalDate
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
+import java.time.format.FormatStyle
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 
@@ -106,6 +111,31 @@ object Drop {
         val base = (name ?: "").replace('\\', '/').substringAfterLast('/')
         val clean = base.replace(Regex("[\\x00-\\x1f\\x7f]"), "").trim(' ', '.')
         return clean.take(200).ifEmpty { "file" }
+    }
+
+    /** When an item arrived, or null if the server's time doesn't parse. */
+    fun arrived(item: Item): Instant? = runCatching { Instant.parse(item.createdAt) }.getOrNull()
+
+    /** The heading an item goes under in the list: Today, Yesterday, or its date. */
+    fun day(item: Item, today: LocalDate = LocalDate.now(), zone: ZoneId = ZoneId.systemDefault()): String {
+        val date = arrived(item)?.atZone(zone)?.toLocalDate() ?: return "Earlier"
+        return when (date) {
+            today -> "Today"
+            today.minusDays(1) -> "Yesterday"
+            else -> date.format(DateTimeFormatter.ofLocalizedDate(FormatStyle.MEDIUM))
+        }
+    }
+
+    /** The item's main line: a file's name, else its text on one line. */
+    fun title(item: Item): String =
+        if (item.isFile) safeName(item.name) else (item.text ?: "").replace(Regex("\\s+"), " ").trim()
+
+    /** "From Pixel 7 · 10:42 · 2.9 KB": where an item came from, when, and a file's size. */
+    fun detail(item: Item, zone: ZoneId = ZoneId.systemDefault()): String {
+        val parts = mutableListOf("From ${item.fromLabel.ifBlank { "a device" }}")
+        arrived(item)?.let { parts += it.atZone(zone).toLocalTime().format(DateTimeFormatter.ofLocalizedTime(FormatStyle.SHORT)) }
+        if (item.isFile) parts += size(item.size ?: 0)
+        return parts.joinToString(" · ")
     }
 
     /** One line for a notification or a list: a file's name and size, or the text. */

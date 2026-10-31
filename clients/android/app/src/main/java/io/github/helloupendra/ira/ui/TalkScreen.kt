@@ -1,5 +1,15 @@
 package io.github.helloupendra.ira.ui
 
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.border
+import androidx.compose.foundation.layout.width
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.sp
+import java.time.LocalTime
+import java.time.LocalDate
+import java.time.format.DateTimeFormatter
 import android.Manifest
 import android.content.pm.PackageManager
 import android.os.Build
@@ -24,7 +34,6 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.selection.selectable
@@ -53,9 +62,7 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -69,7 +76,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.scale
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.contentDescription
@@ -161,207 +169,215 @@ fun TalkScreen(app: IraApp, talkRequests: Int, onSkills: () -> Unit, onSettings:
         }
     var checklistHidden by remember { mutableStateOf(app.settings.checklistHidden) }
 
-    Column(Modifier.fillMaxSize().imePadding()) {
-        TopRow(ui.assistant) {
-            TextButton(onClick = onDrop) { Text("Drop") }
-            TextButton(onClick = onSkills) { Text("Skills") }
-            TextButton(onClick = onSettings) { Text("Settings") }
+    // The round button: talk, stop Ira speaking, stop listening, or end the call.
+    val talkTap: () -> Unit = {
+        val current = session
+        when {
+            current == null || !ui.listening -> talk()
+            ui.status == CallStatus.Speaking -> current.stopIra()
+            current is PhoneSession -> current.stopListening()
+            else -> app.endCall()
         }
-        StatusLine(ui, link)
-        if (!checklistHidden && !Checklist.complete(facts) && !ui.listening) {
-            ChecklistCard(
-                steps = Checklist.steps(facts),
-                refused = { action ->
-                    (action == Checklist.Action.ALLOW_MICROPHONE && micRefused) ||
-                        (action == Checklist.Action.ALLOW_NOTIFICATIONS && notificationsRefused)
-                },
-                onAction = { action ->
-                    when (action) {
-                        Checklist.Action.ALLOW_MICROPHONE -> microphone(call = false)
-                        Checklist.Action.ALLOW_NOTIFICATIONS ->
-                            if (notificationsRefused || Build.VERSION.SDK_INT < 33) {
-                                openNotificationSettings(context)
-                            } else {
-                                notificationPermission.launch(Permissions.POST_NOTIFICATIONS)
-                            }
-                        Checklist.Action.OPEN_ASSISTANT_SETTINGS -> openAssistantSettings(context)
-                        Checklist.Action.OPEN_YOUR_IRA -> open(context, app.settings.server.orEmpty())
-                        Checklist.Action.OPEN_SKILLS -> onSkills()
-                    }
-                },
-                onHide = {
-                    checklistHidden = true
-                    app.settings.checklistHidden = true
-                },
-            )
-        }
-        // This phone's approval window, counted down here and stoppable.
-        val approvals by app.approvals.collectAsState()
-        var now by remember { mutableLongStateOf(System.currentTimeMillis() / 1000) }
-        val window = approvals?.forDevice(app.settings.deviceId, now.toDouble())
-        LaunchedEffect(window?.id, window?.expiresAt) {
-            while (window != null && window.expiresAt > now) {
-                delay(15_000)
-                now = System.currentTimeMillis() / 1000
-            }
-        }
-        if (Approvals.WINDOW && window != null) ApprovalBanner(app, window.id, window.secondsLeft(now.toDouble()))
-        Conversation(ui, lines, Modifier.weight(1f), onReport = { reporting = it })
-        val card = ui.action
-        // Only the newest pending action is shown: a new one replaces the card and any result.
-        LaunchedEffect(card?.id) {
-            if (card == null) return@LaunchedEffect
-            result = null
-            val seconds = card.expiresIn ?: return@LaunchedEffect
-            delay(seconds * 1000L)
-            if (session?.ui?.value?.action?.id == card.id) {
-                session?.dismissAction()
-                result = "That request expired" to "Ask Ira again."
-            }
-        }
-        if (card != null) {
-            // The PIN's outcome belongs to this card only.
-            var outcome by remember(card.id) { mutableStateOf<String?>(null) }
-            // An answer that ended the action: never a stale card; what happened shows instead.
-            val settle = { confirmed: Actions.Outcome ->
-                if (confirmed.done) {
-                    if (session?.ui?.value?.action?.id == card.id) session?.dismissAction()
-                    if (Approvals.covered(card.tool)) app.refreshApprovals()
-                    val title = if (confirmed.status == "executed") "Done: ${confirmed.message}" else confirmed.message
-                    result = title to confirmed.detail
-                    session?.note(listOfNotNull(title, confirmed.detail).joinToString(" "))
-                    // Ira carries on after the action: her answer as her next message, unless
-                    // the open live call already spoke it as its own turn.
-                    val reply = confirmed.reply
-                    if (reply != null && !confirmed.continuedInCall) {
-                        app.transcript.add(Transcript.Line("reply:${card.id}", true, reply, messageId = confirmed.replyMessageId))
-                    }
-                } else {
-                    outcome = confirmed.message
-                }
-            }
-            val answer = { yes: Boolean ->
-                confirming = true
-                outcome = null
-                scope.launch {
-                    val answered =
-                        withContext(Dispatchers.IO) {
-                            Actions.answer(app.settings.server.orEmpty(), app.secrets.token().orEmpty(), card.id, yes, Net.post)
+    }
+    Box(Modifier.fillMaxSize().background(Presence.colors.bg)) {
+        Column(Modifier.fillMaxSize().imePadding()) {
+            TalkHeader(ui, link, onDrop = onDrop, onSkills = onSkills, onSettings = onSettings)
+            val setup = !checklistHidden && !Checklist.complete(facts) && !ui.listening
+            if (setup) {
+                ChecklistCard(
+                    steps = Checklist.steps(facts),
+                    refused = { action ->
+                        (action == Checklist.Action.ALLOW_MICROPHONE && micRefused) ||
+                            (action == Checklist.Action.ALLOW_NOTIFICATIONS && notificationsRefused)
+                    },
+                    onAction = { action ->
+                        when (action) {
+                            Checklist.Action.ALLOW_MICROPHONE -> microphone(call = false)
+                            Checklist.Action.ALLOW_NOTIFICATIONS ->
+                                if (notificationsRefused || Build.VERSION.SDK_INT < 33) {
+                                    openNotificationSettings(context)
+                                } else {
+                                    notificationPermission.launch(Permissions.POST_NOTIFICATIONS)
+                                }
+                            Checklist.Action.OPEN_ASSISTANT_SETTINGS -> openAssistantSettings(context)
+                            Checklist.Action.OPEN_YOUR_IRA -> open(context, app.settings.server.orEmpty())
+                            Checklist.Action.OPEN_SKILLS -> onSkills()
                         }
-                    confirming = false
-                    settle(answered)
+                    },
+                    onHide = {
+                        checklistHidden = true
+                        app.settings.checklistHidden = true
+                    },
+                )
+            }
+            // This phone's approval window, counted down here and stoppable.
+            val approvals by app.approvals.collectAsState()
+            var now by remember { mutableLongStateOf(System.currentTimeMillis() / 1000) }
+            val window = approvals?.forDevice(app.settings.deviceId, now.toDouble())
+            LaunchedEffect(window?.id, window?.expiresAt) {
+                while (window != null && window.expiresAt > now) {
+                    delay(15_000)
+                    now = System.currentTimeMillis() / 1000
                 }
             }
-            val activity = context as? android.app.Activity
-            val fingerprint =
-                if (Approvals.FINGERPRINT && card.needsPin && activity != null && app.settings.approvalsEnrolled && DeviceKey.exists()) {
-                    {
-                        // The server signs the same bytes: the action, the summary shown, its expiry.
-                        val expiresAt = card.expiresAt ?: (System.currentTimeMillis() / 1000 + (card.expiresIn ?: 120))
-                        val payload = Approvals.payload(card.id, card.summary, expiresAt)
-                        Fingerprint.approve(activity, card.summary, payload) { signature, problem ->
-                            if (signature == null) {
-                                outcome = problem
-                            } else {
-                                confirming = true
-                                scope.launch {
-                                    val confirmed = withContext(Dispatchers.IO) { app.confirmWithKey(card.id, signature) }
-                                    confirming = false
-                                    if (confirmed.done) {
-                                        if (session?.ui?.value?.action?.id == card.id) session?.dismissAction()
-                                        result = "Done: ${confirmed.message}" to confirmed.detail
-                                        app.refreshApprovals()
-                                    } else {
-                                        outcome = confirmed.message
+            if (Approvals.WINDOW && window != null) ApprovalBanner(app, window.id, window.secondsLeft(now.toDouble()))
+            Conversation(ui, lines, Modifier.weight(1f), greeting = !setup, onReport = { reporting = it })
+            val card = ui.action
+            // Only the newest pending action is shown: a new one replaces the card and any result.
+            LaunchedEffect(card?.id) {
+                if (card == null) return@LaunchedEffect
+                result = null
+                val seconds = card.expiresIn ?: return@LaunchedEffect
+                delay(seconds * 1000L)
+                if (session?.ui?.value?.action?.id == card.id) {
+                    session?.dismissAction()
+                    result = "That request expired" to "Ask Ira again."
+                }
+            }
+            if (card != null) {
+                // The PIN's outcome belongs to this card only.
+                var outcome by remember(card.id) { mutableStateOf<String?>(null) }
+                // An answer that ended the action: never a stale card; what happened shows instead.
+                val settle = { confirmed: Actions.Outcome ->
+                    if (confirmed.done) {
+                        if (session?.ui?.value?.action?.id == card.id) session?.dismissAction()
+                        if (Approvals.covered(card.tool)) app.refreshApprovals()
+                        val title = if (confirmed.status == "executed") "Done: ${confirmed.message}" else confirmed.message
+                        result = title to confirmed.detail
+                        session?.note(listOfNotNull(title, confirmed.detail).joinToString(" "))
+                        // Ira carries on after the action: her answer as her next message, unless
+                        // the open live call already spoke it as its own turn.
+                        val reply = confirmed.reply
+                        if (reply != null && !confirmed.continuedInCall) {
+                            app.transcript.add(Transcript.Line("reply:${card.id}", true, reply, messageId = confirmed.replyMessageId))
+                        }
+                    } else {
+                        outcome = confirmed.message
+                    }
+                }
+                val answer = { yes: Boolean ->
+                    confirming = true
+                    outcome = null
+                    scope.launch {
+                        val answered =
+                            withContext(Dispatchers.IO) {
+                                Actions.answer(app.settings.server.orEmpty(), app.secrets.token().orEmpty(), card.id, yes, Net.post)
+                            }
+                        confirming = false
+                        settle(answered)
+                    }
+                }
+                val activity = context as? android.app.Activity
+                val fingerprint =
+                    if (Approvals.FINGERPRINT && card.needsPin && activity != null && app.settings.approvalsEnrolled && DeviceKey.exists()) {
+                        {
+                            // The server signs the same bytes: the action, the summary shown, its expiry.
+                            val expiresAt = card.expiresAt ?: (System.currentTimeMillis() / 1000 + (card.expiresIn ?: 120))
+                            val payload = Approvals.payload(card.id, card.summary, expiresAt)
+                            Fingerprint.approve(activity, card.summary, payload) { signature, problem ->
+                                if (signature == null) {
+                                    outcome = problem
+                                } else {
+                                    confirming = true
+                                    scope.launch {
+                                        val confirmed = withContext(Dispatchers.IO) { app.confirmWithKey(card.id, signature) }
+                                        confirming = false
+                                        if (confirmed.done) {
+                                            if (session?.ui?.value?.action?.id == card.id) session?.dismissAction()
+                                            result = "Done: ${confirmed.message}" to confirmed.detail
+                                            app.refreshApprovals()
+                                        } else {
+                                            outcome = confirmed.message
+                                        }
                                     }
                                 }
                             }
                         }
+                    } else {
+                        null
                     }
-                } else {
-                    null
-                }
-            ActionCardView(
-                card = card,
-                busy = confirming,
-                outcome = outcome,
-                onFingerprint = fingerprint,
-                onYes = { answer(true) },
-                onNo = { answer(false) },
-                onPin = { pin ->
-                    confirming = true
-                    outcome = null
-                    scope.launch {
-                        val confirmed =
-                            withContext(Dispatchers.IO) {
-                                Actions.confirm(app.settings.server.orEmpty(), app.secrets.token().orEmpty(), card.id, pin, Net.post)
-                            }
-                        confirming = false
-                        settle(confirmed)
+                ActionCardView(
+                    card = card,
+                    busy = confirming,
+                    outcome = outcome,
+                    onFingerprint = fingerprint,
+                    onYes = { answer(true) },
+                    onNo = { answer(false) },
+                    onPin = { pin ->
+                        confirming = true
+                        outcome = null
+                        scope.launch {
+                            val confirmed =
+                                withContext(Dispatchers.IO) {
+                                    Actions.confirm(app.settings.server.orEmpty(), app.secrets.token().orEmpty(), card.id, pin, Net.post)
+                                }
+                            confirming = false
+                            settle(confirmed)
+                        }
+                    },
+                    onDismiss = { session?.dismissAction() },
+                )
+            } else {
+                result?.let { (title, detail) -> ResultCard(title, detail) { result = null } }
+            }
+            ui.notice?.let {
+                Text(
+                    it,
+                    color = Presence.colors.down,
+                    style = MaterialTheme.typography.bodyMedium,
+                    modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp),
+                )
+            }
+            fun send() {
+                val text = typed.trim()
+                if (text.isEmpty() || sending) return
+                sending = true
+                sendError = null
+                app.send(text) { error ->
+                    sending = false
+                    if (error == null) {
+                        // Ira has it: clear the field, unless the person typed on meanwhile.
+                        if (typed.trim() == text) typed = ""
+                    } else {
+                        sendError = error
                     }
-                },
-                onDismiss = { session?.dismissAction() },
-            )
-        } else {
-            result?.let { (title, detail) -> ResultCard(title, detail) { result = null } }
-        }
-        ui.notice?.let {
-            Text(
-                it,
-                color = MaterialTheme.colorScheme.error,
-                style = MaterialTheme.typography.bodyMedium,
-                modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp),
-            )
-        }
-        TalkControl(
-            ui = ui,
-            onTap = {
-                val current = session
-                when {
-                    current == null || !ui.listening -> talk()
-                    ui.status == CallStatus.Speaking -> current.stopIra()
-                    current is PhoneSession -> current.stopListening()
-                    else -> app.endCall()
-                }
-            },
-        )
-        fun send() {
-            val text = typed.trim()
-            if (text.isEmpty() || sending) return
-            sending = true
-            sendError = null
-            app.send(text) { error ->
-                sending = false
-                if (error == null) {
-                    // Ira has it: clear the field, unless the person typed on meanwhile.
-                    if (typed.trim() == text) typed = ""
-                } else {
-                    sendError = error
                 }
             }
-        }
-        sendError?.let { error ->
-            Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp), verticalAlignment = Alignment.CenterVertically) {
-                Text(error, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
-                TextButton(onClick = { send() }, enabled = !sending) { Text("Retry") }
+            sendError?.let { error ->
+                Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Text(error, color = Presence.colors.down, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
+                    TextButton(onClick = { send() }, enabled = !sending) { Text("Retry") }
+                }
             }
-        }
-        Row(
-            Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            OutlinedTextField(
+            val active = ui.listening && ui.status != CallStatus.Ended
+            AskPill(
                 value = typed,
                 onValueChange = {
                     typed = it
                     sendError = null
                 },
-                placeholder = { Text("Type to ${ui.assistant}") },
-                maxLines = 3,
-                modifier = Modifier.weight(1f),
+                placeholder = "Ask ${ui.assistant} anything, or just start talking…",
+                micIcon = painterResource(if (active) R.drawable.ic_stop else R.drawable.ic_mic),
+                sendIcon = painterResource(R.drawable.ic_send),
+                micLabel = when {
+                    !active -> "Talk: talk to Ira"
+                    ui.status == CallStatus.Speaking -> "Stop: talk to Ira"
+                    else -> "End: talk to Ira"
+                },
+                onMic = talkTap,
+                onSend = { send() },
+                sending = sending,
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp),
             )
-            Spacer(Modifier.size(8.dp))
-            Button(enabled = typed.isNotBlank() && !sending, onClick = { send() }) { Text(if (sending) "Sending" else "Send") }
+        }
+        // Listening fills the screen while Ira's turn is the person's, unless an action waits.
+        if (ui.listening && ui.status != CallStatus.Ended && ui.action == null) {
+            ListeningView(
+                ui = ui,
+                lastAnswer = lines.lastOrNull { it.fromIra }?.text,
+                onCancel = { app.endCall() },
+                onDone = talkTap,
+            )
         }
     }
 
@@ -407,7 +423,8 @@ private fun ChecklistCard(
 ) {
     Card(
         modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+        colors = CardDefaults.cardColors(containerColor = Presence.colors.card, contentColor = Presence.colors.ink),
+        border = BorderStroke(1.dp, Presence.colors.line),
     ) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -442,44 +459,59 @@ private fun ChecklistCard(
     }
 }
 
+/** "Ira" with what is happening under it, and the pills: Drop, Skills, Settings. */
 @Composable
-private fun StatusLine(ui: CallUi, link: LinkState) {
+private fun TalkHeader(ui: CallUi, link: LinkState, onDrop: () -> Unit, onSkills: () -> Unit, onSettings: () -> Unit) {
     val text =
         when (ui.status) {
-            CallStatus.Off -> "Tap the microphone to talk, or type."
+            CallStatus.Off -> "Tap the microphone to talk, or type"
             CallStatus.Connecting -> "Connecting..."
-            CallStatus.Listening -> if (ui.listening) "Listening" else "Type, or tap the microphone."
+            CallStatus.Listening -> if (ui.listening) "Listening" else "Type, or tap the microphone"
             CallStatus.Hearing -> "Hearing you"
             CallStatus.Thinking -> "Thinking"
             CallStatus.Speaking -> "Speaking. Talk to interrupt."
             CallStatus.Reconnecting -> "Reconnecting..."
-            CallStatus.Ended -> "Call ended."
+            CallStatus.Ended -> "Call ended"
         }
-    val tools = if (link is LinkState.Connected) "Phone tools: on" else "Phone tools: off"
+    val tools = if (link is LinkState.Connected) "phone tools on" else "phone tools off"
     // Which way Ira hears: the server (a live call) or the phone's own recognition.
     val mode =
         when {
             ui.mode == TalkMode.LIVE && ui.status != CallStatus.Ended -> "Live call · "
-            ui.mode == TalkMode.PHONE -> "Talk (phone recognition) · "
+            ui.mode == TalkMode.PHONE -> "Phone recognition · "
             else -> ""
         }
-    Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp), verticalAlignment = Alignment.CenterVertically) {
-        Text(mode + text, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.primary, modifier = Modifier.weight(1f))
-        Text(tools, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    val colors = Presence.colors
+    Row(
+        Modifier.fillMaxWidth().padding(start = 20.dp, end = 12.dp, top = 10.dp, bottom = 6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        Column(Modifier.weight(1f)) {
+            Text(ui.assistant, fontSize = 17.sp, fontWeight = FontWeight.SemiBold, color = colors.ink)
+            Text("$mode$text · $tools", fontSize = 12.sp, color = colors.muted, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        }
+        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            PillButton("Drop", onDrop, compact = true)
+            PillButton("Skills", onSkills, compact = true)
+            PillButton("Settings", onSettings, compact = true)
+        }
     }
 }
 
 @Composable
-private fun Conversation(ui: CallUi, lines: List<Transcript.Line>, modifier: Modifier, onReport: (Transcript.Line) -> Unit) {
+private fun Conversation(ui: CallUi, lines: List<Transcript.Line>, modifier: Modifier, greeting: Boolean, onReport: (Transcript.Line) -> Unit) {
     val list = rememberLazyListState()
     val count = lines.size + 1 + if (ui.caption.isNotBlank()) 1 else 0
     LaunchedEffect(count, lines.lastOrNull()?.text?.length) { list.animateScrollToItem(count - 1) }
     LazyColumn(
         state = list,
         modifier = modifier.fillMaxWidth().padding(horizontal = 16.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp),
+        verticalArrangement = Arrangement.spacedBy(18.dp),
     ) {
         item { Spacer(Modifier.height(8.dp)) }
+        // The greeting, unless the setup checklist is showing above.
+        if (greeting && lines.isEmpty() && ui.caption.isBlank()) item { Hero() }
         items(lines, key = { it.key }) { line -> Bubble(line, onReport) }
         if (ui.caption.isNotBlank()) {
             item {
@@ -494,40 +526,76 @@ private fun Conversation(ui: CallUi, lines: List<Transcript.Line>, modifier: Mod
     }
 }
 
+/** An empty conversation: the lens at rest, the greeting, the day and a hint. */
+@Composable
+private fun Hero() {
+    val colors = Presence.colors
+    val hour = LocalTime.now().hour
+    val part = if (hour < 12) "Good morning" else if (hour < 17) "Good afternoon" else "Good evening"
+    Column(Modifier.fillMaxWidth().padding(top = 48.dp, bottom = 16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+        Lens(104.dp, breathing = true, rings = 1)
+        Spacer(Modifier.height(20.dp))
+        Text("$part.", fontFamily = Presence.serif, fontSize = 34.sp, color = colors.ink)
+        Spacer(Modifier.height(6.dp))
+        Text(LocalDate.now().format(DateTimeFormatter.ofPattern("EEEE, d MMMM")), fontSize = 14.sp, color = colors.muted)
+        Spacer(Modifier.height(18.dp))
+        Text(
+            "Ask in your own words, in any language. Try “kal ka calendar batao”.",
+            fontSize = 13.sp,
+            color = colors.faint,
+            textAlign = TextAlign.Center,
+            modifier = Modifier.padding(horizontal = 24.dp),
+        )
+    }
+}
+
 @Composable
 private fun Bubble(line: Transcript.Line, onReport: (Transcript.Line) -> Unit) {
+    val colors = Presence.colors
     val mine = !line.fromIra
     val reportable = line.fromIra && line.messageId != null
-    Row(
-        Modifier.fillMaxWidth(),
-        horizontalArrangement = if (mine) Arrangement.End else Arrangement.Start,
-        verticalAlignment = Alignment.Top,
-    ) {
-        Box(
-            Modifier
-                .widthIn(max = 300.dp)
-                .clip(RoundedCornerShape(16.dp))
-                .background(if (mine) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant)
-                .then(
-                    if (reportable) {
-                        Modifier.combinedClickable(onClick = {}, onLongClick = { onReport(line) }, onLongClickLabel = "Report this answer")
-                    } else {
-                        Modifier
-                    },
-                )
-                .padding(horizontal = 14.dp, vertical = 10.dp),
-        ) {
-            Text(
-                if (line.stopped) line.text + " (stopped)" else line.text,
-                style = MaterialTheme.typography.bodyLarge,
-                color = if (mine) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface,
-            )
+    val text = if (line.stopped) line.text + " (stopped)" else line.text
+    if (mine) {
+        val shape = RoundedCornerShape(topStart = 18.dp, topEnd = 18.dp, bottomEnd = 6.dp, bottomStart = 18.dp)
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+            Box(
+                Modifier
+                    .widthIn(max = 300.dp)
+                    .clip(shape)
+                    .background(colors.raised)
+                    .border(BorderStroke(1.dp, colors.line), shape)
+                    .padding(horizontal = 16.dp, vertical = 10.dp),
+            ) {
+                Text(text, fontSize = 16.sp, color = colors.ink)
+            }
         }
+        return
+    }
+    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Top) {
+        Lens(30.dp)
+        Spacer(Modifier.width(12.dp))
+        Text(
+            text,
+            fontSize = 16.sp,
+            lineHeight = 25.sp,
+            color = colors.ink,
+            modifier =
+                Modifier
+                    .weight(1f)
+                    .padding(top = 3.dp)
+                    .then(
+                        if (reportable) {
+                            Modifier.combinedClickable(onClick = {}, onLongClick = { onReport(line) }, onLongClickLabel = "Report this answer")
+                        } else {
+                            Modifier
+                        },
+                    ),
+        )
         if (reportable) {
             Text(
                 "⋮",
                 style = MaterialTheme.typography.titleMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                color = colors.faint,
                 modifier =
                     Modifier
                         .clip(CircleShape)
@@ -535,6 +603,52 @@ private fun Bubble(line: Transcript.Line, onReport: (Transcript.Line) -> Unit) {
                         .padding(horizontal = 10.dp, vertical = 6.dp)
                         .semantics { contentDescription = "Report this answer" },
             )
+        }
+    }
+}
+
+/** Listening, over the whole screen: the large lens on the voice, what Ira hears, Cancel and Done. */
+@Composable
+private fun ListeningView(ui: CallUi, lastAnswer: String?, onCancel: () -> Unit, onDone: () -> Unit) {
+    val colors = Presence.colors
+    val label =
+        when (ui.status) {
+            CallStatus.Hearing -> "Hearing you"
+            CallStatus.Thinking -> "Thinking"
+            CallStatus.Speaking -> "Speaking"
+            CallStatus.Connecting, CallStatus.Reconnecting -> "Connecting"
+            else -> "Listening"
+        }
+    Box(
+        Modifier
+            .fillMaxSize()
+            .background(colors.bg)
+            .background(
+                Brush.radialGradient(
+                    listOf(Color(0xFF1F6F5C).copy(alpha = if (colors.dark) 0.22f else 0.12f), Color.Transparent),
+                ),
+            )
+            // Taps stay here, never reach the conversation underneath.
+            .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) {},
+        contentAlignment = Alignment.Center,
+    ) {
+        Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.padding(24.dp)) {
+            Lens(160.dp, level = ui.level, breathing = true, rings = 2)
+            Spacer(Modifier.height(22.dp))
+            Text(label.uppercase(), style = Presence.label, color = colors.green)
+            Spacer(Modifier.height(14.dp))
+            when {
+                ui.caption.isNotBlank() ->
+                    Text("“${ui.caption}”", fontFamily = Presence.serif, fontSize = 28.sp, lineHeight = 34.sp, color = colors.ink, textAlign = TextAlign.Center)
+                ui.status == CallStatus.Speaking && !lastAnswer.isNullOrBlank() ->
+                    Text(lastAnswer, fontSize = 16.sp, lineHeight = 24.sp, color = colors.muted, textAlign = TextAlign.Center, maxLines = 6)
+                else -> Text("Speak now", fontFamily = Presence.serif, fontSize = 28.sp, color = colors.faint)
+            }
+            Spacer(Modifier.height(26.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                PillButton("Cancel", onCancel)
+                PillButton(if (ui.status == CallStatus.Speaking) "Stop" else "Done", onDone, filled = true)
+            }
         }
     }
 }
@@ -618,13 +732,15 @@ private fun ActionCardView(
     onFingerprint: (() -> Unit)? = null,
 ) {
     var pin by remember(card.id) { mutableStateOf("") }
+    val colors = Presence.colors
     Card(
         modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer),
+        colors = CardDefaults.cardColors(containerColor = colors.warn.copy(alpha = 0.06f), contentColor = colors.ink),
+        border = BorderStroke(1.dp, colors.warn.copy(alpha = 0.55f)),
     ) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text(if (card.needsPin) "Needs your PIN" else "Needs your yes", fontWeight = FontWeight.SemiBold)
-            Text(card.summary, style = MaterialTheme.typography.bodyLarge)
+            DotLabel(if (card.needsPin) "Waiting for your PIN" else "Waiting for you", colors.warn)
+            Text(card.summary, fontSize = 16.sp, color = colors.ink)
             if (card.needsPin) {
                 onFingerprint?.let { approve ->
                     Button(onClick = approve, enabled = !busy) { Text("Approve with fingerprint") }
@@ -641,24 +757,26 @@ private fun ActionCardView(
                     modifier = Modifier.fillMaxWidth(),
                 )
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Button(
-                        enabled = !busy && pin.length >= 4,
+                    PillButton("Not now", onDismiss)
+                    PillButton(
+                        if (busy) "Checking..." else "Confirm",
                         onClick = {
                             val typedPin = pin
                             pin = ""
                             onPin(typedPin)
                         },
-                    ) { Text(if (busy) "Checking..." else "Confirm") }
-                    TextButton(onClick = onDismiss) { Text("Not now") }
+                        filled = true,
+                        enabled = !busy && pin.length >= 4,
+                    )
                 }
             } else {
                 Text("Say \"haan\" or \"yes\", or tap.", style = MaterialTheme.typography.bodySmall)
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Button(onClick = onYes, enabled = card.canApprove) { Text("Yes") }
-                    OutlinedButton(onClick = onNo) { Text("No") }
+                    PillButton("No", onNo)
+                    PillButton("Yes", onYes, filled = true, enabled = card.canApprove)
                 }
             }
-            outcome?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodyMedium) }
+            outcome?.let { Text(it, color = colors.down, style = MaterialTheme.typography.bodyMedium) }
         }
     }
 }
@@ -668,49 +786,14 @@ private fun ActionCardView(
 private fun ResultCard(title: String, detail: String?, onClose: () -> Unit) {
     Card(
         modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+        colors = CardDefaults.cardColors(containerColor = Presence.colors.card, contentColor = Presence.colors.ink),
+        border = BorderStroke(1.dp, Presence.colors.line),
     ) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            DotLabel(if (title.startsWith("Done")) "Done" else "Result")
             Text(title, fontWeight = FontWeight.SemiBold)
             detail?.let { Text(it, style = MaterialTheme.typography.bodyMedium) }
             TextButton(onClick = onClose) { Text("OK") }
         }
-    }
-}
-
-@Composable
-private fun TalkControl(ui: CallUi, onTap: () -> Unit) {
-    val active = ui.listening && ui.status != CallStatus.Ended
-    val pulse by animateFloatAsState(if (active) 1f + minOf(ui.level * 6f, 0.25f) else 1f, label = "level")
-    val label =
-        when {
-            !active -> "Talk"
-            ui.status == CallStatus.Speaking -> "Stop"
-            else -> "End"
-        }
-    Column(
-        Modifier.fillMaxWidth().padding(vertical = 8.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-    ) {
-        Box(contentAlignment = Alignment.Center, modifier = Modifier.size(132.dp)) {
-            if (active) {
-                Box(
-                    Modifier.size(132.dp).scale(pulse).clip(CircleShape).background(MaterialTheme.colorScheme.primary.copy(alpha = 0.18f)),
-                )
-            }
-            Box(
-                contentAlignment = Alignment.Center,
-                modifier =
-                    Modifier
-                        .size(96.dp)
-                        .clip(CircleShape)
-                        .background(MaterialTheme.colorScheme.primary)
-                        .clickable(onClick = onTap)
-                        .semantics { contentDescription = "$label: talk to Ira" },
-            ) {
-                Icon(painterResource(R.drawable.ic_mic), contentDescription = null, tint = MaterialTheme.colorScheme.onPrimary, modifier = Modifier.size(40.dp))
-            }
-        }
-        Text(label, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }
