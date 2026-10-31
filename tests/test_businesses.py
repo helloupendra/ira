@@ -21,6 +21,13 @@ def login(client, email):
     return {"Authorization": f"Bearer {token}"}
 
 
+def test_the_latest_comes_first_even_on_a_coarse_clock(store):
+    businesses = Businesses(store, clock=lambda: 1000.0)  # Windows' clock moves in steps
+    for n in range(3):
+        businesses.add(1, f"Shop {n}", about="x")
+    assert [b.name for b in businesses.list(1)] == ["Shop 2", "Shop 1", "Shop 0"]
+
+
 def test_profiles_are_kept_per_person_and_named_once(store):
     businesses = Businesses(store)
     sunrise = businesses.add(

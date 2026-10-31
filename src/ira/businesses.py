@@ -71,8 +71,10 @@ class Businesses:
         self.clock = clock
 
     def list(self, user_id: int) -> list[Business]:
+        # rowid breaks ties: the clock moves in steps on Windows, so rows added at once tie.
         rows = self.store.query(
-            "SELECT * FROM businesses WHERE user_id = ? ORDER BY updated_at DESC", (user_id,)
+            "SELECT * FROM businesses WHERE user_id = ? ORDER BY updated_at DESC, rowid DESC",
+            (user_id,),
         )
         return [_business(r) for r in rows]
 
