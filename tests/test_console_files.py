@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import pytest
 from fastapi.testclient import TestClient
 
 from ira import web
@@ -72,3 +73,19 @@ def test_the_consoles_hashed_assets_are_kept_and_its_page_is_not(tmp_path, monke
         assert "immutable" not in client.get("/admin/assets/gone.js").headers.get(
             "cache-control", ""
         )
+
+
+@pytest.mark.anyio
+async def test_a_windows_path_to_a_hashed_asset_is_kept_too(tmp_path, monkeypatch):
+    # Starlette joins the path with the system's separator: assets\app.js on Windows.
+    from starlette.responses import Response
+
+    from ira.channels import http
+
+    async def found(self, path, scope):
+        return Response("x")
+
+    monkeypatch.setattr(http.StaticFiles, "get_response", found)
+    files = http.ConsoleFiles(directory=tmp_path)
+    response = await files.get_response("assets\\app.js", {"type": "http"})
+    assert response.headers["cache-control"] == "public, max-age=31536000, immutable"

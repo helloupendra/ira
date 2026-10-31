@@ -576,7 +576,9 @@ class ConsoleFiles(StaticFiles):
                 raise
             response = await super().get_response("index.html", scope)
             path = "index.html"
-        hashed = path.startswith("assets/") and response.status_code in (200, 304)
+        # Starlette joins the path with the system's separator: assets\app.js on Windows.
+        top = path.replace("\\", "/").split("/", 1)[0]
+        hashed = top == "assets" and response.status_code in (200, 304)
         response.headers.setdefault("Cache-Control", IMMUTABLE if hashed else NO_CACHE)
         return response
 
