@@ -8,6 +8,10 @@ const $ = (selector, root = document) => root.querySelector(selector);
 const SPEECH_LEVEL = 0.02; // RMS above this counts as speech
 const SILENCE_MS = 1500; // a pause this long after speech ends the recording
 const NO_SPEECH_MS = 8000; // give up when nothing was said at all
+// Below this RMS the input is no signal at all (a muted or refused microphone gives zeros),
+// not quiet speech; after SILENT_WARN_MS of it, the listening screen says so.
+const SILENT_FLOOR = 0.002;
+const SILENT_WARN_MS = 3000;
 const MAX_RECORD_MS = 60000;
 const REST_HEIGHTS = [6, 14, 20, 10]; // the four bars of the mark, at rest
 
@@ -1320,7 +1324,8 @@ async function startRecording() {
   if (context.state !== "running") await context.resume().catch(() => {});
   const source = context.createMediaStreamSource(stream);
   const node = new AudioWorkletNode(context, "recorder");
-  const rec = { stream, context, node, chunks: [], started: Date.now(), lastLoud: 0, spoke: false, level: 0 };
+  const rec = { stream, context, node, chunks: [], started: Date.now(), lastLoud: 0, spoke: false, level: 0, peak: 0 };
+  $("#listen-silent").hidden = true;
   node.port.onmessage = (event) => {
     const samples = event.data;
     rec.chunks.push(samples);
@@ -1330,7 +1335,9 @@ async function startRecording() {
       rec.spoke = true;
       rec.lastLoud = now;
     }
+    rec.peak = Math.max(rec.peak, rec.level);
     if (state.recorder !== rec || state.mode !== "listening") return;
+    if (rec.peak < SILENT_FLOOR && now - rec.started > SILENT_WARN_MS) $("#listen-silent").hidden = false;
     if (rec.spoke && now - rec.lastLoud > SILENCE_MS) finishListening();
     else if (!rec.spoke && now - rec.started > NO_SPEECH_MS) cancelListening("I didn't hear anything. Tap the mic to try again.");
     else if (now - rec.started > MAX_RECORD_MS) finishListening();

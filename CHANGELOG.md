@@ -192,6 +192,10 @@ switch it on.
   (now 8 by default, from 6), Ira says what it tried, what it found and
   what to do next, in the person's language. And it searches for a file,
   folder or contact with at most three forms of the name, then says so.
+- **Listening looks alive, and says when the mic is silent.** While Ira listens,
+  its lens beats gently whatever the level (a soft glow with reduced motion),
+  so it is plain the mic is on; and when three seconds bring no signal at all,
+  the screen says Ira hears nothing from the microphone and where to look.
 - **A new look for the web app: calm and dark.** One object carries the screen:
   a small glass lens with Ira's four bars of light, which grows and moves with
   your voice while Ira listens and sits beside each answer. The greeting follows

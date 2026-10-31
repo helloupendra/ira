@@ -442,6 +442,25 @@ code { font-family: var(--mono); font-size: 0.9em; background: var(--bg-sunken);
   outline: 1px solid rgb(63 191 152 / 0.22);
   outline-offset: 22px;
 }
+/* A heartbeat while Ira listens, whatever the level, so it is plain that the mic is on;
+   the bars still follow the voice on top of it. */
+#listen .meter { animation: heartbeat 1.2s ease-in-out infinite, halo 1.8s ease-out infinite; }
+@keyframes heartbeat {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.04); }
+}
+@keyframes halo {
+  from { outline-offset: 14px; outline-color: rgb(63 191 152 / 0.4); }
+  to { outline-offset: 44px; outline-color: rgb(63 191 152 / 0); }
+}
+@keyframes glow {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.75; }
+}
+@media (prefers-reduced-motion: reduce) {
+  #listen .meter { animation: glow 2.4s ease-in-out infinite !important; }
+}
+.listen-silent { max-width: 30rem; text-align: center; font-size: var(--text-m); color: var(--warn); }
 #listen .listen-text { flex-direction: column; color: var(--text); text-align: center; max-width: 40rem; }
 #listen #listen-label { font: 400 1.875rem / 1.25 var(--serif); }
 #listen .listen-actions .btn-ghost { border-color: var(--hair); }
