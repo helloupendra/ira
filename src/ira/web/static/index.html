@@ -1,11 +1,10 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" data-theme="dark">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="color-scheme" content="light dark">
-  <meta name="theme-color" content="#f6f4ef" media="(prefers-color-scheme: light)">
-  <meta name="theme-color" content="#121615" media="(prefers-color-scheme: dark)">
+  <meta name="theme-color" content="#0b0d0c">
   <meta name="description" content="Hey Ira: your own voice assistant.">
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-capable" content="yes">
@@ -17,6 +16,7 @@
   <link rel="apple-touch-icon" href="/icon-180.png">
   <!-- ?v=24 moved these past copies Cloudflare had kept before the server sent no-cache
        (31 Oct 2026). Every file now says no-cache, so this never needs to change. -->
+  <link rel="preload" href="/fonts/geist.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="stylesheet" href="/tokens.css?v=24">
   <link rel="stylesheet" href="/style.css?v=24">
   <script src="/app.js?v=24" defer></script>
@@ -78,6 +78,7 @@
               <rect class="bar" x="22" y="11" width="3" height="10" rx="1.5"/>
             </svg>
           </button>
+          <h2 id="hello" class="hello">Good <em>evening</em>.</h2>
           <p id="hero-hint" class="hero-hint">Tap to talk, or type below.</p>
         </div>
         <ol id="messages" class="messages" aria-label="Conversation"></ol>
@@ -103,6 +104,8 @@
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 19V5m0 0-6 6m6-6 6 6"/></svg>
         </button>
       </form>
+
+      <div id="now" class="now" aria-label="Now" hidden></div>
 
       <div id="call-bar" class="listen call-bar" hidden>
         <svg id="call-meter" class="meter" viewBox="0 0 32 32" aria-hidden="true">

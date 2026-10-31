@@ -192,6 +192,16 @@ switch it on.
   (now 8 by default, from 6), Ira says what it tried, what it found and
   what to do next, in the person's language. And it searches for a file,
   folder or contact with at most three forms of the name, then says so.
+- **A new look for the web app: calm and dark.** One object carries the screen:
+  a small glass lens with Ira's four bars of light, which grows and moves with
+  your voice while Ira listens and sits beside each answer. The greeting follows
+  the hour. Under the field, Now shows at most three things worth a look (the
+  newest Drop item, the devices that are on, today's conversation to carry on).
+  Answers have no bubble, the tools behind one are small receipts that open the
+  full list, and an action waiting for its PIN is a quiet amber card. Geist and
+  Instrument Serif are served by Ira itself (OFL, in `web/static/fonts/`), never
+  from a font host. Dark is the default; the admin console's theme switch and
+  colours follow the same tokens.
 - **A deploy shows at once.** The web app's files say `no-cache`, so a browser or
   Cloudflare asks the server before using a copy; sent with no rule, Cloudflare
   kept the old script and styles for four hours beside a new page. Cloudflare

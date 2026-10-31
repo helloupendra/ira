@@ -3,7 +3,7 @@
 // audio and actions must always come from the server, never from a cache.
 // It also takes what is shared to the installed app (Share → Ira) for Drop.
 
-const CACHE = "ira-shell-v25";
+const CACHE = "ira-shell-v26";
 const SHARE = "ira-share";
 const SHELL = [
   "/",
@@ -17,6 +17,10 @@ const SHELL = [
   "/icon.svg",
   "/icon-192.png",
   "/icon-512.png",
+  "/fonts/geist.woff2",
+  "/fonts/geist-mono.woff2",
+  "/fonts/instrument-serif.woff2",
+  "/fonts/instrument-serif-italic.woff2",
 ];
 
 self.addEventListener("install", (event) => {

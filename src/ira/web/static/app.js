@@ -154,6 +154,7 @@ function enterChat() {
   loadPinStatus();
   restoreToday();
   updateBanner();
+  loadNow();
   const canAsk = permissions.includes("ask");
   $("#text").disabled = !canAsk;
   for (const button of document.querySelectorAll(".voice-mark")) {
@@ -579,6 +580,78 @@ async function loadHistory() {
   }
 }
 
+// --- the empty screen: a greeting and Now ------------------------------------------
+
+function greet() {
+  const hour = new Date().getHours();
+  $("#hello em").textContent = hour < 12 ? "morning" : hour < 17 ? "afternoon" : "evening";
+}
+
+function nowCard(kind, value, detail, onClick) {
+  const card = document.createElement("button");
+  card.type = "button";
+  card.className = "now-card";
+  const parts = [["now-k", kind], ["now-v", value], ["now-s", detail]].map(([className, text]) => {
+    const span = document.createElement("span");
+    span.className = className;
+    span.textContent = text;
+    return span;
+  });
+  card.append(...parts);
+  card.addEventListener("click", onClick);
+  return card;
+}
+
+// At most three: the newest Drop item of the last day, the devices that are on, and today's
+// conversation to carry on. Each is left out when there is nothing to show or it fails.
+async function loadNow() {
+  greet();
+  const box = $("#now");
+  const get = async (path) => {
+    try {
+      const response = await api(path);
+      return response.ok ? await response.json() : null;
+    } catch {
+      return null;
+    }
+  };
+  const panel = (name) => () => typeof IraPersonal !== "undefined" && IraPersonal.open(name);
+  const [drop, devices, rows] = await Promise.all([
+    get("/v1/me/drop?limit=1"), // refused without the drop permission: then no card
+    get("/v1/me/devices"),
+    get("/v1/conversations?limit=5"),
+  ]);
+  const cards = [];
+  const item = drop && drop.items && drop.items[0];
+  if (item && Date.now() - Date.parse(item.created_at) < 24 * 3600 * 1000) {
+    const value = item.kind === "file" ? item.name : (item.text || "").split("\n")[0];
+    cards.push(nowCard("Drop", value, `from ${item.from_label} · ${clockTime(new Date(item.created_at))}`, panel("drop")));
+  }
+  if (Array.isArray(devices) && devices.length) {
+    const on = devices.filter((device) => device.connected);
+    const value = on.length ? on.map((device) => device.label).join(" · ") : "None connected";
+    cards.push(nowCard("Devices", value, `${on.length} of ${devices.length} on`, panel("devices")));
+  }
+  const start = new Date();
+  start.setHours(0, 0, 0, 0);
+  const last = (rows || []).find((row) => row.last_at * 1000 >= start.getTime() && row.id !== state.conversationId);
+  if (last) {
+    const turns = `${last.turns} ${last.turns === 1 ? "turn" : "turns"}`;
+    cards.push(
+      nowCard("Continue", last.preview || "Today's conversation", `${turns} · ${clockTime(new Date(last.last_at * 1000))}`, async () => {
+        try {
+          await openConversation(last.id);
+        } catch (error) {
+          state.notice = error.message;
+          setMode("idle");
+        }
+      }),
+    );
+  }
+  box.replaceChildren(...cards);
+  box.hidden = cards.length === 0;
+}
+
 function newConversation() {
   stopSpeaking();
   state.turns = [];
@@ -588,6 +661,7 @@ function newConversation() {
   $("#hero").hidden = false;
   state.notice = "";
   setMode("idle");
+  loadNow();
   if (matchMedia("(hover: hover)").matches) $("#text").focus();
 }
 
@@ -657,6 +731,19 @@ function explain(li, how) {
   const model = document.createElement("li");
   model.textContent = how.model ? `Answered by the model ${how.model}.` : "No model answered.";
   list.append(model);
+  const summary = $(".how summary", li);
+  const names = [...new Set((how.tools || []).map((used) => (typeof used === "string" ? used : used.name)))];
+  summary.setAttribute("aria-label", "How Ira got this");
+  if (names.length) {
+    summary.replaceChildren(
+      ...names.map((name) => {
+        const chip = document.createElement("span");
+        chip.className = "receipt";
+        chip.textContent = humanize(name).toLowerCase();
+        return chip;
+      }),
+    );
+  }
   $(".how", li).hidden = false;
 }
 
