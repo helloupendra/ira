@@ -1,7 +1,8 @@
 # Ira for Windows
 
-**Ira for Windows** lives in the tray. Press **Ctrl+Alt+Space** anywhere, or
-click its icon, and a panel opens where you type to Ira. Ira can then use
+**Ira for Windows** lives in the tray. Press **Ctrl+Alt+Space** anywhere (or
+the shortcut you chose in [Settings](#settings)), or click its icon, and a
+panel opens where you type to Ira. Ira can then use
 what your PC can do, for you, when you ask: find a file and read it, read
 the window you are in, list your browser tabs, open an app or a link, or
 read what you copied.
@@ -48,6 +49,28 @@ anything that sends, spends or deletes (three wrong PINs lock actions for 15
 minutes, as everywhere in Ira). The panel hides when you click elsewhere,
 unless you pin it.
 
+## Settings
+
+**Settings…** is in the tray icon's menu and in the panel's menu:
+
+- **Shortcut**: Ctrl+Alt+Space, Ctrl+Shift+Space, Alt+Shift+Space or
+  Ctrl+Alt+I. If another app already has the one you choose, Ira says so and
+  keeps the one it had.
+- **Folders Ira may use**: your user folder at first. Add folders inside it
+  and Ira uses only those; add a folder elsewhere (`D:\Work`, say) and Ira
+  may use it too. `AppData`, `.ssh`, hidden files and key files stay off
+  wherever they are.
+- **Start Ira when you sign in to Windows**: a value under your own Run key
+  in the registry, nothing that needs an administrator.
+- **What Ira may use on this PC**: each skill, on or off here. A skill works
+  only when it is on for this PC on your Ira (with your PIN) and on here;
+  switch it off here and the PC refuses it, whatever your Ira asks.
+
+**What I read** (in the same window, and in the tray icon's menu) lists what
+Ira used on this PC since it started, newest first: the file, the search,
+the window or the app, never what it read. It stays on the PC, in memory
+only, until Ira quits; **Clear** empties it.
+
 ## Drop: send anything to your other devices
 
 Drop is your own inbox, shared by your devices (see
@@ -89,7 +112,8 @@ Ira **cannot**:
   keys and passwords (`.env`, `.pem`, `.key`, `id_rsa`, password vaults),
   even if you ask; links and junctions are followed first, and network
   paths, device paths and alternate data streams are refused;
-- read outside your user folder;
+- read outside your user folder, or outside the folders you chose in
+  Settings;
 - open a terminal, PowerShell, the Command Prompt or Task Manager, a
   program, script or shortcut file, or a link that is not a plain
   `https://` or `http://` address;
@@ -100,6 +124,6 @@ give Ira orders, and is kept only in that conversation.
 
 ## Remove Ira from this PC
 
-**Forget** in the panel's settings tells your Ira to stop this PC's key and
+**Forget this pairing…** in the panel's menu tells your Ira to stop this PC's key and
 forgets it here; or remove the PC on your Ira, under **Your devices**.
 Delete the folder you built it in to remove the app.

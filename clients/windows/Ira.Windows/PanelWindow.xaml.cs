@@ -26,7 +26,7 @@ public sealed partial class PanelWindow : Window
     private readonly DropBox _drop;
     private readonly Action _quit;
     private readonly IntPtr _hwnd;
-    private readonly GlobalHotkey _hotkey;
+    private GlobalHotkey _hotkey;
     private readonly GlobalHotkey _sendClipboardKey;
     private readonly GlobalHotkey _copyLatestKey;
     private bool _pairAgain;   // the pairing page was asked for while already paired
@@ -60,7 +60,8 @@ public sealed partial class PanelWindow : Window
         };
         Activated += OnActivated;
 
-        _hotkey = new GlobalHotkey(_hwnd);
+        Shortcut = IraKit.Shortcut.Named(_controller.Preferences.Shortcut);
+        _hotkey = new GlobalHotkey(_hwnd, Shortcut);
         _hotkey.Pressed += TogglePanel;
         // Drop from any app, as on the Mac: send the clipboard, or copy the newest item.
         _sendClipboardKey = new GlobalHotkey(_hwnd, 0x1A2, GlobalHotkey.MOD_SHIFT, GlobalHotkey.VK_V);
@@ -74,8 +75,31 @@ public sealed partial class PanelWindow : Window
         Render();
     }
 
-    /// <summary>False when another app already has Ctrl+Alt+Space.</summary>
+    /// <summary>False when another app already has the shortcut.</summary>
     public bool HotkeyRegistered => _hotkey.Registered;
+
+    /// <summary>The shortcut that opens the panel.</summary>
+    public IraKit.Shortcut Shortcut { get; private set; }
+
+    /// <summary>Settings… in the panel's menu.</summary>
+    public event Action? SettingsRequested;
+
+    /// <summary>Moves the panel to [shortcut]; false, keeping the old one, when another app has it.</summary>
+    public bool SetShortcut(IraKit.Shortcut shortcut)
+    {
+        if (shortcut == Shortcut && _hotkey.Registered) return true;
+        _hotkey.Dispose();
+        var next = new GlobalHotkey(_hwnd, shortcut);
+        if (next.Registered) Shortcut = shortcut;
+        else
+        {
+            next.Dispose();
+            next = new GlobalHotkey(_hwnd, Shortcut);
+        }
+        _hotkey = next;
+        _hotkey.Pressed += TogglePanel;
+        return Shortcut == shortcut;
+    }
 
     /// <summary>False when another app already has one of Drop's two shortcuts.</summary>
     public bool DropHotkeysRegistered => _sendClipboardKey.Registered && _copyLatestKey.Registered;
@@ -341,6 +365,8 @@ public sealed partial class PanelWindow : Window
     }
 
     private void OnQuit(object sender, RoutedEventArgs e) => _quit();
+
+    private void OnSettings(object sender, RoutedEventArgs e) => SettingsRequested?.Invoke();
 
     // --- skills ----------------------------------------------------------------------
 

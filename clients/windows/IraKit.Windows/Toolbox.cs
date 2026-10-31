@@ -31,6 +31,9 @@ public sealed class Toolbox
 
     public IReadOnlyCollection<DeviceTool> Tools => _tools.Values;
 
+    /// <summary>Where each call that reached a tool is noted, for "What I read".</summary>
+    public ReadLog? Log { get; set; }
+
     /// <summary>The tools as the hello lists them.</summary>
     public JsonArray HelloTools() => new(_tools.Values.Select(t => (JsonNode)new JsonObject
     {
@@ -54,22 +57,31 @@ public sealed class Toolbox
 
         using var limit = CancellationTokenSource.CreateLinkedTokenSource(ct);
         limit.CancelAfter(CallLimit);
+        var started = DateTimeOffset.Now;
         try
         {
-            return (true, await tool.Run(args, limit.Token), null);
+            var content = await tool.Run(args, limit.Token);
+            Note(started, name, args, content, ok: true);
+            return (true, content, null);
         }
         catch (ToolFailure failure)
         {
+            Note(started, name, args, null, ok: false);
             return (false, null, failure.Message);
         }
         catch (OperationCanceledException) when (!ct.IsCancellationRequested)
         {
+            Note(started, name, args, null, ok: false);
             return (false, null, $"{name} took longer than {CallLimit.TotalSeconds:0} seconds and was stopped");
         }
         catch (Exception e) when (e is not OperationCanceledException)
         {
+            Note(started, name, args, null, ok: false);
             // Never the exception's text: it can hold a path or data the model should not see.
             return (false, null, $"{name} failed on this PC ({e.GetType().Name})");
         }
     }
+
+    private void Note(DateTimeOffset at, string name, JsonObject args, JsonNode? content, bool ok) =>
+        Log?.Add(new ReadEntry(at, name, ReadLog.Target(name, args, content), ok));
 }

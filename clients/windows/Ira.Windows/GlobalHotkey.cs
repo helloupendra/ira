@@ -3,7 +3,7 @@ using System.Runtime.InteropServices;
 namespace Ira;
 
 /// <summary>
-/// A system-wide shortcut, from any app: Ctrl+Alt+Space opens Ira, and Drop's two
+/// A system-wide shortcut, from any app: Ctrl+Alt+Space (or the one chosen in Settings) opens Ira, and Drop's two
 /// (Ctrl+Alt+Shift+V sends the clipboard, Ctrl+Alt+Shift+C copies the newest item). Windows
 /// sends each to the panel's window, which is listened to here.
 /// </summary>
@@ -12,7 +12,6 @@ internal sealed class GlobalHotkey : IDisposable
     private const int WM_HOTKEY = 0x0312;
     private const uint MOD_ALT = 0x1, MOD_CONTROL = 0x2, MOD_NOREPEAT = 0x4000;
     public const uint MOD_SHIFT = 0x4;
-    private const uint VK_SPACE = 0x20;
     public const uint VK_C = 0x43, VK_V = 0x56;
 
     private readonly IntPtr _window;
@@ -24,17 +23,20 @@ internal sealed class GlobalHotkey : IDisposable
     /// <summary>False when another app already owns this shortcut.</summary>
     public bool Registered { get; }
 
-    /// <summary>Ctrl+Alt+Space, which opens Ira.</summary>
-    public GlobalHotkey(IntPtr window) : this(window, 0x1A1, 0, VK_SPACE) { }
+    /// <summary>The shortcut that opens Ira, as chosen in Settings (Ctrl+Alt+Space at first).</summary>
+    public GlobalHotkey(IntPtr window, IraKit.Shortcut shortcut) : this(window, 0x1A1, shortcut.Modifiers, shortcut.Key, 0) { }
 
     /// <summary>Ctrl+Alt with [moreModifiers] and [key], under its own [id].</summary>
     public GlobalHotkey(IntPtr window, int id, uint moreModifiers, uint key)
+        : this(window, id, MOD_CONTROL | MOD_ALT | moreModifiers, key, 0) { }
+
+    private GlobalHotkey(IntPtr window, int id, uint modifiers, uint key, int _)
     {
         _window = window;
         _id = id;
         _proc = WindowProc;
         SetWindowSubclass(window, _proc, (nuint)id, 0);
-        Registered = RegisterHotKey(window, id, MOD_CONTROL | MOD_ALT | moreModifiers | MOD_NOREPEAT, key);
+        Registered = RegisterHotKey(window, id, modifiers | MOD_NOREPEAT, key);
     }
 
     private IntPtr WindowProc(IntPtr hwnd, uint message, IntPtr wParam, IntPtr lParam, UIntPtr id, UIntPtr data)

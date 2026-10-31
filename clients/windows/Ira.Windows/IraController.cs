@@ -32,6 +32,15 @@ public sealed class IraController
     /// <summary>The connection is (back) up: catch up on what arrived meanwhile.</summary>
     public event Action? Connected;
 
+    /// <summary>What Ira used on this PC since it started, for "What I read".</summary>
+    public ReadLog Log { get; } = new();
+
+    /// <summary>The shortcut and the folders Ira may use, chosen in Settings.</summary>
+    public PcPreferences Preferences { get; private set; } = PcPreferences.Load();
+
+    /// <summary>The skills Ira has on for this PC, as the server last said.</summary>
+    public IReadOnlyList<string> ServerSkills { get; private set; } = [];
+
     public ConnectionState State { get; private set; } = ConnectionState.Stopped;
     public string? StateDetail { get; private set; }
 
@@ -99,6 +108,23 @@ public sealed class IraController
         Raise();
     }
 
+    /// <summary>Allows or stops one skill on this PC, from Settings.</summary>
+    public void SetAllowed(string skill, bool allowed)
+    {
+        if (_settings is null) return;
+        var skills = allowed ? _settings.AllowedSkills.Append(skill) : _settings.AllowedSkills.Where(s => s != skill);
+        _settings = _settings with { AllowedSkills = skills.Distinct().Order().ToList() };
+        _settings.Save();
+        Raise();
+    }
+
+    public void SavePreferences(PcPreferences preferences)
+    {
+        Preferences = preferences;
+        preferences.Save();
+        Raise();
+    }
+
     public void Stop()
     {
         _running?.Cancel();
@@ -109,7 +135,7 @@ public sealed class IraController
     {
         Stop();
         if (!IsPaired) return;
-        var connection = new DeviceConnection(Server!, _token!, _settings!.Label, Version, Tools.Create(),
+        var connection = new DeviceConnection(Server!, _token!, _settings!.Label, Version, Tools.Create(() => Preferences.Policy(), Log),
             () => _settings?.AllowedSkills.ToHashSet() ?? [])
         {
             WebsocketPath = _settings.Websocket,
@@ -135,6 +161,8 @@ public sealed class IraController
 
     private void AskToAllow(IReadOnlyList<string> serverSkills)
     {
+        ServerSkills = serverSkills;
+        Raise();
         var missing = serverSkills.Except(_settings?.AllowedSkills ?? []).ToList();
         if (missing.Count > 0) SkillsToAllow?.Invoke(missing);
     }
