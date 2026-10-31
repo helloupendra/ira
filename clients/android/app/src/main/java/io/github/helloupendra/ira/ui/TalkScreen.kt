@@ -633,13 +633,15 @@ private fun ListeningView(ui: CallUi, lastAnswer: String?, onCancel: () -> Unit,
         contentAlignment = Alignment.Center,
     ) {
         Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.padding(24.dp)) {
-            Lens(160.dp, level = ui.level, breathing = true, rings = 2)
+            Lens(160.dp, level = ui.level, rings = 2, heartbeat = true)
             Spacer(Modifier.height(22.dp))
             Text(label.uppercase(), style = Presence.label, color = colors.green)
             Spacer(Modifier.height(14.dp))
             when {
                 ui.caption.isNotBlank() ->
                     Text("“${ui.caption}”", fontFamily = Presence.serif, fontSize = 28.sp, lineHeight = 34.sp, color = colors.ink, textAlign = TextAlign.Center)
+                // In place of "Speak now" or Ira's answer: the microphone gives nothing.
+                ui.micSilent -> SilentMic(ui.micName)
                 ui.status == CallStatus.Speaking && !lastAnswer.isNullOrBlank() ->
                     Text(lastAnswer, fontSize = 16.sp, lineHeight = 24.sp, color = colors.muted, textAlign = TextAlign.Center, maxLines = 6)
                 else -> Text("Speak now", fontFamily = Presence.serif, fontSize = 28.sp, color = colors.faint)
@@ -650,6 +652,23 @@ private fun ListeningView(ui: CallUi, lastAnswer: String?, onCancel: () -> Unit,
                 PillButton(if (ui.status == CallStatus.Speaking) "Stop" else "Done", onDone, filled = true)
             }
         }
+    }
+}
+
+/** The microphone gave nothing for 3 s: say so, and where to look. */
+@Composable
+private fun SilentMic(input: String) {
+    val context = LocalContext.current
+    val colors = Presence.colors
+    Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Text(
+            "Ira hears nothing from $input. Check that Ira may use the microphone (Settings → Apps → Ira → Permissions), and that microphone access is on.",
+            fontSize = 15.sp,
+            lineHeight = 22.sp,
+            color = colors.warn,
+            textAlign = TextAlign.Center,
+        )
+        PillButton("Open Ira's settings", { openAppSettings(context) })
     }
 }
 

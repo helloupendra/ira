@@ -4,6 +4,7 @@ import android.Manifest
 import android.annotation.SuppressLint
 import android.content.Context
 import android.content.pm.PackageManager
+import android.media.AudioDeviceInfo
 import android.media.AudioFormat
 import android.media.AudioRecord
 import android.media.MediaRecorder
@@ -23,6 +24,9 @@ import io.github.helloupendra.ira.net.IraLog
  */
 class MicCapture(private val context: Context, private val onFrame: (ShortArray, Double) -> Unit) {
     private var thread: Thread? = null
+
+    @Volatile
+    private var current: AudioRecord? = null
 
     @Volatile
     private var running = false
@@ -65,6 +69,7 @@ class MicCapture(private val context: Context, private val onFrame: (ShortArray,
         val noise = if (NoiseSuppressor.isAvailable()) NoiseSuppressor.create(record.audioSessionId) else null
         noise?.enabled = true
         running = true
+        current = record
         thread =
             Thread({
                 android.os.Process.setThreadPriority(android.os.Process.THREAD_PRIORITY_URGENT_AUDIO)
@@ -96,6 +101,7 @@ class MicCapture(private val context: Context, private val onFrame: (ShortArray,
                     }
                     echo?.release()
                     noise?.release()
+                    current = null
                     record.release()
                 }
             }, "ira-mic").apply { start() }
@@ -106,6 +112,19 @@ class MicCapture(private val context: Context, private val onFrame: (ShortArray,
         running = false
         thread?.join(500)
         thread = null
+    }
+
+    /** The input the microphone is read from, as a person would name it: "the phone's microphone". */
+    fun inputName(): String {
+        val device = current?.routedDevice ?: return "the phone's microphone"
+        val product = device.productName?.toString()?.takeIf { it.isNotBlank() }?.let { " ($it)" } ?: ""
+        return when (device.type) {
+            AudioDeviceInfo.TYPE_BUILTIN_MIC -> "the phone's microphone"
+            AudioDeviceInfo.TYPE_BLUETOOTH_SCO, AudioDeviceInfo.TYPE_BLE_HEADSET -> "the Bluetooth headset$product"
+            AudioDeviceInfo.TYPE_WIRED_HEADSET, AudioDeviceInfo.TYPE_USB_HEADSET -> "the headset's microphone"
+            AudioDeviceInfo.TYPE_USB_DEVICE -> "the USB microphone$product"
+            else -> "the microphone$product"
+        }
     }
 }
 

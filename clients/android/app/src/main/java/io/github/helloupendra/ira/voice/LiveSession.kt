@@ -10,6 +10,7 @@ import io.github.helloupendra.ira.core.CallMachine
 import io.github.helloupendra.ira.core.EnergyVad
 import io.github.helloupendra.ira.core.Live
 import io.github.helloupendra.ira.core.LiveProtocol
+import io.github.helloupendra.ira.core.MicSilence
 import io.github.helloupendra.ira.core.Pairing
 import io.github.helloupendra.ira.net.IraLog
 import io.github.helloupendra.ira.net.Net
@@ -33,6 +34,10 @@ data class CallUi(
     /** The microphone is on. */
     val listening: Boolean = false,
     val mode: TalkMode = TalkMode.TEXT,
+    /** Listening has run 3 s and the microphone gave nothing: something has cut it off. */
+    val micSilent: Boolean = false,
+    /** The input Ira listens to, for that warning. */
+    val micName: String = "",
 )
 
 enum class CallStatus { Off, Connecting, Listening, Hearing, Thinking, Speaking, Reconnecting, Ended }
@@ -77,6 +82,8 @@ class LiveSession(
     private var listening = false
 
     private val idle = Runnable { onQuiet() }
+    private val silence = MicSilence()
+    private val silenceCheck = Runnable { checkSilence(nowMs()) }
 
     fun start() {
         if (calls.busy) return end(PHONE_CALL)
@@ -92,7 +99,7 @@ class LiveSession(
     override fun startListening() {
         if (ready && !listening) {
             listening = mic.start()
-            if (!listening) state.update { it.copy(notice = MIC_BUSY) }
+            if (listening) watchSilence() else state.update { it.copy(notice = MIC_BUSY) }
         }
         state.update { it.copy(listening = listening) }
     }
@@ -134,7 +141,8 @@ class LiveSession(
         socket = null
         val unavailable = reason != null && LIVE_UNAVAILABLE.any { reason.contains(it, ignoreCase = true) }
         val shown = if (unavailable) NO_LIVE else reason
-        state.update { it.copy(status = CallStatus.Ended, notice = shown ?: it.notice, level = 0f, listening = false) }
+        silence.reset()
+        state.update { it.copy(status = CallStatus.Ended, notice = shown ?: it.notice, level = 0f, listening = false, micSilent = false) }
         onEnded(shown, unavailable)
     }
 
@@ -192,9 +200,11 @@ class LiveSession(
         if (ended) return
         listening = false
         mic.stop()
+        main.removeCallbacks(silenceCheck)
+        silence.reset()
         player.stop()
         socket = null
-        state.update { it.copy(listening = false) }
+        state.update { it.copy(listening = false, micSilent = false) }
         if (Backoff.isRefusal(code)) {
             end("Your Ira no longer accepts this phone: it was removed on Your devices. Pair it again from Settings.")
             return
@@ -221,7 +231,7 @@ class LiveSession(
                 onConversation(message.conversationId)
                 state.update { it.copy(status = CallStatus.Listening, assistant = message.assistant, notice = null) }
                 listening = mic.start()
-                if (!listening) state.update { it.copy(notice = MIC_BUSY) }
+                if (listening) watchSilence() else state.update { it.copy(notice = MIC_BUSY) }
                 state.update { it.copy(listening = listening) }
                 quietTimer()
             }
@@ -260,12 +270,33 @@ class LiveSession(
 
     // The microphone (its own thread) and the voice detector.
 
+    /** A microphone that gives nothing is said within 3 s, frames or not. */
+    private fun watchSilence() {
+        silence.start(nowMs())
+        main.removeCallbacks(silenceCheck)
+        main.postDelayed(silenceCheck, 3100)
+        state.update { it.copy(micSilent = false) }
+    }
+
+    private fun checkSilence(at: Double) {
+        if (ended || !listening) return
+        if (silence.check(at)) {
+            val name = mic.inputName()
+            state.update { it.copy(micSilent = true, micName = name) }
+            IraLog.warn("mic silent for 3 s: $name")
+        } else if (state.value.micSilent && !silence.silent) {
+            state.update { it.copy(micSilent = false) }
+        }
+    }
+
     private fun onMicFrame(samples: ShortArray, at: Double) {
         vad.replying = replying
         val outputs = vad.process(samples, at)
         val level = vad.level
         main.post {
             if (ended || !ready) return@post
+            silence.feed(samples)
+            checkSilence(at + 20)
             for (output in outputs) {
                 when (output) {
                     is EnergyVad.Output.SpeechStart -> {

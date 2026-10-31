@@ -6,6 +6,7 @@ import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.core.withInfiniteAnimationFrameMillis
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
@@ -25,11 +26,15 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.geometry.CornerRadius
@@ -125,23 +130,41 @@ private fun animationsOff(): Boolean {
 /**
  * The lens: a glass sphere with Ira's four bars of light. Small at rest above the greeting,
  * large with two rings while listening (its bars follow [level]), 30 dp beside each answer.
+ * With [heartbeat] (listening) it pulses every 1.2 s and sends out a fading ring, even in
+ * silence, so the person always sees Ira is on; with animations off it fades gently instead.
  */
 @Composable
-fun Lens(size: Dp, modifier: Modifier = Modifier, level: Float = 0f, breathing: Boolean = false, rings: Int = 0) {
+fun Lens(size: Dp, modifier: Modifier = Modifier, level: Float = 0f, breathing: Boolean = false, rings: Int = 0, heartbeat: Boolean = false) {
     val still = animationsOff()
     val transition = rememberInfiniteTransition(label = "lens")
     val phase by transition.animateFloat(0f, 1f, infiniteRepeatable(tween(4000, easing = LinearEasing)), label = "breath")
     val wave by transition.animateFloat(0f, (2 * PI).toFloat(), infiniteRepeatable(tween(700, easing = LinearEasing)), label = "wave")
-    // Scale 1 to 1.02 and back over 4 seconds.
-    val breathe = if (breathing && !still) 1f + 0.01f * (1f - cos(phase * 2 * PI).toFloat()) else 1f
+    // The heartbeat runs on the frame clock, which animations-off does not stop, so the fade still shows.
+    var beatMs by remember { mutableLongStateOf(0L) }
+    if (heartbeat) LaunchedEffect(Unit) { while (true) withInfiniteAnimationFrameMillis { beatMs = it } }
+    // Where in the 1.2 s beat: the ring's spread (0 to 1), and the pulse (0 at rest, 1 at its fullest).
+    val spread = (beatMs % 1200L) / 1200f
+    val beat = 0.5f - 0.5f * cos(spread * 2 * PI).toFloat()
+    // Scale 1 to 1.02 and back over 4 seconds, or 1 to 1.04 with each beat.
+    val breathe =
+        when {
+            still -> 1f
+            heartbeat -> 1f + 0.04f * beat
+            breathing -> 1f + 0.01f * (1f - cos(phase * 2 * PI).toFloat())
+            else -> 1f
+        }
     val colors = Presence.colors
     val sphere = size
     val outer = sphere * (1f + rings * 0.22f)
     Box(modifier.size(outer), contentAlignment = Alignment.Center) {
-        Canvas(Modifier.size(outer).scale(breathe)) {
+        Canvas(Modifier.size(outer).scale(breathe).alpha(if (heartbeat && still) 1f - 0.25f * beat else 1f)) {
             val s = sphere.toPx()
             val center = Offset(this.size.width / 2, this.size.height / 2)
             val r = s / 2
+            if (heartbeat && !still) {
+                // The ring each beat sends out: from the sphere's edge to half again, fading.
+                drawCircle(colors.green.copy(alpha = 0.45f * (1f - spread)), radius = r * (1f + 0.5f * spread), center = center, style = Stroke(1.5.dp.toPx()))
+            }
             // A soft green glow below the sphere.
             drawCircle(
                 Brush.radialGradient(

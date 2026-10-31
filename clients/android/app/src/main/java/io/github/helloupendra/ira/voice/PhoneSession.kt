@@ -297,6 +297,8 @@ class PhoneSession(
                     }
                     SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS ->
                         stopListening("Ira needs the microphone permission. Allow it in Android's settings, then tap the microphone.")
+                    SpeechRecognizer.ERROR_AUDIO ->
+                        stopListening("Ira hears nothing from the microphone: another app may be using it, or microphone access is off in Android's privacy settings.")
                     SpeechRecognizer.ERROR_NETWORK, SpeechRecognizer.ERROR_NETWORK_TIMEOUT, SpeechRecognizer.ERROR_SERVER, SpeechRecognizer.ERROR_SERVER_DISCONNECTED ->
                         stopListening("The phone's speech recognition needs the internet or an offline language pack. Check the connection, or type to Ira.")
                     else -> stopListening("The phone's speech recognition stopped (error $error). Tap the microphone to try again, or type.")
