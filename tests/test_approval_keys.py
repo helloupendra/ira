@@ -5,7 +5,7 @@ from __future__ import annotations
 import base64
 
 from cryptography.hazmat.primitives import hashes, serialization
-from cryptography.hazmat.primitives.asymmetric import ec
+from cryptography.hazmat.primitives.asymmetric import ec, padding, rsa
 from fastapi.testclient import TestClient
 
 from ira.approval_keys import message
@@ -23,7 +23,7 @@ def b64(data: bytes) -> str:
     return base64.urlsafe_b64encode(data).decode().rstrip("=")
 
 
-def public(key: ec.EllipticCurvePrivateKey) -> str:
+def public(key: ec.EllipticCurvePrivateKey | rsa.RSAPrivateKey) -> str:
     der = key.public_key().public_bytes(
         serialization.Encoding.DER, serialization.PublicFormat.SubjectPublicKeyInfo
     )
@@ -101,3 +101,43 @@ def test_a_fingerprint_on_the_device_confirms_instead_of_the_pin(registry, ledge
         assert client.get("/v1/me/approval-keys", headers=me).json() == []
     assert ledger.refunds == [("A1", 5)]
     del other_token
+
+
+def test_a_windows_hello_key_confirms_with_rs256(registry, ledger):
+    provider = ScriptedProvider([refund(), "PIN?", "Done."])
+    runtime = make_runtime(provider=provider, registry=registry)
+    owner = runtime.accounts.create_user("owner@example.com", PASSWORD, "owner")
+    runtime.guard.set_pin(PIN, user_id=owner.id, actor=owner.email, channel="test")
+    code, _ = runtime.hub.devices.start_pairing(owner.id, "windows", "Office PC", [])
+    token, pc = runtime.hub.devices.redeem(code)
+    hello = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    with TestClient(create_app(runtime, start_channels=False)) as client:
+        body = {"email": "owner@example.com", "password": PASSWORD, "use_cookie": False}
+        session = client.post("/v1/auth/login", json=body).json()["session_token"]
+        me = {"Authorization": f"Bearer {session}"}
+        device = {"Authorization": f"Bearer {token}"}
+
+        def enrol(key, algorithm):
+            body = {"public_key": public(key), "algorithm": algorithm, "pin": PIN}
+            return client.post("/v1/me/approval-keys", json=body, headers=device)
+
+        short = rsa.generate_private_key(public_exponent=65537, key_size=1024)
+        assert enrol(short, "RS256").status_code == 422
+        assert enrol(hello, "ES256").status_code == 422  # the algorithm must match the key
+        assert enrol(ec.generate_private_key(ec.SECP256R1()), "RS256").status_code == 422
+        assert enrol(hello, "PS256").status_code == 422
+        assert enrol(hello, "RS256").json()["algorithm"] == "RS256"
+
+        action = client.post("/v1/ask", json={"text": "refund A1"}, headers=me).json()["action"]
+        data = message(action["id"], action["summary"], action["expires_at"])
+        path = f"/v1/actions/{action['id']}/confirm"
+        pss = hello.sign(
+            data,
+            padding.PSS(mgf=padding.MGF1(hashes.SHA256()), salt_length=32),
+            hashes.SHA256(),
+        )
+        wrong = client.post(path, json={"device_id": pc.id, "signature": b64(pss)}, headers=device)
+        assert wrong.json()["status"] == "wrong_pin", wrong.json()
+        signed = b64(hello.sign(data, padding.PKCS1v15(), hashes.SHA256()))
+        done = client.post(path, json={"device_id": pc.id, "signature": signed}, headers=device)
+        assert done.json()["status"] == "executed" and ledger.refunds == [("A1", 5)]

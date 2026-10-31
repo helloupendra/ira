@@ -199,9 +199,10 @@ class ConfirmRequest(BaseModel):
     )
     signature: str | None = Field(
         default=None,
-        max_length=200,
-        description="Instead of the PIN: the device's ECDSA P-256 signature (DER, base64url) "
-        "over the action, after the person's fingerprint (see Security, Approvals).",
+        max_length=700,  # RSA 4096 is 683 characters
+        description="Instead of the PIN: the device's signature over the action, base64url, "
+        "after the person's fingerprint: ECDSA P-256 (DER) for an ES256 key, RSASSA-PKCS1-v1_5 "
+        "for an RS256 one (see Security, Approvals).",
     )
 
     @model_validator(mode="after")

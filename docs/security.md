@@ -257,16 +257,18 @@ confirm card does.
 
 ### 2. Approving with the device's own key (built)
 
-A phone or a Mac can approve with a fingerprint or Face ID instead of a
-typed PIN:
+A phone, a Mac or a Windows PC can approve with a fingerprint, Face ID or
+Windows Hello instead of a typed PIN:
 
 1. **Enrol, once, with the PIN.** The app makes a key pair in the Android
-   Keystore or the Secure Enclave (EC P-256, usable only after the
-   person's biometric check) and sends the public key, with the PIN typed
-   on the device: `POST /v1/me/approval-keys` with the device's own token,
-   `{"public_key": "<base64 SubjectPublicKeyInfo, DER>", "algorithm":
-   "ES256", "pin": "1234"}`. One key per device; enrolling again replaces
-   it.
+   Keystore or the Secure Enclave (EC P-256, `ES256`), or in Windows Hello
+   (which makes only RSA keys: `RS256`, 2048 bits or more), usable only
+   after the person's biometric check or Hello PIN, and sends the public
+   key, with the Ira PIN typed on the device: `POST /v1/me/approval-keys`
+   with the device's own token, `{"public_key": "<base64
+   SubjectPublicKeyInfo, DER>", "algorithm": "ES256", "pin": "1234"}`. The
+   key must match the algorithm. One key per device; enrolling again
+   replaces it.
 2. **Approve.** For a Tier 3 action, the app asks for the fingerprint and
    signs these bytes, UTF-8:
 
@@ -278,8 +280,9 @@ typed PIN:
    ```
 
    and sends `POST /v1/actions/{id}/confirm` with
-   `{"device_id": 4, "signature": "<base64url, DER ECDSA>"}` in place of
-   the PIN. The summary's hash binds the signature to what the person was
+   `{"device_id": 4, "signature": "<base64url>"}` in place of the PIN: a
+   DER ECDSA signature for `ES256`, RSASSA-PKCS1-v1_5 with SHA-256 (as
+   Windows Hello signs) for `RS256`. The summary's hash binds the signature to what the person was
    shown.
 3. A wrong signature counts as a wrong PIN (three lock actions for 15
    minutes). A signature is for one action only: it covers its id, its
