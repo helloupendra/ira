@@ -545,18 +545,40 @@ async def _clean_up(runtime: Runtime) -> None:
         await asyncio.sleep(3600)
 
 
+# A cache may keep the file but asks the server (by its ETag) before using it again.
+NO_CACHE = "no-cache"
+# A built file whose name carries a hash of its content never changes under that name.
+IMMUTABLE = "public, max-age=31536000, immutable"
+
+
+class ShellFiles(StaticFiles):
+    """The web app's files. They keep their names from one release to the next, so each says
+    ``no-cache``. Sent with no caching rule, Cloudflare kept ``app.js``, ``style.css`` and
+    ``sw.js`` for four hours after a deploy, beside the new ``index.html`` (31 Oct 2026)."""
+
+    async def get_response(self, path: str, scope: Scope) -> Response:
+        response = await super().get_response(path, scope)
+        response.headers.setdefault("Cache-Control", NO_CACHE)
+        return response
+
+
 class ConsoleFiles(StaticFiles):
     """The console's files. A path with no file behind it and no file extension is one of the
     console's own routes (``/admin/setup``, ``/admin/invite``), so it gets ``index.html`` and the
-    console routes it in the browser. A missing asset still answers 404."""
+    console routes it in the browser. A missing asset still answers 404. The built assets are
+    named by their content and kept for a year; everything else says ``no-cache``."""
 
     async def get_response(self, path: str, scope: Scope) -> Response:
         try:
-            return await super().get_response(path, scope)
+            response = await super().get_response(path, scope)
         except StarletteHTTPException as exc:
             if exc.status_code != 404 or "." in path.rsplit("/", 1)[-1]:
                 raise
-            return await super().get_response("index.html", scope)
+            response = await super().get_response("index.html", scope)
+            path = "index.html"
+        hashed = path.startswith("assets/") and response.status_code in (200, 304)
+        response.headers.setdefault("Cache-Control", IMMUTABLE if hashed else NO_CACHE)
+        return response
 
 
 def create_app(runtime: Runtime, *, start_channels: bool = True) -> FastAPI:
@@ -650,7 +672,7 @@ def create_app(runtime: Runtime, *, start_channels: bool = True) -> FastAPI:
     @app.get("/pair", include_in_schema=False)
     def pair_page() -> FileResponse:
         """Where a pairing QR code leads: it shows the code to type on the device."""
-        return FileResponse(STATIC_DIR / "pair.html")
+        return FileResponse(STATIC_DIR / "pair.html", headers={"Cache-Control": NO_CACHE})
 
     @app.post("/share", include_in_schema=False)
     def share_fallback() -> RedirectResponse:
@@ -673,5 +695,5 @@ def create_app(runtime: Runtime, *, start_channels: bool = True) -> FastAPI:
         def admin_placeholder() -> str:
             return ADMIN_PLACEHOLDER
 
-    app.mount("/", StaticFiles(directory=STATIC_DIR, html=True), name="web")
+    app.mount("/", ShellFiles(directory=STATIC_DIR, html=True), name="web")
     return app

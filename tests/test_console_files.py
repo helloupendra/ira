@@ -51,3 +51,24 @@ def test_admin_without_a_slash_redirects_to_the_console(tmp_path, monkeypatch, r
         assert response.headers["location"] == "/admin/?next=users"
         assert client.head("/admin", follow_redirects=False).status_code == 308
         assert client.get("/admin").text == INDEX
+
+
+def test_the_web_apps_files_ask_the_server_before_a_cache_reuses_them(registry):
+    # Sent with no rule, Cloudflare kept the old app.js and style.css for four hours.
+    with TestClient(create_app(make_runtime(registry=registry), start_channels=False)) as client:
+        for path in ("/", "/app.js", "/style.css", "/sw.js", "/pair"):
+            response = client.get(path)
+            assert response.status_code == 200, path
+            assert response.headers["cache-control"] == "no-cache", path
+
+
+def test_the_consoles_hashed_assets_are_kept_and_its_page_is_not(tmp_path, monkeypatch, registry):
+    with _client(tmp_path, monkeypatch, registry) as client:
+        assert client.get("/admin/assets/app.js").headers["cache-control"] == (
+            "public, max-age=31536000, immutable"
+        )
+        for path in ("/admin/", "/admin/setup"):
+            assert client.get(path).headers["cache-control"] == "no-cache", path
+        assert "immutable" not in client.get("/admin/assets/gone.js").headers.get(
+            "cache-control", ""
+        )

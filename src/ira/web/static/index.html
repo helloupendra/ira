@@ -15,11 +15,13 @@
   <link rel="manifest" href="/manifest.webmanifest">
   <link rel="icon" href="/icon.svg" type="image/svg+xml">
   <link rel="apple-touch-icon" href="/icon-180.png">
-  <link rel="stylesheet" href="/tokens.css">
-  <link rel="stylesheet" href="/style.css">
-  <script src="/app.js" defer></script>
-  <script src="/personal.js" defer></script>
-  <script src="/live.js" defer></script>
+  <!-- ?v=24 moved these past copies Cloudflare had kept before the server sent no-cache
+       (31 Oct 2026). Every file now says no-cache, so this never needs to change. -->
+  <link rel="stylesheet" href="/tokens.css?v=24">
+  <link rel="stylesheet" href="/style.css?v=24">
+  <script src="/app.js?v=24" defer></script>
+  <script src="/personal.js?v=24" defer></script>
+  <script src="/live.js?v=24" defer></script>
 </head>
 <body>
   <main id="app">

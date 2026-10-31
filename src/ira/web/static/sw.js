@@ -3,7 +3,7 @@
 // audio and actions must always come from the server, never from a cache.
 // It also takes what is shared to the installed app (Share → Ira) for Drop.
 
-const CACHE = "ira-shell-v23";
+const CACHE = "ira-shell-v24";
 const SHARE = "ira-share";
 const SHELL = [
   "/",
