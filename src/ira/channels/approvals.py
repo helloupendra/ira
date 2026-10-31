@@ -133,9 +133,12 @@ keys = APIRouter(prefix="/v1/me/approval-keys", tags=["actions"])
 
 class ApprovalKeyIn(BaseModel):
     public_key: str = Field(
-        max_length=400, description="EC P-256 SubjectPublicKeyInfo, DER, base64."
+        max_length=1000,
+        description="SubjectPublicKeyInfo, DER, base64: EC P-256 for ES256, RSA for RS256.",
     )
-    algorithm: str = Field(default="ES256", description="ES256 only.")
+    algorithm: str = Field(
+        default="ES256", description="ES256, or RS256 (Windows Hello, 2048 bits or more)."
+    )
     pin: str = Field(max_length=20, description="The person's PIN, typed on the device.")
 
 
