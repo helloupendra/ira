@@ -131,8 +131,10 @@ iPhone's own tools only while the app is open on the iPhone (see below).
 newest first: text and links with **Copy** first (and **Open** for a link),
 files with **Get**, then **Save or open** through the share sheet. Type or
 **Paste** and **Send**, or pick **Files**. Swipe left to delete an item from
-every device. While Ira is open, something new from another device comes as
-a notification with **Copy**. See [Privacy](../privacy.md#drop).
+every device. From any other app (Photos, Safari, Files), **Share → Ira
+Drop** shows what came in and sends it only when you tap **Send to Drop**.
+While Ira is open, something new from another device comes as a
+notification with **Copy**. See [Privacy](../privacy.md#drop).
 
 ### What Ira can do on your iPhone
 
@@ -251,9 +253,13 @@ start.
    → **+** → **App IDs** → **Continue** → (the type, App, is selected) →
    **Continue**; a description (Ira for iPhone), **Explicit**, Bundle ID
    **`io.github.helloupendra.ira`** (the one in `clients/ios/project.yml`);
-   tick no capabilities (the app uses none); **Continue** → **Register**
+   tick **Keychain Sharing** only; **Continue** → **Register**
    ([Register an App ID](https://developer.apple.com/help/account/identifiers/register-an-app-id/)).
-   With automatic signing, Xcode can also make it for you.
+   Make a second one the same way for the share extension (Share → Ira
+   Drop): **`io.github.helloupendra.ira.share`**, with Keychain Sharing too.
+   Both use the group `io.github.helloupendra.ira.shared`, so the extension
+   can read the iPhone's key. With automatic signing, Xcode can also make
+   them for you.
 2. **The app in App Store Connect**: the Account Holder first signs the
    latest agreement under **Business**. Then [App Store
    Connect](https://appstoreconnect.apple.com) → **Apps** → **+** → **New
@@ -446,7 +452,7 @@ phone if one is paired, and in Telegram if you linked it.
 | Call for you | the iPhone's Call prompt, after your yes; you tap Call | no | yes, after your yes |
 | Read your calls, SMS, notifications | **no**: iOS lets no app read them | no | yes, with each skill switched on |
 | Alarms, timers | reminders that alert on time; alarms through Siri | through Siri | yes |
-| Drop | yes: the inbox, send text and files, Copy | yes, in the web app | yes, with Share → Ira Drop and a clipboard tile |
+| Drop | yes: the inbox, Share → Ira Drop, send text and files, Copy | yes, in the web app | yes, with Share → Ira Drop and a clipboard tile |
 
 ## What was tested where
 

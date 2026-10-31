@@ -126,7 +126,7 @@ enum SiriAsk {
         let text = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else { throw IraIntentError(message: "I didn't catch that. Ask again.") }
         let settings = AppSettings()
-        let record = PairingRecord(settings: settings, secrets: KeychainStore())
+        let record = PairingRecord(settings: settings, secrets: KeychainStore(accessGroup: KeychainStore.sharedGroup))
         switch record.status {
         case .unpaired:
             throw IraIntentError(message: "This iPhone is not paired with your Ira yet. Open Ira to pair it.")
