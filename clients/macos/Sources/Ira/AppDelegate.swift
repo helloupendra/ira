@@ -3,53 +3,6 @@ import Combine
 import IraKit
 import SwiftUI
 
-/// A borderless panel that can take typing without bringing Ira to the front,
-/// so the app you were using stays "the window in front" for screen reading.
-final class FloatingPanel: NSPanel {
-    var onEscape: (() -> Void)?
-
-    init(content: NSView) {
-        super.init(
-            contentRect: NSRect(x: 0, y: 0, width: 400, height: 560),
-            styleMask: [.titled, .closable, .resizable, .fullSizeContentView, .nonactivatingPanel],
-            backing: .buffered, defer: false)
-        titleVisibility = .hidden
-        titlebarAppearsTransparent = true
-        isMovableByWindowBackground = true
-        level = .floating
-        collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
-        hidesOnDeactivate = false
-        isReleasedWhenClosed = false
-        minSize = NSSize(width: 340, height: 420)
-        contentView = content
-        standardWindowButton(.miniaturizeButton)?.isHidden = true
-        standardWindowButton(.zoomButton)?.isHidden = true
-    }
-
-    override var canBecomeKey: Bool { true }
-    override var canBecomeMain: Bool { false }
-
-    override func cancelOperation(_ sender: Any?) {
-        onEscape?()
-    }
-
-    /// Cut, copy, paste, select all, undo: sent to the field being typed in.
-    override func performKeyEquivalent(with event: NSEvent) -> Bool {
-        if let action = EditMenu.action(for: event), NSApp.sendAction(action, to: nil, from: self) {
-            return true
-        }
-        return super.performKeyEquivalent(with: event)
-    }
-
-    /// Stop taking the keyboard, but stay on screen: typing then goes to the app
-    /// or the system prompt the person turned to (a password sheet included).
-    func giveUpKeyboard() {
-        guard isKeyWindow, isVisible else { return }
-        orderOut(nil)
-        orderFrontRegardless()
-    }
-}
-
 extension Notification.Name {
     /// Ira is about to open System Settings for a permission: its window steps aside.
     static let iraOpensSystemSettings = Notification.Name("in.ira.mac.opensSystemSettings")
@@ -59,8 +12,7 @@ extension Notification.Name {
 final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var model: AppModel!
     private var statusItem: NSStatusItem!
-    private var panel: FloatingPanel!
-    private var settingsWindow: NSWindow?
+    private var main: MainWindowController!
     private var hotKey: HotKey?
     /// ⌃⌥⌘V sends the clipboard to Drop; ⌃⌥⌘C copies the newest item from it.
     private var sendClipboardKey: HotKey?
@@ -71,32 +23,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var approvalWatch: Any?
     private var markTimer: Timer?
     private var markFrame = 0
-    private var hasSavedFrame = false
     private var observers: [NSObjectProtocol] = []
-    private var escapeMonitor: Any?
-    /// The window stepped aside for System Settings and comes back after it.
-    private var returnAfterSettings = false
-    /// Ira has asked macOS for a permission and waits for the answer.
-    private var askingPermission = false
-    /// Whether the window was up when Ira began asking: only then does it come back.
-    private var shownWhileAsking = false
-    private var capturing = false
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         ScreenText.noteLaunch()
         let last = QuitReason.takeLast() ?? "it did not say (it crashed, was force-quit, or the Mac shut down)"
         IraLog.shared.info("Ira \(IraApp.version) started; last time Ira quit because of \(last)")
         model = AppModel()
-
-        let root = MainView(model: model, conversation: model.conversation, openSettings: { [weak self] in
-            self?.showSettings()
-        })
-        EditMenu.install()
-        panel = FloatingPanel(content: NSHostingView(rootView: root))
-        panel.onEscape = { [weak self] in self?.hidePanel() }
-        // Where the person left it, and how big.
-        hasSavedFrame = UserDefaults.standard.string(forKey: "NSWindow Frame IraPanel") != nil
-        panel.setFrameAutosaveName("IraPanel")
+        AppMenu.install()
+        main = MainWindowController(model: model, hotKeyChanged: { [weak self] in self?.registerHotKey() })
+        main.onClose = { [weak self] in self?.model.conversation.stopListening() }
 
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
         statusItem.button?.image = AppDelegate.menuBarImage()
@@ -105,7 +41,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         menu.delegate = self
         statusItem.menu = menu
 
-        hotKey = HotKey { [weak self] in self?.togglePanel() }
+        hotKey = HotKey { [weak self] in self?.toggleWindow() }
         registerHotKey()
         sendClipboardKey = HotKey { [weak self] in self?.sendClipboardToDrop() }
         copyLatestKey = HotKey { [weak self] in self?.copyLatestFromDrop() }
@@ -116,11 +52,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
         if let button = statusItem.button { dropTarget = DropTarget(drop: model.drop, button: button) }
         Task { await model.drop.refresh() }
-        model.onWake = { [weak self] in self?.showPanel() }
+        model.onWake = { [weak self] in self?.main.show(.chat) }
         observers.append(NotificationCenter.default.addObserver(forName: .iraShowPanel, object: nil, queue: .main) { [weak self] _ in
-            MainActor.assumeIsolated { self?.showPanel() }
+            MainActor.assumeIsolated { self?.main.show(.chat) }
         })
-        watchOtherApps()
+        watchPermissions()
         // The menu-bar mark: a dot while "Hey Ira" listens, moving bars while Ira works.
         wakeWatch = model.$wakeListening.sink { [weak self] _ in
             DispatchQueue.main.async { self?.updateMark() }
@@ -133,10 +69,27 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             DispatchQueue.main.async { self?.updateApprovalMark() }
         }
         model.conversation.onAnswer = { [weak self] text in self?.answered(text) }
-        // First launch, or not paired yet: show the window so pairing is the first thing seen.
-        if model.screen != .chat {
-            showPanel()
+        // Opened by the person: the window. Started at login: only the Dock icon and the menu
+        // bar, unless this Mac still needs pairing.
+        if !AppDelegate.launchedAtLogin() || model.screen != .chat {
+            main.show()
         }
+    }
+
+    /// Closing the window leaves Ira running: the device connection, the tools and Drop stay up.
+    func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }
+
+    /// A click on the Dock icon (or opening Ira again) brings the window back.
+    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+        main.show()
+        return true
+    }
+
+    /// Whether macOS opened Ira as a login item.
+    static func launchedAtLogin() -> Bool {
+        guard let event = NSAppleEventManager.shared().currentAppleEvent else { return false }
+        return event.eventID == kAEOpenApplication
+            && event.paramDescriptor(forKeyword: keyAEPropData)?.enumCodeValue == keyAELaunchedAsLogInItem
     }
 
     func registerHotKey() {
@@ -322,8 +275,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
     }
 
-    @objc func openPanel() { showPanel() }
-    @objc func openSettings() { showSettings() }
+    @objc func openPanel() { main.show(.chat) }
+    @objc func openSettings() { main.show(.settings) }
+
+    @objc func openHelp() {
+        NSWorkspace.shared.open(AppMenu.helpURL)
+    }
 
     @objc func openLogs() {
         if let directory = IraLog.defaultDirectory {
@@ -333,152 +290,31 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     // MARK: The window
 
-    func togglePanel() {
-        panel.isVisible ? hidePanel() : showPanel()
-    }
-
-    func showPanel() {
-        if !panel.isVisible && !hasSavedFrame {
-            hasSavedFrame = true
-            let mouse = NSEvent.mouseLocation
-            let screen = NSScreen.screens.first(where: { $0.frame.contains(mouse) }) ?? NSScreen.main
-            if let frame = screen?.visibleFrame {
-                let size = panel.frame.size
-                panel.setFrameOrigin(NSPoint(x: frame.midX - size.width / 2, y: frame.maxY - size.height - 40))
-            }
+    /// The shortcut: the window on Chat, ready to type; again, while it is in front, hides Ira.
+    func toggleWindow() {
+        if NSApp.isActive && main.window.isKeyWindow {
+            NSApp.hide(nil)
+        } else {
+            main.show(.chat)
         }
-        // Back on top, after stepping below a prompt or an app Ira worked in.
-        panel.level = .floating
-        model.approvals.refreshIfStale(60)
-        panel.makeKeyAndOrderFront(nil)
-        NotificationCenter.default.post(name: .iraFocusInput, object: nil)
     }
 
-    /// The window never keeps the keyboard from another app or a system prompt:
-    /// when anything else becomes active, it lets go. It steps aside entirely
-    /// while Ira has System Settings open for a permission, and comes back after.
-    private func watchOtherApps() {
+    /// Permissions can change in System Settings while Ira runs: read them again when it closes,
+    /// and when macOS has answered a request.
+    private func watchPermissions() {
         let workspace = NSWorkspace.shared.notificationCenter
-        observers.append(workspace.addObserver(
-            forName: NSWorkspace.didActivateApplicationNotification, object: nil, queue: .main
-        ) { [weak self] note in
-            let app = note.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication
-            guard app?.processIdentifier != getpid() else { return }
-            let bundleID = app?.bundleIdentifier
-            MainActor.assumeIsolated { self?.otherAppActive(bundleID) }
-        })
-        observers.append(workspace.addObserver(
-            forName: NSWorkspace.didDeactivateApplicationNotification, object: nil, queue: .main
-        ) { [weak self] note in
-            let app = note.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication
-            guard app?.bundleIdentifier == "com.apple.systempreferences" else { return }
-            MainActor.assumeIsolated { self?.settingsClosed() }
-        })
-        observers.append(workspace.addObserver(
-            forName: NSWorkspace.didTerminateApplicationNotification, object: nil, queue: .main
-        ) { [weak self] note in
-            let app = note.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication
-            guard app?.bundleIdentifier == "com.apple.systempreferences" else { return }
-            MainActor.assumeIsolated { self?.settingsClosed() }
-        })
-        observers.append(NotificationCenter.default.addObserver(
-            forName: .iraOpensSystemSettings, object: nil, queue: .main
-        ) { [weak self] _ in
-            MainActor.assumeIsolated {
-                guard let self, self.panel.isVisible else { return }
-                self.returnAfterSettings = true
-                self.panel.orderOut(nil)
-            }
-        })
-        // While the screen is captured, macOS may ask the person first (monthly on
-        // macOS 15 and later): the window drops below such a prompt and lets go
-        // of the keyboard, then comes back.
-        observers.append(NotificationCenter.default.addObserver(
-            forName: ScreenText.capturing, object: nil, queue: .main
-        ) { [weak self] _ in
-            MainActor.assumeIsolated {
-                guard let self else { return }
-                self.capturing = true
-                guard self.panel.isVisible else { return }
-                self.panel.level = .normal
-                self.panel.giveUpKeyboard()
-            }
-        })
-        observers.append(NotificationCenter.default.addObserver(
-            forName: ScreenText.captured, object: nil, queue: .main
-        ) { [weak self] _ in
-            MainActor.assumeIsolated {
-                self?.capturing = false
-                self?.panel.level = .floating
-            }
-        })
-        // While Ira types or clicks in another app, its window keeps out of the way:
-        // below that app's windows and off the keyboard.
-        observers.append(NotificationCenter.default.addObserver(
-            forName: MacControl.acting, object: nil, queue: .main
-        ) { [weak self] _ in
-            MainActor.assumeIsolated {
-                guard let self else { return }
-                self.capturing = true
-                guard self.panel.isVisible else { return }
-                self.panel.level = .normal
-                self.panel.giveUpKeyboard()
-            }
-        })
-        observers.append(NotificationCenter.default.addObserver(
-            forName: MacControl.acted, object: nil, queue: .main
-        ) { [weak self] _ in
-            MainActor.assumeIsolated {
-                self?.capturing = false
-            }
-        })
-        // While Ira asks macOS for a permission, its window stays: below the
-        // dialog, then back on top with the keyboard once the answer is in.
-        observers.append(NotificationCenter.default.addObserver(
-            forName: .iraAskingPermission, object: nil, queue: .main
-        ) { [weak self] _ in
-            MainActor.assumeIsolated {
-                guard let self else { return }
-                self.askingPermission = true
-                self.shownWhileAsking = self.panel.isVisible
-                guard self.panel.isVisible else { return }
-                self.panel.level = .normal
-                self.panel.giveUpKeyboard()
-            }
-        })
+        for name in [NSWorkspace.didDeactivateApplicationNotification, NSWorkspace.didTerminateApplicationNotification] {
+            observers.append(workspace.addObserver(forName: name, object: nil, queue: .main) { [weak self] note in
+                let app = note.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication
+                guard app?.bundleIdentifier == "com.apple.systempreferences" else { return }
+                MainActor.assumeIsolated { self?.model.permissions.refresh() }
+            })
+        }
         observers.append(NotificationCenter.default.addObserver(
             forName: .iraAskedPermission, object: nil, queue: .main
         ) { [weak self] _ in
-            MainActor.assumeIsolated {
-                guard let self else { return }
-                self.askingPermission = false
-                self.panel.level = .floating
-                self.model.permissions.refresh()
-                if self.shownWhileAsking && !self.returnAfterSettings { self.panel.makeKeyAndOrderFront(nil) }
-            }
+            MainActor.assumeIsolated { self?.model.permissions.refresh() }
         })
-        // Esc closes the window, wherever the cursor is in it.
-        escapeMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
-            guard event.keyCode == 53, let self, event.window === self.panel else { return event }
-            self.hidePanel()
-            return nil
-        }
-    }
-
-    /// Another app (or a system prompt) became active: the window lets go of the
-    /// keyboard, and unless it is pinned, gets out of the way. A question still
-    /// running carries on; its answer arrives as a notification.
-    private func otherAppActive(_ bundleID: String?) {
-        guard panel.isVisible else { return }
-        switch PanelPolicy.onOtherApp(
-            bundleID: bundleID, pinned: model.settings.panelPinned, askingPermission: askingPermission, capturing: capturing)
-        {
-        case .hide: panel.orderOut(nil)
-        case .stepBelow:
-            panel.level = .normal
-            panel.giveUpKeyboard()
-        case .letGoOfKeyboard: panel.giveUpKeyboard()
-        }
     }
 
     // MARK: Quitting, with a reason in the log
@@ -525,7 +361,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     private func answered(_ text: String) {
-        guard !panel.isVisible, !text.isEmpty else { return }
+        guard !(NSApp.isActive && main.isShown), !text.isEmpty else { return }
         Notifier.post(title: model.assistant, body: text)
     }
 
@@ -546,38 +382,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             statusItem.button?.image = AppDelegate.menuBarImage(listening: model.wakeListening)
         }
         statusItem.button?.toolTip = working ? "Ira is working on your question" : (model.approvals.banner ?? "Ira")
-    }
-
-    private func settingsClosed() {
-        model.permissions.refresh()
-        guard returnAfterSettings else { return }
-        returnAfterSettings = false
-        // Back, but without the keyboard: the person may be typing elsewhere.
-        panel.orderFrontRegardless()
-    }
-
-    /// Hide on purpose (Esc, the shortcut): the microphone stops too.
-    func hidePanel() {
-        panel.orderOut(nil)
-        model.conversation.stopListening()
-    }
-
-    func showSettings() {
-        if settingsWindow == nil {
-            let view = SettingsView(model: model, conversation: model.conversation, hotKeyChanged: { [weak self] in
-                self?.registerHotKey()
-            })
-            let window = NSWindow(
-                contentRect: NSRect(x: 0, y: 0, width: 520, height: 600),
-                styleMask: [.titled, .closable, .resizable], backing: .buffered, defer: false)
-            window.title = "Ira Settings"
-            window.isReleasedWhenClosed = false
-            window.contentView = NSHostingView(rootView: view)
-            window.center()
-            settingsWindow = window
-        }
-        NSApp.activate(ignoringOtherApps: true)
-        settingsWindow?.makeKeyAndOrderFront(nil)
     }
 
     /// The menu-bar mark: the repository's four voice bars, as a template image,

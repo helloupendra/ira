@@ -72,6 +72,18 @@ public final class AskClient: @unchecked Sendable {
         JSONValue.parse(try await send(try request("/v1/info"))) ?? .null
     }
 
+    /// `GET /v1/conversations`: the person's recent conversations, newest first.
+    public func conversations(limit: Int = 30) async throws -> [ConversationSummary] {
+        let rows = JSONValue.parse(try await send(try request("/v1/conversations?limit=\(limit)")))?.arrayValue ?? []
+        return rows.compactMap(ConversationSummary.init)
+    }
+
+    /// `GET /v1/conversations/{id}`: one conversation, as the lines the window shows.
+    public func conversation(_ id: String) async throws -> [ConversationLine] {
+        let path = "/v1/conversations/" + (id.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? id)
+        return ConversationHistory.lines(JSONValue.parse(try await send(try request(path))) ?? .null)
+    }
+
     public func transcribe(wav: Data) async throws -> String {
         let data = try await send(try request("/v1/voice/transcribe", method: "POST", body: wav, contentType: "audio/wav"))
         return JSONValue.parse(data)?["text"]?.stringValue ?? ""

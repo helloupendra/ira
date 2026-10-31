@@ -66,7 +66,7 @@ for size in 16 32 128 256 512; do
 done
 iconutil -c icns "$iconset" -o "$app/Contents/Resources/Ira.icns"
 
-# Info.plist: a menu-bar app (no Dock icon), and a plain sentence for each
+# Info.plist: an app with a Dock icon and a window, and a plain sentence for each
 # permission macOS asks about.
 cat > "$app/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
@@ -84,7 +84,6 @@ cat > "$app/Contents/Info.plist" <<PLIST
   <key>CFBundleInfoDictionaryVersion</key><string>6.0</string>
   <key>CFBundleDevelopmentRegion</key><string>en</string>
   <key>LSMinimumSystemVersion</key><string>14.0</string>
-  <key>LSUIElement</key><true/>
   <key>LSApplicationCategoryType</key><string>public.app-category.productivity</string>
   <key>NSHighResolutionCapable</key><true/>
   <key>NSHumanReadableCopyright</key><string>IRA is open source under the MIT licence.</string>
