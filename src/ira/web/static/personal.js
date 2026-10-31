@@ -504,7 +504,7 @@ const IraPersonal = (() => {
       el("h3", { text: "Trusted apps" }),
       el("p", { className: "muted small", text: "Ira may tap and type in these apps without asking, while the app is in front. Sending, calls, payments and deleting still ask." }),
       rows.length ? el("ul", { className: "stack-tight" }, rows) : el("p", { className: "muted small", text: "None yet." }),
-      devices.length ? el("div", { className: "stack-tight" }, el("label", {}, "Device", device), el("label", {}, "App (Android package, or Mac bundle id)", app), pinField(), el("button", { type: "submit", className: "btn btn-ghost", text: "Trust this app" })) : null,
+      devices.length ? el("div", { className: "stack-tight" }, el("label", {}, "Device", device), el("label", {}, "App (Android package, Mac bundle id, or Windows program such as chrome.exe)", app), pinField(), el("button", { type: "submit", className: "btn btn-ghost", text: "Trust this app" })) : null,
       error,
     );
     form.addEventListener("submit", async (event) => {

@@ -133,6 +133,11 @@ Ira **cannot**:
 What Ira reads goes to your own Ira server, marked as data that can never
 give Ira orders, and is kept only in that conversation.
 
+**Trusted apps.** On your Ira, under **Your assistant → Trusted apps**, you
+can name a program on this PC (`chrome.exe`, say) where Ira may type and
+click without asking while it is in front; adding one needs your PIN, and a
+terminal or Task Manager can never be one.
+
 ## Routine
 
 If you switch on the **routine** skill for this PC (on your Ira, and in

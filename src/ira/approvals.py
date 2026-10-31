@@ -248,9 +248,11 @@ class Approvals:
         return found
 
     def set_trusted(self, user_id: int, device_id: int, apps: list[str]) -> list[str]:
-        clean = sorted(
-            {a.strip() for a in apps if APP_ID.fullmatch(a.strip()) and not never_app(a)}
-        )
+        # A Windows program file is named in any case and reported in lower case.
+        named = [
+            a.strip().lower() if a.strip().lower().endswith(".exe") else a.strip() for a in apps
+        ]
+        clean = sorted({a for a in named if APP_ID.fullmatch(a) and not never_app(a)})
         with self.store.transaction():
             self.store.execute(
                 "DELETE FROM trusted_apps WHERE user_id = ? AND device_id = ?",

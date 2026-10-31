@@ -301,7 +301,8 @@ Adding an app needs the PIN; taking one off does not. `GET
 /v1/me/approvals` lists them under `trusted_apps`.
 
 Each screen result from the device says which app is in front (`"app"`,
-its package or bundle id). Once a result in the current turn says a
+its package or bundle id, or on a Windows PC its program file, such as
+`chrome.exe`, kept in lower case whatever case it was typed in). Once a result in the current turn says a
 trusted app is in front, the next screen action there runs at once and is
 logged as "done in an app you trust". A result that names another app, or
 none, ends it, and so does the next turn: Ira reads the screen again first.
