@@ -104,6 +104,7 @@ allow here.
 | apps | open an app from the Start menu; open a web link | 1, 2 |
 | clipboard | read what you copied | 0 |
 | control | type, press keys, click a control by its label, scroll: in the window you are in or an app you name, each step after your PIN or within an approval it opened | 3 |
+| routine | tell your Ira when the PC locks, unlocks, sleeps and wakes, its first activity of the day, and which network it is on (see [Routine](#routine)) | — |
 
 Ira **cannot**:
 
@@ -131,6 +132,17 @@ Ira **cannot**:
 
 What Ira reads goes to your own Ira server, marked as data that can never
 give Ira orders, and is kept only in that conversation.
+
+## Routine
+
+If you switch on the **routine** skill for this PC (on your Ira, and in
+Settings here), Ira for Windows tells your Ira every 30 seconds, when
+something changed: when the PC locks, unlocks, sleeps and wakes, its first
+activity of the day, and which network it is on, as a code made from the
+network's gateway with a salt kept on this PC. Never the network's name,
+never what is on the screen or which apps run. The codes are the Mac's
+kind, so a network you name **Office** is Office for both. See [What Ira
+learns](../learning.md).
 
 ## Remove Ira from this PC
 

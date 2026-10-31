@@ -125,8 +125,8 @@ def _routine_words(key: str) -> tuple[str, str]:
     if key.startswith("heading:"):
         return "heading", f"head to {key.split(':', 1)[1]}"
     if key == "first_activity":
-        return "first_activity", "start on your Mac"
-    return "last_activity", "stop using your Mac"
+        return "first_activity", "start on your computer"
+    return "last_activity", "stop using your computer"
 
 
 def time_patterns(

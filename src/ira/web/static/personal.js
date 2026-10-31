@@ -829,7 +829,7 @@ const IraPersonal = (() => {
     );
     const macs = view.macs.length
       ? view.macs.map((mac) => el("li", { text: `${mac.label}: ${mac.on ? "its lock, sleep and network are noticed" : "off (switch its routine on under Your devices)"}` }))
-      : [el("li", { className: "muted", text: "No Mac paired. A Mac's routine is switched on under Your devices." })];
+      : [el("li", { className: "muted", text: "No Mac or Windows PC paired. A computer's routine is switched on under Your devices." })];
     const days = el("select", { name: "days" }, KEEP_DAYS.map((n) => el("option", { value: String(n), text: `${n} days` })));
     days.value = String(view.days);
     const nudges = el("input", { type: "checkbox", name: "nudges", checked: view.nudges });

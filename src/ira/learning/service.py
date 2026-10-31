@@ -91,10 +91,10 @@ class LearningService:
         return observation
 
     async def from_device(self, user_id: int, device_id: int, frame: dict[str, Any]) -> int | None:
-        """An ``observe`` frame from a Mac whose ``routine`` skill is on."""
+        """An ``observe`` frame from a Mac or a Windows PC whose ``routine`` skill is on."""
         kind = frame.get("kind")
         if kind not in MAC_KINDS:
-            raise LearningError(f"a Mac observes {', '.join(MAC_KINDS)}")
+            raise LearningError(f"a computer observes {', '.join(MAC_KINDS)}")
         if not self.allowed(user_id, "mac"):
             return None
         fingerprint = frame.get("network")

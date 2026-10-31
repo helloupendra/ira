@@ -166,7 +166,36 @@ public sealed class IraController
         connection.EventReceived += e => OnUi(() => EventReceived?.Invoke(e));
         connection.DropChanged += frame => OnUi(() => DropChanged?.Invoke(frame));
         _running = new CancellationTokenSource();
-        _ = connection.RunAsync(_running.Token);
+        var running = _running.Token;
+        _ = connection.RunAsync(running);
+        // Off the UI thread: finding the network's gateway can take a moment.
+        _ = Task.Run(() => WatchRoutineAsync(connection, running));
+    }
+
+    /// <summary>
+    /// The routine skill: every 30 seconds while it is on for this PC on your Ira and allowed
+    /// here, what changed (lock, sleep, wake, network, first activity) goes to your Ira.
+    /// </summary>
+    private async Task WatchRoutineAsync(DeviceConnection connection, CancellationToken ct)
+    {
+        if (Preferences.NetworkSalt.Length == 0) OnUi(() => SavePreferences(Preferences.WithSalt()));
+        Routine? routine = null;
+        using var timer = new PeriodicTimer(Routine.Interval);
+        try
+        {
+            do
+            {
+                var salt = Preferences.NetworkSalt;
+                if (salt.Length == 0) continue;
+                routine ??= new Routine(salt, connection.Observe);
+                if (connection.EffectiveSkills.Contains("routine")) routine.Tick();
+                else routine.Reset();
+            }
+            while (await timer.WaitForNextTickAsync(ct));
+        }
+        catch (OperationCanceledException)
+        {
+        }
     }
 
     private void AskToAllow(IReadOnlyList<string> serverSkills)

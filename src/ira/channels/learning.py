@@ -102,7 +102,7 @@ def learning_view(runtime: Runtime, user_id: int) -> LearningView:
         macs=[
             MacRoutine(device_id=d.id, label=d.label, on="routine" in d.skills)
             for d in runtime.hub.devices.for_user(user_id)
-            if d.kind == "mac"
+            if d.kind in ("mac", "windows")
         ],
         days=prefs.learning_days,
         nudges=prefs.nudges,
@@ -182,7 +182,7 @@ async def update_my_learning(
 @router.put(
     "/v1/me/networks/{fingerprint}",
     response_model=NetworkView,
-    summary="Name a network your Mac reported (by its hash): Office, Home",
+    summary="Name a network your Mac or PC reported (by its hash): Office, Home",
 )
 def name_my_network(
     fingerprint: str,

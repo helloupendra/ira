@@ -39,21 +39,22 @@ MAX_EVENTS = 200
 SKILLS: dict[str, str] = {
     "tasks": "Tasks: a coding agent at work in repositories you allowed on this Mac. "
     "Pushing needs your PIN.",
-    "routine": "Routine: when this Mac locks, sleeps and wakes, and which of your named "
+    "routine": "Routine: when this computer locks, sleeps and wakes, and which of your named "
     "networks it is on, so Ira can learn your day. Never what you do on it.",
     "files": "Files: find files by name, kind, date or what is in them, read the one you ask "
     "about (PDF, Word, text) and open it, or a folder in VS Code. Only in folders you allow, "
     "only when you ask.",
     "screen": "Screen: read the text of the window in front of you, only when you ask. Only "
-    "the text leaves the Mac, never a picture.",
+    "the text leaves the computer, never a picture.",
     "browser": "Browser: the tabs open in Chrome, Safari, Arc, Edge or Brave (titles and "
     "addresses only), and bringing one to the front so Ira can read it from the screen.",
     "clipboard": "Clipboard: read what you copied, when you ask. Never what a password "
     "manager marked as private.",
     "shortcuts": "Shortcuts: list your Shortcuts, and run one you name after your yes.",
-    "control": "Control: use this Mac like a person when you ask (type, press keys, click, "
-    "scroll and choose menu items), each step after your PIN or within an approval it "
-    "opened. Never in password fields, password managers or System Settings' private pages.",
+    "control": "Control: use this computer like a person when you ask (type, press keys, "
+    "click, scroll and choose menu items), each step after your PIN or within an approval it "
+    "opened. Never in password fields, password managers, terminals or the system's private "
+    "pages.",
     # Skills the phone and Mac apps offer; Ira reads and acts only when you ask.
     "calls": "Calls: placing a call after you say yes to the exact number, and on Android, "
     "who called.",

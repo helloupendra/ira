@@ -22,6 +22,7 @@ internal sealed class SettingsWindow : Window
         ("apps", "Apps: open an app or a web link"),
         ("clipboard", "Clipboard: read what you copied"),
         ("control", "Control: type, press keys, click and scroll, each step after your PIN"),
+        ("routine", "Routine: when this PC locks, sleeps and wakes, and which network it is on (as a code)"),
     ];
 
     private readonly IraController _controller;

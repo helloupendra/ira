@@ -33,6 +33,10 @@ public sealed class DeviceConnection(
 
     private IReadOnlySet<string> _serverSkills = new HashSet<string>();
     private readonly SemaphoreSlim _sendLock = new(1, 1);
+    /// <summary>Routine observations waiting for the connection; at most 500 wait while offline.</summary>
+    private readonly Queue<JsonObject> _observations = new();
+    private readonly Lock _outbox = new();
+    private readonly SemaphoreSlim _observed = new(0);
 
     public event Action<ConnectionState, string?>? StateChanged;
     public event Action<Welcome>? Welcomed;
@@ -46,6 +50,17 @@ public sealed class DeviceConnection(
     public IReadOnlySet<string> EffectiveSkills => _serverSkills.Intersect(localSkills()).ToHashSet();
 
     public string WebsocketPath { get; init; } = "/v1/devices/ws";
+
+    /// <summary>Queues an observation (the routine skill): it goes out as soon as the PC is connected.</summary>
+    public void Observe(JsonObject frame)
+    {
+        lock (_outbox)
+        {
+            _observations.Enqueue(frame);
+            while (_observations.Count > 500) _observations.Dequeue();
+        }
+        _observed.Release();
+    }
 
     /// <summary>Runs until <paramref name="ct"/> is cancelled or the key is revoked.</summary>
     public async Task RunAsync(CancellationToken ct)
@@ -128,6 +143,7 @@ public sealed class DeviceConnection(
 
         using var session = CancellationTokenSource.CreateLinkedTokenSource(ct);
         var pinger = PingAsync(socket, session.Token);
+        var observer = SendObservationsAsync(socket, session.Token);
         var calls = new List<Task>();
         try
         {
@@ -166,7 +182,7 @@ public sealed class DeviceConnection(
             await session.CancelAsync();
             try
             {
-                await Task.WhenAll(calls.Append(pinger));
+                await Task.WhenAll(calls.Append(pinger).Append(observer));
             }
             catch (OperationCanceledException)
             {
@@ -184,6 +200,26 @@ public sealed class DeviceConnection(
         if (ok) reply["content"] = content;
         else reply["error"] = error;
         await SendAsync(socket, reply, ct);
+    }
+
+    /// <summary>Sends what the routine noticed, oldest first; one that fails to go waits for the next connection.</summary>
+    private async Task SendObservationsAsync(ClientWebSocket socket, CancellationToken ct)
+    {
+        while (true)
+        {
+            JsonObject? next;
+            lock (_outbox) _observations.TryPeek(out next);
+            if (next is null)
+            {
+                await _observed.WaitAsync(ct);
+                continue;
+            }
+            await SendAsync(socket, next, ct);
+            lock (_outbox)
+            {
+                if (_observations.TryPeek(out var sent) && ReferenceEquals(sent, next)) _observations.Dequeue();
+            }
+        }
     }
 
     private async Task PingAsync(ClientWebSocket socket, CancellationToken ct)

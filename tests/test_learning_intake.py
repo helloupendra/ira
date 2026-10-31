@@ -81,6 +81,23 @@ def test_nothing_is_noticed_until_switched_on_with_the_pin(runtime):
         assert client.get("/v1/me/learning", headers=mine).json()["observations"] == {"arrive": 1}
 
 
+def test_a_windows_pc_s_routine_is_listed_beside_a_mac_s(runtime):
+    owner = runtime.accounts.find_user("owner@example.com")
+    devices = runtime.hub.devices
+    for kind, label, skills in (
+        ("mac", "Office Mac", ["files"]),
+        ("windows", "Home PC", ["routine"]),
+    ):
+        code, _ = devices.start_pairing(owner.id, kind, label, skills)
+        devices.redeem(code)
+    code, _ = devices.start_pairing(owner.id, "android", "Pixel 7", [])
+    devices.redeem(code)
+    with TestClient(create_app(runtime, start_channels=False)) as client:
+        mine = signed_in(client, "owner@example.com")
+        listed = client.get("/v1/me/learning", headers=mine).json()["macs"]
+    assert [(m["label"], m["on"]) for m in listed] == [("Office Mac", False), ("Home PC", True)]
+
+
 def test_the_phone_token_only_reports_places(runtime):
     with TestClient(create_app(runtime, start_channels=False)) as client:
         mine = signed_in(client, "owner@example.com")

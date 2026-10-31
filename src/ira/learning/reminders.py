@@ -79,7 +79,7 @@ def reminder_tools(service: LearningService, user_id: int, zone: dt.tzinfo) -> l
             if match is None:
                 raise ToolError(
                     f"I don't know a place called {label} yet. Name it on the What Ira knows "
-                    "page, from your Mac's network or your phone."
+                    "page, from your computer's network or your phone."
                 )
             reminder = service.data.add_reminder(user_id, text, trigger=when, place=match)
             verb = "reach" if when == "arrive" else "leave"

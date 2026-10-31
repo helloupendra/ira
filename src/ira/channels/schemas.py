@@ -1352,7 +1352,9 @@ class LearningItem(BaseModel):
 class LearningView(BaseModel):
     on: bool = Field(description="Learning is on for you. Off: nothing new is noticed.")
     sources: list[LearningSource]
-    macs: list[MacRoutine] = Field(description="Your Macs and whether each one's routine is on.")
+    macs: list[MacRoutine] = Field(
+        description="Your Macs and Windows PCs and whether each one's routine is on."
+    )
     days: int = Field(description="How long observations are kept, in days.")
     nudges: bool
     networks: list[NetworkView]

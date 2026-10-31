@@ -21,17 +21,18 @@ Everything here is in the Ira app: menu, **What Ira knows about you**.
 4. Type your PIN and **Save**. Switching anything on needs your PIN;
    switching it off never does.
 
-A **Mac** is switched on separately, under **Your devices**: its *routine*
-skill. With it on, the Mac tells Ira when it locks, unlocks, sleeps and
-wakes, and which network it is on, as a code only (see
-[Ira for Mac](clients/macos.md#routine)).
+A **Mac** or a **Windows PC** is switched on separately, under **Your
+devices**: its *routine* skill. With it on, the computer tells Ira when it
+locks, unlocks, sleeps and wakes, and which network it is on, as a code only
+(see [Ira for Mac](clients/macos.md#routine) and
+[Ira for Windows](clients/windows.md#routine)).
 
 ## Name your places
 
-With a Mac's routine on, the networks it joins appear under **Places** as
-codes, such as `3f9a2c1b`. Ira never learns a network's name or where it
+With a computer's routine on, the networks it joins appear under **Places**
+as codes, such as `3f9a2c1b`. Ira never learns a network's name or where it
 is. Give the ones you care about a name, such as **Office** or **Home**;
-from then on, the Mac on that network counts as being at that place. An
+from then on, the computer on that network counts as being at that place. An
 iPhone Shortcut uses the same names.
 
 ## What Ira looks for, and when it asks
@@ -40,7 +41,7 @@ Every night, after 3 a.m. in your time zone (or when you tap **Look for
 patterns now**), Ira looks at what it noticed and finds:
 
 - **routine times**: when you reach or leave a place, start or stop on your
-  Mac, on weekdays and at weekends apart;
+  computer, on weekdays and at weekends apart;
 - **how long a trip takes**, from leaving one place to reaching another;
 - **how you like answers**: in which language, and short or long, from your
   thumbs.

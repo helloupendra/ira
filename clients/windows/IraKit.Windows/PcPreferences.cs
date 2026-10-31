@@ -1,3 +1,4 @@
+using System.Security.Cryptography;
 using System.Text.Json;
 using IraKit.Tools;
 
@@ -35,6 +36,16 @@ public sealed record PcPreferences
     /// say) are added. None: the user's folder.
     /// </summary>
     public IReadOnlyList<string> Folders { get; init; } = [];
+
+    /// <summary>
+    /// What the routine skill salts a network's code with, made once on this PC and kept, so a
+    /// network named on your Ira keeps its name; empty until first needed.
+    /// </summary>
+    public string NetworkSalt { get; init; } = "";
+
+    /// <summary>These preferences with a salt, made now if there was none.</summary>
+    public PcPreferences WithSalt() =>
+        NetworkSalt.Length > 0 ? this : this with { NetworkSalt = Convert.ToHexStringLower(RandomNumberGenerator.GetBytes(16)) };
 
     public static string DefaultPath => Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Ira", "preferences.json");
