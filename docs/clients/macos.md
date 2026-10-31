@@ -402,6 +402,38 @@ link in `tasks.json` as `"vscode": {"promptURI": "vscode://.../open?prompt={prom
 and `file_open` with `app: vscode` and a prompt fills the request in for you. Such links fill
 the request in but do not send it: you press Return.
 
+## What your AI sessions are doing
+
+Ask "what is the AI doing on my Mac?" (or "Mac pe AI kya kar raha hai?") from
+the Mac, your phone, Telegram or the web, and Ira answers from this Mac. It
+needs the **agents** skill, switched on for this Mac on **Your devices**, and,
+for your coding agent's own sessions, the folder where it keeps its
+transcripts (one JSONL file per session, in a folder per project), listed in
+`tasks.json` (no other coding-task setting is needed for this):
+
+```json
+{"transcripts": ["~/.agent/projects"]}
+```
+
+- `ai_sessions` lists the AI coding sessions active here in the last 12 hours:
+  your coding agent in VS Code or a terminal, and Ira's own coding tasks. For
+  each: the project's folder name; working, waiting for you (its turn ended,
+  or it asked you something) or finished; how much of its task list is done
+  and the item in progress; its last step ("Run the tests", "edited Invoice.swift"); and your
+  latest request and its last answer, cut to about 200 characters.
+- `ai_session_detail` gives one session's last 10 steps, each a short phrase.
+- A step with nothing new written for two minutes may be a long command, or a
+  permission prompt waiting for you; Ira says it is quiet and for how long.
+- Ira only reads sessions it did not start. To stop or steer one, you do it
+  where it runs (Esc in VS Code's panel, Ctrl-C in a terminal). Ira never
+  stops a process it did not start.
+
+Only that summary leaves the Mac, and every excerpt goes through a secret
+filter first (keys, tokens, `password=` settings and the like are masked):
+never a transcript, a file's contents, a command or a tool's output. If the
+Mac is offline when you ask from elsewhere, Ira says so plainly, with when it
+was last seen.
+
 ## Remove Ira from this Mac
 
 Choose **Remove Ira from this Mac…** at the bottom of **Settings**, and confirm.
@@ -482,14 +514,15 @@ SDKs make a macro whose plugin ships with Xcode only.
 | Where | What |
 | --- | --- |
 | `Sources/IraKit/Device/` | pairing (`POST /v1/devices/pair`, as the Python companion's `exchange()`), the device WebSocket's frames, and the client that holds it: hello, calls, ping and pong, 90-second silence, reconnect with backoff, `bye` when removed |
-| `Sources/IraKit/Tools/` | `ToolCatalog` (every tool's JSON Schema, skill and tier) and `Toolbox` (calls and "What I read"); the path policy and its deny list; Spotlight; PDF, Word, RTF and text reading; ScreenCaptureKit and Vision; Contacts; EventKit; Mail, Notes and Messages through fixed AppleScripts that take the model's words only as arguments; apps, the clipboard and Shortcuts; coding tasks and the push guard |
+| `Sources/IraKit/Tools/` | `ToolCatalog` (every tool's JSON Schema, skill and tier) and `Toolbox` (calls and "What I read"); the path policy and its deny list; Spotlight; PDF, Word, RTF and text reading; ScreenCaptureKit and Vision; Contacts; EventKit; Mail, Notes and Messages through fixed AppleScripts that take the model's words only as arguments; apps, the clipboard and Shortcuts; coding tasks and the push guard; the AI sessions' summaries (`AISessions`: transcripts read from their end, `SecretFilter` over every excerpt) |
 | `Sources/IraKit/Voice/`, `Talk/` | `VoiceTransport`: live voice over `/v1/voice/live` ([Real-time voice](../realtime.md), protocol 1) with the device token, or the HTTP API with the same token (tried again on the next mic press); the energy voice detector; sentence splitting |
 | `Sources/Ira/` | the app: its window (a SwiftUI sidebar with Chat, Drop, This Mac and Settings), the menu bar and the four-bar icon, the global hotkey (Carbon, so no Accessibility permission), microphone and speaker on one `AVAudioEngine` with echo cancellation. `IRA_SNAPSHOT=<folder>` draws the window into PNGs without showing it, for docs and reviews |
 | `Tests/IraKitTests/` | pairing against a URLProtocol stub, device and live-voice frames against a fake WebSocket, the deny list, a tiny `.docx` fixture, a PDF drawn in the test, tool schemas and deadlines, the browser scripts, the routine readings, taking over the companion, the wake phrase, and the voice detector on synthetic audio. No test opens a network connection |
 | `Tests/IraAppTests/` | the window and menus: the standard menu bar, Cmd-V reaching the Ask field through the Edit menu (with the pasteboard put back after), the four bars' menu holding only Open and Quit, and the pane kept for the next launch |
 
-The tools the app offers (30 with coding tasks set up, the server's most per
-device):
+The tools the app offers (32 with coding tasks set up). A server's welcome
+says how many it takes (40); until one has, the app offers its oldest 30, so an
+older server keeps the tools it always had:
 
 | Tool | Skill | Tier |
 | --- | --- | --- |
@@ -507,6 +540,7 @@ device):
 | `shortcuts_list {}`, `shortcuts_run {name, input?}` | `shortcuts` | 0, 2 |
 | `mac_type {text, pressReturn?}`, `mac_keys {keys}`, `mac_click {label, role?, index?}`, `mac_scroll {direction, amount?}`, `mac_menu {path}`, each also `{app?, task?}` | `control` | 3 |
 | `code_task_start {repo, instruction, openInVSCode?}`, `code_task_status {id?}` (without `id`, lists them), `code_task_stop {id}`, `code_task_push {id}` | `tasks` | 2, 0, 1, 3 |
+| `ai_sessions {hours?}`, `ai_session_detail {id}` | `agents` | 0, 0 |
 
 The coding-task tools are in the hello only when `tasks.json` is set up.
 A long task says how it is going with `task_progress` (after 5 minutes, then

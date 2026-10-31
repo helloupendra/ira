@@ -25,6 +25,7 @@ public final class AppSettings: @unchecked Sendable {
         static let networkSalt = "networkSalt"
         static let wakeWord = "wakeWord"
         static let look = "look"
+        static let serverMaxTools = "serverMaxTools"
     }
 
     /// Salts this Mac's network codes (the routine skill), so the server can only
@@ -106,6 +107,12 @@ public final class AppSettings: @unchecked Sendable {
     public var firstRunDone: Bool {
         get { defaults.bool(forKey: Key.firstRunDone) }
         set { defaults.set(newValue, forKey: Key.firstRunDone) }
+    }
+
+    /// How many tools the server's welcome said it takes; 30 until a server says more.
+    public var serverMaxTools: Int {
+        get { (defaults.object(forKey: Key.serverMaxTools) as? Int).map { max($0, DeviceProtocol.maxTools) } ?? DeviceProtocol.maxTools }
+        set { defaults.set(newValue, forKey: Key.serverMaxTools) }
     }
 
     /// The conversation to continue, if it was used in the last 30 minutes.

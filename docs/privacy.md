@@ -155,6 +155,19 @@ stop. The switch shows only when you have a paired chat and the server
 allows forwarding; whoever runs the server can stop it for everyone with
 `drop.telegram_forward: false` in `ira.yaml`.
 
+## AI sessions on your Mac
+
+With the **agents** skill on, Ira for Mac can say what the AI coding sessions
+on that Mac are doing (a coding agent's, and Ira's own coding tasks). It reads
+their transcripts on the Mac and sends your Ira only a short summary of each:
+the project's folder name, its state, how much of its task list is done and
+the item in progress, its last step as a short phrase, and your latest
+request and its last answer cut to about 200 characters. A secret filter runs
+over every excerpt first, masking what looks like a key, a token or a
+password. Never a whole transcript, a file's contents, a command or a tool's
+output. Like everything a device returns, the summary is in that
+conversation's history, which you can delete.
+
 ## The Ira app for Android
 
 The Android app is a window onto your own Ira server. It sends that server,

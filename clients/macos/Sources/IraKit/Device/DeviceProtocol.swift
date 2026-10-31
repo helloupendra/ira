@@ -8,11 +8,13 @@ public enum DeviceProtocol {
     public static let maxFrameBytes = 1024 * 1024
     public static let pingSeconds: Double = 30
     public static let silenceSeconds: Double = 90
+    /// How many tools a hello may offer until a server's welcome says it takes more.
+    public static let maxTools = 30
     public static let path = "/v1/devices/ws"
 
     /// A frame from the server, checked.
     public enum Incoming: Equatable, Sendable {
-        case welcome(deviceID: Int?, label: String?, skills: [String], assistant: String?, wakePhrase: String? = nil)
+        case welcome(deviceID: Int?, label: String?, skills: [String], assistant: String?, wakePhrase: String? = nil, maxTools: Int? = nil)
         case call(id: String, tool: String, args: JSONValue)
         case ping
         case pong
@@ -46,7 +48,8 @@ public enum DeviceProtocol {
                 label: frame["label"]?.stringValue,
                 skills: strings(frame["skills"]),
                 assistant: frame["assistant"]?.stringValue,
-                wakePhrase: frame["wakePhrase"]?.stringValue)
+                wakePhrase: frame["wakePhrase"]?.stringValue,
+                maxTools: frame["maxTools"]?.intValue)
         case "call":
             guard let id = frame["id"]?.stringValue, !id.isEmpty else {
                 throw BadFrame(reason: "a call needs an id")

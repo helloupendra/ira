@@ -39,6 +39,9 @@ MAX_EVENTS = 200
 SKILLS: dict[str, str] = {
     "tasks": "Tasks: a coding agent at work in repositories you allowed on this Mac. "
     "Pushing needs your PIN.",
+    "agents": "AI sessions: what the AI coding sessions on this computer are doing (a coding "
+    "agent in an editor or a terminal, and Ira's own tasks), read and summarised there. Only "
+    "short summaries leave it, never transcripts or files.",
     "routine": "Routine: when this computer locks, sleeps and wakes, and which of your named "
     "networks it is on, so Ira can learn your day. Never what you do on it.",
     "files": "Files: find files by name, kind, date or what is in them, read the one you ask "

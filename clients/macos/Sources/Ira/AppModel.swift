@@ -208,6 +208,9 @@ final class AppModel: ObservableObject {
             onState: { [weak self] state in
                 Task { @MainActor in self?.deviceState = state }
             })
+        // A server that takes more tools than 30 said so once: offer them all from the start.
+        client.toolLimit = settings.serverMaxTools
+        client.onToolLimit = { settings.serverMaxTools = $0 }
         client.onWelcome = { [weak self] assistant, phrase in
             Task { @MainActor in
                 guard let self else { return }

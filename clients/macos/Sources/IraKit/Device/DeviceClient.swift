@@ -62,6 +62,8 @@ public final class DeviceClient: @unchecked Sendable {
     public var onWelcome: @Sendable (String?, String?) -> Void = { _, _ in }
     /// A change in the person's Drop, from another of their devices.
     public var onDrop: @Sendable (DropFrame) -> Void = { _ in }
+    /// A server's welcome said it takes more tools than the hello may offer so far.
+    public var onToolLimit: @Sendable (Int) -> Void = { _ in }
     private let log: IraLog
 
     private let lock = NSLock()
@@ -75,6 +77,14 @@ public final class DeviceClient: @unchecked Sendable {
     private var lastEvent: Date?
     private var outboxWake: CheckedContinuation<Void, Never>?
     private var currentSkills: [String] = []
+    private var limit = DeviceProtocol.maxTools
+
+    /// How many tools the hello offers: 30, or what a server's welcome said it takes. The
+    /// oldest tools come first, so an older server still gets the tools it always had.
+    public var toolLimit: Int {
+        get { lock.locked { limit } }
+        set { lock.locked { limit = max(newValue, DeviceProtocol.maxTools) } }
+    }
 
     public init(
         url: URL,
@@ -320,10 +330,12 @@ public final class DeviceClient: @unchecked Sendable {
         }
         let sender = FrameSender(channel: channel)
         do {
-            try await sender.send(DeviceProtocol.hello(label: label, tools: tools.definitions).encoded())
+            let offered = tools.definitions
+            let allowed = toolLimit
+            try await sender.send(DeviceProtocol.hello(label: label, tools: Array(offered.prefix(allowed))).encoded())
             let first = try await withTimeout(timing.silence) { try await channel.receive() }
             guard case .text(let text) = first,
-                case .welcome(let deviceID, _, let skills, let assistant, let wakePhrase) = try DeviceProtocol.decode(text)
+                case .welcome(let deviceID, _, let skills, let assistant, let wakePhrase, let maxTools) = try DeviceProtocol.decode(text)
             else {
                 if case .text(let text) = first, case .error(let reason)? = try? DeviceProtocol.decode(text) {
                     log.warning("the server refused the hello: \(reason)")
@@ -331,6 +343,14 @@ public final class DeviceClient: @unchecked Sendable {
                 }
                 log.warning("the server did not welcome this Mac")
                 return WebSocketClosed(reason: "the server did not welcome this Mac")
+            }
+            if let maxTools, maxTools > allowed {
+                toolLimit = maxTools
+                onToolLimit(maxTools)
+                if offered.count > allowed {
+                    log.info("the server takes \(maxTools) tools: saying hello again with all \(offered.count)")
+                    return WebSocketClosed(reason: "saying hello again with more tools")
+                }
             }
             log.info("connected as device \(deviceID.map(String.init) ?? "?") with skills \(skills)")
             lock.locked {

@@ -83,6 +83,14 @@ public struct TaskSettings: Equatable, Sendable {
         guard let data = try? Data(contentsOf: url) else { return nil }
         return parse(data)
     }
+
+    /// The folders where coding agents keep their transcripts, one folder per project
+    /// (`"transcripts": ["~/.agent/projects"]`), for `ai_sessions`. Read even when coding
+    /// tasks are not set up.
+    public static func transcripts(from url: URL = defaultPath, home: URL = FileManager.default.homeDirectoryForCurrentUser) -> [URL] {
+        guard let data = try? Data(contentsOf: url), let raw = JSONValue.parse(data) else { return [] }
+        return (raw["transcripts"]?.arrayValue ?? []).compactMap(\.stringValue).filter { !$0.isEmpty }.map { expand($0, home: home) }
+    }
 }
 
 /// Which branches a task may push. Tested on its own, because a mistake here
@@ -237,6 +245,11 @@ public final class CodeTasks: @unchecked Sendable {
     }
 
     public var configured: Bool { settings() != nil }
+
+    /// This Mac's tasks, newest first.
+    public func jobs() -> [Job] {
+        lock.locked { tasks.values.sorted { $0.started > $1.started } }
+    }
 
     private func current() throws -> TaskSettings {
         guard let settings = settings() else {

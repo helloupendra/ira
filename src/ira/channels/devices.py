@@ -105,6 +105,7 @@ KIND_SKILLS: dict[str, tuple[str, ...]] = {
         "control",
         "routine",
         "tasks",
+        "agents",
     ),
     "android": (),
     # What iOS lets an app do: no call log, SMS or other apps' notifications, and a call

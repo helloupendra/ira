@@ -54,6 +54,8 @@ public struct Activity: Equatable, Identifiable, Sendable {
         case "code_task_status": return "Checked a coding task"
         case "code_task_stop": return "Stopped a coding task"
         case "code_task_push": return "Pushed a task's branch"
+        case "ai_sessions": return "Checked the AI sessions"
+        case "ai_session_detail": return "Read an AI session's steps"
         default: return tool
         }
     }
@@ -81,12 +83,15 @@ public final class Toolbox: ToolRunner, @unchecked Sendable {
     public let folderGrants: FolderGrants
     /// Coding tasks; their done and failed events go out through `announce`.
     public let tasks: CodeTasks
+    /// The AI sessions on this Mac, summarised (and Ira's own tasks among them).
+    public let agents: AISessions
 
     public init(
         policy: @escaping @Sendable () -> PathPolicy,
         frontApp: @escaping FrontApp,
         opener: @escaping Opener = Toolbox.workspaceOpen,
         tasks: CodeTasks = CodeTasks(),
+        agents: AISessions? = nil,
         folderGrants: FolderGrants = FolderGrants(),
         log: IraLog = .shared,
         record: @escaping @Sendable (Activity) -> Void
@@ -95,6 +100,7 @@ public final class Toolbox: ToolRunner, @unchecked Sendable {
         self.frontApp = frontApp
         self.opener = opener
         self.tasks = tasks
+        self.agents = agents ?? AISessions(tasks: tasks)
         self.folderGrants = folderGrants
         self.log = log
         self.record = record
@@ -122,7 +128,7 @@ public final class Toolbox: ToolRunner, @unchecked Sendable {
     public static func deadline(for name: String) -> Double {
         switch name {
         case "screen_read": return 15
-        case "files_find": return 12
+        case "files_find", "ai_sessions", "ai_session_detail": return 12
         case "mac_type", "mac_keys", "mac_click", "mac_scroll", "mac_menu": return 20
         case "mail_search", "mail_draft", "notes_search", "notes_add", "messages_send",
             "shortcuts_run", "code_task_start", "code_task_push", "browser_tabs", "browser_show_tab":
@@ -224,6 +230,8 @@ public final class Toolbox: ToolRunner, @unchecked Sendable {
                 content = args["id"] == nil ? try await tasks.list(args) : try await tasks.status(args)
             case "code_task_stop": content = try await tasks.stop(args)
             case "code_task_push": content = try await tasks.push(args)
+            case "ai_sessions": content = try await agents.list(args)
+            case "ai_session_detail": content = try await agents.detail(args)
             default:
                 throw ToolFailure("this Mac has no tool '\(name)'")
             }
@@ -262,6 +270,8 @@ public final class Toolbox: ToolRunner, @unchecked Sendable {
         case "code_task_start": return text("repo") ?? ""
         case "code_task_status": return text("id") ?? "all tasks"
         case "code_task_stop", "code_task_push": return text("id") ?? ""
+        case "ai_sessions": return "last \(args["hours"]?.intValue ?? AISessions.defaultHours) hours"
+        case "ai_session_detail": return text("id").map { String($0.prefix(8)) } ?? ""
         default: return ""
         }
     }

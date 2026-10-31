@@ -239,9 +239,21 @@ public enum ToolCatalog {
              properties: ["id": text("The task's id.")], required: ["id"]),
     ]
 
+    // MARK: AI sessions
+
+    public static let agents: [JSONValue] = [
+        tool("ai_sessions", skill: "agents", tier: 0,
+             "What the AI coding sessions on this Mac are doing (a coding agent in VS Code or a terminal, and Ira's coding tasks): for each, the project, whether it is working, waiting for the person or finished, how much of its task list is done and the item in progress, its last step, and the person's latest request and its last answer, cut short. Read and summarised on the Mac; never a transcript or a file. Use it for 'what is the AI doing on my Mac', 'Mac pe AI kya kar raha hai'.",
+             properties: ["hours": integer("Sessions active in the last this many hours (default 12).", 1...48)]),
+        tool("ai_session_detail", skill: "agents", tier: 0,
+             "The last 10 steps of one AI session from ai_sessions, each a short phrase (what it read, edited or ran, what was asked and said), and its state. Ira only reads sessions it did not start: to stop one, the person stops it where it runs.",
+             properties: ["id": text("The session's id from ai_sessions (its first 8 characters are enough).")], required: ["id"]),
+    ]
+
     /// The hello's tools: everything, and the coding tasks only when this Mac has them set up.
-    /// The server takes 30 at most.
+    /// The oldest come first, so a server that takes 30 (as before the welcome said how
+    /// many) still gets the same 30 as ever.
     public static func all(tasksConfigured: Bool) -> [JSONValue] {
-        files + browser + personal + apps + control + (tasksConfigured ? tasks : [])
+        files + browser + personal + apps + control + (tasksConfigured ? tasks : []) + agents
     }
 }

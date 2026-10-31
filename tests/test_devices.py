@@ -17,6 +17,7 @@ from ira.channels.devices import TokenFilter
 from ira.channels.http import create_app
 from ira.channels.telegram import event_message, event_notifier
 from ira.devices import DeviceHub, Devices
+from ira.devices.hub import offline_message
 from ira.devices.protocol import (
     CLOSE_BAD_HELLO,
     CLOSE_REPLACED,
@@ -24,12 +25,13 @@ from ira.devices.protocol import (
     CLOSE_SILENT,
     CLOSE_TOO_BIG,
     MAX_FRAME_BYTES,
+    MAX_TOOLS,
     Event,
     ProtocolError,
     parse_event,
     parse_hello,
 )
-from ira.devices.store import PAIRING_SECONDS, DeviceError
+from ira.devices.store import PAIRING_SECONDS, Device, DeviceError
 from ira.models.base import ChatResponse, ToolCall
 from ira.models.fake import ScriptedProvider
 from ira.security import sha256_hex
@@ -293,9 +295,10 @@ def test_hello_rules():
     for name in ("Chrome", "ab", "x" * 42, "1tab", "tab-list", None):
         with pytest.raises(ProtocolError, match="bad tool name"):
             parse_hello(hello(tools=[{"name": name, "description": "d"}]), "mac")
-    many = [{"name": f"tool_{i:02d}", "description": "d"} for i in range(31)]
-    with pytest.raises(ProtocolError, match="30 tools"):
+    many = [{"name": f"tool_{i:02d}", "description": "d"} for i in range(MAX_TOOLS + 1)]
+    with pytest.raises(ProtocolError, match=f"{MAX_TOOLS} tools"):
         parse_hello(hello(tools=many), "mac")
+    assert len(parse_hello(hello(tools=many[:MAX_TOOLS]), "mac").tools) == MAX_TOOLS == 40
     with pytest.raises(ProtocolError, match="paired as 'mac'"):
         parse_hello(hello("android"), "mac")
     with pytest.raises(ProtocolError, match="tier"):
@@ -309,6 +312,7 @@ async def test_the_handshake_and_a_refused_hello(store):
     socket, task, welcome = await connect(hub, device)
     assert welcome["type"] == "welcome" and welcome["deviceId"] == device.id
     assert welcome["skills"] == ["chrome"]
+    assert welcome["maxTools"] == MAX_TOOLS  # a device offers 30 until a welcome says more
     assert hub.connected(device.id)
     stored = hub.devices.get(device.id)
     assert stored.version == "0.3.0" and [t["name"] for t in stored.tools] == [
@@ -349,7 +353,7 @@ async def test_a_call_and_its_result_or_error(store):
         await hub.call(device.id, "chrome_close_tab", {})
     await socket.close()
     await task
-    with pytest.raises(ToolError, match="not connected"):
+    with pytest.raises(ToolError, match="Office Mac is offline right now"):
         await hub.call(device.id, "chrome_list_tabs", {})
 
 
@@ -820,3 +824,91 @@ def test_skills_change_together_with_one_pin(registry):
         fewer = client.patch(path, json={"skills": ["contacts"]}, headers=me)  # off: no PIN
         assert fewer.status_code == 200
         assert devices.get(phone.id).skills == ["contacts"]
+
+
+# --- asking about a device that is offline -----------------------------------------------
+
+AGENT_TOOLS = [
+    {
+        "name": "ai_sessions",
+        "description": "What the AI coding sessions on this Mac are doing.",
+        "parameters": {"type": "object", "properties": {"hours": {"type": "integer"}}},
+        "skill": "agents",
+        "tier": 0,
+    },
+    {
+        "name": "ai_session_detail",
+        "description": "One AI session's last steps.",
+        "parameters": {"type": "object", "properties": {"id": {"type": "string"}}},
+        "skill": "agents",
+        "tier": 0,
+    },
+    {
+        "name": "files_find",
+        "description": "Find files.",
+        "parameters": {"type": "object", "properties": {}},
+        "skill": "files",
+        "tier": 0,
+    },
+]
+
+
+async def test_an_offline_mac_still_answers_what_its_ai_is_doing_plainly(store):
+    hub = DeviceHub(Devices(store))
+    user = person(store)
+    _, mac = paired(hub.devices, user.id, skills=("agents", "files"))
+    socket, task, _ = await connect(hub, mac, hello(tools=AGENT_TOOLS))
+    online = {t.name: t for t in hub.tools_for(user.id)}
+    assert "offline" not in online["ai_sessions"].description
+    await socket.close()
+    await task
+
+    offline = {t.name: t for t in hub.tools_for(user.id)}
+    # Only the ask-from-anywhere tools stay: never files or the like.
+    assert sorted(offline) == ["ai_session_detail", "ai_sessions"]
+    tool = offline["ai_sessions"]
+    assert tool.tier == 0 and tool.skill == "agents" and tool.device_id == mac.id
+    assert "which is offline now" in tool.description
+    with pytest.raises(ToolError) as said:
+        await tool.run({"hours": 12})
+    assert "Office Mac is offline right now" in str(said.value)
+    assert "Ira for Mac is running there" in str(said.value)
+    with pytest.raises(ToolError, match="offline right now"):
+        await hub.call(mac.id, "ai_sessions", {})
+
+    hub.devices.set_skills(mac.id, ["files"])  # the owner switched the skill off
+    assert hub.tools_for(user.id) == []
+
+
+async def test_an_online_device_answers_before_an_offline_one(store):
+    hub = DeviceHub(Devices(store))
+    user = person(store)
+    _, old = paired(hub.devices, user.id, skills=("agents",))
+    socket, task, _ = await connect(hub, old, hello(tools=AGENT_TOOLS[:1]))
+    await socket.close()
+    await task
+    _, new = paired(hub.devices, user.id, skills=("agents",))
+    live, live_task, _ = await connect(hub, new, hello(tools=AGENT_TOOLS[:1]))
+    tools = [t for t in hub.tools_for(user.id) if t.name == "ai_sessions"]
+    assert len(tools) == 1 and tools[0].device_id == new.id
+    assert "offline" not in tools[0].description
+    await live.close()
+    await live_task
+
+
+def test_offline_wording_says_when_and_what_brings_it_back():
+    clock = 1_800_000_000.0
+
+    def device(kind: str, seen: float | None) -> Device:
+        return Device(
+            id=1, user_id=1, kind=kind, label="Office Mac", created_at=0, last_seen_at=seen
+        )
+
+    assert offline_message(device("mac", clock - 5 * 60), now=clock) == (
+        "Office Mac is offline right now (last seen 5 min ago), so Ira cannot reach it. "
+        "It is back when Ira for Mac is running there and the computer is awake and online."
+    )
+    assert "(last seen 3 h ago)" in offline_message(device("mac", clock - 3 * 3600), now=clock)
+    assert "(last seen 4 days ago)" in offline_message(device("mac", clock - 4 * 86400), now=clock)
+    assert "the Ira app is running there and the phone" in offline_message(device("android", None))
+    assert offline_message(None) == "that device is not paired with Ira any more"

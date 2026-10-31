@@ -11,7 +11,8 @@ struct CatalogTests {
     @Test func fitsTheServersLimits() throws {
         let names = CatalogTests.everything.compactMap { $0["name"]?.stringValue }
         #expect(names.count == CatalogTests.everything.count)
-        #expect(names.count <= 30)
+        // A server takes 40 when its welcome says so; an older one gets the first 30.
+        #expect(names.count <= 40)
         #expect(Set(names).count == names.count)
         #expect(ToolCatalog.all(tasksConfigured: false).count == names.count - ToolCatalog.tasks.count)
         let hello = DeviceProtocol.hello(label: "Studio Mac", tools: CatalogTests.everything).encoded()
@@ -59,6 +60,7 @@ struct CatalogTests {
             "mac_menu": "control 3",
             "code_task_start": "tasks 2", "code_task_status": "tasks 0",
             "code_task_stop": "tasks 1", "code_task_push": "tasks 3",
+            "ai_sessions": "agents 0", "ai_session_detail": "agents 0",
         ])
     }
 

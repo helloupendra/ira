@@ -32,6 +32,7 @@ from ira.devices.protocol import (
     HELLO_SECONDS,
     MAX_FRAME_BYTES,
     MAX_IN_FLIGHT,
+    MAX_TOOLS,
     PING_SECONDS,
     SILENCE_SECONDS,
     DeviceTool,
@@ -52,6 +53,33 @@ log = logging.getLogger("ira.devices")
 
 MAX_ERROR = 500
 LISTENER_QUEUE = 100
+
+# Tools a person asks for from anywhere ("what is the AI doing on my Mac?"): while their
+# device is offline Ira still offers them, and the call says plainly that it is offline,
+# instead of Ira not knowing the tool at all.
+ASK_ANYWHERE = frozenset({"ai_sessions", "ai_session_detail", "code_task_status"})
+APP_NAMES = {"mac": "Ira for Mac", "windows": "Ira for Windows"}
+
+
+def offline_message(device: Device | None, now: float | None = None) -> str:
+    """What Ira says when a device it needs is not connected: plainly, and what brings it back."""
+    if device is None:
+        return "that device is not paired with Ira any more"
+    seen = ""
+    if device.last_seen_at:
+        minutes = int(((now or time.time()) - device.last_seen_at) / 60)
+        if minutes < 60:
+            seen = f" (last seen {max(minutes, 1)} min ago)"
+        elif minutes < 48 * 60:
+            seen = f" (last seen {minutes // 60} h ago)"
+        else:
+            seen = f" (last seen {minutes // (24 * 60)} days ago)"
+    app = APP_NAMES.get(device.kind, "the Ira app")
+    where = "the computer" if device.kind in APP_NAMES else "the phone"
+    return (
+        f"{device.label} is offline right now{seen}, so Ira cannot reach it. It is back when "
+        f"{app} is running there and {where} is awake and online."
+    )
 
 
 class Socket(Protocol):
@@ -202,6 +230,7 @@ class DeviceHub:
                     "deviceId": device.id,
                     "label": device.label,
                     "skills": device.skills,
+                    "maxTools": MAX_TOOLS,
                     **self.welcome_extra(device.user_id),
                 }
             )
@@ -293,7 +322,7 @@ class DeviceHub:
         """Ask a device to run one of its tools; its content, or ToolError."""
         connection = self.connections.get(device_id)
         if connection is None or connection.closed:
-            raise ToolError("the device is not connected")
+            raise ToolError(offline_message(self.devices.get(device_id)))
         if tool not in connection.tools:
             raise ToolError(f"the device does not offer '{tool}'")
         if len(connection.pending) >= self.max_in_flight:
@@ -425,7 +454,8 @@ class DeviceHub:
         """This person's connected devices' tools whose skill they switched on."""
         if user_id is None:
             return []
-        skills = {device.id: set(device.skills) for device in self.devices.for_user(user_id)}
+        mine = self.devices.for_user(user_id)
+        skills = {device.id: set(device.skills) for device in mine}
         offered: dict[str, list[tuple[Connection, DeviceTool]]] = {}
         for connection in list(self.connections.values()):
             device = connection.device
@@ -444,7 +474,36 @@ class DeviceHub:
             else:  # the tool already takes "device": offer the newest connection's
                 connection, tool = max(entries, key=lambda e: e[0].connected_at)
                 out.append(self._single(connection, tool))
+        names = {tool.name for tool in out}
+        for device in sorted(mine, key=lambda d: d.last_seen_at or 0, reverse=True):
+            if self.connected(device.id):
+                continue
+            for raw in device.tools:
+                name = raw.get("name")
+                if name not in ASK_ANYWHERE or name in names:
+                    continue
+                if raw.get("skill") in skills[device.id]:
+                    names.add(name)
+                    out.append(self._offline(device, raw))
         return out
+
+    def _offline(self, device: Device, raw: dict[str, Any]) -> PersonalTool:
+        """A tool of a device that is offline now: asking it says so (its last hello's tool)."""
+
+        async def run(arguments: dict[str, Any]) -> Any:
+            raise ToolError(offline_message(self.devices.get(device.id) or device))
+
+        return PersonalTool(
+            name=str(raw["name"]),
+            description=f"{raw.get('description', '')} (on {device.label}, which is offline now)",
+            parameters={"type": "object", "properties": {}, "additionalProperties": True},
+            tier=int(raw.get("tier", 2)),
+            source="device",
+            label=device.label,
+            run=run,
+            device_id=device.id,
+            skill=str(raw.get("skill") or ""),
+        )
 
     def _single(self, connection: Connection, tool: DeviceTool) -> PersonalTool:
         device_id = connection.device.id

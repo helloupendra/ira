@@ -95,7 +95,7 @@ The server answers:
 
 ```json
 {"type": "welcome", "deviceId": 3, "label": "Office Mac", "skills": ["files"],
- "assistant": "Ira", "wakePhrase": "Hey Ira"}
+ "assistant": "Ira", "wakePhrase": "Hey Ira", "maxTools": 40}
 ```
 
 - `kind` must be the kind the device was paired as.
@@ -105,6 +105,9 @@ The server answers:
   first underscore (`files_find` belongs to `files`).
 - `tier` is the tool's tier: 0 reads, 1 small and undoable, 2 needs the
   person's "yes", 3 needs their PIN. A tool that does not say is Tier 2.
+- A hello offers 40 tools at most, and the welcome says so (`maxTools`).
+  Servers before that took 30 and said nothing, so a device offers its oldest
+  30 until a welcome says more; then it may say hello again with all of them.
 - A hello that breaks a rule gets `{"type": "error", "error": "..."}` and the
   connection closes with 4400.
 
@@ -147,7 +150,7 @@ a hello: the server revokes its token and closes the connection.
 | Frame size | 1 MB | the connection closes with 1009 |
 | A call | 25 seconds | the model is told the device did not answer |
 | Calls in flight | 4 per device | a fifth is refused at once: "the device is busy" |
-| Tools | 30 per device | the hello is refused |
+| Tools | 40 per device (30 before `maxTools`) | the hello is refused |
 | Events | 1 per 30 seconds per device | an `error` frame; send it again later |
 | Silence | 90 seconds | the connection closes with 4408 |
 | Connections | 1 per device | a new one replaces the old (4000), whose calls fail |

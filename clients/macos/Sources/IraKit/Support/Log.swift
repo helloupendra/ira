@@ -61,20 +61,10 @@ public final class IraLog: @unchecked Sendable {
 
     public static let maxLine = 500
 
-    /// Mask secrets in a log line: tokens, pairing codes, URL queries; and cut it short.
+    /// Mask secrets in a log line (`SecretFilter`: tokens, keys, pairing codes, URL queries),
+    /// and cut it short.
     public static func redact(_ text: String) -> String {
-        var out = text
-        let rules: [(String, String)] = [
-            (#"(\b[a-zA-Z][a-zA-Z0-9+.-]*://[^\s?#"'<>]*)[?#][^\s"'<>]*"#, "$1"),
-            (#"\birad_[A-Za-z0-9_-]+"#, "irad_***"),
-            (#"\bira_[st]_[A-Za-z0-9_-]+"#, "ira_*_***"),
-            (#"(?i)(code=)[A-Za-z0-9-]+"#, "$1***"),
-            (#"(?i)(bearer\s+)\S+"#, "$1***"),
-        ]
-        for (pattern, template) in rules {
-            out = out.replacingOccurrences(
-                of: pattern, with: template, options: .regularExpression)
-        }
+        var out = SecretFilter.mask(text)
         if out.count > maxLine {
             out = String(out.prefix(maxLine)) + "..."
         }

@@ -170,6 +170,55 @@ struct DeviceClientTests {
         _ = await run.value
     }
 
+    /// 32 tools: more than a hello offered before servers said how many they take.
+    struct ManyTools: ToolRunner {
+        var definitions: [JSONValue] {
+            (1...32).map { ["name": .string("tool_\($0)"), "description": "One.", "parameters": ["type": "object"], "tier": 0] }
+        }
+        func call(_ name: String, args: JSONValue) async throws -> JSONValue { "ok" }
+    }
+
+    @Test func aServerThatTakesMoreToolsGetsThemAllOnTheNextHello() async throws {
+        let channel = FakeChannel()
+        var timing = DeviceClient.Timing()
+        timing.silence = 5
+        let told = EventLog<Int>()
+        let client = DeviceClient(
+            url: DeviceClientTests.url, token: { "irad_test" }, tools: ManyTools(), label: "Studio Mac",
+            connector: FakeConnector(channel: channel), timing: timing, log: IraLog(directory: nil))
+        client.onToolLimit = { told.add($0) }
+        let run = Task { await client.runOnce(token: "irad_test") }
+        #expect(await channel.waitFor { $0.count == 1 })
+        #expect(channel.sentJSON.first?["tools"]?.arrayValue?.count == 30)
+        channel.push(["type": "welcome", "deviceId": 3, "skills": [], "maxTools": 40])
+        let closed = await run.value
+        #expect(closed?.reason == "saying hello again with more tools")
+        #expect(await told.waitFor { $0 == [40] })
+        #expect(client.toolLimit == 40)
+
+        let again = FakeChannel()
+        let next = DeviceClient(
+            url: DeviceClientTests.url, token: { "irad_test" }, tools: ManyTools(), label: "Studio Mac",
+            connector: FakeConnector(channel: again), timing: timing, log: IraLog(directory: nil))
+        next.toolLimit = client.toolLimit
+        let second = Task { await next.runOnce(token: "irad_test") }
+        #expect(await again.waitFor { $0.count == 1 })
+        #expect(again.sentJSON.first?["tools"]?.arrayValue?.count == 32)
+        again.push(["type": "welcome", "deviceId": 3, "skills": [], "maxTools": 40])
+        again.close(code: 1000)
+        _ = await second.value
+        next.toolLimit = 5
+        #expect(next.toolLimit == 30)  // never under what every server takes
+    }
+
+    @Test func theOldToolsComeFirstSoAnOlderServerKeepsThem() {
+        let names = ToolCatalog.all(tasksConfigured: true).compactMap { $0["name"]?.stringValue }
+        #expect(names.count > 30)
+        #expect(names.prefix(30).allSatisfy { !$0.hasPrefix("ai_") })
+        #expect(names.contains("ai_sessions") && names.contains("ai_session_detail"))
+        #expect(ToolCatalog.all(tasksConfigured: false).count <= 30)
+    }
+
     @Test func aRefusedHelloEndsTheConnection() async {
         let channel = FakeChannel()
         let (client, _) = client(channel, states: EventLog<DeviceState>())

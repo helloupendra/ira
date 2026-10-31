@@ -21,7 +21,9 @@ from typing import Any
 MAX_FRAME_BYTES = 1024 * 1024
 CALL_SECONDS = 25.0
 MAX_IN_FLIGHT = 4
-MAX_TOOLS = 30
+# A hello may offer this many tools; the welcome says so, and a device that does not know
+# yet offers 30 at most (as every server before this one took).
+MAX_TOOLS = 40
 PING_SECONDS = 30.0
 SILENCE_SECONDS = 90.0
 HELLO_SECONDS = 15.0
