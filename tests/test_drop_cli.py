@@ -60,7 +60,8 @@ def test_send_list_get_and_delete(world, monkeypatch, capsys, tmp_path):
 
     assert login(monkeypatch) == 0
     saved = tmp_path / "config" / "ira" / "client.json"
-    assert oct(saved.stat().st_mode)[-3:] == "600" and json.loads(saved.read_text())["url"] == URL
+    assert json.loads(saved.read_text())["url"] == URL
+    assert os.name != "posix" or oct(saved.stat().st_mode)[-3:] == "600"  # NTFS on Windows
     scopes = runtime.store.query("SELECT scopes FROM api_tokens WHERE revoked_at IS NULL")
     assert [r["scopes"] for r in scopes] == ["ask,drop"]
     open_sessions = runtime.store.query("SELECT 1 FROM sessions WHERE revoked_at IS NULL")

@@ -7,6 +7,7 @@ import os
 import re
 import shutil
 import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -146,7 +147,8 @@ def test_no_real_addresses_or_accounts():
             assert host.endswith(("example.com", "example.org", "github.com")), (path.name, host)
 
 
-@pytest.mark.skipif(shutil.which("bash") is None, reason="needs bash")
+# On Windows "bash" is WSL's launcher; these scripts are for Linux and macOS servers.
+@pytest.mark.skipif(shutil.which("bash") is None or sys.platform == "win32", reason="needs bash")
 @pytest.mark.parametrize("script", SCRIPTS, ids=lambda p: p.name)
 def test_scripts_parse(script):
     subprocess.run(["bash", "-n", str(script)], check=True)

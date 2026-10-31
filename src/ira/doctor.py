@@ -323,17 +323,24 @@ def identify(host: str, port: int, timeout: float = 3.0) -> PortState:
         return PortState("other")
 
 
+# Windows reports "in use" as WSAEADDRINUSE (10048), not errno.EADDRINUSE.
+ADDRESS_IN_USE = {errno.EADDRINUSE, getattr(errno, "WSAEADDRINUSE", errno.EADDRINUSE)}
+
+
 def probe_port(
     host: str, port: int, *, identify: Callable[[str, int], PortState] = identify
 ) -> PortState:
     family = socket.AF_INET6 if ":" in host else socket.AF_INET
     with socket.socket(family, socket.SOCK_STREAM) as sock:
-        # As uvicorn does: a port with only old TIME_WAIT connections counts as free.
-        sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        # As uvicorn does: a port with only old TIME_WAIT connections counts as free. Not on
+        # Windows, where SO_REUSEADDR lets a socket bind over a program listening on the port
+        # (asyncio leaves it off there too).
+        if os.name == "posix":
+            sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         try:
             sock.bind((host, port))
         except OSError as exc:
-            if exc.errno != errno.EADDRINUSE:
+            if exc.errno not in ADDRESS_IN_USE:
                 return PortState("unavailable", error=exc.strerror or str(exc))
         else:
             return PortState("free")
