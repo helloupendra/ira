@@ -91,6 +91,7 @@ public sealed class IraController
     {
         Stop();
         _keys.Delete();
+        if (_settings?.HelloApprovals == true) _ = HelloKey.DeleteAsync();
         DeviceSettings.Delete();
         _settings = null;
         _token = null;
@@ -114,6 +115,15 @@ public sealed class IraController
         if (_settings is null) return;
         var skills = allowed ? _settings.AllowedSkills.Append(skill) : _settings.AllowedSkills.Where(s => s != skill);
         _settings = _settings with { AllowedSkills = skills.Distinct().Order().ToList() };
+        _settings.Save();
+        Raise();
+    }
+
+    /// <summary>Notes that this PC's Windows Hello key is enrolled (or no longer used).</summary>
+    public void SetHello(bool on)
+    {
+        if (_settings is null) return;
+        _settings = _settings with { HelloApprovals = on };
         _settings.Save();
         Raise();
     }

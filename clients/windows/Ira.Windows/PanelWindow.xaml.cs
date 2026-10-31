@@ -636,6 +636,10 @@ public sealed partial class PanelWindow : Window
         var no = new Button { Content = yesNo ? "No" : "Cancel" };
         if (withPin) buttons.Children.Add(pin);
         if (yesNo || withPin) buttons.Children.Add(yes);
+        // Windows Hello in place of the PIN, once its key is enrolled in Settings.
+        var hello = new Button { Content = "Windows Hello" };
+        var paired = _controller.Settings;
+        if (withPin && paired is { HelloApprovals: true } && action.ExpiresAt > 0) buttons.Children.Add(hello);
         buttons.Children.Add(no);
         card.Children.Add(buttons);
 
@@ -691,6 +695,11 @@ public sealed partial class PanelWindow : Window
         yes.Click += async (_, _) => await Decide(() =>
             withPin ? ask.ConfirmAsync(action.Id, pin.Password) : ask.ApproveAsync(action.Id));
         no.Click += async (_, _) => await Decide(() => ask.CancelAsync(action.Id));
+        hello.Click += async (_, _) => await Decide(async () =>
+        {
+            var signature = await HelloKey.SignAsync(HelloApproval.Message(action.Id, action.Summary, action.ExpiresAt));
+            return await ask.ConfirmWithHelloAsync(action.Id, paired!.DeviceId, signature);
+        });
         pin.KeyDown += (_, e) =>
         {
             if (e.Key != VirtualKey.Enter || pin.Password.Length == 0) return;

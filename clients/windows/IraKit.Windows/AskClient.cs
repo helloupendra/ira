@@ -16,7 +16,8 @@ public sealed record ProposedAction(
     int Tier,
     int ExpiresIn,
     bool CanApprove,
-    bool CanConfirm);
+    bool CanConfirm,
+    long ExpiresAt = 0);
 
 /// <summary>One server-sent event of a streamed answer (<c>docs/api.md</c>, Streaming).</summary>
 public abstract record AskEvent
@@ -66,6 +67,21 @@ public sealed class AskClient(HttpClient http, ServerAddress server, string toke
     /// <summary>A Tier 3 confirmation with the person's PIN; the PIN goes only here.</summary>
     public Task<ActionOutcome> ConfirmAsync(string actionId, string pin, CancellationToken ct = default) =>
         ActAsync($"/v1/actions/{Uri.EscapeDataString(actionId)}/confirm", new { pin }, ct);
+
+    /// <summary>A Tier 3 confirmation with this PC's Windows Hello signature in place of the PIN.</summary>
+    public Task<ActionOutcome> ConfirmWithHelloAsync(string actionId, long deviceId, string signature, CancellationToken ct = default) =>
+        ActAsync($"/v1/actions/{Uri.EscapeDataString(actionId)}/confirm", new { device_id = deviceId, signature }, ct);
+
+    /// <summary>Stores this PC's Windows Hello public key on the server, with the person's Ira PIN.</summary>
+    public async Task EnrolHelloAsync(string publicKey, string pin, CancellationToken ct = default)
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Post, server.Api("/v1/me/approval-keys"))
+        {
+            Content = JsonContent.Create(new { public_key = publicKey, algorithm = HelloApproval.Algorithm, pin }),
+        };
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
+        using var response = await Send(request, HttpCompletionOption.ResponseContentRead, ct);
+    }
 
     public Task<ActionOutcome> CancelAsync(string actionId, CancellationToken ct = default) =>
         ActAsync($"/v1/actions/{Uri.EscapeDataString(actionId)}/cancel", null, ct);
@@ -150,7 +166,8 @@ public sealed class AskClient(HttpClient http, ServerAddress server, string toke
                 a["tier"]?.GetValue<int>() ?? 3,
                 a["expires_in"]?.GetValue<int>() ?? 0,
                 a["can_approve"]?.GetValue<bool>() ?? false,
-                a["can_confirm"]?.GetValue<bool>() ?? false)),
+                a["can_confirm"]?.GetValue<bool>() ?? false,
+                a["expires_at"] is JsonValue at && at.TryGetValue(out long seconds) ? seconds : 0)),
             "delta" => new AskEvent.Delta(S("text")),
             "error" => new AskEvent.Failed(S("message")),
             "done" => new AskEvent.Done(S("text"), e["model"]?.GetValue<string>(), S("conversation_id")),

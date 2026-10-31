@@ -46,8 +46,8 @@ Windows user only. **Pair again…** is in the tray icon's menu.
 Type in the panel and press Enter. When Ira proposes something that acts for
 you, a card asks: **Yes** or **No** for a small step, your **PIN** for
 anything that sends, spends or deletes (three wrong PINs lock actions for 15
-minutes, as everywhere in Ira). The panel hides when you click elsewhere,
-unless you pin it.
+minutes, as everywhere in Ira), or **Windows Hello** once you set it up in
+Settings. The panel hides when you click elsewhere, unless you pin it.
 
 ## Settings
 
@@ -62,6 +62,11 @@ unless you pin it.
   wherever they are.
 - **Start Ira when you sign in to Windows**: a value under your own Run key
   in the registry, nothing that needs an administrator.
+- **Approving with Windows Hello**: type your Ira PIN once and Windows
+  Hello makes a key that only your face, finger or Hello PIN unlocks; its
+  public key goes to your Ira (`RS256`, see
+  [Security](../security.md#2-approving-with-the-devices-own-key-built)). After that, a card that needs your PIN also
+  has **Windows Hello**. **Turn off** forgets the key on the PC.
 - **What Ira may use on this PC**: each skill, on or off here. A skill works
   only when it is on for this PC on your Ira (with your PIN) and on here;
   switch it off here and the PC refuses it, whatever your Ira asks.
