@@ -4,7 +4,7 @@ import SwiftUI
 
 /// The parts of Ira's window, in its sidebar.
 enum Pane: String, CaseIterable, Identifiable {
-    case chat, drop, settings
+    case chat, drop, thisMac, settings
 
     var id: String { rawValue }
 
@@ -12,6 +12,7 @@ enum Pane: String, CaseIterable, Identifiable {
         switch self {
         case .chat: return "Chat"
         case .drop: return "Drop"
+        case .thisMac: return "This Mac"
         case .settings: return "Settings"
         }
     }
@@ -20,6 +21,7 @@ enum Pane: String, CaseIterable, Identifiable {
         switch self {
         case .chat: return "bubble.left.and.bubble.right"
         case .drop: return "tray.and.arrow.down"
+        case .thisMac: return "laptopcomputer"
         case .settings: return "gearshape"
         }
     }
@@ -53,7 +55,7 @@ final class WindowState: ObservableObject {
     }
 }
 
-/// Ira's one window: a sidebar (Chat, Drop, Settings and today's conversations) and the part chosen.
+/// Ira's one window: a sidebar (Chat, Drop, This Mac, Settings and today's conversations) and the part chosen.
 /// Before this Mac is paired, the whole window is the first-run setup.
 struct AppWindowView: View {
     @ObservedObject var model: AppModel
@@ -80,6 +82,7 @@ struct AppWindowView: View {
                     switch state.pane {
                     case .chat: ChatView(model: model, conversation: conversation)
                     case .drop: DropPane(drop: model.drop)
+                    case .thisMac: ThisMacPane(model: model, conversation: conversation)
                     case .settings:
                         SettingsView(model: model, conversation: conversation, hotKeyChanged: hotKeyChanged)
                             .navigationTitle("Settings")

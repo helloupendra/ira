@@ -264,9 +264,7 @@ struct ChatView: View {
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 10) {
                     if conversation.entries.isEmpty {
-                        Text("Ask by typing or press the mic and talk. Try “vo PDF kahan hai jo kal download kiya?” or “screen pe kya hai?”.")
-                            .foregroundStyle(.secondary)
-                            .padding(.top, 20)
+                        welcome
                     }
                     ForEach(conversation.entries) { entry in
                         EntryView(entry: entry, conversation: conversation, server: model.settings.server)
@@ -295,6 +293,37 @@ struct ChatView: View {
                 if busy { withAnimation { proxy.scrollTo("thinking", anchor: .bottom) } }
             }
         }
+    }
+
+    /// An empty conversation: how to reach Ira from anywhere, what it can do here, and a
+    /// few things to try (a click puts one in the Ask field).
+    private var welcome: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            Text("Ask \(model.assistant) anything").font(.title2.weight(.semibold))
+            Text("Type below or press the mic and talk. From any app, \(hotKeyText) brings this window up, ready to type.")
+                .foregroundStyle(.secondary)
+            VStack(alignment: .leading, spacing: 8) {
+                Label("Reads the window you were in, when you ask what is on your screen", systemImage: "macwindow")
+                Label("Finds and reads your files, and opens them", systemImage: "folder")
+                Label("Sends things to your phone and other devices with Drop", systemImage: "tray.and.arrow.down")
+            }
+            .foregroundStyle(.secondary)
+            HStack(spacing: 8) {
+                ForEach(["vo PDF kahan hai jo kal download kiya?", "screen pe kya hai?", "remind me at 6 to call the bank"], id: \.self) { example in
+                    Button(example) {
+                        form.entry = example
+                        focused = true
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+                }
+            }
+        }
+        .padding(.top, 24)
+    }
+
+    private var hotKeyText: String {
+        HotKey.describe(keyCode: model.settings.hotKeyCode, modifiers: model.settings.hotKeyModifiers)
     }
 
     private func noticeView(_ notice: String) -> some View {

@@ -11,44 +11,23 @@ final class SettingsState: ObservableObject {
     @Published var loginProblem: String?
     @Published var onlyFolders: [String] = []
     @Published var extraFolders: [String] = []
-    @Published var confirmRemove = false
     @Published var confirmRepair = false
 }
 
 struct SettingsView: View {
     @ObservedObject var model: AppModel
     @ObservedObject var conversation: Conversation
-    @ObservedObject var permissions: PermissionCenter
     let hotKeyChanged: () -> Void
     @StateObject private var state = SettingsState()
 
     init(model: AppModel, conversation: Conversation, hotKeyChanged: @escaping () -> Void) {
         self.model = model
         self.conversation = conversation
-        self.permissions = model.permissions
         self.hotKeyChanged = hotKeyChanged
     }
 
     var body: some View {
         Form {
-            Section("This Mac") {
-                LabeledContent("Your Ira", value: model.settings.server.isEmpty ? "Not paired" : model.settings.server)
-                LabeledContent("Name on Ira", value: model.settings.deviceLabel)
-                LabeledContent("Connection", value: AppDelegate.describe(model.deviceState, paired: model.paired))
-                LabeledContent("Talking through", value: conversation.transportKind.map { $0 == "live" ? "live voice" : "the HTTP API" } ?? "not connected yet")
-                if !conversation.permissions.isEmpty {
-                    LabeledContent("This Mac may", value: conversation.permissions.map(Self.permissionName).joined(separator: ", "))
-                }
-                HStack {
-                    Button("Reconnect") { model.reconnect() }
-                    Button("Pair again…") {
-                        model.startRepair()
-                        NotificationCenter.default.post(name: .iraShowPanel, object: nil)
-                    }
-                    .help("Pair with a new code. This Mac's current pairing stays until the new one works.")
-                    Spacer()
-                }
-            }
             Section("Open Ira") {
                 HStack {
                     Text("Shortcut")
@@ -90,15 +69,6 @@ struct SettingsView: View {
                 Toggle("Speak replies to typed questions too", isOn: $state.speak)
                     .onChange(of: state.speak) { _, on in model.settings.speakReplies = on }
             }
-            Section("Permissions") {
-                ForEach(permissions.all) { permission in
-                    PermissionRow(
-                        permission: permission,
-                        ask: { Task { await permissions.ask(permission) } },
-                        open: { permissions.open(permission) })
-                }
-                Button("Check again") { permissions.refresh() }
-            }
             Section("Using this Mac for you") {
                 Text("With the Control skill on, a PIN on one step lets Ira do the next steps of that task without asking, for a while (you choose how long in your Ira's Your assistant page). Sending, paying, deleting and pushing still ask every time.")
                     .font(.caption).foregroundStyle(.secondary)
@@ -133,7 +103,7 @@ struct SettingsView: View {
                         .help("Tell Ira this Mac's tools again, after changing tasks.json")
                 }
             }
-            Section("Privacy") {
+            Section("Logs and removing Ira") {
                 Text("Logs in ~/Library/Logs/Ira hold tool names and timings, never what Ira read or heard.")
                     .font(.caption).foregroundStyle(.secondary)
                 HStack {
@@ -141,7 +111,10 @@ struct SettingsView: View {
                         if let logs = IraLog.defaultDirectory { NSWorkspace.shared.open(logs) }
                     }
                     Spacer()
-                    Button("Remove Ira from this Mac…", role: .destructive) { state.confirmRemove = true }
+                    // Asks first, then your Ira forgets this Mac, its key and settings go, and Ira quits.
+                    Button("Remove Ira from this Mac…", role: .destructive) {
+                        (NSApp.delegate as? AppDelegate)?.removeFromMac()
+                    }
                 }
             }
         }
@@ -152,22 +125,8 @@ struct SettingsView: View {
             state.login = LoginItem.enabled
             state.onlyFolders = model.settings.onlyFolders
             state.extraFolders = model.settings.extraFolders
-            permissions.refresh()
-        }
-        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
-            permissions.refresh()
         }
         .onDisappear(perform: stopRecording)
-        .confirmationDialog("Remove Ira from this Mac?", isPresented: $state.confirmRemove) {
-            Button("Remove", role: .destructive) {
-                Task {
-                    await model.removeEverything()
-                    NSApp.keyWindow?.close()
-                }
-            }
-        } message: {
-            Text("Your Ira forgets this Mac at once, and the app deletes its key, settings and logs here. Your files are not touched. Then drag Ira from Applications to the Bin.")
-        }
 
     }
 

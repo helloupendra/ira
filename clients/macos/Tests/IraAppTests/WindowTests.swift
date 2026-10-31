@@ -86,6 +86,11 @@ struct WindowTests {
         }
     }
 
+    @Test func theMenuBarIconOffersOnlyOpenAndQuit() {
+        let menu = AppDelegate.statusMenu(hotKey: "⌥Space", target: NSObject())
+        #expect(menu.items.filter { !$0.isSeparatorItem }.map(\.title) == ["Open Ira  (⌥Space)", "Quit Ira"])
+    }
+
     @Test func thePartShownIsKeptForTheNextLaunch() {
         let key = "windowPane"
         let before = UserDefaults.standard.object(forKey: key)

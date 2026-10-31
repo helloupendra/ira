@@ -1,8 +1,8 @@
 # Ira for Mac
 
-**Ira for Mac** is a small app that lives in your menu bar. Press
-**Option-Space** anywhere, and a window opens where you can type to Ira or
-press the mic and talk. Ira can then use what your Mac can do, for you, when
+**Ira for Mac** is an app with its own window, in the Dock like any other.
+Press **Option-Space** anywhere and its window comes forward, ready for you
+to type to Ira or press the mic and talk. Ira can then use what your Mac can do, for you, when
 you ask: find a file and read it to you, read the window in front of you in
 any app, look up who a number belongs to, check your calendar, draft an
 email, send an iMessage, run one of your Shortcuts, or start a coding task:
@@ -42,8 +42,8 @@ somewhere: on this Mac, on a server, or one your family or team shares (see
       **System Settings → Privacy & Security**, scroll down to the message
       about Ira, and choose **Open Anyway**.
 
-    After that, Ira opens like any other app. A small mark of four bars
-    appears in the menu bar.
+    After that, Ira opens like any other app: its window, its icon in the
+    Dock, and a small mark of four bars in the menu bar.
 
 ## Pair it with your Ira
 
@@ -57,9 +57,9 @@ Pairing tells this Mac which Ira is yours, once.
    them on later on the Mac's card. Type your PIN and press **Make a pairing
    code**.
 3. Press **Copy the pairing link**.
-4. On the Mac, press **Option-Space** (or click the four bars in the menu bar
-   and choose **Open Ira**). Ira shows **Pair this Mac with your Ira** and
-   usually fills in the link it finds on your clipboard. Press **Pair**.
+4. On the Mac, open Ira (or press **Option-Space**). Its window shows **Pair
+   this Mac with your Ira** and usually fills in the link it finds on your
+   clipboard. Press **Pair**.
 
     You can also type the code (`ABCD-EFGH`) and your Ira's address.
 
@@ -115,9 +115,32 @@ You can change any of these in **System Settings → Privacy & Security**.
     Ira yourself, a signing identity made once keeps the permissions: see
     [building from source](#for-developers-building-from-source).
 
+## The window
+
+On the left, the sidebar: **Chat**, **Drop**, **This Mac** and **Settings**,
+and under **Today** the conversations you had today (here, in the web app or
+on your phone): click one to carry on with it.
+
+- **Chat** is the conversation, full size, with the Ask field and the mic at
+  the bottom. **New conversation** and **What I read** are at the top.
+- **Drop** lists everything in your Drop (see [Drop](#drop-send-anything-to-your-other-devices)).
+- **This Mac** says which Ira this Mac is paired with and as which device,
+  whether it is connected, which skills your Ira has on for it, and each
+  macOS permission, with a button to fix any that is off.
+- **Settings** changes the shortcut, "Hey Ira", whether typed answers are
+  spoken too, starting at login, Touch ID, and which folders Ira may use; at
+  the bottom are **Show Logs** and **Remove Ira from this Mac…**.
+
+Closing the window leaves Ira running: this Mac stays connected, so Ira can
+still use it from your phone or the web, and Drop keeps arriving. Click Ira
+in the Dock, press Option-Space or click the four bars in the menu bar to
+bring the window back. **Quit Ira** (Cmd-Q, the Dock's menu, or the four
+bars' right-click menu) stops it. The four bars are a shortcut only: a click
+opens the window, and a right-click offers **Open Ira** and **Quit Ira**.
+
 ## Talk to Ira
 
-- **Type** in the window and press Return.
+- **Type** in Chat and press Return.
 - **Talk:** press the green mic. Speak normally; Ira answers when you stop,
   and you can speak again without pressing anything. Start speaking while
   Ira talks and she stops at once and listens. Press the mic again to stop
@@ -134,10 +157,11 @@ You can change any of these in **System Settings → Privacy & Security**.
   with nothing, "No answer yet" with **Try again**. Every problem shows in
   the window with what to do next. The dot next to Ira's name says, when you
   point at it, whether this Mac is connected.
-- **The window** hides when you click another app, and comes back with
-  Option-Space; a question still running carries on, and its answer arrives
-  as a notification. Press the **pin** to keep it on top while you work in
-  other apps. Esc closes it. It remembers where you put it and its size.
+- **Option-Space** from any app brings the window forward on Chat, ready to
+  type; pressed again while Ira is in front, it hides Ira. "What is on my
+  screen?" still reads the window you were in before, not Ira's. A question
+  carries on while you work elsewhere, and its answer arrives as a
+  notification. The window remembers where you put it and its size.
 - **Copy and paste** work as everywhere (Cmd-C, Cmd-V, Cmd-X, Cmd-A, Cmd-Z),
   and you can select and copy any answer.
 
@@ -147,9 +171,9 @@ either way: no email or password. When live voice fails to start, Ira carries
 on over the ordinary voice and tries live again the next time you press the
 mic, and when this Mac reconnects to your Ira.
 
-**Settings…** (in the menu-bar menu, or the **⋯** button) changes the
-shortcut, "Hey Ira", whether typed answers are spoken too, starting at
-login, and which folders Ira may use, and shows each permission.
+**Settings** (in the sidebar, or Cmd-comma) changes the shortcut, "Hey Ira",
+whether typed answers are spoken too, starting at login, and which folders
+Ira may use; **This Mac** shows each permission.
 
 ## "Hey Ira"
 
@@ -157,7 +181,7 @@ Off until you switch it on in **Settings**. Then the Mac listens for "Hey
 Ira" (or the wake phrase you chose under **Your assistant**) by itself, with
 macOS's speech recognition on this Mac: no sound and no words leave the Mac
 until it hears the phrase. Then the window opens and Ira listens as if you
-had pressed the mic. The menu-bar mark shows a dot while it listens. It
+had pressed the mic. The four bars in the menu bar show a dot while it listens. It
 needs the Microphone and Speech Recognition permissions, and English speech
 recognition on the Mac (Siri and Dictation languages, downloaded).
 
@@ -173,14 +197,17 @@ learns](../learning.md).
 ## Drop: send anything to your other devices
 
 Drop is your own inbox, shared by your devices (see
-[Privacy](../privacy.md#drop)). In the menu-bar menu, **Drop** lists the
-newest five; each has **Copy** first for text and links (and **Open
-Link**), and **Save to Downloads/Ira and Show** for a file.
+[Privacy](../privacy.md#drop)). **Drop** in the window's sidebar lists every
+item, newest first under Today, Yesterday and older dates, each with where it
+came from, when and how big: **Copy** for text and links (and **Open** for a
+link), **Save** to `~/Downloads/Ira` and then **Show in Finder** for a file,
+and **Delete** (from all your devices, after asking).
 
-- **Drag** files, a link or text onto Ira's menu-bar icon to send them.
+- **Drag** files, a link or text onto the Drop pane, or onto the four bars in
+  the menu bar, to send them. **Send Clipboard** and **Send Files…** are at
+  the top of the pane.
 - **⌃⌥⌘V** sends the clipboard (text, or files copied in the Finder);
-  **⌃⌥⌘C** copies the newest item. Both are in the menu too, with **Send
-  Files to Drop…**.
+  **⌃⌥⌘C** copies the newest item.
 - Text from another device comes as a notification with **Copy**. A file
   comes as a notification with **Save**, and nothing is written to disk
   until you click it (or the notification). Then it goes to
@@ -242,8 +269,8 @@ and mouse:
   your PIN opens an **approval** for this Mac (15 minutes unless you chose
   otherwise on **Your assistant**): the next steps of the task run without
   asking. Meanwhile Ira's window shows "Ira can control this Mac for 12 more
-  minutes" with **Stop**, the menu-bar mark turns orange, and its menu has
-  **Stop It Now**. Sending, paying, deleting, pushing and new grants still
+  minutes" with **Stop** (in Chat, and on **This Mac**), and the four bars in
+  the menu bar turn orange. Sending, paying, deleting, pushing and new grants still
   ask every time ([Security](../security.md#approvals-fewer-pins-for-one-task)).
 - **Touch ID instead of the PIN.** In **Settings → Using this Mac for you**,
   type your PIN once and press **Set Up Touch ID**: Ira makes a key in this
@@ -318,8 +345,8 @@ What Ira reads goes to your own Ira server, marked as data that can never
 give Ira orders, and is kept only in that conversation (see
 [Privacy](../privacy.md)).
 
-**What I read** (the list button at the top of the window, and the
-menu-bar menu) shows the last things Ira used on this Mac: what it did and
+**What I read** (the list button at the top of Chat, and on **This Mac**)
+shows the last things Ira used on this Mac: what it did and
 on which file or window, never what was in them. The app's own log, in
 `~/Library/Logs/Ira/`, holds only tool names, timings and outcomes.
 
@@ -376,7 +403,7 @@ the request in but do not send it: you press Return.
 
 ## Remove Ira from this Mac
 
-Choose **Remove Ira from this Mac…** in the menu-bar menu (or **Settings**).
+Choose **Remove Ira from this Mac…** at the bottom of **Settings**, and confirm.
 Your Ira forgets this Mac at once (its key stops working), and the app
 deletes its key, settings, logs and login item here, and the old companion
 if it is still around; your files are not touched. Then drag Ira from
@@ -453,9 +480,9 @@ SDKs make a macro whose plugin ships with Xcode only.
 | `Sources/IraKit/Device/` | pairing (`POST /v1/devices/pair`, as the Python companion's `exchange()`), the device WebSocket's frames, and the client that holds it: hello, calls, ping and pong, 90-second silence, reconnect with backoff, `bye` when removed |
 | `Sources/IraKit/Tools/` | `ToolCatalog` (every tool's JSON Schema, skill and tier) and `Toolbox` (calls and "What I read"); the path policy and its deny list; Spotlight; PDF, Word, RTF and text reading; ScreenCaptureKit and Vision; Contacts; EventKit; Mail, Notes and Messages through fixed AppleScripts that take the model's words only as arguments; apps, the clipboard and Shortcuts; coding tasks and the push guard |
 | `Sources/IraKit/Voice/`, `Talk/` | `VoiceTransport`: live voice over `/v1/voice/live` ([Real-time voice](../realtime.md), protocol 1) with the device token, or the HTTP API with the same token (tried again on the next mic press); the energy voice detector; sentence splitting |
-| `Sources/Ira/` | the app: menu bar, the global hotkey (Carbon, so no Accessibility permission), the floating window, microphone and speaker on one `AVAudioEngine` with echo cancellation |
+| `Sources/Ira/` | the app: its window (a SwiftUI sidebar with Chat, Drop, This Mac and Settings), the menu bar and the four-bar icon, the global hotkey (Carbon, so no Accessibility permission), microphone and speaker on one `AVAudioEngine` with echo cancellation. `IRA_SNAPSHOT=<folder>` draws the window into PNGs without showing it, for docs and reviews |
 | `Tests/IraKitTests/` | pairing against a URLProtocol stub, device and live-voice frames against a fake WebSocket, the deny list, a tiny `.docx` fixture, a PDF drawn in the test, tool schemas and deadlines, the browser scripts, the routine readings, taking over the companion, the wake phrase, and the voice detector on synthetic audio. No test opens a network connection |
-| `Tests/IraAppTests/` | the window: Cmd-V pastes into the Ask field (with the pasteboard put back after), the editing keys, and letting go of the keyboard. They need a desktop session |
+| `Tests/IraAppTests/` | the window and menus: the standard menu bar, Cmd-V reaching the Ask field through the Edit menu (with the pasteboard put back after), the four bars' menu holding only Open and Quit, and the pane kept for the next launch |
 
 The tools the app offers (30 with coding tasks set up, the server's most per
 device):

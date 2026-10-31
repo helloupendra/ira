@@ -31,7 +31,14 @@ enum Snapshot {
                 save(main.window, to: folder.appendingPathComponent("\(pane.rawValue)-\(dark ? "dark" : "light").png"))
             }
         }
+        // A new conversation: what an empty Chat says.
+        model.conversation.clear()
         main.state.selection = .pane(.chat)
+        for dark in [false, true] {
+            main.window.appearance = NSAppearance(named: dark ? .darkAqua : .aqua)
+            wait(1)
+            save(main.window, to: folder.appendingPathComponent("chat-new-\(dark ? "dark" : "light").png"))
+        }
         main.window.appearance = nil
         main.window.performClose(nil)
         wait(1)

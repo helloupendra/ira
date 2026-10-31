@@ -8,6 +8,15 @@ Anyone can now run Ira as their own assistant, on their own server or as one
 person on a shared one. Everything below is per person and off until they
 switch it on.
 
+- **Ira for Mac is an app with its own window.** In the Dock and Cmd-Tab, with
+  a standard menu bar, one window with a sidebar: Chat full size with today's
+  conversations to switch between, Drop with every item and what can be done
+  with it, This Mac (the pairing, the connection, the skills on and each
+  permission with a fix), and Settings. Option-Space and "Hey Ira" bring it
+  forward on Chat. Closing it leaves Ira running; the Dock icon brings it
+  back. The menu-bar icon is a shortcut only (Open Ira, Quit Ira), and the
+  floating panel is gone.
+
 - **The cost log counts every attempt.** One row per attempt at a model,
   however it ends (answered, failed, timed out or cut off), grouped by
   request; a cost that is not known is "unknown", never $0.00; and input
@@ -30,10 +39,11 @@ switch it on.
   the other devices, and Share → Ira once the app is installed on Android
   (shown first, sent only on Send to Drop). On Android: a Drop screen,
   Share → Ira Drop with a confirm and progress, a Send clipboard tile, and a
-  notification with Copy while Ira is open. On the Mac: the newest items in
-  the menu-bar menu, files and text dragged onto the icon, ⌃⌥⌘V to send the
-  clipboard and ⌃⌥⌘C to copy the newest item, a notification with Copy, and
-  a file offered with Save, written to ~/Downloads/Ira only when chosen. Ira for Mac now refuses a tool whose skill
+  notification with Copy while Ira is open. On the Mac: every item in the
+  window's Drop pane, files and text dragged onto it or the menu-bar icon,
+  ⌃⌥⌘V to send the clipboard and ⌃⌥⌘C to copy the newest item, a
+  notification with Copy, and a file offered with Save, written to
+  ~/Downloads/Ira only when chosen. Ira for Mac now refuses a tool whose skill
   is off for it, whatever the server asks, and `~/LIBRARY` like `~/Library`.
   On the iPhone: a Drop screen with Copy first, files fetched then saved or
   opened through the share sheet, Share → Ira Drop from any app (shown

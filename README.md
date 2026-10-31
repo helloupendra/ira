@@ -174,7 +174,7 @@ Ira:  Chrome has 3 tabs: Inbox, Upload - Example Drive, Build #812.
 - **Devices** pair with a one-time code or QR code, hold one WebSocket each,
   and offer tools only to their own person, only with the skills they
   switched on (with their PIN). See [Devices](docs/devices.md).
-- **Ira for Mac**, a menu-bar app (Option-Space), pairs in the app, keeps its
+- **Ira for Mac**, an app with its own window (Option-Space brings it forward), pairs in the app, keeps its
   key in the Keychain, talks by voice or text, and offers files, the screen,
   browser tabs, contacts, calendar, reminders, mail, notes, messages, apps,
   Shortcuts and coding tasks, each behind a skill and a tier. See [Ira for
