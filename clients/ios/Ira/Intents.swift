@@ -1,5 +1,6 @@
 import AppIntents
 import IraPhoneKit
+import UIKit
 
 /// "Hey Siri, Ask Ira": Siri asks what you want to ask, sends it to your Ira with
 /// this iPhone's own key, and says the answer. No Shortcut to build.
@@ -78,7 +79,8 @@ struct IraIntentError: Error, CustomLocalizedStringResourceConvertible {
 
 /// Asking for Siri: the same conversation as the app (so "usko call karo" knows
 /// who), with this iPhone's key. A Tier 2 proposal is read back and Siri asks
-/// yes or no; a Tier 3 one needs the PIN, typed in the app, never spoken.
+/// yes or no, only while the iPhone is unlocked; a Tier 3 one needs the PIN,
+/// typed in the app, never spoken.
 enum SiriAsk {
     /// Ask, and when Ira proposes a Tier 2 action, let Siri ask yes or no
     /// (`confirm` throws for a no). Returns what Siri says.
@@ -89,6 +91,11 @@ enum SiriAsk {
         }
         switch card.need {
         case .yes:
+            // Siri answers on a locked iPhone too, so a yes there could be anyone's.
+            guard await unlocked() else {
+                _ = try? await client.cancel(actionID: card.id)
+                return "\(card.summary). Unlock your iPhone, then ask again. Nothing was done."
+            }
             do {
                 try await confirm(card.summary)
             } catch {
@@ -107,6 +114,12 @@ enum SiriAsk {
         case .settled:
             return answer.text
         }
+    }
+
+    /// Whether the iPhone is unlocked: files it protects can be read only then (and always,
+    /// when it has no passcode).
+    @MainActor static func unlocked() -> Bool {
+        UIApplication.shared.isProtectedDataAvailable
     }
 
     static func ask(_ text: String) async throws -> (AskClient, Answer) {

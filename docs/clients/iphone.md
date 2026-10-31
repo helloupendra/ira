@@ -30,6 +30,11 @@ You need iOS 17 or later, and your own Ira at an `https://` address.
       link (**Paste** asks nothing), or type the code (`ABCD-EFGH`) and your
       Ira's address.
 
+A pairing link opened from the Camera, Safari or any other app pairs nothing
+by itself: Ira first shows the address it would pair with (and the Ira this
+iPhone is paired with now, which it would forget here), and pairs only when
+you tap **Pair**. Pair only with a code you just made on your own Ira.
+
 The code works once, within 10 minutes. The iPhone gets its own key, which
 stays in its Keychain: readable only on this iPhone, after it has been
 unlocked once since it started, never synced through iCloud and never in a
@@ -114,7 +119,9 @@ this iPhone's own key, so they are the same Ira, in the same conversation:
 
 They also appear in the **Shortcuts** app and in Spotlight. When Ira
 proposes something that needs your yes, Siri reads it back and asks; say
-"yes" or "no". Something that needs your PIN cannot be done through Siri:
+"yes" or "no". Siri asks only while the iPhone is unlocked: on a locked
+iPhone, where anyone could answer, it says so and nothing is done; unlock
+it and ask again. Something that needs your PIN cannot be done through Siri:
 open Ira and type it there, within two minutes. Through Siri, Ira can use the
 iPhone's own tools only while the app is open on the iPhone (see below).
 
