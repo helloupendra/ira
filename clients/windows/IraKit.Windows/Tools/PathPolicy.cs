@@ -68,6 +68,19 @@ public sealed class PathPolicy
         new(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile));
 
     /// <summary>
+    /// The rules for the folders chosen in Settings: folders inside the user's folder narrow Ira
+    /// to them, and folders elsewhere (another drive, say) are added. None: the user's folder.
+    /// </summary>
+    public static PathPolicy ForFolders(string home, IEnumerable<string> folders)
+    {
+        var start = new PathPolicy(home);
+        var full = folders.Select(start.Expand).OfType<string>().Select(Resolve).ToList();
+        return new PathPolicy(home,
+            only: full.Where(f => IsInside(f, start.Home)),
+            extra: full.Where(f => !IsInside(f, start.Home)));
+    }
+
+    /// <summary>
     /// <c>~</c>, <c>~\x</c> or a full path (<c>C:\x</c>) as a full path; null for anything
     /// relative, on the network or otherwise odd.
     /// </summary>

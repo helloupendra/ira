@@ -40,6 +40,7 @@
                         <MenuFlyoutItem Text="New conversation" Click="OnNewConversation" />
                         <MenuFlyoutItem Text="Pair again…" Click="OnPairAgain" />
                         <MenuFlyoutItem x:Name="ForgetItem" Text="Forget this pairing…" Click="OnForget" />
+                        <MenuFlyoutItem Text="Settings and What I read…" Click="OnSettings" />
                         <MenuFlyoutSeparator />
                         <MenuFlyoutItem Text="Quit Ira" Click="OnQuit" />
                     </MenuFlyout>

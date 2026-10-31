@@ -9,7 +9,7 @@ namespace Ira;
 
 /// <summary>
 /// Ira for Windows lives in the tray: no window at start (except the first time, to pair),
-/// the panel on Ctrl+Alt+Space or a click on the tray icon.
+/// the panel on its shortcut (Ctrl+Alt+Space unless changed in Settings) or a click on the tray icon.
 /// </summary>
 public partial class App : Application
 {
@@ -17,6 +17,7 @@ public partial class App : Application
     private TaskbarIcon? _tray;
     private Notifier? _notes;
     private DropBox? _drop;
+    private SettingsWindow? _settings;
     private readonly Inbox _inbox = new();
     private Mutex? _onlyOne;
 
@@ -44,6 +45,9 @@ public partial class App : Application
         _notes = new Notifier(_tray, ui);
         _drop = new DropBox(Controller, _notes);
         _panel = new PanelWindow(Controller, _drop, Quit);
+        _panel.SettingsRequested += () => OpenSettings();
+        _tray.ToolTipText = $"Ira ({_panel.Shortcut.Name})";
+        StartAtLogin.Refresh();
         Controller.EventReceived += e => _notes.Show(e.Title, e.Text);
         _inbox.Received += message =>
         {
@@ -56,7 +60,8 @@ public partial class App : Application
         Controller.Start(ui);
         if (!_panel.HotkeyRegistered)
         {
-            _notes.Show("Ctrl+Alt+Space is taken", "Another app uses that shortcut. Open Ira from its icon in the tray.");
+            _notes.Show($"{_panel.Shortcut.Name} is taken", "Another app uses that shortcut. Open Ira from its icon in the tray, "
+                + "or choose another shortcut in Settings.");
         }
         if (!_panel.DropHotkeysRegistered)
         {
@@ -75,12 +80,14 @@ public partial class App : Application
         menu.Items.Add(Item("Copy latest from Drop (Ctrl+Alt+Shift+C)", () => Paired(() => _ = _drop!.CopyLatestAsync())));
         menu.Items.Add(Item(@"Open Downloads\Ira", DropBox.OpenFolder));
         menu.Items.Add(new MenuFlyoutSeparator());
+        menu.Items.Add(Item("What I read…", () => OpenSettings(reads: true)));
+        menu.Items.Add(Item("Settings…", () => OpenSettings()));
         menu.Items.Add(Item("Pair again…", () => _panel!.ShowPairAgain()));
         menu.Items.Add(Item("Quit Ira", Quit));
 
         var tray = new TaskbarIcon
         {
-            ToolTipText = "Ira (Ctrl+Alt+Space)",
+            ToolTipText = "Ira",
             IconSource = new GeneratedIconSource
             {
                 Text = "I",
@@ -96,6 +103,18 @@ public partial class App : Application
         };
         tray.ForceCreate();
         return tray;
+    }
+
+    /// <summary>One Settings window at a time: opening it again brings it to the front.</summary>
+    private void OpenSettings(bool reads = false)
+    {
+        if (_settings is null)
+        {
+            _settings = new SettingsWindow(Controller, _panel!, shortcut => _tray!.ToolTipText = $"Ira ({shortcut.Name})");
+            _settings.Closed += (_, _) => _settings = null;
+        }
+        if (reads) _settings.ShowReads();
+        _settings.Activate();
     }
 
     /// <summary>Runs a Drop action, or opens the pairing page when there is nothing to send with.</summary>
@@ -114,6 +133,7 @@ public partial class App : Application
         _inbox.Dispose();
         _notes?.Dispose();
         _tray?.Dispose();
+        _settings?.Close();
         _panel?.Shutdown();
         _onlyOne?.ReleaseMutex();
         Exit();

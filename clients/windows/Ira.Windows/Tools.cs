@@ -9,5 +9,10 @@ namespace Ira;
 /// </summary>
 internal static class Tools
 {
-    public static Toolbox Create() => PcTools.Create(ForegroundTracker.TargetWindow);
+    public static Toolbox Create(Func<PathPolicy> policy, ReadLog log)
+    {
+        var tools = PcTools.Create(ForegroundTracker.TargetWindow, policy);
+        tools.Log = log;
+        return tools;
+    }
 }
