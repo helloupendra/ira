@@ -50,7 +50,14 @@ jobs:
         with:
           python-version: "3.12"
       - run: pip install -e ".[dev,aws,ogg,connectors]"
-      - run: pytest
+      # Failed tests also as annotations, so they show on the run's page.
+      - shell: bash
+        run: |
+          set -o pipefail
+          pytest -rfE 2>&1 | tee pytest.log || {
+            grep -E "^(FAILED|ERROR) " pytest.log | sed 's/^/::error::/'
+            exit 1
+          }
 
   frontend:
     runs-on: ubuntu-latest
