@@ -8,46 +8,34 @@ struct SetupView: View {
     @State private var pairing = false
 
     var body: some View {
-        List {
-            Section {
-                Text("Ira for iPhone talks to your own Ira. Do these once; only Pair and Microphone are needed to talk.")
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
-            }
-            if let notice = model.notice {
-                Section {
-                    Label(notice, systemImage: "exclamationmark.triangle")
-                        .foregroundStyle(.orange)
-                        .accessibilityIdentifier("notice")
-                }
-            }
-            Section("Get Ira ready") {
-                ForEach(model.rows) { row in
-                    ChecklistRowView(row: row) { act(on: row) }
-                }
-            }
-            Section {
-            } footer: {
-                Text("You can allow the rest later: Settings, Get Ira ready. iOS lets no app read your calls, SMS or other apps' notifications, so Ira for iPhone never asks for them.")
-            }
+        ScrollView {
+            SetupContent(
+                rows: model.rows, notice: model.notice,
+                act: { act(on: $0) })
         }
+        .background(Presence.bg.ignoresSafeArea())
         .safeAreaInset(edge: .bottom) {
             Button {
                 model.finishSetup()
             } label: {
                 Text(model.ready ? "Start talking to \(model.assistantName)" : "Pair and allow the microphone first")
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundStyle(model.ready ? Color.white : Presence.muted)
                     .frame(maxWidth: .infinity)
-                    .padding(.vertical, 4)
+                    .padding(.vertical, 15)
+                    .background(Capsule().fill(model.ready ? Presence.greenDeep : Presence.card))
+                    .overlay(Capsule().strokeBorder(model.ready ? Color.clear : Presence.line, lineWidth: 1))
             }
-            .buttonStyle(.borderedProminent)
+            .buttonStyle(.plain)
             .disabled(!model.ready)
             .accessibilityIdentifier("start")
-            .padding()
-            .background(.bar)
+            .padding(.horizontal, 20)
+            .padding(.vertical, 12)
+            .background(Presence.bg.opacity(0.96))
         }
-        .scrollContentBackground(.hidden)
-        .background(Presence.bg)
         .navigationTitle("Get Ira ready")
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbarBackground(Presence.bg, for: .navigationBar)
         .sheet(isPresented: $pairing) { PairView() }
     }
 
@@ -61,6 +49,55 @@ struct SetupView: View {
     }
 }
 
+/// The page itself, from plain values: the lens and a line on what this is, then the
+/// checklist in one card.
+struct SetupContent: View {
+    let rows: [ChecklistRow]
+    var notice: String?
+    var act: (ChecklistRow) -> Void = { _ in }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 18) {
+            HStack(spacing: 14) {
+                Lens(size: 52, breathing: true)
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Get Ira ready").font(Presence.serif(26)).foregroundStyle(Presence.ink)
+                    Text("Once. Only Pair and Microphone are needed to talk.")
+                        .font(Presence.secondary)
+                        .foregroundStyle(Presence.muted)
+                }
+            }
+            .padding(.top, 8)
+            if let notice {
+                Text(notice)
+                    .font(Presence.secondary)
+                    .foregroundStyle(Presence.ink)
+                    .padding(12)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(RoundedRectangle(cornerRadius: 14).fill(Presence.warn.opacity(0.08)))
+                    .overlay(RoundedRectangle(cornerRadius: 14).strokeBorder(Presence.warn.opacity(0.45), lineWidth: 1))
+                    .accessibilityIdentifier("notice")
+            }
+            VStack(spacing: 0) {
+                ForEach(Array(rows.enumerated()), id: \.element.id) { index, row in
+                    if index > 0 {
+                        Rectangle().fill(Presence.line).frame(height: 1).padding(.leading, 54)
+                    }
+                    ChecklistRowView(row: row) { act(row) }
+                }
+            }
+            .background(RoundedRectangle(cornerRadius: 18).fill(Presence.card))
+            .overlay(RoundedRectangle(cornerRadius: 18).strokeBorder(Presence.line, lineWidth: 1))
+            Text("You can allow the rest later: Settings, Get Ira ready. iOS lets no app read your calls, SMS or other apps' notifications, so Ira for iPhone never asks for them.")
+                .font(.system(size: 12))
+                .foregroundStyle(Presence.muted)
+                .padding(.horizontal, 4)
+        }
+        .padding(.horizontal, 20)
+        .padding(.bottom, 20)
+    }
+}
+
 struct ChecklistRowView: View {
     let row: ChecklistRow
     let act: () -> Void
@@ -68,37 +105,43 @@ struct ChecklistRowView: View {
     var body: some View {
         HStack(alignment: .top, spacing: 12) {
             Image(systemName: icon)
+                .font(.system(size: 18, weight: .medium))
                 .foregroundStyle(color)
-                .font(.title3)
-                .frame(width: 28)
+                .frame(width: 26, height: 26)
             VStack(alignment: .leading, spacing: 4) {
-                Text(row.title + (row.required ? "" : " (optional)"))
-                    .font(.headline)
+                HStack(spacing: 6) {
+                    Text(row.title).font(.system(size: 15, weight: .semibold)).foregroundStyle(Presence.ink)
+                    if !row.required {
+                        Text("optional").font(.system(size: 11)).foregroundStyle(Presence.faint)
+                    }
+                }
                 Text(row.reason)
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
+                    .font(.system(size: 13))
+                    .foregroundStyle(Presence.muted)
+                    .fixedSize(horizontal: false, vertical: true)
                 if case .openSettings(let why) = row.action {
-                    Text(why).font(.footnote).foregroundStyle(.orange)
+                    Text(why).font(.system(size: 12)).foregroundStyle(Presence.warn)
                 }
                 if case .unavailable(let why) = row.action {
-                    Text(why).font(.footnote).foregroundStyle(.secondary)
+                    Text(why).font(.system(size: 12)).foregroundStyle(Presence.muted)
                 }
             }
             Spacer(minLength: 8)
             if let title = buttonTitle {
                 Button(title, action: act)
-                    .buttonStyle(.bordered)
+                    .buttonStyle(CompactPill(filled: row.required))
                     .accessibilityIdentifier("\(row.id)-action")
             }
         }
-        .padding(.vertical, 4)
+        .padding(.horizontal, 14)
+        .padding(.vertical, 14)
     }
 
     private var buttonTitle: String? {
         switch row.action {
         case .pair: return "Pair"
         case .allow: return "Allow"
-        case .openSettings: return "Open Settings"
+        case .openSettings: return "Settings"
         case .done, .unavailable: return nil
         }
     }
@@ -114,10 +157,26 @@ struct ChecklistRowView: View {
 
     private var color: Color {
         switch row.action {
-        case .done: return .green
-        case .openSettings: return .orange
-        default: return .secondary
+        case .done: return Presence.green
+        case .openSettings: return Presence.warn
+        default: return Presence.faint
         }
+    }
+}
+
+/// A small pill for a row's button ("Pair", "Allow").
+struct CompactPill: ButtonStyle {
+    var filled = false
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .font(.system(size: 13, weight: .semibold))
+            .foregroundStyle(filled ? Color.white : Presence.ink)
+            .padding(.horizontal, 14)
+            .padding(.vertical, 7)
+            .background(Capsule().fill(filled ? Presence.greenDeep : Presence.raised))
+            .overlay(Capsule().strokeBorder(filled ? Color.clear : Presence.line, lineWidth: 1))
+            .opacity(configuration.isPressed ? 0.75 : 1)
     }
 }
 
@@ -162,7 +221,7 @@ struct PairView: View {
                 if let problem {
                     Section {
                         Label(problem, systemImage: "exclamationmark.triangle")
-                            .foregroundStyle(.red)
+                            .foregroundStyle(Presence.down)
                             .accessibilityIdentifier("pair-problem")
                     }
                 }

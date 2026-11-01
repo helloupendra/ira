@@ -18,9 +18,11 @@ struct DropView: View {
         List {
             Section {
                 TextField("Text or a link", text: $text, axis: .vertical)
+                    .font(Presence.body)
                     .lineLimit(1...6)
                     .accessibilityIdentifier("drop-text")
-                HStack {
+                    .listRowBackground(Presence.card)
+                HStack(spacing: 8) {
                     Button("Send") {
                         sendingText = true
                         Task {
@@ -28,17 +30,22 @@ struct DropView: View {
                             sendingText = false
                         }
                     }
+                    .buttonStyle(CompactPill(filled: true))
                     .disabled(sendingText || text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                     Spacer()
                     Button("Paste") { if let pasted = UIPasteboard.general.string { text = pasted } }
+                        .buttonStyle(CompactPill())
                     Button("Files") { importing = true }
+                        .buttonStyle(CompactPill())
                 }
-                .buttonStyle(.borderless)
+                .listRowBackground(Presence.card)
+            } header: {
+                DotLabel(text: "Send to all your devices")
             } footer: {
                 Text("It shows up on all your devices at once, and stays 30 days. You can also share to Ira from any app.")
             }
             if let problem = drop.problem {
-                Section { Text(problem).foregroundStyle(.red) }
+                Section { Text(problem).foregroundStyle(Presence.down).listRowBackground(Presence.card) }
             }
             if !drop.sending.isEmpty {
                 Section("Sending") {
@@ -47,25 +54,34 @@ struct DropView: View {
                             Text(row.name).lineLimit(1)
                             Spacer()
                             if let problem = row.problem {
-                                Text(problem).font(.caption).foregroundStyle(.red)
+                                Text(problem).font(.caption).foregroundStyle(Presence.down)
                             } else {
                                 ProgressView()
                             }
                         }
+                        .listRowBackground(Presence.card)
                     }
                 }
             }
             Section {
                 if drop.items.isEmpty {
                     Text("Nothing here yet. What you send from any of your devices shows up here.")
-                        .foregroundStyle(.secondary)
+                        .font(Presence.secondary)
+                        .foregroundStyle(Presence.muted)
+                        .listRowBackground(Presence.card)
                 }
-                ForEach(drop.items) { item in DropRow(item: item) }
+                ForEach(drop.items) { item in
+                    DropRow(item: item).listRowBackground(Presence.card)
+                }
                 if drop.hasMore {
                     Button("Show older") { Task { await drop.loadOlder() } }
+                        .listRowBackground(Presence.card)
                 }
+            } header: {
+                DotLabel(text: "Newest first")
             }
         }
+        .listRowSeparatorTint(Presence.line)
         .scrollContentBackground(.hidden)
         .background(Presence.bg)
         .navigationTitle("Drop")
@@ -89,24 +105,31 @@ private struct DropRow: View {
     @State private var fetching = false
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                DotLabel(text: item.isFile ? "File" : item.link != nil ? "Link" : "Text")
+                Spacer()
+                Text("From \(item.fromLabel.isEmpty ? "a device" : item.fromLabel)")
+                    .font(.system(size: 12))
+                    .foregroundStyle(Presence.muted)
+            }
             if item.isFile {
                 HStack {
-                    Text(Drop.safeName(item.name)).bold().lineLimit(2)
+                    Text(Drop.safeName(item.name)).font(.system(size: 15, weight: .semibold)).foregroundStyle(Presence.ink).lineLimit(2)
                     Spacer()
-                    Text(Drop.size(item.size ?? 0)).font(.caption).foregroundStyle(.secondary)
+                    Text(Drop.size(item.size ?? 0)).font(Presence.mono).foregroundStyle(Presence.muted)
                 }
-                if let caption = item.text, !caption.isEmpty { Text(caption).lineLimit(4) }
+                if let caption = item.text, !caption.isEmpty {
+                    Text(caption).font(Presence.secondary).foregroundStyle(Presence.ink).lineLimit(4)
+                }
             } else {
-                Text(item.text ?? "").textSelection(.enabled).lineLimit(12)
+                Text(item.text ?? "").font(Presence.body).foregroundStyle(Presence.ink).textSelection(.enabled).lineLimit(12)
             }
-            Text("From \(item.fromLabel.isEmpty ? "a device" : item.fromLabel)")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-            HStack(spacing: 16) {
+            HStack(spacing: 8) {
                 if item.isFile {
                     if let saved {
                         ShareLink(item: saved) { Label("Save or open", systemImage: "square.and.arrow.up") }
+                            .buttonStyle(CompactPill(filled: true))
                     } else {
                         Button(fetching ? "Getting…" : "Get") {
                             fetching = true
@@ -115,14 +138,18 @@ private struct DropRow: View {
                                 fetching = false
                             }
                         }
+                        .buttonStyle(CompactPill(filled: true))
                         .disabled(fetching)
                     }
                 } else {
                     Button("Copy") { model.drop.copy(item) }
-                    if let link = item.link { Link("Open", destination: link) }
+                        .buttonStyle(CompactPill(filled: true))
+                    if let link = item.link {
+                        Link("Open", destination: link).buttonStyle(CompactPill())
+                    }
                 }
             }
-            .buttonStyle(.borderless)
+            .padding(.top, 2)
         }
         .swipeActions {
             Button("Delete", role: .destructive) { Task { await model.drop.delete(item) } }
