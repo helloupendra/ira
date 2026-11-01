@@ -45,7 +45,7 @@ public enum CallPhase: Equatable, Sendable {
         case .thinking: return "Working on your answer"
         case .speaking: return "Talk over Ira to stop her"
         case .micSilent:
-            return "The microphone is giving only silence. Check Settings, Ira, Microphone is on, and that no other app is recording, then tap Try again."
+            return "The microphone is giving only silence. Something may be holding it: another app, or a Mac this iPhone is plugged into (Xcode showing its screen). Check Settings, Ira, Microphone, then tap Try again."
         }
     }
 }

@@ -134,18 +134,3 @@ struct InputMixTests {
         #expect(InputProbe.describe(setup: "x", levels: [0, 0.0123]).hasSuffix("sound (0.0000, 0.0123)"))
     }
 }
-
-@Suite("Testing the microphone")
-struct MicProbeTests {
-    @Test func eachWayReadsAsSoundSilenceOrNothing() {
-        let heard = MicProbeStep(name: "Engine, record", peak: 0.21, level: 0.03, buffers: 20, note: "48000 Hz × 1 ch")
-        #expect(heard.verdict == "sound")
-        #expect(heard.line == "Engine, record: sound; peak 0.2100, level 0.0300, 20 buffers; 48000 Hz × 1 ch")
-        // Buffers of pure zeros: the input never really ran (no orange dot on the iPhone).
-        #expect(MicProbeStep(name: "Engine, voice chat", peak: 0, level: 0, buffers: 20, note: "").verdict == "silence")
-        #expect(MicProbeStep(name: "x", peak: 0, level: 0, buffers: 0, note: "").verdict == "no audio")
-        let refused = MicProbeStep(name: "Recorder", peak: nil, level: nil, buffers: 0, note: "the session refused: busy")
-        #expect(refused.verdict == "did not start")
-        #expect(refused.line == "Recorder: did not start; the session refused: busy")
-    }
-}

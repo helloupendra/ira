@@ -65,8 +65,6 @@ final class TalkController {
     @ObservationIgnored private var micWatch = MicWatch()
     @ObservationIgnored private var micTimer: Timer?
     @ObservationIgnored private var frames = 0
-    @ObservationIgnored private var triedWithoutEcho = false
-    @ObservationIgnored private var triedPlainMode = false
 
     var inCall: Bool { callState != .idle }
 
@@ -258,10 +256,9 @@ final class TalkController {
         startMicWatch()
     }
 
-    /// Every half second: has the microphone given anything at all? An iPhone gave pure zeros
-    /// in a call, so a silent microphone is tried again without voice processing, then in the
-    /// plain mode instead of voice chat; after that the call says the microphone is silent,
-    /// rather than "Listening" forever.
+    /// Every half second: has the microphone given anything at all? An iPhone cabled to a Mac
+    /// whose Xcode was showing its screen gave pure zeros in calls; the call then says the
+    /// microphone is silent, rather than "Listening" forever.
     private func startMicWatch() {
         levels.clear()
         micSilent = false
@@ -276,27 +273,10 @@ final class TalkController {
         guard inCall else { return }
         let now = monotonicMs()
         let silent = micWatch.check(now: now)
-        if silent, audio.echoCancelling, !triedWithoutEcho {
-            triedWithoutEcho = true
-            do {
-                try audio.restartWithoutEchoCancellation()
-                micWatch.start(at: now)
-                return
-            } catch {
-                IraLog.shared.info("the microphone did not start again without voice processing: \(error.localizedDescription)")
-            }
+        if silent != micSilent {
+            micSilent = silent
+            if silent { IraLog.shared.info("the microphone gives only silence: \(micReport)") }
         }
-        if silent, !AudioEngine.plainMode, !triedPlainMode {
-            triedPlainMode = true
-            do {
-                try audio.restartInPlainMode()
-                micWatch.start(at: now)
-                return
-            } catch {
-                IraLog.shared.info("the microphone did not start again in the plain mode: \(error.localizedDescription)")
-            }
-        }
-        if silent != micSilent { micSilent = silent }
     }
 
     func endCall() {

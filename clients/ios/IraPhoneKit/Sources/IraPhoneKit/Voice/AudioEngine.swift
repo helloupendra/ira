@@ -54,15 +54,10 @@ public final class AudioEngine: NSObject {
     // MARK: The audio session
 
     /// Ready the iPhone for a call: play and record, voice chat, the speaker by default.
-    /// Voice chat gave only silence on this iPhone once: the rest of this run uses the
-    /// plain mode, without the system's voice-call handling.
-    public private(set) static var plainMode = false
-
     public func activateSession() throws {
         #if os(iOS)
         let session = AVAudioSession.sharedInstance()
-        try session.setCategory(
-            .playAndRecord, mode: AudioEngine.plainMode ? .default : .voiceChat, options: [.defaultToSpeaker, .allowBluetoothHFP])
+        try session.setCategory(.playAndRecord, mode: .voiceChat, options: [.defaultToSpeaker, .allowBluetoothHFP])
         try session.setPreferredIOBufferDuration(0.02)
         try session.setActive(true)
         if !observers.isEmpty { return }
@@ -98,20 +93,15 @@ public final class AudioEngine: NSObject {
 
     // MARK: Listening
 
-    /// Voice processing's input gave nothing on this iPhone once: the rest of this run
-    /// listens without it.
-    public private(set) static var echoUnavailable = false
-
     public func startListening() throws {
         guard !listening else { return }
         let muted = AudioEngine.unmuteInput()
         let input = engine.inputNode
-        if !echoCancelling && !AudioEngine.echoUnavailable {
+        if !echoCancelling {
             do {
                 try input.setVoiceProcessingEnabled(true)
                 echoCancelling = true
             } catch {
-                AudioEngine.echoUnavailable = true
                 IraLog.shared.info("voice processing is not available here")
             }
         }
@@ -130,7 +120,7 @@ public final class AudioEngine: NSObject {
             throw ToolFailure("the microphone's audio could not be converted")
         }
         let setup = "\(Int(format.sampleRate)) Hz × \(format.channelCount) ch, echo cancellation \(echoCancelling ? "on" : "off")"
-            + (AudioEngine.plainMode ? ", plain mode" : "") + (muted ? ", was muted" : "")
+            + (muted ? ", was muted" : "")
         IraLog.shared.info("listening: \(setup)")
         chunker = FrameChunker()
         input.removeTap(onBus: 0)
@@ -146,39 +136,6 @@ public final class AudioEngine: NSObject {
             try engine.start()
         }
         listening = true
-    }
-
-    /// Listen again without voice processing: its input gave nothing (pure zeros, or no
-    /// audio at all). Echo cancellation then stays off for the rest of this run, so Ira's
-    /// own voice from the speaker may reach the microphone; the voice detector allows for it.
-    public func restartWithoutEchoCancellation() throws {
-        guard echoCancelling else { return }
-        let wasListening = listening
-        if wasListening { stopListening() }
-        engine.stop()
-        try engine.inputNode.setVoiceProcessingEnabled(false)
-        echoCancelling = false
-        AudioEngine.echoUnavailable = true
-        IraLog.shared.info("listening again without voice processing: its input gave nothing")
-        if wasListening { try startListening() }
-    }
-
-    /// Listen again in the plain mode: voice chat's input gave only silence, with voice
-    /// processing and without. No echo cancellation there either.
-    public func restartInPlainMode() throws {
-        guard !AudioEngine.plainMode else { return }
-        let wasListening = listening
-        if wasListening { stopListening() }
-        engine.stop()
-        if echoCancelling {
-            try? engine.inputNode.setVoiceProcessingEnabled(false)
-            echoCancelling = false
-            AudioEngine.echoUnavailable = true
-        }
-        AudioEngine.plainMode = true
-        IraLog.shared.info("listening again in the plain mode: voice chat's input gave only silence")
-        try activateSession()
-        if wasListening { try startListening() }
     }
 
     /// iOS keeps an input mute for each app (voice chat apps, a mute in the system's call
