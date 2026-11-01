@@ -21,7 +21,6 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.Text
@@ -82,8 +81,8 @@ fun DropScreen(app: IraApp, onBack: () -> Unit) {
         }
     }
     Column(Modifier.fillMaxSize().background(colors.bg)) {
-        DropHeader(onBack)
-        LazyColumn(Modifier.fillMaxSize().padding(horizontal = 20.dp)) {
+        ScreenHeader("Drop", onBack, subtitle = "Shared by your devices for 30 days")
+        LazyColumn(Modifier.fillMaxSize().padding(horizontal = 16.dp)) {
             // One read of the list: it can change before this screen recomposes.
             val shown = items
             val days = shown.map { Drop.day(it) }
@@ -155,17 +154,20 @@ fun DropScreen(app: IraApp, onBack: () -> Unit) {
                 val first = index == 0 || days[index] != days[index - 1]
                 if (first) {
                     item(key = "day${item.id}") {
-                        Text(days[index].uppercase(), Modifier.padding(top = 22.dp, bottom = 2.dp), style = Presence.label, color = colors.faint)
+                        Text(days[index].uppercase(), Modifier.padding(start = 4.dp, top = 24.dp, bottom = 8.dp), style = Presence.label, color = colors.muted)
                     }
                 }
+                val last = index == shown.lastIndex || days[index] != days[index + 1]
                 item(key = item.id) {
-                    if (!first) HorizontalDivider(thickness = 1.dp, color = colors.line)
-                    DropRow(app, item, onDelete = { deleting = item })
+                    Column(Modifier.groupRow(colors, first, last)) {
+                        if (!first) Hairline()
+                        DropRow(app, item, onDelete = { deleting = item })
+                    }
                 }
             }
             if (hasMore) {
                 item {
-                    Box(Modifier.padding(top = 8.dp)) { PillButton("Show older", { drop.loadOlder { message = it } }) }
+                    Box(Modifier.padding(top = 12.dp)) { PillButton("Show older", { drop.loadOlder { message = it } }) }
                 }
             }
             item { Row(Modifier.padding(bottom = 24.dp)) {} }
@@ -188,22 +190,6 @@ fun DropScreen(app: IraApp, onBack: () -> Unit) {
     }
 }
 
-@Composable
-private fun DropHeader(onBack: () -> Unit) {
-    val colors = Presence.colors
-    Row(
-        Modifier.fillMaxWidth().padding(start = 12.dp, end = 20.dp, top = 10.dp, bottom = 6.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
-    ) {
-        PillButton("Back", onBack)
-        Column {
-            Text("Drop", fontSize = 17.sp, fontWeight = FontWeight.SemiBold, color = colors.ink)
-            Text("Shared by your devices for 30 days", fontSize = 12.sp, color = colors.muted, maxLines = 1)
-        }
-    }
-}
-
 /** One item: its kind, what it is, where it came from, and its actions. */
 @Composable
 private fun DropRow(app: IraApp, item: Drop.Item, onDelete: () -> Unit) {
@@ -212,7 +198,7 @@ private fun DropRow(app: IraApp, item: Drop.Item, onDelete: () -> Unit) {
     var saved by remember(item.id) { mutableStateOf<Uri?>(null) }
     var saving by remember(item.id) { mutableStateOf(false) }
     var problem by remember(item.id) { mutableStateOf<String?>(null) }
-    Row(Modifier.fillMaxWidth().padding(vertical = 14.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+    Row(Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 14.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
         Box(Modifier.size(36.dp).presenceCard(colors, radius = 10.dp), contentAlignment = Alignment.Center) {
             Icon(painterResource(kindIcon(item)), contentDescription = null, tint = colors.green, modifier = Modifier.size(18.dp))
         }
