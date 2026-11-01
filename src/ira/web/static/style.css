@@ -924,10 +924,18 @@ legend + .skill-row,
 .chip-toggle input:focus-visible + span { box-shadow: var(--focus-ring); }
 
 /* A choice of a few, in a form: the menu's pill, its width. */
-.panel-body .segmented { justify-self: start; flex-wrap: wrap; }
+.panel-body .segmented { justify-self: start; max-width: 100%; overflow-x: auto; scrollbar-width: none; }
+.panel-body .segmented span { white-space: nowrap; }
+@media (max-width: 30rem) { .panel-body .segmented span { padding: 5px 9px; } }
 .panel-body .segmented label { display: block; }
 .save-row { align-items: center; gap: var(--s-3); }
 .save-row p { margin: 0; }
+
+/* A group that starts with a row (no legend): no rule above it. */
+.skills > .skill-row:first-child { border-top: 0; }
+.skill-note { padding: 0 0 var(--s-2); }
+/* A group that waits on a switch above it (learning's sources while learning is off). */
+.skills.is-off .skill-row { opacity: 0.55; }
 
 /* A card that is one switch (web search): its row needs no rule above. */
 .card > .skill-row:first-child { border-top: 0; padding-top: 0; }

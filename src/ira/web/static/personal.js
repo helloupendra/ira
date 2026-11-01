@@ -839,10 +839,11 @@ const IraPersonal = (() => {
   // --- what Ira knows about you ---------------------------------------------------
 
   const SOURCE_NAMES = {
-    phone: "My phone, when it says I reached or left a place I named",
-    conversation: "What I tell Ira about where I'm going",
-    feedback: "My thumbs on Ira's answers",
+    phone: "Phone places: when your phone says you reached or left a place you named",
+    conversation: "Your plans: what you tell Ira about where you're going",
+    feedback: "Your thumbs: the thumbs up or down you give Ira's answers",
   };
+  const KEEP_WORDS = { 30: "30 days", 60: "60 days", 90: "90 days", 180: "6 months", 365: "1 year" };
   const STATUS_NAMES = {
     proposed: "still checking",
     ready: "waiting for your answer",
@@ -878,31 +879,52 @@ const IraPersonal = (() => {
 
   function learningSwitches(view, body) {
     const on = el("input", { type: "checkbox", name: "on", checked: view.on });
-    const sources = view.sources.map((source) =>
-      el("label", { className: "switch" }, el("input", { type: "checkbox", name: "sources", value: source.name, checked: source.on }), el("span", { text: SOURCE_NAMES[source.name] || source.description })),
-    );
+    const boxes = view.sources.map((source) => ({ source, box: el("input", { type: "checkbox", name: "sources", value: source.name, checked: source.on }) }));
     const macs = view.macs.length
-      ? view.macs.map((mac) => el("li", { text: `${mac.label}: ${mac.on ? "its lock, sleep and network are noticed" : "off (switch its routine on under Your devices)"}` }))
-      : [el("li", { className: "muted", text: "No Mac or Windows PC paired. A computer's routine is switched on under Your devices." })];
-    const days = el("select", { name: "days" }, KEEP_DAYS.map((n) => el("option", { value: String(n), text: `${n} days` })));
-    days.value = String(view.days);
+      ? view.macs.map((mac) => `${mac.label}: ${mac.on ? "its lock, sleep and network are noticed" : "off (switch its routine on under Your devices)"}.`)
+      : ["No Mac or Windows PC paired. A computer's routine is switched on under Your devices."];
+    const from = el(
+      "fieldset",
+      { className: "stack skills" },
+      el("legend", { text: "From" }),
+      boxes.map(({ source, box }) => skillRow(box, SOURCE_NAMES[source.name] || source.description)),
+      macs.map((line) => el("p", { className: "muted small skill-note", text: line })),
+    );
+    const days = el(
+      "div",
+      { className: "segmented", role: "radiogroup", "aria-label": "Keep what it noticed for" },
+      KEEP_DAYS.map((n) => el("label", {}, el("input", { type: "radio", name: "days", value: String(n), checked: n === view.days }), el("span", { text: KEEP_WORDS[n] || `${n} days` }))),
+    );
     const nudges = el("input", { type: "checkbox", name: "nudges", checked: view.nudges });
     const pin = pinField("Your PIN, to switch something on");
     const error = el("p", { className: "error", role: "alert" });
     const saved = el("p", { className: "muted small", role: "status" });
+    const save = el("div", { className: "save-bar stack-tight", hidden: true }, pin, el("div", { className: "row save-row" }, el("button", { type: "submit", className: "btn btn-primary", text: "Save" }), saved));
     const form = el(
       "form",
-      { className: "stack card" },
-      el("p", { className: "muted small", text: "Off until you switch it on. Ira only notices what you choose here, keeps it for as long as you say, and asks you before it remembers anything." }),
-      el("label", { className: "switch" }, on, el("span", { text: "Let Ira learn my routine" })),
-      el("fieldset", { className: "stack-tight" }, el("legend", { text: "From" }), sources, el("ul", { className: "small" }, macs)),
-      el("label", {}, "Keep what it noticed for", days),
-      el("label", { className: "switch" }, nudges, el("span", { text: "Nudge me 15 minutes before a routine I approved" })),
-      pin,
-      el("button", { type: "submit", className: "btn btn-primary", text: "Save" }),
-      saved,
+      { className: "stack" },
+      el("fieldset", { className: "stack skills" }, skillRow(on, "Learn my routine: off until you switch it on. Ira only notices what you choose here, keeps it as long as you say, and asks you before it remembers anything.")),
+      from,
+      el("fieldset", { className: "stack-tight pick-field" }, el("legend", { text: "Keep what it noticed for" }), days),
+      el("fieldset", { className: "stack skills" }, skillRow(nudges, "Nudges: a reminder 15 minutes before a routine you approved.")),
+      save,
       error,
     );
+    // Save and the PIN show only once something changed; the PIN only when something is switched on.
+    const chosenDays = () => Number($("input[name=days]:checked", days).value);
+    const refresh = () => {
+      const adding = (on.checked && !view.on) || (nudges.checked && !view.nudges) || boxes.some(({ source, box }) => box.checked && !source.on) || chosenDays() > view.days;
+      const changed = on.checked !== view.on || nudges.checked !== view.nudges || chosenDays() !== view.days || boxes.some(({ source, box }) => box.checked !== source.on);
+      save.hidden = !changed;
+      pin.hidden = !adding;
+      $("input", pin).required = adding;
+      from.classList.toggle("is-off", !on.checked);
+      error.textContent = "";
+    };
+    form.addEventListener("change", (event) => {
+      if (event.target.name !== "pin") refresh();
+    });
+    refresh();
     form.addEventListener("submit", async (event) => {
       event.preventDefault();
       error.textContent = "";
@@ -912,7 +934,7 @@ const IraPersonal = (() => {
       try {
         await call("/v1/me/learning", {
           method: "PATCH",
-          json: { on: on.checked, sources: data.getAll("sources"), days: Number(data.get("days")), nudges: nudges.checked, pin: value || undefined },
+          json: { on: on.checked, sources: data.getAll("sources"), days: chosenDays(), nudges: nudges.checked, pin: value || undefined },
         });
         await renderKnows(body);
         body.prepend(el("p", { className: "note ok", role: "status", text: "Saved." }));
