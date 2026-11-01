@@ -279,7 +279,6 @@ const TOOL_PHRASES = {
   file_read: "Reading the file",
   web_search: "Searching the web",
   drop_list: "Looking in your Drop",
-  trading_desk: "Checking the trading desk",
 };
 
 function toolPhrase(name) {
