@@ -4,7 +4,7 @@ import { roleLabel, whoCan } from '../lib/roles';
 import { getTheme, setTheme, THEMES, type Theme } from '../lib/theme';
 import type { User } from '../api/endpoints';
 import { Icon, Mark } from './icons';
-import { currentNav, MORE_NAV, NAV, PRIMARY_NAV, type NavItem } from './nav';
+import { currentNav, MORE_NAV, NAV, NAV_GROUPS, PRIMARY_NAV, type NavItem } from './nav';
 import { useSession } from './Session';
 import { useToast } from './toast';
 
@@ -29,10 +29,26 @@ function NavLink({ item, active, allowed }: { item: NavItem; active: boolean; al
   );
 }
 
+// Ira's lens, its name, and that this is the console.
+function Brand() {
+  return (
+    <div className="brand">
+      <span className="brand-lens">
+        <Mark size={14} />
+      </span>
+      <span className="brand-name">Ira</span>
+      <span className="brand-tag">Console</span>
+    </div>
+  );
+}
+
 function UserBlock({ user }: { user: User | undefined }) {
   if (!user) return null;
   return (
     <div className="user">
+      <span className="avatar" aria-hidden="true">
+        {user.email.slice(0, 1).toUpperCase()}
+      </span>
       <span className="user-email" title={user.email}>
         {user.email}
       </span>
@@ -102,12 +118,14 @@ export function Layout({ children }: { children: ReactNode }) {
       </a>
 
       <aside className="rail">
-        <div className="brand">
-          <Mark />
-          <span className="brand-name">IRA</span>
-        </div>
+        <Brand />
         <nav className="rail-nav" aria-label="Console">
-          {navList(NAV)}
+          {NAV_GROUPS.map((group) => (
+            <div key={group} className="nav-group">
+              <p className="nav-group-label">{group}</p>
+              {navList(NAV.filter((item) => item.group === group))}
+            </div>
+          ))}
         </nav>
         <div className="rail-foot">
           <UserBlock user={user} />
@@ -120,8 +138,7 @@ export function Layout({ children }: { children: ReactNode }) {
       </aside>
 
       <header className="topbar">
-        <Mark />
-        <span className="brand-name">IRA</span>
+        <Brand />
       </header>
 
       <main id="main" className="main" tabIndex={-1}>
