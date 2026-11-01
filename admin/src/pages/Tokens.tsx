@@ -21,6 +21,7 @@ import { useToast } from '../ui/toast';
 import { useApi, type ApiState } from '../ui/useApi';
 import { AccountSection } from './tokens/AccountSection';
 import { Body } from './tokens/Body';
+import { groupSessions, groupSpan, type SessionGroup } from './tokens/groups';
 import { cursorAfter, type Cursor } from './tokens/paging';
 import {
   NO_PIN_NEEDED,
@@ -301,7 +302,7 @@ function TokensSection({
   const revokeButton = (token: TokenRow) => (
     <button
       type="button"
-      className="btn btn-ghost btn-small"
+      className="btn btn-small"
       disabled={!canWrite}
       title={reason}
       onClick={() => setRevoking(token)}
@@ -313,7 +314,11 @@ function TokensSection({
 
   return (
     <>
-      <div className="toolbar">
+      <div className="section-head">
+        <div>
+          <h2 className="section-title">API tokens</h2>
+          <p className="section-desc">{reason ?? 'For a phone shortcut, a script or another service. A token is shown once.'}</p>
+        </div>
         <button
           type="button"
           className="btn btn-primary btn-small"
@@ -324,7 +329,6 @@ function TokensSection({
           <Icon name="plus" />
           Create a token
         </button>
-        {reason && <span className="inline-note">{reason}</span>}
       </div>
       <Body state={state} needs="admin.read">
         {(rows) =>
@@ -402,15 +406,54 @@ function LoadMore<T>({ list }: { list: PagedList<T> }) {
   );
 }
 
+// Which rows show: a group of one as itself, a bigger group as one row that opens.
+function useOpenGroups() {
+  const [open, setOpen] = useState<ReadonlySet<string>>(new Set());
+  const toggle = (key: string) =>
+    setOpen((was) => {
+      const next = new Set(was);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  return { open, toggle };
+}
+
+function GroupToggle({ group, open, onToggle }: { group: SessionGroup<SessionView>; open: boolean; onToggle: () => void }) {
+  return (
+    <button type="button" className="btn btn-ghost btn-small" aria-expanded={open} onClick={onToggle}>
+      <span className="tokens-chevron" aria-hidden="true">
+        <Icon name="chevronRight" size={16} />
+      </span>
+      {open ? 'Hide' : `Show all ${group.rows.length}`}
+    </button>
+  );
+}
+
 function SessionTable<T extends SessionView>({
   rows,
   who,
+  keyOf,
   action,
 }: {
   rows: T[];
   who?: (row: T, asTitle: boolean) => ReactNode;
+  keyOf: (row: T) => string;
   action: (row: T) => ReactNode;
 }) {
+  const { open, toggle } = useOpenGroups();
+  const single = (row: T, child = false) => (
+    <tr key={row.id} className={child ? 'tokens-child' : undefined}>
+      {who && <td>{child ? null : who(row, false)}</td>}
+      <td className="tokens-device" title={row.user_agent ?? undefined}>
+        {deviceLabel(row)} <ThisDevice row={row} />
+      </td>
+      <td>{when(row.created_at)}</td>
+      <td>{row.last_used_at ? ago(row.last_used_at) : 'never'}</td>
+      <td>{when(row.expires_at)}</td>
+      <td className="tokens-action">{action(row)}</td>
+    </tr>
+  );
   return (
     <div className="table-wrap">
       <table className="table tokens-table">
@@ -427,18 +470,33 @@ function SessionTable<T extends SessionView>({
           </tr>
         </thead>
         <tbody>
-          {rows.map((row) => (
-            <tr key={row.id}>
-              {who && <td>{who(row, false)}</td>}
-              <td className="tokens-device" title={row.user_agent ?? undefined}>
-                {deviceLabel(row)} <ThisDevice row={row} />
-              </td>
-              <td>{when(row.created_at)}</td>
-              <td>{row.last_used_at ? ago(row.last_used_at) : 'never'}</td>
-              <td>{when(row.expires_at)}</td>
-              <td>{action(row)}</td>
-            </tr>
-          ))}
+          {groupSessions(rows, keyOf).map((group) => {
+            if (group.rows.length === 1) return single(group.rows[0] as T);
+            const first = group.rows[0] as T;
+            const span = groupSpan(group.rows);
+            const isOpen = open.has(group.key);
+            return (
+              <Fragment key={group.key}>
+                <tr className="tokens-group">
+                  {who && <td>{who(first, false)}</td>}
+                  <td className="tokens-device" title={first.user_agent ?? undefined}>
+                    {deviceLabel(first)} <span className="badge badge-muted">{plural(group.rows.length, 'session')}</span>
+                  </td>
+                  <td>
+                    {when(span.oldest) === when(span.newest)
+                      ? when(span.newest)
+                      : `${when(span.oldest)} to ${when(span.newest)}`}
+                  </td>
+                  <td>{span.lastUsed ? ago(span.lastUsed) : 'never'}</td>
+                  <td>{when(span.expires)}</td>
+                  <td className="tokens-action">
+                    <GroupToggle group={group} open={isOpen} onToggle={() => toggle(group.key)} />
+                  </td>
+                </tr>
+                {isOpen && group.rows.map((row) => single(row as T, true))}
+              </Fragment>
+            );
+          })}
         </tbody>
       </table>
     </div>
@@ -448,33 +506,61 @@ function SessionTable<T extends SessionView>({
 function SessionCards<T extends SessionView>({
   rows,
   who,
+  keyOf,
   action,
 }: {
   rows: T[];
   who?: (row: T, asTitle: boolean) => ReactNode;
+  keyOf: (row: T) => string;
   action: (row: T) => ReactNode;
 }) {
+  const { open, toggle } = useOpenGroups();
+  const card = (row: T, child = false) => (
+    <li key={row.id} className={child ? 'tokens-child' : undefined}>
+      <div className="card-head">
+        {who && !child ? who(row, true) : <span className="card-title">{deviceLabel(row)}</span>}
+        <ThisDevice row={row} />
+      </div>
+      {who && !child && (
+        <p className="row-detail tokens-device" title={row.user_agent ?? undefined}>
+          {deviceLabel(row)}
+        </p>
+      )}
+      <div className="card-meta">
+        <span>Signed in {when(row.created_at)}</span>
+        <span>{row.last_used_at ? `Last used ${ago(row.last_used_at)}` : 'Never used'}</span>
+        <span>Expires {when(row.expires_at)}</span>
+      </div>
+      <div className="card-actions">{action(row)}</div>
+    </li>
+  );
   return (
-    <ul className="cards">
-      {rows.map((row) => (
-        <li key={row.id}>
-          <div className="card-head">
-            {who ? who(row, true) : <span className="card-title">{deviceLabel(row)}</span>}
-            <ThisDevice row={row} />
-          </div>
-          {who && (
-            <p className="row-detail tokens-device" title={row.user_agent ?? undefined}>
-              {deviceLabel(row)}
-            </p>
-          )}
-          <div className="card-meta">
-            <span>Signed in {when(row.created_at)}</span>
-            <span>{row.last_used_at ? `Last used ${ago(row.last_used_at)}` : 'Never used'}</span>
-            <span>Expires {when(row.expires_at)}</span>
-          </div>
-          <div className="card-actions">{action(row)}</div>
-        </li>
-      ))}
+    <ul className="cards session-cards">
+      {groupSessions(rows, keyOf).map((group) => {
+        if (group.rows.length === 1) return card(group.rows[0] as T);
+        const first = group.rows[0] as T;
+        const span = groupSpan(group.rows);
+        const isOpen = open.has(group.key);
+        return (
+          <Fragment key={group.key}>
+            <li className="tokens-group">
+              <div className="card-head">
+                {who ? who(first, true) : <span className="card-title">{deviceLabel(first)}</span>}
+                <span className="badge badge-muted">{plural(group.rows.length, 'session')}</span>
+              </div>
+              {who && <p className="row-detail tokens-device">{deviceLabel(first)}</p>}
+              <div className="card-meta">
+                <span>{span.lastUsed ? `Last used ${ago(span.lastUsed)}` : 'Never used'}</span>
+                <span>Expires by {when(span.expires)}</span>
+              </div>
+              <div className="card-actions">
+                <GroupToggle group={group} open={isOpen} onToggle={() => toggle(group.key)} />
+              </div>
+            </li>
+            {isOpen && group.rows.map((row) => card(row as T, true))}
+          </Fragment>
+        );
+      })}
     </ul>
   );
 }
@@ -559,7 +645,7 @@ function DevicesSection({
   const endButton = (row: SessionView, onEnd: () => void) => {
     const busy = busyId === row.id;
     return (
-      <button type="button" className="btn btn-ghost btn-small" disabled={busy} onClick={onEnd}>
+      <button type="button" className="btn btn-small" disabled={busy} onClick={onEnd}>
         {row.current ? (busy ? 'Signing out…' : 'Sign out') : busy ? 'Ending…' : 'End'}
       </button>
     );
@@ -569,29 +655,40 @@ function DevicesSection({
     endButton(row, () => void end(row, () => account.endSession(row.id), 'Signed out that device.'));
   const endTheirs = (row: AdminSessionRow) => endButton(row, () => endAnyone(row));
   const whoIs = (row: AdminSessionRow, asTitle: boolean) => <Who row={row} title={asTitle} />;
+  const myKey = (row: SessionView) => deviceLabel(row);
+  const theirKey = (row: AdminSessionRow) => `${row.email}\n${deviceLabel(row)}`;
+
+  // Another page may hold more devices than the ones loaded so far.
+  const loaded = mine.state.data;
+  const alone = loaded !== undefined && loaded.every((row) => row.current) && !mine.hasMore;
 
   return (
     <>
+      <div className="section-head">
+        <div>
+          <h2 className="section-title">Signed-in devices</h2>
+          <p className="section-desc">Where you are signed in. The same device signed in many times shows as one row.</p>
+        </div>
+        <button
+          type="button"
+          className="btn btn-small"
+          disabled={loaded === undefined || alone || othersBusy}
+          onClick={() => void endOthers()}
+        >
+          <Icon name="signOut" />
+          {othersBusy ? 'Signing out…' : 'Sign out other devices'}
+        </button>
+      </div>
       <Body state={mine.state}>
         {(data) => {
           const rows = currentFirst(data);
-          const others = rows.filter((row) => !row.current);
-          // Another page may hold more devices than the ones loaded so far.
-          const alone = others.length === 0 && !mine.hasMore;
           return (
             <>
-              <div className="toolbar">
-                <button
-                  type="button"
-                  className="btn btn-small"
-                  disabled={alone || othersBusy}
-                  onClick={() => void endOthers()}
-                >
-                  <Icon name="signOut" />
-                  {othersBusy ? 'Signing out…' : 'Sign out other devices'}
-                </button>
-              </div>
-              {wide ? <SessionTable rows={rows} action={endMine} /> : <SessionCards rows={rows} action={endMine} />}
+              {wide ? (
+                <SessionTable rows={rows} keyOf={myKey} action={endMine} />
+              ) : (
+                <SessionCards rows={rows} keyOf={myKey} action={endMine} />
+              )}
               {alone && <Empty text="No other devices are signed in." />}
               <LoadMore list={mine} />
             </>
@@ -609,9 +706,9 @@ function DevicesSection({
               return (
                 <>
                   {wide ? (
-                    <SessionTable rows={rows} who={whoIs} action={endTheirs} />
+                    <SessionTable rows={rows} who={whoIs} keyOf={theirKey} action={endTheirs} />
                   ) : (
-                    <SessionCards rows={rows} who={whoIs} action={endTheirs} />
+                    <SessionCards rows={rows} who={whoIs} keyOf={theirKey} action={endTheirs} />
                   )}
                   <LoadMore list={everyone} />
                 </>
@@ -862,11 +959,9 @@ export default function Tokens() {
       }
     >
       <section className="section">
-        <h2 className="section-title">API tokens</h2>
         <TokensSection state={tokens} scopes={scopes} canWrite={canWrite} role={role} wide={wide} />
       </section>
       <section className="section">
-        <h2 className="section-title">Signed-in devices</h2>
         <DevicesSection
           mine={mine}
           everyone={everyone}

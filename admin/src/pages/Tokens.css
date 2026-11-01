@@ -9,6 +9,23 @@
 
 /* Rows that hold a button line up on the button, not the top of the cell */
 .tokens-table td { vertical-align: middle; }
+.tokens-action { width: 1%; text-align: right; white-space: nowrap; }
+
+/* One row for many sessions of the same device; opened, its sessions follow it,
+   set in under it on a quiet ground. */
+.tokens-group .tokens-device { font-weight: 500; }
+.tokens-group .badge { margin-left: var(--s-1); }
+.tokens-chevron { display: inline-flex; transition: transform var(--ease); }
+[aria-expanded="true"] > .tokens-chevron { transform: rotate(90deg); }
+.tokens-child td { background: var(--bg); }
+.tokens-child .tokens-device { padding-left: var(--s-5); color: var(--muted); }
+/* A session card on a phone: what it is on the left, its one button on the right. */
+.session-cards > li { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 2px var(--s-3); align-items: center; }
+.session-cards > li > * { grid-column: 1; }
+.session-cards > li > .card-actions { grid-row: 1 / span 3; grid-column: 2; margin-top: 0; }
+.session-cards .card-head { flex-wrap: wrap; justify-content: flex-start; gap: var(--s-1) var(--s-2); }
+.session-cards .card-title { overflow-wrap: normal; }
+.session-cards > li.tokens-child { padding-inline: var(--s-3); background: var(--bg); border-radius: 8px; }
 
 /* A device's user agent is long, so it may break anywhere */
 .tokens-device { overflow-wrap: anywhere; }
