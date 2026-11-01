@@ -42,6 +42,8 @@ import androidx.compose.ui.semantics.Role
 import io.github.helloupendra.ira.core.Reports
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -49,6 +51,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -59,7 +62,6 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.MaterialTheme
@@ -445,45 +447,62 @@ private fun ChecklistCard(
     onAction: (Checklist.Action) -> Unit,
     onHide: () -> Unit,
 ) {
-    Card(
-        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
-        colors = CardDefaults.cardColors(containerColor = Presence.colors.card, contentColor = Presence.colors.ink),
-        border = BorderStroke(1.dp, Presence.colors.line),
-    ) {
-        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(
-                    "Get Ira ready: ${steps.count { it.done }} of ${steps.size} done",
-                    fontWeight = FontWeight.SemiBold,
-                    modifier = Modifier.weight(1f),
-                )
-                TextButton(onClick = onHide) { Text("Hide") }
+    val colors = Presence.colors
+    // At most about half a phone's height: its steps scroll inside, so the ask pill stays in view.
+    Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp).heightIn(max = 380.dp).presenceCard(colors, radius = 16.dp)) {
+        Row(Modifier.padding(start = 16.dp, end = 8.dp, top = 8.dp, bottom = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                Text("Get Ira ready", fontSize = 16.sp, fontWeight = FontWeight.SemiBold, color = colors.ink)
+                Text("${steps.count { it.done }} of ${steps.size} done", fontSize = 12.sp, color = colors.muted)
             }
-            for (step in steps) {
-                Row(verticalAlignment = Alignment.Top) {
-                    Text(if (step.done) "✓" else "○", color = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(end = 10.dp, top = 2.dp))
-                    Column(Modifier.weight(1f)) {
-                        Text(step.title, style = MaterialTheme.typography.bodyLarge)
-                        if (!step.done) {
-                            Text(step.detail, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            val label = if (refused(step.action)) "Open settings" else step.button
-                            TextButton(onClick = { onAction(step.action) }) { Text(label) }
-                            if (refused(step.action)) {
-                                Text(
-                                    "Android remembers your earlier No. In the settings that open, choose Permissions (or Notifications) and allow it for Ira.",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                )
-                            }
+            TextButton(onClick = onHide) { Text("Hide", color = colors.muted) }
+        }
+        Column(Modifier.verticalScroll(rememberScrollState())) {
+        for (step in steps) {
+            Hairline()
+            Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp), verticalAlignment = Alignment.Top, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                StepMark(step.done)
+                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Text(step.title, fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = if (step.done) colors.muted else colors.ink)
+                    if (!step.done) {
+                        Text(step.detail, fontSize = 13.sp, lineHeight = 18.sp, color = colors.muted)
+                        Box(Modifier.padding(top = 6.dp)) {
+                            PillButton(if (refused(step.action)) "Open settings" else step.button, { onAction(step.action) }, compact = true)
+                        }
+                        if (refused(step.action)) {
+                            Text(
+                                "Android remembers your earlier No. In the settings that open, choose Permissions (or Notifications) and allow it for Ira.",
+                                fontSize = 12.sp,
+                                lineHeight = 17.sp,
+                                color = colors.muted,
+                            )
                         }
                     }
                 }
             }
         }
+        }
     }
 }
 
-/** "Ira" with what is happening under it, and the pills: Drop, Skills, Settings. */
+/** A step's mark: a hollow ring to do, a filled green dot with a tick when done. */
+@Composable
+private fun StepMark(done: Boolean) {
+    val colors = Presence.colors
+    Box(
+        Modifier
+            .padding(top = 1.dp)
+            .size(20.dp)
+            .clip(CircleShape)
+            .background(if (done) colors.greenDeep else Color.Transparent)
+            .border(BorderStroke(1.5.dp, if (done) colors.greenDeep else colors.faint), CircleShape),
+        contentAlignment = Alignment.Center,
+    ) {
+        if (done) Text("✓", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color.White)
+    }
+}
+
+/** "Ira" with what is happening under it, and Drop, Skills and Settings as icons. */
 @Composable
 private fun TalkHeader(ui: CallUi, link: LinkState, onDrop: () -> Unit, onSkills: () -> Unit, onSettings: () -> Unit) {
     val text =
@@ -507,23 +526,20 @@ private fun TalkHeader(ui: CallUi, link: LinkState, onDrop: () -> Unit, onSkills
         }
     val colors = Presence.colors
     Row(
-        Modifier.fillMaxWidth().padding(start = 20.dp, end = 12.dp, top = 10.dp, bottom = 6.dp),
+        Modifier.fillMaxWidth().padding(start = 20.dp, end = 6.dp, top = 6.dp, bottom = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(10.dp),
     ) {
         Column(Modifier.weight(1f)) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 // Green while this phone's link to Ira is up.
-                Box(Modifier.size(7.dp).clip(CircleShape).background(if (link is LinkState.Connected) colors.green else colors.faint))
-                Text(ui.assistant, fontSize = 17.sp, fontWeight = FontWeight.SemiBold, color = colors.ink)
+                Box(Modifier.size(8.dp).clip(CircleShape).background(if (link is LinkState.Connected) colors.green else colors.faint))
+                Text(ui.assistant, fontSize = 20.sp, fontWeight = FontWeight.SemiBold, color = colors.ink)
             }
             Text("$mode$text · $tools", fontSize = 12.sp, color = colors.muted, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
-        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            PillButton("Drop", onDrop, compact = true)
-            PillButton("Skills", onSkills, compact = true)
-            PillButton("Settings", onSettings, compact = true)
-        }
+        IconAction(R.drawable.ic_drop, "Drop", onDrop, tint = colors.muted)
+        IconAction(R.drawable.ic_skills, "Skills", onSkills, tint = colors.muted)
+        IconAction(R.drawable.ic_settings, "Settings", onSettings, tint = colors.muted)
     }
 }
 
@@ -590,24 +606,23 @@ private fun Hero(now: List<Now.Card>, onDrop: () -> Unit) {
                 modifier = Modifier.padding(horizontal = 24.dp),
             )
         } else {
-            Column(Modifier.fillMaxWidth().padding(horizontal = 8.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                now.forEach { card -> NowCard(card, onClick = if (card.opens == Now.Opens.DROP) onDrop else null) }
+            Column(Modifier.fillMaxWidth().padding(horizontal = 4.dp).presenceCard(colors, radius = 16.dp)) {
+                now.forEachIndexed { index, card ->
+                    if (index > 0) Hairline()
+                    NowCard(card, onClick = if (card.opens == Now.Opens.DROP) onDrop else null)
+                }
             }
         }
     }
 }
 
-/** One Now card: a label with a green dot, one line of value, one muted line. */
+/** One Now row: a label with a green dot, one line of value, one muted line. */
 @Composable
 private fun NowCard(card: Now.Card, onClick: (() -> Unit)?) {
     val colors = Presence.colors
-    val shape = RoundedCornerShape(14.dp)
     Column(
         Modifier
             .fillMaxWidth()
-            .clip(shape)
-            .background(colors.card)
-            .border(1.dp, colors.line, shape)
             .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier)
             .padding(horizontal = 16.dp, vertical = 12.dp),
         verticalArrangement = Arrangement.spacedBy(3.dp),
@@ -880,7 +895,7 @@ private fun ActionCardView(
             Text(card.summary, fontSize = 16.sp, color = colors.ink)
             if (card.needsPin) {
                 onFingerprint?.let { approve ->
-                    Button(onClick = approve, enabled = !busy) { Text("Approve with fingerprint") }
+                    PillButton("Approve with fingerprint", approve, filled = true, enabled = !busy)
                     Text("Or type your PIN:", style = MaterialTheme.typography.bodySmall)
                 }
                 Text("Type your action PIN to confirm. Never say a PIN aloud.", style = MaterialTheme.typography.bodySmall)
@@ -921,16 +936,14 @@ private fun ActionCardView(
 /** What happened after a confirmed action: "Done: ..." and a short result. */
 @Composable
 private fun ResultCard(title: String, detail: String?, onClose: () -> Unit) {
-    Card(
-        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp),
-        colors = CardDefaults.cardColors(containerColor = Presence.colors.card, contentColor = Presence.colors.ink),
-        border = BorderStroke(1.dp, Presence.colors.line),
+    val colors = Presence.colors
+    Column(
+        Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp).presenceCard(colors, radius = 16.dp).padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(6.dp),
     ) {
-        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            DotLabel(if (title.startsWith("Done")) "Done" else "Result")
-            Text(title, fontWeight = FontWeight.SemiBold)
-            detail?.let { Text(it, style = MaterialTheme.typography.bodyMedium) }
-            TextButton(onClick = onClose) { Text("OK") }
-        }
+        DotLabel(if (title.startsWith("Done")) "Done" else "Result")
+        Text(title, fontSize = 16.sp, fontWeight = FontWeight.SemiBold, color = colors.ink)
+        detail?.let { Text(it, fontSize = 14.sp, color = colors.muted) }
+        Box(Modifier.padding(top = 4.dp)) { PillButton("OK", onClose, compact = true) }
     }
 }
