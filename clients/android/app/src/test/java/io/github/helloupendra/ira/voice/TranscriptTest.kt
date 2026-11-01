@@ -15,14 +15,14 @@ class TranscriptTest {
         // The next call connects for the first time too, and its turns start at 1 again.
         val second = LiveSession.lineKey(call = 2, generation = 1, turn = 1)
         assertNotEquals(first, second)
-        transcript.add(Transcript.Line("$second:you", false, "Aaj gold ka rate kya hai?"))
-        transcript.ira(second) { it.copy(text = it.text + "Gold closed at") }
-        transcript.ira(second) { it.copy(text = it.text + " ₹1,38,419.") }
+        transcript.add(Transcript.Line("$second:you", false, "Kal ki appointment kab hai?"))
+        transcript.ira(second) { it.copy(text = it.text + "Your appointment is at") }
+        transcript.ira(second) { it.copy(text = it.text + " 10:30 tomorrow.") }
 
         val lines = transcript.lines.value
         assertEquals(4, lines.size)
         assertEquals("Two sessions are running.", lines[1].text)
-        assertEquals("Gold closed at ₹1,38,419.", lines.last { it.fromIra }.text)
+        assertEquals("Your appointment is at 10:30 tomorrow.", lines.last { it.fromIra }.text)
     }
 
     @Test

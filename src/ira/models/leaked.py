@@ -6,7 +6,7 @@ has written ``<invoke name="screen_read">`` and its own
 without ``functions.``), and
 Qwen-style models write ``<tool_call>{"name": ...}</tool_call>``. On a live
 call on 31 Oct 2026 the answer was ``<tool_call>`` with the tool's name as a
-tag of its own, ``<trading_desk>``, then the arguments; GLM's own template
+tag of its own, ``<clinic_hours>``, then the arguments; GLM's own template
 writes the name bare, then ``<arg_key>``/``<arg_value>`` pairs. The person
 would see that markup and the tool would never run. ``recover`` turns such
 text back into calls, only for tools that were offered in that turn, and
@@ -34,7 +34,7 @@ _KIMI = re.compile(
     re.S,
 )
 _HERMES = re.compile(r"<tool_call>\s*(\{.*?\})\s*</tool_call>", re.S)
-# The name as a tag: <tool_call><trading_desk>{...}</trading_desk>?</tool_call>.
+# The name as a tag: <tool_call><clinic_hours>{...}</clinic_hours>?</tool_call>.
 _TAGGED = re.compile(
     r"<tool_call>\s*<([A-Za-z0-9_-]{1,64})>\s*(\{.*?\})\s*(?:</\1>\s*)?</tool_call>", re.S
 )

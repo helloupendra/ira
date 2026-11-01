@@ -81,11 +81,11 @@ async def test_a_call_written_as_text_runs(registry):
 
 
 def test_the_name_as_a_tag_as_on_the_live_call_of_31_october():
-    offered = OFFERED | {"trading_desk"}
-    seen = '<tool_call>\n<trading_desk>\n{"question": "आज market खुला है या बंद?"}\n</tool_call>'
+    offered = OFFERED | {"clinic_hours"}
+    seen = '<tool_call>\n<clinic_hours>\n{"question": "कल clinic खुला है या बंद?"}\n</tool_call>'
     prose, calls = recover(seen, offered)
     assert prose == "" and [(c.name, c.parsed_arguments()) for c in calls] == [
-        ("trading_desk", {"question": "आज market खुला है या बंद?"})
+        ("clinic_hours", {"question": "कल clinic खुला है या बंद?"})
     ]
     closed = '<tool_call><order_status>{"order_id": "E5"}</order_status></tool_call>'
     assert recover(closed, OFFERED)[1][0].parsed_arguments() == {"order_id": "E5"}
@@ -108,7 +108,7 @@ def test_the_name_bare_with_json_or_glms_key_and_value_pairs():
 
 
 def test_a_tagged_call_to_a_tool_not_offered_stays_text():
-    text = "<tool_call><trading_desk>{}</trading_desk></tool_call>"
+    text = "<tool_call><clinic_hours>{}</clinic_hours></tool_call>"
     assert recover(text, OFFERED) == (text, [])
 
 
@@ -116,7 +116,7 @@ def test_the_prose_before_markup_that_cannot_run():
     assert before_markup("Main dekhti hoon:\n<tool_call><x>{}</tool_call>") == "Main dekhti hoon:"
     assert before_markup("Padh rahi hoon.\n\n<｜DSML｜function_calls>") == "Padh rahi hoon."
     assert before_markup("Use <invoke> tags like this, and 2 < 3.") is None
-    assert before_markup("NIFTY < 24,000 today.") is None
+    assert before_markup("The wait is < 15 minutes today.") is None
 
 
 def test_the_gate_holds_back_what_may_be_markup_and_lets_text_through():
@@ -124,10 +124,10 @@ def test_the_gate_holds_back_what_may_be_markup_and_lets_text_through():
         gate = MarkupGate()
         return "".join(gate.feed(p) for p in pieces) + gate.flush()
 
-    assert run("NIFTY ", "< 24,", "000.") == "NIFTY < 24,000."
+    assert run("The wait is ", "< 1", "5 minutes.") == "The wait is < 15 minutes."
     assert run("Use <b>bold", "</b>.") == "Use <b>bold</b>."
     assert run("ends with <") == "ends with <"
-    assert run("Dekhti hoon. <tool", "_call>\n<trading_desk>", '{"q": 1}</tool_call>') == (
+    assert run("Dekhti hoon. <tool", "_call>\n<clinic_hours>", '{"q": 1}</tool_call>') == (
         "Dekhti hoon. "
     )
     assert run("<inv", 'oke name="screen_read"></invoke>') == ""
