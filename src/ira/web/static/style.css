@@ -18,6 +18,8 @@
   --fill: color-mix(in srgb, var(--text) 5%, transparent);
   --hair: color-mix(in srgb, var(--text) 9%, transparent);
   --glow: rgb(31 111 92 / 0.16);
+  /* The reading column: the window is the app, the words keep a width that reads. */
+  --col: 46rem;
   /* The lens: glass over deep green, lit from the top left. */
   --lens: radial-gradient(60% 60% at 35% 28%, rgb(255 255 255 / 0.22), transparent 60%),
     radial-gradient(80% 80% at 50% 60%, #1c5f4f 0%, #0f3a30 55%, #08201b 100%);
@@ -139,7 +141,7 @@ code { font-family: var(--mono); font-size: 0.9em; background: var(--bg-sunken);
 
 .chat {
   position: relative;
-  width: min(44rem, 100%);
+  width: 100%;
   height: 100%;
   display: flex;
   flex-direction: column;
@@ -158,7 +160,8 @@ code { font-family: var(--mono); font-size: 0.9em; background: var(--bg-sunken);
 .top .text-btn:hover { background: var(--fill); }
 
 .banner {
-  margin: 0 var(--s-4) var(--s-2);
+  width: min(var(--col), 100% - 2 * var(--s-4));
+  margin: 0 auto var(--s-2);
   padding: var(--s-2) var(--s-3);
   border-radius: var(--radius-s);
   background: var(--bg-sunken);
@@ -235,6 +238,9 @@ code { font-family: var(--mono); font-size: 0.9em; background: var(--bg-sunken);
   flex-direction: column;
   gap: var(--s-4);
 }
+
+.scroll > .hero,
+.scroll > .messages { width: min(var(--col), 100%); margin-inline: auto; }
 
 .turn { max-width: 100%; }
 .turn-text { white-space: pre-wrap; overflow-wrap: anywhere; }
@@ -364,6 +370,8 @@ code { font-family: var(--mono); font-size: 0.9em; background: var(--bg-sunken);
 /* What Ira is doing, in words */
 
 .status {
+  width: min(var(--col), 100%);
+  align-self: center;
   min-height: 1.5em;
   padding: 0 var(--s-5);
   font-size: var(--text-s);
@@ -378,7 +386,8 @@ code { font-family: var(--mono); font-size: 0.9em; background: var(--bg-sunken);
   display: flex;
   align-items: center;
   gap: 6px;
-  margin: 0 var(--s-3) max(var(--s-3), env(safe-area-inset-bottom));
+  width: min(var(--col), 100% - 2 * var(--s-3));
+  margin: 0 auto max(var(--s-3), env(safe-area-inset-bottom));
   padding: 6px 6px 6px 20px;
   border-radius: 999px;
   background: var(--fill);
@@ -673,6 +682,7 @@ select { font: inherit; min-height: var(--tap); padding: 0 var(--s-2); border: 1
   /* With nothing in Now, the field itself is the last thing in the group. */
   .chat:has(#hero:not([hidden])):has(#now[hidden]) .composer { margin-bottom: auto; }
   .chat:has(#hero:not([hidden])) .composer { width: min(38rem, 100% - 2 * var(--s-5)); align-self: center; }
+  .top { padding-left: var(--s-4); padding-right: var(--s-4); }
   .scroll { padding: 0 var(--s-5); }
   .composer { padding-left: var(--s-5); padding-right: var(--s-5); }
   .status { padding-left: var(--s-6); }
@@ -687,6 +697,20 @@ select { font: inherit; min-height: var(--tap); padding: 0 var(--s-2); border: 1
     border-right: 1px solid var(--line);
     box-shadow: var(--shadow);
   }
+}
+
+/* A laptop or desktop window: the same screen, a size up, so it fills the window well. */
+@media (min-width: 64rem) {
+  :root { --col: 50rem; }
+  .hero-mark { width: 152px; height: 152px; padding: 38px; }
+  .hero-mark::after { inset: -18px; }
+  .hello { font-size: 3.5rem; }
+  .hero-hint { font-size: var(--text-base); }
+  .chat:has(#hero:not([hidden])) .composer { width: min(44rem, 100% - 2 * var(--s-5)); }
+  .composer input { min-height: 46px; font-size: 1.0625rem; }
+  .now { width: min(44rem, 100% - 2 * var(--s-4)); }
+  .now-card { max-width: 15rem; }
+  .messages { font-size: 1.0625rem; }
 }
 
 /* The pairing page: the one-time code, big enough to read across a desk. */
