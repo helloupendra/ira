@@ -217,7 +217,6 @@ def test_a_key_that_may_only_ask_cannot_read_the_inbox(tmp_path):
 
 @pytest.mark.anyio
 async def test_the_web_app_hears_of_changes_but_not_an_ask_only_key(tmp_path):
-    from ira.accounts import Principal
     from ira.channels.devices import my_event_stream
     from ira.devices.protocol import Event
 
@@ -225,14 +224,22 @@ async def test_the_web_app_hears_of_changes_but_not_an_ask_only_key(tmp_path):
     owner = runtime.accounts.create_first_owner("owner@example.com", PASSWORD)
 
     class Request:
+        """The stream asks the credential again before each frame."""
+
+        def __init__(self, token: str) -> None:
+            self.headers = {"authorization": f"Bearer {token}"}
+            self.cookies: dict[str, str] = {}
+
         async def is_disconnected(self) -> bool:
             return False
 
-    web = Principal(owner, "session", owner.permissions, "s1")
-    siri = Principal(owner, "token", frozenset({"ask"}), "t1")
+    session, _ = runtime.accounts.start_session(owner)
+    siri_key, _ = runtime.accounts.create_token(owner, "Siri", ["ask"])
     streams = []
-    for who in (web, siri):
-        response = await my_event_stream(Request(), who, runtime)
+    for token in (session, siri_key):
+        who = runtime.accounts.principal(token)
+        assert who is not None
+        response = await my_event_stream(Request(token), who, runtime)
         streams.append(response.body_iterator)
         assert await anext(response.body_iterator) == ": connected\n\n"
 

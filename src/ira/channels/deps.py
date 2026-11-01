@@ -111,6 +111,17 @@ def device_principal(runtime: Runtime, token: str) -> Principal | None:
     return Principal(user, "device", allowed, f"device:{device.id}")
 
 
+def principal_now(runtime: Runtime, request: Request) -> Principal | None:
+    """Who the credential a request came with speaks for now: None once it was revoked,
+    signed out or expired, or its person removed. Streams that stay open check it again."""
+    header = request.headers.get("authorization", "")
+    token = header[7:].strip() if header.lower().startswith("bearer ") else ""
+    if token:
+        return runtime.accounts.principal(token) or device_principal(runtime, token)
+    cookie = request.cookies.get(SESSION_COOKIE)
+    return runtime.accounts.session_principal(cookie) if cookie else None
+
+
 async def get_principal(
     request: Request,
     credentials: HTTPAuthorizationCredentials | None = Depends(bearer_scheme),

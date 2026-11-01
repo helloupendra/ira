@@ -26,7 +26,7 @@ from fastapi.responses import RedirectResponse, StreamingResponse
 
 from ira import changes
 from ira.accounts import Principal
-from ira.channels.deps import client_ip, get_runtime, require, require_session
+from ira.channels.deps import client_ip, get_runtime, principal_now, require, require_session
 from ira.channels.schemas import (
     ERRORS,
     DevicePaired,
@@ -478,6 +478,12 @@ async def my_event_stream(
     hub = hub_of(runtime)
     queue = hub.subscribe(who.user.id)
 
+    def still() -> Principal | None:
+        # Asked again before every frame and keepalive: a revoked token or device, a
+        # sign-out or a removed person ends the stream, not only the next request.
+        now = principal_now(runtime, request)
+        return now if now is not None and now.user.id == who.user.id and now.can("ask") else None
+
     async def stream() -> AsyncIterator[str]:
         try:
             yield ": connected\n\n"
@@ -485,14 +491,17 @@ async def my_event_stream(
                 try:
                     row = await asyncio.wait_for(queue.get(), STREAM_KEEPALIVE)
                 except TimeoutError:
-                    if await request.is_disconnected():
+                    if await request.is_disconnected() or still() is None:
                         return
                     yield ": keepalive\n\n"
                     continue
                 if row is None:  # the server is stopping: the app reconnects
                     return
+                current = still()
+                if current is None:
+                    return
                 if "drop" in row:  # a Drop frame, as devices get it; not for an ask-only key
-                    if who.can("drop"):
+                    if current.can("drop"):
                         frame = json.dumps(row["drop"], ensure_ascii=False)
                         yield f"event: drop\ndata: {frame}\n\n"
                     continue

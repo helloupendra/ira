@@ -56,6 +56,31 @@ def principal_for(websocket: WebSocket, runtime: Runtime) -> Principal | None:
     return None
 
 
+SIGNED_OUT = "You were signed out, or this device was removed. Sign in or pair again."
+
+
+def still_allowed(websocket: WebSocket, runtime: Runtime, call: Any) -> bool:
+    """Whether the credential the call opened with still works for the same person.
+
+    Asked on every message and every ping: revoking a token or device, signing out
+    or removing the person ends a call that is already open, and a role change takes
+    effect in it at once."""
+    now = principal_for(websocket, runtime)
+    if now is None or now.user.id != call.principal.user.id:
+        return False
+    if not (now.can("ask") and now.can("voice")):
+        return False
+    call.principal = now
+    return True
+
+
+async def _hang_up(websocket: WebSocket, call: Any) -> None:
+    with contextlib.suppress(Exception):
+        await call.send({"type": "error", "message": SIGNED_OUT, "fatal": True})
+    with contextlib.suppress(Exception):
+        await websocket.close(code=CLOSE_UNAUTHORIZED)
+
+
 def _problem(runtime: Runtime, principal: Principal) -> str | None:
     if not (principal.can("ask") and principal.can("voice")):
         return "your role can't talk to Ira by voice"
@@ -92,7 +117,7 @@ async def live_voice(websocket: WebSocket) -> None:
         close_socket=lambda code: websocket.close(code=code),
         max_spoken_chars=max(runtime.settings.voice.max_spoken_chars, 600),
     )
-    pinger = asyncio.ensure_future(_ping(websocket, call))
+    pinger = asyncio.ensure_future(_ping(websocket, call, runtime))
     started = False
     try:
         while True:
@@ -100,9 +125,12 @@ async def live_voice(websocket: WebSocket) -> None:
             if message["type"] == "websocket.disconnect":
                 break
             if message.get("bytes") is not None:
-                if started:
+                if started:  # audio comes many times a second: the ping checks for it
                     await call.on_audio(message["bytes"])
                 continue
+            if not still_allowed(websocket, runtime, call):
+                await _hang_up(websocket, call)
+                break
             text = message.get("text") or ""
             if not started:
                 try:
@@ -128,12 +156,15 @@ async def live_voice(websocket: WebSocket) -> None:
             await websocket.close()
 
 
-async def _ping(websocket: WebSocket, call: Any) -> None:
+async def _ping(websocket: WebSocket, call: Any, runtime: Runtime) -> None:
     while True:
         await asyncio.sleep(PING_SECONDS)
         if call.clock() - call.last_heard > SILENT_SECONDS:
             with contextlib.suppress(Exception):
                 await websocket.close(code=CLOSE_SILENT)
+            return
+        if not still_allowed(websocket, runtime, call):
+            await _hang_up(websocket, call)
             return
         with contextlib.suppress(Exception):
             await call.send({"type": "ping"})

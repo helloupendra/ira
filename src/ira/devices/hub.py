@@ -210,6 +210,12 @@ class DeviceHub:
             return
         except Exception:  # the device went away before saying hello
             return
+        if self.devices.get(device.id) is None:
+            # Revoked, or its person removed, while it waited to say hello: revoking found
+            # no connection to close then, so it must not get one now.
+            with contextlib.suppress(Exception):
+                await socket.close(CLOSE_REVOKED, "revoked")
+            return
 
         connection = Connection(
             device=device,
@@ -371,6 +377,9 @@ class DeviceHub:
 
     async def _event(self, connection: Connection, frame: dict[str, Any]) -> None:
         event = parse_event(frame)
+        if self.devices.get(connection.device.id) is None:
+            await self.disconnect(connection.device.id)  # revoked: it announces nothing
+            return
         now = self.clock()
         last = self._last_event.get(connection.device.id)
         if last is not None and now - last < self.event_seconds:
@@ -385,9 +394,13 @@ class DeviceHub:
         """Send a frame to every connected device of one person (but ``except_device``,
         the one it came from). Returns how many got it."""
         sent = 0
+        active = {device.id for device in self.devices.for_user(user_id)}
         for connection in list(self.connections.values()):
             device = connection.device
             if device.user_id != user_id or device.id == except_device or connection.closed:
+                continue
+            if device.id not in active:  # revoked, and not yet hung up: it gets nothing
+                await self.disconnect(device.id)
                 continue
             with contextlib.suppress(Exception):
                 await connection.send(frame)
@@ -401,10 +414,11 @@ class DeviceHub:
             with contextlib.suppress(asyncio.QueueFull):
                 queue.put_nowait(row)
         frame = {"type": "event", **{k: row[k] for k in ("event", "title", "text", "at")}}
+        active = {device.id for device in self.devices.for_user(user_id)}
         for connection in list(self.connections.values()):
             # The kinds that show events themselves (a notification); a Mac hears them elsewhere.
             device = connection.device
-            if device.user_id == user_id and device.kind in ("android", "windows"):
+            if device.id in active and device.kind in ("android", "windows"):
                 with contextlib.suppress(Exception):
                     await connection.send(frame)
         for notify in self.notifiers:
