@@ -36,6 +36,9 @@ public struct EnergyVAD: Sendable {
         /// Nothing counts as speech while Ira speaks, nor for `echoTailMs` after.
         public var halfDuplex = false
         public var echoTailMs: Double = 400
+        /// How fast the room's quiet level follows a quieter frame, and a louder one.
+        public var floorFall: Float = 0.05
+        public var floorRise: Float = 0.05
         public init() {}
 
         /// For a microphone without the Mac's echo cancellation: Ira's voice from the
@@ -46,6 +49,10 @@ public struct EnergyVAD: Sendable {
             config.startMs = 250
             config.gapMs = 80
             config.halfDuplex = true
+            // A quiet voice under the threshold is not the room: the room's level rises only
+            // slowly (over about 4 s), or the threshold would climb away from the voice.
+            config.floorFall = 0.2
+            config.floorRise = 0.005
             return config
         }
     }
@@ -106,7 +113,8 @@ public struct EnergyVAD: Sendable {
         if !speaking {
             if !loud && !replying && !deaf {
                 // Learn the room's quiet level, slowly, only from quiet frames.
-                noiseFloor = noiseFloor == 0 ? level : noiseFloor * 0.95 + level * 0.05
+                let weight = level < noiseFloor ? config.floorFall : config.floorRise
+                noiseFloor = noiseFloor == 0 ? level : noiseFloor * (1 - weight) + level * weight
             }
             recent.append((at, pcm, loud))
             let keep = Int((config.leadInMs + max(config.startMs, config.replyStartMs)) / config.frameMs) + 1

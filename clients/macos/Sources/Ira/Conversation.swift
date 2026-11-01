@@ -82,6 +82,8 @@ final class Conversation: ObservableObject {
     private var lastActivity = Date()
     private var idleTimer: Timer?
     private var silence = MicSilence()
+    /// Evens out a quiet voice when the Mac's voice processing (with its own gain control) is off.
+    private var agc = SoftwareAGC()
     private var silenceWatch: Task<Void, Never>?
     /// Called when listening stops, so "Hey Ira" can listen again.
     var onListeningEnded: (() -> Void)?
@@ -381,6 +383,7 @@ final class Conversation: ObservableObject {
                 do {
                     try audio.restartWithoutEchoCancellation()
                     vad = freshVAD()
+                    agc.reset()
                     watchSilence()
                     return
                 } catch {
@@ -398,7 +401,9 @@ final class Conversation: ObservableObject {
         silence.feed(samples)
         checkSilence(at: at + 20)
         vad.replying = audio.playing
-        for output in vad.process(samples, at: at) {
+        // Without voice processing, the software gain: it holds while Ira speaks.
+        let heard = audio.echoCancelling ? samples : agc.process(samples, adapt: !audio.playing)
+        for output in vad.process(heard, at: at) {
             switch output {
             case .speechStart(let start):
                 if audio.playing {

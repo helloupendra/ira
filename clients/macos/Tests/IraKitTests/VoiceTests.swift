@@ -7,6 +7,8 @@ import Testing
 /// Synthetic audio: 20 ms frames of 16 kHz.
 enum Synth {
     static func silence() -> [Float] { [Float](repeating: 0, count: 320) }
+    /// A sine's RMS is its amplitude over √2.
+    static let toneRMS = Float(1 / 2.0.squareRoot())
 
     static func tone(_ amplitude: Float, frequency: Float = 220) -> [Float] {
         (0..<320).map { amplitude * sinf(2 * .pi * frequency * Float($0) / 16_000) }
@@ -235,6 +237,88 @@ struct MicSilenceTests {
         silence.feed(Synth.silence())
         let told = silence.check(at: 60_000)
         #expect(!told)
+    }
+}
+
+@Suite("Software gain")
+struct AGCTests {
+    /// Run `frames` through the gain; the level of the last few outputs.
+    static func settle(_ agc: inout SoftwareAGC, _ frame: [Float], count: Int, adapt: Bool = true) -> Float {
+        var last: [Float] = []
+        for _ in 0..<count { last = agc.process(frame, adapt: adapt) }
+        return EnergyVAD.rms(last)
+    }
+
+    @Test func aQuietVoiceIsLiftedUpToTheCap() {
+        var agc = SoftwareAGC()
+        let level = AGCTests.settle(&agc, Synth.tone(0.01), count: 150)  // 3 s of a quiet voice
+        #expect(agc.gain > 7.5 && agc.gain <= 8)  // up to 8×, turned up gently
+        #expect(abs(level - 0.01 * Synth.toneRMS * agc.gain) < 0.001)
+    }
+
+    @Test func anOrdinaryVoiceReachesTheTarget() {
+        var agc = SoftwareAGC()
+        let level = AGCTests.settle(&agc, Synth.tone(0.035), count: 150)
+        #expect(abs(level - 0.1) < 0.01)
+    }
+
+    @Test func aLoudVoiceIsTurnedDownQuicklyAndNeverClips() {
+        var agc = SoftwareAGC()
+        _ = AGCTests.settle(&agc, Synth.tone(0.01), count: 150)  // lifted for a quiet voice
+        var peak: Float = 0
+        for _ in 0..<10 {  // then 200 ms of shouting
+            peak = max(peak, agc.process(Synth.tone(0.5)).map(abs).max() ?? 0)
+        }
+        #expect(agc.gain < 1)
+        #expect(peak < 1)
+        _ = AGCTests.settle(&agc, Synth.tone(0.5), count: 100)
+        #expect(abs(agc.gain - 0.5) < 0.05)  // never under the floor of 0.5
+    }
+
+    @Test func silenceAndTheRoomAreNeverPumpedUp() {
+        var agc = SoftwareAGC()
+        var seed: UInt64 = 3
+        let room = Synth.noise(0.0005, seed: &seed)
+        let out = agc.process(room)
+        _ = AGCTests.settle(&agc, room, count: 100)
+        #expect(agc.gain == 1 && out == room)
+        let zeros = agc.process(Synth.silence())
+        #expect(zeros == Synth.silence() && !agc.gain.isNaN)
+    }
+
+    @Test func whileIraSpeaksTheGainHolds() {
+        var agc = SoftwareAGC()
+        _ = AGCTests.settle(&agc, Synth.tone(0.01), count: 150)
+        let lifted = agc.gain
+        _ = AGCTests.settle(&agc, Synth.tone(0.5), count: 50, adapt: false)  // her voice from the speakers
+        #expect(agc.gain == lifted)
+        agc.reset()
+        #expect(agc.gain == 1 && agc.noiseFloor == 0)
+    }
+
+    @Test func aQuietVoiceBecomesATurnOnlyWithTheGain() {
+        // The room, then a quiet voice in syllables (200 ms, 60 ms between), then the room.
+        var seed: UInt64 = 11
+        func room(_ count: Int) -> [[Float]] { (0..<count).map { _ in Synth.noise(0.0005, seed: &seed) } }
+        let syllables = (0..<12).flatMap { _ in Array(repeating: Synth.tone(0.012), count: 10) + room(3) }
+        let quiet = room(25) + syllables + room(60)
+        var raw = EnergyVAD(config: .withoutEchoCancellation)
+        #expect(Synth.run(&raw, quiet).isEmpty)  // under the 0.02 threshold
+        var agc = SoftwareAGC()
+        var vad = EnergyVAD(config: .withoutEchoCancellation)
+        let lifted = quiet.map { agc.process($0) }
+        #expect(VADTests.turns(Synth.run(&vad, lifted)).count == 1)
+    }
+
+    @Test func severalChannelsAreAveragedSkippingEmptyOnes() {
+        let voice = Synth.tone(0.1)
+        #expect(Downmix.average([Synth.silence(), voice, Synth.silence()]) == voice)  // not channel 0
+        let half = Synth.tone(0.05)
+        let mixed = Downmix.average([voice, half])
+        #expect(abs(EnergyVAD.rms(mixed) - EnergyVAD.rms(Synth.tone(0.075))) < 0.0005)
+        #expect(Downmix.average([Synth.silence(), Synth.silence()]) == Synth.silence())
+        #expect(Downmix.average([]).isEmpty)
+        #expect(Downmix.levels([Synth.silence(), voice]).first == 0)
     }
 }
 
