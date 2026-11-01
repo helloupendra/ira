@@ -66,6 +66,8 @@ struct DropView: View {
                 }
             }
         }
+        .scrollContentBackground(.hidden)
+        .background(Presence.bg)
         .navigationTitle("Drop")
         .fileImporter(isPresented: $importing, allowedContentTypes: [.item], allowsMultipleSelection: true) { result in
             if case .success(let files) = result { Task { await drop.send(files: files) } }

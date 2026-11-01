@@ -45,6 +45,8 @@ struct SetupView: View {
             .padding()
             .background(.bar)
         }
+        .scrollContentBackground(.hidden)
+        .background(Presence.bg)
         .navigationTitle("Get Ira ready")
         .sheet(isPresented: $pairing) { PairView() }
     }
@@ -179,6 +181,8 @@ struct PairView: View {
                     .accessibilityIdentifier("pair-button")
                 }
             }
+            .scrollContentBackground(.hidden)
+            .background(Presence.bg)
             .navigationTitle("Pair this iPhone")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {

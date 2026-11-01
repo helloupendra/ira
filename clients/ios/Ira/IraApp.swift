@@ -10,6 +10,9 @@ struct IraApp: App {
         WindowGroup {
             RootView()
                 .environment(model)
+                .preferredColorScheme(Presence.scheme(model.look))
+                .tint(Presence.green)
+                .onAppear { model.look = model.settings.look }
                 .onOpenURL { url in Task { await model.open(url) } }
                 .onChange(of: phase) { _, now in model.phaseChanged(now) }
         }
@@ -28,6 +31,7 @@ struct RootView: View {
                 ConversationView()
             }
         }
+        .background(Presence.bg.ignoresSafeArea())
         .overlay(alignment: .bottom) {
             if let busy = model.busy {
                 BusyLine(text: busy, since: nil)
@@ -95,14 +99,16 @@ struct BusyLine: View {
 
     var body: some View {
         TimelineView(.periodic(from: .now, by: 1)) { context in
-            HStack(spacing: 8) {
-                ProgressView()
+            HStack(spacing: 10) {
+                Lens(size: 22, thinking: true)
                 Text(label(at: context.date))
-                    .font(.callout)
+                    .font(Presence.secondary)
+                    .foregroundStyle(Presence.ink)
             }
             .padding(.horizontal, 14)
             .padding(.vertical, 8)
-            .background(.thinMaterial, in: Capsule())
+            .background(Capsule().fill(Presence.raised))
+            .overlay(Capsule().strokeBorder(Presence.line, lineWidth: 1))
             .accessibilityElement(children: .combine)
             .accessibilityIdentifier("busy")
         }

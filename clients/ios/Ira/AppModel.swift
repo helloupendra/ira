@@ -38,6 +38,10 @@ final class AppModel {
     var callRequested = false
     /// A pairing link opened from outside, waiting for the person's yes.
     var linkToConfirm: LinkPair?
+    /// How the app looks: "system", "light" or "dark" (Settings, Appearance).
+    var look: String = "system" {
+        didSet { settings.look = look }
+    }
 
     @ObservationIgnored private var device: DeviceClient?
     private(set) var foreground = true

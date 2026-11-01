@@ -7,6 +7,9 @@ struct SettingsView: View {
     @Environment(AppModel.self) private var model
     @Environment(\.dismiss) private var dismiss
     @State private var confirmingRemoval = false
+    /// The microphone test: the step running now, and what each step found.
+    @State private var testing: String?
+    @State private var tested: [MicProbeStep] = []
 
     var body: some View {
         NavigationStack {
@@ -21,6 +24,54 @@ struct SettingsView: View {
                             .font(.footnote)
                             .foregroundStyle(.secondary)
                     }
+                }
+                Section {
+                    if !model.talk.micReport.isEmpty {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("Last call")
+                            Text(model.talk.micReport)
+                                .font(.footnote.monospaced())
+                                .foregroundStyle(.secondary)
+                                .textSelection(.enabled)
+                        }
+                        .accessibilityIdentifier("mic-report")
+                    }
+                    Button(testing.map { "Testing: \($0)…" } ?? "Test the microphone") {
+                        Task { await testMicrophone() }
+                    }
+                    .disabled(testing != nil || model.talk.inCall)
+                    .accessibilityIdentifier("mic-test")
+                    ForEach(tested, id: \.name) { step in
+                        VStack(alignment: .leading, spacing: 4) {
+                            HStack {
+                                Text(step.name)
+                                Spacer()
+                                Text(step.verdict)
+                                    .foregroundStyle(step.verdict == "sound" ? Presence.green : Presence.warn)
+                            }
+                            Text(step.line)
+                                .font(.caption.monospaced())
+                                .foregroundStyle(.secondary)
+                                .textSelection(.enabled)
+                        }
+                    }
+                } header: {
+                    Text("Microphone")
+                } footer: {
+                    Text("Talk while the test runs, about ten seconds. It tries the microphone a few ways and says which ones hear you.")
+                }
+                Section {
+                    Picker("Appearance", selection: Binding(get: { model.look }, set: { model.look = $0 })) {
+                        Text("System").tag("system")
+                        Text("Light").tag("light")
+                        Text("Dark").tag("dark")
+                    }
+                    .pickerStyle(.segmented)
+                    .accessibilityIdentifier("appearance")
+                } header: {
+                    Text("Appearance")
+                } footer: {
+                    Text("System follows the iPhone's own light or dark look.")
                 }
                 Section {
                     Button("Get Ira ready…") {
@@ -38,7 +89,7 @@ struct SettingsView: View {
                     ForEach(model.activity) { item in
                         HStack {
                             Image(systemName: item.ok ? "checkmark.circle" : "xmark.circle")
-                                .foregroundStyle(item.ok ? Color.green : Color.orange)
+                                .foregroundStyle(item.ok ? Presence.green : Presence.warn)
                             Text(item.verb)
                             Spacer()
                             Text(item.at, style: .time).foregroundStyle(.secondary)
@@ -56,6 +107,8 @@ struct SettingsView: View {
                     LabeledContent("Version", value: IraPhone.version)
                 }
             }
+            .scrollContentBackground(.hidden)
+            .background(Presence.bg)
             .navigationTitle("Settings")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -70,6 +123,20 @@ struct SettingsView: View {
                 }
             }
         }
+    }
+
+    private func testMicrophone() async {
+        if model.permissions.state(.microphone) != .allowed,
+            await model.permissions.request(.microphone) != .allowed
+        {
+            tested = []
+            model.notice = "Ira cannot hear you: the microphone is off for Ira. Switch it on in the iPhone's Settings, Ira, Microphone."
+            return
+        }
+        tested = []
+        testing = "starting"
+        tested = await MicProbe.run { testing = $0 }
+        testing = nil
     }
 
     private var connection: String {
