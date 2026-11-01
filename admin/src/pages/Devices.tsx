@@ -13,6 +13,7 @@ import { PairDeviceDialog } from './devices/PairDeviceDialog';
 import { grantTitle, kindWord, skillsAfter, statusOf, tierWord } from './devices/text';
 import { Body } from './tokens/Body';
 import { failure } from './tokens/text';
+import { SkillText } from './devices/SkillText';
 import './Devices.css';
 
 /* One device ---------------------------------------------------------------- */
@@ -20,18 +21,6 @@ import './Devices.css';
 function DeviceStatus({ device }: { device: DeviceView }) {
   const status = statusOf(device);
   return <span className={status.tone === 'ok' ? 'badge badge-ok' : 'badge badge-muted'}>{status.label}</span>;
-}
-
-// "Files: find files by name, ..." reads as a bold name and its description.
-function SkillText({ description }: { description: string }) {
-  const at = description.indexOf(': ');
-  if (at <= 0 || at > 24) return <span className="skill-desc">{description}</span>;
-  return (
-    <span className="skill-text">
-      <span className="skill-name">{description.slice(0, at)}</span>
-      <span className="skill-desc">{description.charAt(at + 2).toUpperCase() + description.slice(at + 3)}</span>
-    </span>
-  );
 }
 
 function Tools({ device }: { device: DeviceView }) {

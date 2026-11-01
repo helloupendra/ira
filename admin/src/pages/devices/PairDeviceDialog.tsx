@@ -3,6 +3,7 @@ import { downloads, me, type DownloadView, type PairingView, type SkillView } fr
 import { CopyField } from '../../ui/CopyField';
 import { Dialog } from '../../ui/Dialog';
 import { failure } from '../tokens/text';
+import { SkillText } from './SkillText';
 import { FIRST_SKILLS, remaining, setupSteps } from './text';
 
 const PLACEHOLDERS: Record<string, string> = {
@@ -111,7 +112,7 @@ function PairForm({ onMade, onCancel }: { onMade: (p: PairingView) => void; onCa
                 checked={chosen.includes(skill.name)}
                 onChange={(e) => toggle(skill.name, e.target.checked)}
               />
-              <span>{skill.description}</span>
+              <SkillText description={skill.description} />
             </label>
           ))}
           <p className="field-hint">Only what you tick is on. You can switch skills on or off later.</p>

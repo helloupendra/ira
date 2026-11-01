@@ -47,9 +47,6 @@
 @media (min-width: 64rem) {
   .devices-skill-list { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
-.skill-text { display: grid; gap: 2px; min-width: 0; }
-.skill-name { font-size: var(--text-m); font-weight: 600; }
-.skill-desc { color: var(--muted); }
 .devices-skill-list .switch { flex: none; }
 
 /* Everyone's devices and the grants: one row each, its button on the right. */

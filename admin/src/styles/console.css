@@ -648,7 +648,7 @@ textarea { resize: vertical; }
   box-shadow: var(--shadow);
 }
 .dialog-wide { width: min(100% - 2 * var(--s-4), 40rem); }
-.dialog::backdrop { background: rgb(0 0 0 / 0.4); }
+.dialog::backdrop { background: rgb(0 0 0 / 0.5); backdrop-filter: blur(2px); }
 .dialog-body { display: grid; gap: var(--s-4); padding: var(--s-4) var(--s-5) var(--s-5); }
 .dialog-head { display: flex; align-items: center; justify-content: space-between; gap: var(--s-3); }
 .dialog-title { font-size: var(--text-base); font-weight: 600; }
@@ -663,7 +663,19 @@ textarea { resize: vertical; }
 .field.has-error textarea { border-color: var(--danger); }
 .checks { display: grid; gap: var(--s-2); }
 .check { display: flex; align-items: center; gap: var(--s-2); min-height: var(--tap); font-size: var(--text-m); }
-.check input { width: 18px; height: 18px; margin: 0; accent-color: var(--accent); }
+.check input { flex: none; width: 18px; height: 18px; margin: 0; accent-color: var(--accent); }
+/* A skill: its name in bold over what it reads (devices and the pairing dialog). */
+.skill-text { display: grid; gap: 2px; min-width: 0; font-size: var(--text-s); }
+.skill-name { font-size: var(--text-m); font-weight: 600; color: var(--text); }
+.skill-desc { color: var(--muted); }
+
+/* A check with a long label: the box at the top of its first line. */
+.check:has(.skill-text) { align-items: flex-start; padding: var(--s-1) 0; }
+.check:has(.skill-text) input { margin-top: 2px; }
+
+/* A dialog with two forms: each its own part, its button at the start, not stretched. */
+.dialog .form > .btn { justify-self: start; }
+.dialog .form + .form { padding-top: var(--s-4); border-top: 1px solid var(--line); }
 @media (min-width: 56rem) {
   .check { min-height: 2rem; }
 }
