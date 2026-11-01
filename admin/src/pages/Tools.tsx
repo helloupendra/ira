@@ -23,7 +23,7 @@ function Parameters({ fields, schema }: { fields: Field[]; schema: unknown }) {
         <p className="muted">This tool takes no parameters.</p>
       ) : (
         <div className="table-wrap">
-          <table className="table">
+          <table className="table table-stack">
             <thead>
               <tr>
                 <th scope="col">Name</th>
@@ -36,9 +36,9 @@ function Parameters({ fields, schema }: { fields: Field[]; schema: unknown }) {
               {fields.map((field) => (
                 <tr key={field.name}>
                   <td className="mono">{field.name}</td>
-                  <td>{field.kind}</td>
-                  <td>{field.required ? 'yes' : <span className="muted">no</span>}</td>
-                  <td>
+                  <td data-label="Type">{field.kind}</td>
+                  <td data-label="Required">{field.required ? 'yes' : <span className="muted">no</span>}</td>
+                  <td data-label="Description">
                     {field.description}
                     {field.options && <div className="muted">One of: {field.options.join(', ')}</div>}
                   </td>
@@ -329,9 +329,11 @@ function ToolItem({
       <div className="disclosure-body">
         <p className="tool-desc">{tool.description}</p>
         {!canWrite && <p className="inline-note">Switching it off or on: {whyNot(role, 'admin.write')}</p>}
-        <Parameters fields={fields} schema={tool.parameters} />
-        {tool.kind === 'action' && <Confirmers tool={tool} />}
-        {tool.kind === 'read' && <ToolTest tool={tool} fields={fields} canWrite={canWrite} role={role} />}
+        <div className="tool-grid">
+          <Parameters fields={fields} schema={tool.parameters} />
+          {tool.kind === 'action' && <Confirmers tool={tool} />}
+          {tool.kind === 'read' && <ToolTest tool={tool} fields={fields} canWrite={canWrite} role={role} />}
+        </div>
       </div>
     </details>
   );
