@@ -226,7 +226,7 @@ const IraPersonal = (() => {
     const rows = device.skills.map((skill) => {
       const box = el("input", { type: "checkbox", name: "skill", value: skill.name, checked: skill.on });
       const result = el("span", { className: "muted small skill-result", role: "status", text: shown[skill.name] === "on" ? " Switched on." : shown[skill.name] === "off" ? " Switched off." : "" });
-      return { skill, box, result, row: el("label", { className: "switch" }, box, el("span", {}, skill.description, result)) };
+      return { skill, box, result, row: skillRow(box, skill.description, result) };
     });
     const count = el("strong");
     const pin = pinField("Your PIN, to switch these on");
@@ -289,35 +289,74 @@ const IraPersonal = (() => {
   // Switched on at pairing unless the person unticks them: the asks people start with.
   const FIRST_SKILLS = ["files", "screen", "browser"];
   const KIND_WORDS = { mac: "Mac", android: "Android phone", ios: "iPhone", windows: "Windows PC" };
+  // The kinds of device, as cards to pick from: what it is, the app it runs, and a line drawing.
+  const KINDS = [
+    { value: "mac", app: "Ira for Mac", icon: '<rect x="4" y="5" width="16" height="11" rx="1.5"/><path d="M2 19h20"/>' },
+    { value: "android", app: "The Ira app", icon: '<rect x="7" y="2.5" width="10" height="19" rx="2.5"/><path d="M11 18.5h2"/>' },
+    { value: "ios", app: "Ira for iPhone", icon: '<rect x="6.5" y="2.5" width="11" height="19" rx="3"/><path d="M10.5 5h3"/>' },
+    { value: "windows", app: "Ira for Windows", icon: '<rect x="3" y="4" width="18" height="12" rx="1.5"/><path d="M9 20h6M12 16v4"/>' },
+  ];
+
+  // "Tasks: a coding agent at work…": the skill's name, then what it does.
+  function skillWords(description) {
+    const cut = description.indexOf(": ");
+    if (cut < 1 || cut > 32) return [null, description];
+    const rest = description.slice(cut + 2);
+    return [description.slice(0, cut), rest.charAt(0).toUpperCase() + rest.slice(1)];
+  }
+
+  // One skill: its name in bold, what it does under it, and a switch at the end.
+  function skillRow(box, description, ...after) {
+    box.setAttribute("role", "switch");
+    const [name, what] = skillWords(description);
+    return el(
+      "label",
+      { className: "skill-row" },
+      el("span", { className: "skill-words" }, name ? el("span", { className: "skill-name", text: name }) : null, el("span", { className: "skill-what", text: what }), ...after),
+      box,
+    );
+  }
 
   function addDeviceForm(body, downloads, skills) {
-    const kind = el(
-      "select",
-      { name: "kind" },
-      el("option", { value: "mac", text: "Mac (Ira for Mac)" }),
-      el("option", { value: "android", text: "Android phone" }),
-      el("option", { value: "ios", text: "iPhone (Ira for iPhone)" }),
-      el("option", { value: "windows", text: "Windows PC (Ira for Windows)" }),
+    const picker = el(
+      "div",
+      { className: "kind-picker", role: "radiogroup", "aria-label": "Kind" },
+      KINDS.map((kind) => {
+        const icon = el("span", { className: "kind-icon", "aria-hidden": "true" });
+        icon.innerHTML = `<svg viewBox="0 0 24 24">${kind.icon}</svg>`; // fixed drawings, never data
+        return el(
+          "label",
+          { className: "kind-card" },
+          el("input", { type: "radio", name: "kind", value: kind.value, checked: kind.value === "mac" }),
+          icon,
+          el("span", { className: "kind-name", text: KIND_WORDS[kind.value] }),
+          el("span", { className: "kind-app", text: kind.app }),
+        );
+      }),
     );
+    const chosenKind = () => $("input[name=kind]:checked", picker).value;
+    const name = el("input", { name: "label", maxlength: "60", placeholder: "My Mac" });
     const boxes = el("fieldset", { className: "stack skills" }, el("legend", { text: "What it may do (you can change this later)" }));
     const showSkills = () => {
-      const offered = skills.filter((skill) => (skill.kinds || []).includes(kind.value));
+      const kind = chosenKind();
+      name.placeholder = `My ${KIND_WORDS[kind]}`;
+      const offered = skills.filter((skill) => (skill.kinds || []).includes(kind));
       boxes.replaceChildren(boxes.firstChild);
       for (const skill of offered) {
         const box = el("input", { type: "checkbox", name: "skill", value: skill.name, checked: FIRST_SKILLS.includes(skill.name) });
-        boxes.append(el("label", { className: "switch" }, box, el("span", { text: skill.description })));
+        boxes.append(skillRow(box, skill.description));
       }
       boxes.hidden = !offered.length;
     };
-    kind.addEventListener("change", showSkills);
+    picker.addEventListener("change", showSkills);
     showSkills();
     const error = el("p", { className: "error", role: "alert" });
     const form = el(
       "form",
       { className: "stack add-device" },
       el("h3", { text: "Add a device" }),
-      el("label", {}, "Kind", kind),
-      el("label", {}, "Name", el("input", { name: "label", maxlength: "60", placeholder: "My Mac" })),
+      el("fieldset", { className: "stack-tight kind-field" }, el("legend", { text: "Kind" }), picker),
+      el("label", {}, "Name", name),
       boxes,
       pinField("Your action PIN (a new device is a new permission)"),
       el("button", { type: "submit", className: "btn btn-primary", text: "Make a pairing code" }),
