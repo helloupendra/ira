@@ -165,7 +165,9 @@ final class MainWindowController: NSObject, NSWindowDelegate {
         super.init()
         window.title = "Ira"
         window.backgroundColor = NSColor(Presence.bg)
-        window.titlebarAppearsTransparent = true
+        // An opaque header in Presence's background (the toolbar's): messages scroll under it,
+        // never through it.
+        window.titlebarAppearsTransparent = false
         window.isReleasedWhenClosed = false
         window.minSize = NSSize(width: 760, height: 520)
         window.collectionBehavior = [.moveToActiveSpace, .fullScreenAuxiliary]

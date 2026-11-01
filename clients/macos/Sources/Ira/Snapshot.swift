@@ -43,6 +43,14 @@ enum Snapshot {
             wait(1)
             save(main.window, to: folder.appendingPathComponent("chat-conversation-\(dark ? "dark" : "light").png"))
         }
+        // A long conversation, scrolled to its end: the header must stay clear of what scrolls under it.
+        model.conversation.entries = sample + longer
+        for dark in [false, true] {
+            main.window.appearance = NSAppearance(named: dark ? .darkAqua : .aqua)
+            wait(1)
+            save(main.window, to: folder.appendingPathComponent("chat-long-\(dark ? "dark" : "light").png"))
+        }
+        model.conversation.entries = sample
         model.conversation.listening = true
         model.conversation.caption = "Remind me at six to send the invoice to Sunrise Dental Clinic"
         for dark in [false, true] {
@@ -82,6 +90,18 @@ enum Snapshot {
 
     /// A short conversation to draw: a question, an answer with its receipts, and an action
     /// waiting for the PIN.
+    /// More of a day's questions, with **markdown** in the answers as models write it.
+    private static var longer: [Entry] {
+        [
+            Entry(role: .you, text: "What is on my calendar tomorrow?"),
+            Entry(role: .ira, text: "Tomorrow:\n- **10:00** cleaning at Sunrise Dental Clinic\n- **12:30** lunch with the supplier\n- **4:00** call about the invoice"),
+            Entry(role: .you, text: "Which tab has the clinic's booking page?"),
+            Entry(role: .ira, text: "The tab **\"Booking - Sunrise Dental Clinic\"** in Chrome. Run `make test` before you change the form."),
+            Entry(role: .you, text: "Remind me to call them at four"),
+            Entry(role: .ira, text: "Done: a reminder at 4:00 PM to call Sunrise Dental Clinic."),
+        ]
+    }
+
     private static var sample: [Entry] {
         var answer = Entry(
             role: .ira,

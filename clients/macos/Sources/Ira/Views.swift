@@ -638,7 +638,7 @@ struct EntryView: View {
             HStack(alignment: .top, spacing: 12) {
                 Lens(size: 30)
                 VStack(alignment: .leading, spacing: 10) {
-                    Text(entry.text)
+                    Text(ChatText.attributed(entry.text))
                         .font(Presence.body)
                         .lineSpacing(5)
                         .foregroundStyle(Presence.ink)
