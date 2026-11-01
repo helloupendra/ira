@@ -1417,7 +1417,7 @@ export interface paths {
             cookie?: never;
         };
         get?: never;
-        /** Name a network your Mac reported (by its hash): Office, Home */
+        /** Name a network your Mac or PC reported (by its hash): Office, Home */
         put: operations["name_my_network"];
         post?: never;
         /** Forget a network */
@@ -2337,12 +2337,12 @@ export interface components {
         ApprovalKeyIn: {
             /**
              * Public Key
-             * @description EC P-256 SubjectPublicKeyInfo, DER, base64.
+             * @description SubjectPublicKeyInfo, DER, base64: EC P-256 for ES256, RSA for RS256.
              */
             public_key: string;
             /**
              * Algorithm
-             * @description ES256 only.
+             * @description ES256, or RS256 (Windows Hello, 2048 bits or more).
              * @default ES256
              */
             algorithm: string;
@@ -2681,7 +2681,7 @@ export interface components {
             device_id?: number | null;
             /**
              * Signature
-             * @description Instead of the PIN: the device's ECDSA P-256 signature (DER, base64url) over the action, after the person's fingerprint (see Security, Approvals).
+             * @description Instead of the PIN: the device's signature over the action, base64url, after the person's fingerprint: ECDSA P-256 (DER) for an ES256 key, RSASSA-PKCS1-v1_5 for an RS256 one (see Security, Approvals).
              */
             signature?: string | null;
         };
@@ -3270,7 +3270,7 @@ export interface components {
             at: number;
             /**
              * Event
-             * @description From a device: watch_done, task_progress, task_done or task_failed. From Ira: reminder, nudge, or learning_question (data.learning_id: answer it with approve or reject).
+             * @description From a device: watch_done, task_progress, task_done, task_failed or task_reply (a coding task's answer to the person's message). From Ira: reminder, nudge, or learning_question (data.learning_id: answer it with approve or reject).
              */
             event: string;
             /** Title */
@@ -3564,7 +3564,7 @@ export interface components {
             sources: components["schemas"]["LearningSource"][];
             /**
              * Macs
-             * @description Your Macs and whether each one's routine is on.
+             * @description Your Macs and Windows PCs and whether each one's routine is on.
              */
             macs: components["schemas"]["MacRoutine"][];
             /**

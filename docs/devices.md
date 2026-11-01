@@ -135,7 +135,8 @@ out, and helps a model too.
 ```
 
 `event` is `watch_done`, `task_progress` (a long task saying how it is
-going), `task_done` or `task_failed`.
+going), `task_done`, `task_failed`, or `task_reply` (a coding task's answer to
+the person's message, when it came after the tool had answered).
 
 **Keepalive.** Either side sends `{"type": "ping"}` every 30 seconds and the
 other answers `{"type": "pong"}`.

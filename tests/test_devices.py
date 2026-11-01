@@ -565,6 +565,11 @@ def test_event_text_is_stripped_of_markup():
     assert event.text == "Open alert(1) now\n100%"
     with pytest.raises(ProtocolError):
         parse_event({"type": "event", "event": "rm_rf", "title": "x"})
+    # A coding task's answer to the person's message, for their phone.
+    reply = parse_event(
+        {"type": "event", "event": "task_reply", "title": "shop · main says", "text": "Got it."}
+    )
+    assert (reply.event, reply.text) == ("task_reply", "Got it.")
 
 
 async def test_events_reach_only_their_owner_and_are_rate_limited(store):
