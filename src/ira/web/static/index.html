@@ -19,8 +19,8 @@
   <link rel="preload" href="/fonts/geist.woff2" as="font" type="font/woff2" crossorigin>
   <script src="/theme.js?v=25"></script>
   <link rel="stylesheet" href="/tokens.css?v=24">
-  <link rel="stylesheet" href="/style.css?v=25">
-  <script src="/app.js?v=25" defer></script>
+  <link rel="stylesheet" href="/style.css?v=26">
+  <script src="/app.js?v=26" defer></script>
   <script src="/personal.js?v=24" defer></script>
   <script src="/live.js?v=24" defer></script>
 </head>
@@ -56,6 +56,21 @@
     </section>
 
     <section id="view-chat" class="view chat" hidden>
+      <!-- On a laptop or desktop: the conversations, always in view. On a phone they stay in the menu. -->
+      <aside id="side" class="side" aria-label="Your conversations">
+        <div class="side-head">
+          <button id="side-menu" type="button" class="icon-btn" aria-label="Settings" aria-haspopup="dialog">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
+          </button>
+          <span class="side-brand brand-name">Ira</span>
+        </div>
+        <button id="side-new" type="button" class="side-new">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+          New conversation
+        </button>
+        <div id="side-list" class="side-list"></div>
+      </aside>
+      <div class="chat-main">
       <header class="top">
         <button id="menu-open" type="button" class="icon-btn" aria-label="Menu" aria-haspopup="dialog">
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
@@ -134,6 +149,7 @@
           <button id="listen-done" type="button" class="btn btn-primary">Done</button>
           <button id="listen-cancel" type="button" class="btn btn-ghost">Cancel</button>
         </div>
+      </div>
       </div>
     </section>
   </main>

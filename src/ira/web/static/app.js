@@ -178,7 +178,7 @@ function enterChat() {
   $("#handsfree-toggle").checked = storage.get("ira.handsfree") === true;
   $("#login-note").hidden = true;
   loadPinStatus();
-  restoreToday();
+  restoreToday().then(loadSide);
   updateBanner();
   loadNow();
   const canAsk = permissions.includes("ask");
@@ -441,6 +441,12 @@ $("#menu-open").addEventListener("click", () => {
   $("#menu").showModal();
   loadHistory();
 });
+$("#side-menu").addEventListener("click", () => $("#menu").showModal());
+$("#side-new").addEventListener("click", () => newConversation());
+// From a phone's width to a laptop's: the sidebar appears, with its list.
+matchMedia("(min-width: 64rem)").addEventListener("change", (event) => {
+  if (event.matches && state.info) loadSide();
+});
 $("#menu-close").addEventListener("click", () => $("#menu").close());
 $("#menu").addEventListener("click", (event) => {
   if (event.target === event.currentTarget) event.currentTarget.close();
@@ -611,6 +617,7 @@ async function openConversation(id) {
   state.conversationId = id;
   state.turns = turns;
   renderTurns(turns);
+  markCurrent();
   storage.set("ira.today", { user: state.info.user.id, day: today(), conversationId: id, turns });
 }
 
@@ -636,19 +643,55 @@ async function restoreToday() {
   }
 }
 
+async function conversationRows(limit) {
+  try {
+    const response = await api(`/v1/conversations?limit=${limit}`);
+    if (response.ok) return await response.json();
+  } catch {
+    /* the list is a convenience; the app works without it */
+  }
+  return null;
+}
+
+function startOfDay(daysAgo = 0) {
+  const start = new Date();
+  start.setHours(0, 0, 0, 0);
+  start.setDate(start.getDate() - daysAgo);
+  return start.getTime();
+}
+
+function historyItem(row, when) {
+  const item = document.createElement("li");
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = "history-item";
+  button.dataset.id = row.id;
+  if (row.id === state.conversationId) button.setAttribute("aria-current", "true");
+  const text = document.createElement("span");
+  text.className = "history-text";
+  text.textContent = row.preview || `Conversation at ${clockTime(new Date(row.started_at * 1000))}`;
+  const meta = document.createElement("span");
+  meta.className = "history-meta";
+  meta.textContent = `${row.turns} ${row.turns === 1 ? "turn" : "turns"} · ${when}`;
+  button.append(text, meta);
+  button.addEventListener("click", async () => {
+    $("#menu").close();
+    try {
+      await openConversation(row.id);
+    } catch (error) {
+      state.notice = error.message;
+      setMode("idle");
+    }
+  });
+  item.append(button);
+  return item;
+}
+
+// The menu (on a phone): today's conversations.
 async function loadHistory() {
   const list = $("#history-list");
   list.replaceChildren();
-  let rows = [];
-  try {
-    const response = await api("/v1/conversations?limit=20");
-    if (response.ok) rows = await response.json();
-  } catch {
-    /* the list is a convenience; the menu still works without it */
-  }
-  const start = new Date();
-  start.setHours(0, 0, 0, 0);
-  rows = rows.filter((row) => row.last_at * 1000 >= start.getTime());
+  const rows = ((await conversationRows(20)) || []).filter((row) => row.last_at * 1000 >= startOfDay());
   if (!rows.length) {
     const empty = document.createElement("li");
     empty.className = "history-empty";
@@ -656,30 +699,56 @@ async function loadHistory() {
     list.append(empty);
     return;
   }
-  for (const row of rows) {
-    const item = document.createElement("li");
-    const button = document.createElement("button");
-    button.type = "button";
-    button.className = "history-item";
-    if (row.id === state.conversationId) button.setAttribute("aria-current", "true");
-    const text = document.createElement("span");
-    text.className = "history-text";
-    text.textContent = row.preview || `Conversation at ${clockTime(new Date(row.started_at * 1000))}`;
-    const meta = document.createElement("span");
-    meta.className = "history-meta";
-    meta.textContent = `${row.turns} ${row.turns === 1 ? "turn" : "turns"} · ${clockTime(new Date(row.last_at * 1000))}`;
-    button.append(text, meta);
-    button.addEventListener("click", async () => {
-      $("#menu").close();
-      try {
-        await openConversation(row.id);
-      } catch (error) {
-        state.notice = error.message;
-        setMode("idle");
-      }
-    });
-    item.append(button);
-    list.append(item);
+  for (const row of rows) list.append(historyItem(row, clockTime(new Date(row.last_at * 1000))));
+}
+
+// The sidebar (on a laptop or desktop): the latest conversations, under Today, Yesterday and Earlier.
+const DAY_FORMAT = new Intl.DateTimeFormat(undefined, { day: "numeric", month: "short" });
+
+async function loadSide() {
+  if (getComputedStyle($("#side")).display === "none") return; // a phone: the menu has them
+  const rows = await conversationRows(40);
+  if (rows === null) return; // keep what is shown
+  const groups = [
+    ["Today", (at) => at >= startOfDay()],
+    ["Yesterday", (at) => at >= startOfDay(1)],
+    ["Earlier", () => true],
+  ];
+  const shown = new Set();
+  const sections = [];
+  for (const [label, within] of groups) {
+    const list = document.createElement("ul");
+    list.className = "history";
+    for (const row of rows) {
+      const at = row.last_at * 1000;
+      if (shown.has(row.id) || !within(at)) continue;
+      shown.add(row.id);
+      const when = label === "Earlier" ? DAY_FORMAT.format(new Date(at)) : clockTime(new Date(at));
+      list.append(historyItem(row, when));
+    }
+    if (!list.children.length) continue;
+    const section = document.createElement("section");
+    section.className = "side-group";
+    const heading = document.createElement("p");
+    heading.className = "menu-label";
+    heading.textContent = label;
+    section.append(heading, list);
+    sections.push(section);
+  }
+  if (!sections.length) {
+    const empty = document.createElement("p");
+    empty.className = "history-empty";
+    empty.textContent = "Your conversations show here.";
+    sections.push(empty);
+  }
+  $("#side-list").replaceChildren(...sections);
+}
+
+// The conversation on screen, marked in the sidebar.
+function markCurrent() {
+  for (const button of document.querySelectorAll("#side-list .history-item")) {
+    if (button.dataset.id === state.conversationId) button.setAttribute("aria-current", "true");
+    else button.removeAttribute("aria-current");
   }
 }
 
@@ -765,6 +834,7 @@ function newConversation() {
   state.notice = "";
   setMode("idle");
   loadNow();
+  markCurrent();
   if (matchMedia("(hover: hover)").matches) $("#text").focus();
 }
 
@@ -940,6 +1010,7 @@ async function send(text, { voice = false, retry = false } = {}) {
     if (state.info) {
       setMode("idle");
       scrollDown();
+      loadSide(); // a new conversation, or a new last line
       if (handsFreeOn() && voice && !li.classList.contains("failed")) listen();
     }
   }
