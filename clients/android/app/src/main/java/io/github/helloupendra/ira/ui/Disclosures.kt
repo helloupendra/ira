@@ -1,6 +1,7 @@
 package io.github.helloupendra.ira.ui
 
 import io.github.helloupendra.ira.core.Skills
+import io.github.helloupendra.ira.core.SpecialAccess
 
 /**
  * The in-app disclosures Google Play asks for: each says what is read, why, and where it
@@ -8,6 +9,14 @@ import io.github.helloupendra.ira.core.Skills
  */
 object Disclosures {
     const val MIC_TITLE = "Ira listens only while you talk"
+
+    /**
+     * Special access whose skill's own disclosure comes first, before Android's settings page
+     * opens: notification access sends what others wrote to the server, and Accessibility
+     * lets Ira use the phone. The others (alarms, Do Not Disturb) only say which page opens.
+     */
+    fun firstFor(access: SpecialAccess): Boolean =
+        access == SpecialAccess.NOTIFICATION_LISTENER || access == SpecialAccess.ACCESSIBILITY
 
     fun mic(server: String): String =
         "To hear you, Ira uses the microphone while you talk to it. In a live call, the phone " +

@@ -95,7 +95,7 @@ fun SkillsScreen(app: IraApp, onBack: () -> Unit) {
                     special = missingSpecial(app, state, skill),
                     onAllow = { asking = skill },
                     onOpenSettings = { openAppSettings(context) },
-                    onSpecial = { access -> if (access == SpecialAccess.ACCESSIBILITY) asking = skill else explaining = access },
+                    onSpecial = { access -> if (Disclosures.firstFor(access)) asking = skill else explaining = access },
                     extra = {
                         if (skill == Skills.REMINDERS && SpecialAccess.EXACT_ALARMS !in state.special) {
                             PillButton("Allow reminders on time", { explaining = SpecialAccess.EXACT_ALARMS }, compact = true)
@@ -120,7 +120,12 @@ fun SkillsScreen(app: IraApp, onBack: () -> Unit) {
                 ScreenAccess.openSettings(context)
             } else {
                 val missing = missingPermissions(app, state, skill)
-                if (missing.isNotEmpty()) request.launch(missing.toTypedArray())
+                if (missing.isNotEmpty()) {
+                    request.launch(missing.toTypedArray())
+                } else if (skill == Skills.NOTIFICATIONS && SpecialAccess.NOTIFICATION_LISTENER !in state.special) {
+                    // Agreed to what is read and where it goes: now Android's own page.
+                    openSpecial(context, SpecialAccess.NOTIFICATION_LISTENER)
+                }
             }
         }
         if (text == null) {
