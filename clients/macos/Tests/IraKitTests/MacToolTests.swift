@@ -456,6 +456,79 @@ struct CodeTaskTests {
         #expect(result.status == 0, "git \(args): \(result.stderr)")
     }
 
+    /// A task's worktree of a real repository, as `start` makes it, without an agent.
+    func taskWorktree(_ root: URL, sandbox: Bool) async throws -> (CodeTasks, CodeTasks.Job, TaskSettings) {
+        let repo = try await repository(in: root)
+        let worktree = root.appendingPathComponent("tasks/shop-t1")
+        try await git(repo, "worktree", "add", "-b", "ira/task-t1", worktree.path)
+        let shop = TaskSettings.Repo(name: "shop", path: repo, test: nil, protected: false)
+        let settings = TaskSettings(command: ["agent"], repos: ["shop": shop], worktrees: root.appendingPathComponent("tasks"),
+                                    writable: [], minutes: 1, sandbox: sandbox, openVSCode: false, promptURI: nil)
+        let tasks = CodeTasks(settings: { settings })
+        var job = CodeTasks.Job(id: "t1", repo: shop, instruction: "x", branch: "ira/task-t1", worktree: worktree, base: "HEAD", started: Date())
+        job.gitDir = URL(fileURLWithPath: try await tasks.git(worktree, ["rev-parse", "--absolute-git-dir"]))
+        return (tasks, job, settings)
+    }
+
+    /// The agent may commit, but never touch what makes git run a program as the person:
+    /// the repository's settings and hooks, or where the worktree's git folder points.
+    @Test func theSandboxKeepsTheAgentOutOfGitsSettingsAndHooks() async throws {
+        guard FileManager.default.isExecutableFile(atPath: CodeTasks.sandboxExec) else { return }
+        let root = try temporaryFolder()
+        let (tasks, job, settings) = try await taskWorktree(root, sandbox: true)
+        let common = job.repo.path.appendingPathComponent(".git")
+        let gitDir = try #require(job.gitDir)
+        func agentWrites(_ path: URL) async throws -> Bool {
+            let run = try await Command.run(tasks.sandboxed(["/bin/sh", "-c", "echo planted >> \"$0\"", path.path], task: job, settings: settings))
+            return run.status == 0
+        }
+        let config = try String(contentsOf: common.appendingPathComponent("config"), encoding: .utf8)
+        for refused in [common.appendingPathComponent("config"), common.appendingPathComponent("hooks/pre-push"),
+                        common.appendingPathComponent("info/attributes"), gitDir.appendingPathComponent("commondir"),
+                        gitDir.appendingPathComponent("config.worktree")] {
+            let wrote = try await agentWrites(refused)
+            #expect(!wrote, "the agent wrote \(refused.path)")
+        }
+        #expect(try String(contentsOf: common.appendingPathComponent("config"), encoding: .utf8) == config)
+        // Its own commits and its files still go where they belong.
+        let committed = try await agentWrites(common.appendingPathComponent("objects/probe"))
+        let worked = try await agentWrites(job.worktree.appendingPathComponent("NOTE.txt"))
+        #expect(committed && worked)
+    }
+
+    /// Ira runs git on the worktree after the agent, outside the sandbox: a `.git` file the
+    /// agent pointed elsewhere, or a file monitor in the settings, must not run anything.
+    @Test func irasOwnGitRunsNothingTheAgentPlanted() async throws {
+        let root = try temporaryFolder()
+        let (tasks, job, _) = try await taskWorktree(root, sandbox: false)
+        let marker = root.appendingPathComponent("MONITOR-RAN")
+        let monitor = root.appendingPathComponent("monitor.sh")
+        try script(monitor, "touch \(marker.path)\n")
+        // A decoy git folder whose settings run the monitor, and the worktree pointed at it.
+        let decoy = root.appendingPathComponent("decoy")
+        try await git(root, "init", decoy.path)
+        try await git(decoy, "config", "core.fsmonitor", monitor.path)
+        try "gitdir: \(decoy.appendingPathComponent(".git").path)\n"
+            .write(to: job.worktree.appendingPathComponent(".git"), atomically: true, encoding: .utf8)
+        // And the same setting in the repository's own settings, as if it had got there.
+        try await git(job.repo.path, "config", "core.fsmonitor", monitor.path)
+        try "changed\n".write(to: job.worktree.appendingPathComponent("README.md"), atomically: true, encoding: .utf8)
+
+        let files = try await tasks.changed(job)
+        #expect(files == ["README.md"])
+        #expect(!FileManager.default.fileExists(atPath: marker.path))
+        // git without the override would have run it.
+        let gitDir = try #require(job.gitDir)
+        _ = try await Command.run(["/usr/bin/git", "--git-dir=\(gitDir.path)", "--work-tree=\(job.worktree.path)", "diff", "--name-only", "HEAD"])
+        #expect(FileManager.default.fileExists(atPath: marker.path))
+    }
+
+    /// The agent has no SSH agent to push with.
+    @Test func theAgentGetsNoSSHAgent() {
+        let env = CodeTasks(settings: { nil }).environment()
+        #expect(env["SSH_AUTH_SOCK"] == nil)
+    }
+
     /// A whole task against a real git repository and a scripted "agent": a new
     /// worktree and branch, progress, the files changed, the tests, the done
     /// event, and a push of the task branch only.
@@ -511,6 +584,13 @@ struct CodeTaskTests {
         #expect(events.all.first?.hasPrefix("task_done: Task \(id) in shop is done") == true)
         // The agent's own push was refused.
         #expect(!FileManager.default.fileExists(atPath: URL(fileURLWithPath: worktree).appendingPathComponent("PUSHED.txt").path))
+
+        // A hook that appeared while the task ran is never run by Ira's push.
+        let hook = repo.appendingPathComponent(".git/hooks/pre-push")
+        try script(hook, "touch \(root.appendingPathComponent("HOOK-RAN").path)\n")
+        await #expect(throws: ToolFailure.self) { try await tasks.push(["id": .string(id)]) }
+        #expect(!FileManager.default.fileExists(atPath: root.appendingPathComponent("HOOK-RAN").path))
+        try FileManager.default.removeItem(at: hook)
 
         // Pushing, after the PIN, sends the task branch only.
         let pushed = try await tasks.push(["id": .string(id)])

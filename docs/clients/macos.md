@@ -433,7 +433,13 @@ own tasks, never on a session it did not start.
 The safety rules:
 
 - The agent runs in macOS's sandbox: it can write only in its worktree, the
-  repository's `.git` and temporary folders, and its git cannot push.
+  repository's `.git` (but never its settings, hooks or `info`), temporary
+  folders and caches, never in your home folder, `/Applications` or
+  `/Users/Shared`. Its git cannot push, and it gets no SSH agent.
+- Ira's own git on the worktree, after the agent, names the worktree's git
+  folder itself and turns off git's file monitor, so nothing the agent left
+  behind runs as you. A push is refused if the repository's settings or hooks
+  changed while the task ran.
 - Starting a task needs your yes. Pushing needs your PIN, and pushes only the
   task's own branch: never `main`, `master` or the repository's default
   branch, never forced, nothing merged.

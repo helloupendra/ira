@@ -1,3 +1,4 @@
+import CryptoKit
 import Foundation
 
 /// Coding tasks: a coding agent at work in a NEW git worktree of a repository
@@ -272,10 +273,15 @@ public final class CodeTasks: @unchecked Sendable {
     /// A chat task's first words when the person gave no task yet.
     static let chatOpening = "The person will message you here, one message at a time. Say hello in one short line and wait for their first message."
 
+    /// The agent writes in its worktree, the repository's git folder (its commits) and
+    /// temporary folders. Never in what makes git run a program: the repository's
+    /// settings and hooks, and the files that say where the task's git folder is. Ira runs
+    /// git on the worktree itself, outside the sandbox, after the agent.
     static let profile = """
         (version 1)
         (allow default)
-        (deny file-write* (subpath (param "HOME")) (subpath "/opt/homebrew") (subpath "/usr/local"))
+        (deny file-write* (subpath (param "HOME")) (subpath "/opt/homebrew") (subpath "/usr/local")
+          (subpath "/Applications") (subpath "/Users/Shared"))
         (allow file-write*
           (subpath (param "WORKTREE"))
           (subpath (param "GITDIR"))
@@ -283,6 +289,14 @@ public final class CodeTasks: @unchecked Sendable {
           (subpath "/private/var/folders")
           (subpath (string-append (param "HOME") "/Library/Caches"))
         {extra})
+        (deny file-write*
+          (literal (string-append (param "GITDIR") "/config"))
+          (literal (string-append (param "GITDIR") "/config.worktree"))
+          (subpath (string-append (param "GITDIR") "/hooks"))
+          (subpath (string-append (param "GITDIR") "/info"))
+          (literal (string-append (param "TASKGITDIR") "/config.worktree"))
+          (literal (string-append (param "TASKGITDIR") "/commondir"))
+          (literal (string-append (param "TASKGITDIR") "/gitdir")))
         """
 
     public struct Job: Sendable {
@@ -325,6 +339,13 @@ public final class CodeTasks: @unchecked Sendable {
         /// was ready to hear it is kept in `early`.
         var awaiting = false
         var early: String?
+        /// The worktree's own git folder (`<repo>/.git/worktrees/<name>`), found when Ira made
+        /// it: Ira's git names it rather than trusting the worktree's `.git` file, which the
+        /// agent can rewrite.
+        var gitDir: URL?
+        /// The repository's git settings and hooks when the task started: a push refuses
+        /// to run hooks that changed while the agent worked.
+        var gitPrint: String?
 
         func view() -> JSONValue {
             [
@@ -480,6 +501,10 @@ public final class CodeTasks: @unchecked Sendable {
         try FileManager.default.createDirectory(at: settings.worktrees, withIntermediateDirectories: true)
         _ = try await git(repo.path, ["worktree", "add", "-b", branch, worktree.path, base])
         var task = Job(id: id, repo: repo, instruction: instruction, branch: branch, worktree: worktree, base: base, started: Date())
+        // Before the agent has touched anything: where the worktree's git folder is, and
+        // how the repository's settings and hooks are now.
+        task.gitDir = URL(fileURLWithPath: try await git(worktree, ["rev-parse", "--absolute-git-dir"]))
+        task.gitPrint = try await gitPrint(task)
         task.agent = agent.name
         task.chat = chat
         let named = try args.text("label", limit: 60) ?? "\(repo.name) · \(agent.name)"
@@ -702,15 +727,19 @@ public final class CodeTasks: @unchecked Sendable {
     public func push(_ raw: JSONValue) async throws -> JSONValue {
         let task = try task(try ToolArgs(raw, allowed: ["id"]))
         guard task.status == "done" else { throw ToolFailure("task \(task.id) is \(task.status); only a finished task is pushed") }
-        let head = try await git(task.worktree, ["rev-parse", "--abbrev-ref", "HEAD"])
+        let head = try await taskGit(task, ["rev-parse", "--abbrev-ref", "HEAD"])
         guard head == task.branch else { throw ToolFailure("the worktree is on \(head), not the task's branch \(task.branch)") }
         let remoteHead = try? await git(task.repo.path, ["symbolic-ref", "--short", "refs/remotes/origin/HEAD"])
         let defaultBranch = remoteHead.map { $0.hasPrefix("origin/") ? String($0.dropFirst("origin/".count)) : $0 }
         if let refusal = PushGuard.refusal(branch: task.branch, defaultBranch: defaultBranch, protected: task.repo.protected) {
             throw ToolFailure(refusal)
         }
+        // A push runs the repository's hooks as the person: never ones the agent changed.
+        guard let before = task.gitPrint, try await gitPrint(task) == before else {
+            throw ToolFailure("the repository's git settings or hooks changed while task \(task.id) ran; look at them, then push it yourself")
+        }
         // As the person, outside the sandbox and without the task's no-push settings.
-        _ = try await git(task.worktree, PushGuard.pushArguments(branch: task.branch), timeout: 120)
+        _ = try await taskGit(task, PushGuard.pushArguments(branch: task.branch), timeout: 120)
         return ["id": .string(task.id), "summary": .string("Pushed \(task.branch) to origin. Nothing was merged.")]
     }
 
@@ -732,6 +761,9 @@ public final class CodeTasks: @unchecked Sendable {
 
     func environment() -> [String: String] {
         var env = ProcessInfo.processInfo.environment
+        // No SSH agent: the agent cannot push over SSH with the person's keys.
+        env["SSH_AUTH_SOCK"] = nil
+        env["SSH_AGENT_PID"] = nil
         env["GIT_CONFIG_COUNT"] = "2"
         env["GIT_CONFIG_KEY_0"] = "core.hooksPath"
         env["GIT_CONFIG_VALUE_0"] = hooks.path
@@ -746,15 +778,26 @@ public final class CodeTasks: @unchecked Sendable {
         guard settings.sandbox, FileManager.default.isExecutableFile(atPath: CodeTasks.sandboxExec) else { return argv }
         let extra = settings.writable.indices
             .map { "  (subpath (param \"W\($0)\")) (literal (param \"W\($0)\"))" }.joined(separator: "\n")
+        let gitDir = task.repo.path.appendingPathComponent(".git")
+        let taskGitDir = task.gitDir ?? gitDir.appendingPathComponent("worktrees/\(task.worktree.lastPathComponent)")
         var params = [
-            "-D", "HOME=\(FileManager.default.homeDirectoryForCurrentUser.path)",
-            "-D", "WORKTREE=\(task.worktree.resolvingSymlinksInPath().path)",
-            "-D", "GITDIR=\(task.repo.path.appendingPathComponent(".git").resolvingSymlinksInPath().path)",
+            "-D", "HOME=\(CodeTasks.realPath(FileManager.default.homeDirectoryForCurrentUser))",
+            "-D", "WORKTREE=\(CodeTasks.realPath(task.worktree))",
+            "-D", "GITDIR=\(CodeTasks.realPath(gitDir))",
+            "-D", "TASKGITDIR=\(CodeTasks.realPath(taskGitDir))",
         ]
         for (index, path) in settings.writable.enumerated() {
-            params += ["-D", "W\(index)=\(path.resolvingSymlinksInPath().path)"]
+            params += ["-D", "W\(index)=\(CodeTasks.realPath(path))"]
         }
         return [CodeTasks.sandboxExec, "-p", CodeTasks.profile.replacingOccurrences(of: "{extra}", with: extra)] + params + argv
+    }
+
+    /// A path as the sandbox sees it. Foundation's own resolving drops "/private" from
+    /// /private/var and /private/tmp, and a rule on that shorter path would match nothing.
+    static func realPath(_ url: URL) -> String {
+        guard let resolved = realpath(url.path, nil) else { return url.resolvingSymlinksInPath().path }
+        defer { free(resolved) }
+        return String(cString: resolved)
     }
 
     static func argv(_ command: [String], prompt: String) -> [String] {
@@ -950,9 +993,9 @@ public final class CodeTasks: @unchecked Sendable {
 
     func changed(_ task: Job) async throws -> [String] {
         let lists = [
-            try await git(task.worktree, ["diff", "--name-only", "\(task.base)..HEAD"]),
-            try await git(task.worktree, ["diff", "--name-only", "HEAD"]),
-            try await git(task.worktree, ["ls-files", "--others", "--exclude-standard"]),
+            try await taskGit(task, ["diff", "--name-only", "\(task.base)..HEAD"]),
+            try await taskGit(task, ["diff", "--name-only", "HEAD"]),
+            try await taskGit(task, ["ls-files", "--others", "--exclude-standard"]),
         ]
         var seen: [String] = []
         for line in lists.flatMap({ $0.split(separator: "\n").map(String.init) }) where !line.isEmpty && !seen.contains(line) {
@@ -975,11 +1018,39 @@ public final class CodeTasks: @unchecked Sendable {
         }
     }
 
+    /// git as the person on a task's worktree, after the agent has worked in it. It names
+    /// the worktree's git folder instead of following its `.git` file, and turns off the
+    /// file monitor, a setting that runs a program: the agent cannot plant one for Ira to run.
+    func taskGit(_ task: Job, _ args: [String], timeout: Double = 120) async throws -> String {
+        let gitDir = task.gitDir
+            ?? task.repo.path.appendingPathComponent(".git/worktrees/\(task.worktree.lastPathComponent)")
+        let options = ["--git-dir=\(gitDir.path)", "--work-tree=\(task.worktree.path)", "-c", "core.fsmonitor=false"]
+        return try await git(task.worktree, args, options: options, timeout: timeout)
+    }
+
+    /// The repository's git settings and hooks, as one fingerprint: what a push compares.
+    func gitPrint(_ task: Job) async throws -> String {
+        let common = task.repo.path.appendingPathComponent(".git").resolvingSymlinksInPath()
+        var hooks = try await taskGit(task, ["rev-parse", "--git-path", "hooks"])
+        if !hooks.hasPrefix("/") { hooks = task.worktree.appendingPathComponent(hooks).path }
+        var files = [common.appendingPathComponent("config"), common.appendingPathComponent("config.worktree")]
+        if let gitDir = task.gitDir { files.append(gitDir.appendingPathComponent("config.worktree")) }
+        let found = FileManager.default.enumerator(at: URL(fileURLWithPath: hooks), includingPropertiesForKeys: nil)
+        files += ((found?.allObjects as? [URL]) ?? []).sorted { $0.path < $1.path }
+        var hash = SHA256()
+        for file in files {
+            hash.update(data: Data(Array(file.path.utf8) + [0]))
+            hash.update(data: (try? Data(contentsOf: file)) ?? Data())
+            hash.update(data: Data([0]))
+        }
+        return hash.finalize().map { String(format: "%02x", $0) }.joined()
+    }
+
     /// git as the person: not sandboxed (the agent never runs this).
-    func git(_ folder: URL, _ args: [String], timeout: Double = 120) async throws -> String {
+    func git(_ folder: URL, _ args: [String], options: [String] = [], timeout: Double = 120) async throws -> String {
         var env = ProcessInfo.processInfo.environment
         env["GIT_TERMINAL_PROMPT"] = "0"
-        let result = try await Command.run(["/usr/bin/git", "-C", folder.path] + args, environment: env, timeout: timeout)
+        let result = try await Command.run(["/usr/bin/git", "-C", folder.path] + options + args, environment: env, timeout: timeout)
         if result.timedOut { throw ToolFailure("git \(args.first ?? "") took too long") }
         guard result.status == 0 else {
             if result.stderr.contains("Operation not permitted") {
