@@ -598,17 +598,18 @@ class Assistant:
                 messages.append(Message(role="user", content=cue))
             # Markup first: the foreign-script filter would take DSML's full-width bars out.
             gate = MarkupGate()
+            foreign = ForeignGate(keep_foreign)
             try:
                 response: ChatResponse | None = None
                 if stream:
                     async for event in self.gateway.stream(messages, tools or None, tier=tier):
                         if isinstance(event, TextDelta):
-                            piece = _without_foreign(gate.feed(event.text), keep_foreign)
+                            piece = foreign.feed(gate.feed(event.text))
                             if piece:
                                 yield {"type": "delta", "text": piece}
                         elif isinstance(event, StreamDone):
                             response = event.response
-                    piece = _without_foreign(gate.flush(), keep_foreign)
+                    piece = foreign.feed(gate.flush()) + foreign.flush()
                     if piece:
                         yield {"type": "delta", "text": piece}
                 else:
@@ -661,10 +662,15 @@ class Assistant:
                     # Mostly in the wrong script: what is left is no answer.
                     cleaned = await self._again_in_language(messages, tools, tier, asked)
                     yield {"type": "delta", "text": cleaned}
-                response.text = cleaned
+                response.text = cleaned.strip()
 
             if not response.tool_calls:
                 final_text = response.text
+                if _QUOTED_START.match(final_text or ""):
+                    # The leftovers of a call half-written as text, or of a dropped clause.
+                    log.warning(
+                        "%s began its answer with quoted bits: %r", model, (final_text or "")[:80]
+                    )
                 history.append(Message(role="assistant", content=response.text, model=model))
                 break
 
@@ -1106,10 +1112,64 @@ def _preview(content: str) -> dict[str, Any]:
     return {"result": content[:RESULT_PREVIEW_CHARS] + CUT_MARK, "truncated": True}
 
 
+# Where a clause ends: CJK punctuation, a line break, or a sentence's end before a space.
+_CLAUSE_END = re.compile(r"[。！？；，、\n]|[.!?](?=\s)")
+_QUOTED = re.compile(r"\"[^\"]*\"|“[^”]*”|「[^」]*」|『[^』]*』")
+# An answer that starts with quoted bits and little else: what a dropped clause leaves behind.
+_QUOTED_START = re.compile(r'^\W*\w{0,20}\W*(?:"[^"]{1,80}"\s*){2,}')
+
+
+def _clause_without_foreign(clause: str) -> str:
+    """One clause, with stray characters of an unexpected script taken out; or nothing, when
+    the clause was written in that script and only names or quoted words would be left (a
+    Chinese sentence quoting two tab titles must not leave the titles glued together)."""
+    if not FOREIGN_SCRIPT.search(clause):
+        return clause
+    rest = _QUOTED.sub(" ", FOREIGN_SCRIPT.sub(" ", clause)).split()
+    if sum(1 for word in rest if any(c.isalpha() for c in word)) < 3:
+        return ""
+    return re.sub(r"(?<=\S) {2,}(?=\S)", " ", FOREIGN_SCRIPT.sub("", clause))
+
+
 def _without_foreign(text: str | None, keep: bool) -> str:
     if not text or keep:
         return text or ""
-    return re.sub(r"(?<=\S) {2,}(?=\S)", " ", FOREIGN_SCRIPT.sub("", text))
+    out, start = [], 0
+    for end in _CLAUSE_END.finditer(text):
+        out.append(_clause_without_foreign(text[start : end.end()]))
+        start = end.end()
+    out.append(_clause_without_foreign(text[start:]))
+    return "".join(out)
+
+
+class ForeignGate:
+    """Streamed text with clauses in an unexpected script taken out whole: text goes out at
+    once until such a character (or a quote, which such a clause may open with) appears, then
+    that clause is held until it ends and judged as `_clause_without_foreign` judges it."""
+
+    def __init__(self, keep: bool) -> None:
+        self.keep = keep
+        self._held = ""
+
+    def feed(self, piece: str) -> str:
+        if self.keep or not piece:
+            return piece
+        text = self._held + piece
+        out, start = [], 0
+        for end in _CLAUSE_END.finditer(text):
+            out.append(_clause_without_foreign(text[start : end.end()]))
+            start = end.end()
+        rest = text[start:]
+        if FOREIGN_SCRIPT.search(rest) or '"' in rest or "“" in rest:
+            self._held = rest
+        else:
+            self._held = ""
+            out.append(rest)
+        return "".join(out)
+
+    def flush(self) -> str:
+        held, self._held = self._held, ""
+        return _clause_without_foreign(held) if held else ""
 
 
 def _letters(text: str) -> int:

@@ -7,7 +7,7 @@ from typing import Any
 
 import pytest
 
-from ira.assistant import AGAIN_RULE, REFUSED_UNTRUSTED, SAY_AGAIN
+from ira.assistant import AGAIN_RULE, REFUSED_UNTRUSTED, SAY_AGAIN, ForeignGate, _without_foreign
 from ira.models.base import ChatResponse, ToolCall
 from ira.models.fake import ScriptedProvider
 from ira.tools.personal import PersonalTool
@@ -28,6 +28,45 @@ async def test_stray_chinese_tokens_are_taken_out_of_a_hindi_answer():
     said = "".join(e["text"] for e in events if e["type"] == "delta")
     assert said == "क्या मैं सर्च बटन दबा दूं?" == events[-1]["text"]
     assert runtime.assistant.history("t")[-1].text == "क्या मैं सर्च बटन दबा दूं?"
+
+
+async def test_a_chinese_clause_quoting_names_goes_whole(caplog):
+    # A model's Chinese aside quoting two tab titles: taking out only the Chinese left the
+    # titles glued together at the start of the answer.
+    aside = 'Notes "Business research"和"Personal / Business context"窗口。 Theek hai! Dono khule.'
+    provider = ScriptedProvider([aside])
+    runtime = make_runtime(provider=provider)
+    asked = runtime.assistant.events("kaun se tab khule hain", conversation_id="q")
+    events = [e async for e in asked]
+    said = "".join(e["text"] for e in events if e["type"] == "delta")
+    assert "Business research" not in said and "Personal" not in said
+    assert events[-1]["text"] == "Theek hai! Dono khule."
+    assert runtime.assistant.history("q")[-1].text == "Theek hai! Dono khule."
+
+
+def test_clauses_in_another_script_streamed_or_whole():
+    gate = ForeignGate(keep=False)
+    pieces = ['我看到 "Business', ' research"', '和"Personal"窗口。', " Theek hai!", " Bas."]
+    assert "".join(gate.feed(p) for p in pieces) + gate.flush() == " Theek hai! Bas."
+    assert ForeignGate(keep=True).feed("你好") == "你好"
+    # A few stray characters in a real sentence: only they go.
+    assert _without_foreign("了几个月 Kal subah das baje yaad dila dungi.", False) == (
+        " Kal subah das baje yaad dila dungi."
+    )
+    plain = 'Plain English, "quoted" too.'
+    assert _without_foreign(plain, False) == plain
+    held = ForeignGate(keep=False)
+    assert held.feed('He said "hi') + held.feed('" and left. Next') + held.flush() == (
+        'He said "hi" and left. Next'
+    )
+
+
+async def test_an_answer_that_starts_with_quoted_bits_is_logged(caplog):
+    provider = ScriptedProvider(['"Business research""Personal context" Theek hai!'])
+    runtime = make_runtime(provider=provider)
+    with caplog.at_level("WARNING"):
+        await runtime.assistant.ask("tabs?", conversation_id="l")
+    assert any("began its answer with quoted bits" in r.getMessage() for r in caplog.records)
 
 
 async def test_a_wholly_chinese_answer_is_asked_for_again_then_excused():
