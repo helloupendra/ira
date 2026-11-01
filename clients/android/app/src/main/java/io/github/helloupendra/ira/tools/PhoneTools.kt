@@ -38,7 +38,7 @@ class PhoneTools(private val context: Context) : ToolRunner {
         ToolGate.State(
             flavor = flavor,
             assistantRole = PhoneState.isAssistant(context),
-            callOn = PhoneState.callOn,
+            callOn = PhoneState.talking(),
             granted = PhoneState.granted(context, tools.flatMap { it.permissions + it.optionalPermissions }.toSet()),
             special = PhoneState.special(context),
         )

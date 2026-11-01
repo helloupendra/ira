@@ -1,6 +1,7 @@
 package io.github.helloupendra.ira.core
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -56,6 +57,15 @@ class ToolGateTest {
     fun `special access is checked`() {
         val message = ToolGate.check(tool(Flavor.PLAY, "notifications_read"), state(Flavor.PLAY, special = emptySet()))
         assertTrue(message!!.startsWith("Notification access is off"))
+    }
+
+    @Test
+    fun `calls and SMS count as talking only in a live call, or with the app on screen`() {
+        assertTrue(ToolGate.talking(liveCall = true, phoneSession = false, onScreen = false))
+        assertTrue(ToolGate.talking(liveCall = false, phoneSession = true, onScreen = true))
+        // One typed message, then the app left: Telegram or the web must not read the SMS.
+        assertFalse(ToolGate.talking(liveCall = false, phoneSession = true, onScreen = false))
+        assertFalse(ToolGate.talking(liveCall = false, phoneSession = false, onScreen = true))
     }
 
     @Test

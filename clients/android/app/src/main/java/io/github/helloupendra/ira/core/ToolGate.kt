@@ -64,4 +64,13 @@ object ToolGate {
             SpecialAccess.EXACT_ALARMS -> "Alarms and reminders"
             SpecialAccess.DO_NOT_DISTURB -> "Do Not Disturb access"
         }
+
+    /**
+     * Whether the person is talking to Ira on this phone, which is when the play build reads
+     * calls and SMS: a live call (its notification shows, even with the screen off), or a
+     * conversation in the app while the app is on screen. One typed message must not leave
+     * them open to every channel for as long as the app stays in memory.
+     */
+    fun talking(liveCall: Boolean, phoneSession: Boolean, onScreen: Boolean): Boolean =
+        liveCall || (phoneSession && onScreen)
 }

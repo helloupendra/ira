@@ -323,16 +323,16 @@ class IraApp : Application() {
                 onConversation = { settings.conversationId = it },
                 onEnded = { reason ->
                     ended.value = reason
-                    PhoneState.callOn = false
+                    PhoneState.phoneSession = false
                     if (call.value is PhoneSession) call.value = null
-                    release("call")
                 },
                 notice = notice,
             )
         ended.value = null
         call.value = session
-        PhoneState.callOn = true
-        hold("call")
+        // Not a call: it counts as talking to Ira only while the app is on screen, and the
+        // screen holds the device link (a typed message must not keep it for good).
+        PhoneState.phoneSession = true
         return session
     }
 

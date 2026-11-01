@@ -17,6 +17,7 @@ import androidx.core.app.NotificationCompat
 import io.github.helloupendra.ira.R
 import io.github.helloupendra.ira.core.Permissions
 import io.github.helloupendra.ira.core.SpecialAccess
+import io.github.helloupendra.ira.core.ToolGate
 import java.util.concurrent.atomic.AtomicInteger
 
 /** What the phone allows Ira right now, read fresh each time a tool runs. */
@@ -28,6 +29,13 @@ object PhoneState {
     /** A live call with Ira is on in this app. */
     @Volatile
     var callOn: Boolean = false
+
+    /** A conversation in the app (typed, or the phone's own speech) is open. */
+    @Volatile
+    var phoneSession: Boolean = false
+
+    /** Whether the person is talking to Ira on this phone now (see [ToolGate.talking]). */
+    fun talking(): Boolean = ToolGate.talking(liveCall = callOn, phoneSession = phoneSession, onScreen = visible)
 
     fun isAssistant(context: Context): Boolean {
         val roles = context.getSystemService(RoleManager::class.java) ?: return false
