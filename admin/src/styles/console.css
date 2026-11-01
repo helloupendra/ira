@@ -296,16 +296,19 @@ svg { display: block; }
 
 /* Page ------------------------------------------------------------------ */
 
+/* The title on the left and the page's buttons on the right, on a phone too. */
 .page-head {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: flex-start;
-  justify-content: space-between;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: start;
   gap: var(--s-3) var(--s-4);
 }
-.page-title { font-size: 1.625rem; font-weight: 600; letter-spacing: -0.02em; }
+.page-title { font-size: 1.375rem; font-weight: 600; letter-spacing: -0.02em; }
 .page-subtitle { margin-top: var(--s-1); font-size: var(--text-s); color: var(--muted); }
-.page-actions { display: flex; gap: var(--s-2); }
+.page-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: var(--s-2); }
+@media (min-width: 40rem) {
+  .page-title { font-size: 1.625rem; }
+}
 .actions-row { display: flex; flex-wrap: wrap; gap: var(--s-2); }
 
 /* Each part of a page is a card. */
@@ -322,6 +325,18 @@ svg { display: block; }
 .page > .section:first-of-type,
 .page-head + .section { margin-top: var(--s-5); }
 .section-title { margin-bottom: var(--s-3); font-size: var(--text-base); font-weight: 600; letter-spacing: -0.01em; }
+/* A card's heading: title and a line about it on the left, its main button on the right. */
+.section-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--s-3) var(--s-4);
+  margin-bottom: var(--s-4);
+}
+.section-head > div { display: grid; gap: var(--s-1); min-width: 0; flex: 1 1 18rem; }
+.section-head .section-title { margin-bottom: 0; }
+.section-desc { max-width: 44rem; font-size: var(--text-s); color: var(--muted); }
 
 /* The pages whose list is the whole page (conversations, tools, an empty list): one card too. */
 .page > .conv-list,
@@ -341,24 +356,26 @@ svg { display: block; }
 .page > .tools > .disclosure:first-child,
 .page > .tools > :first-child > .disclosure:first-child { border-top: 0; }
 
-.columns { display: grid; gap: var(--s-4); margin-top: var(--s-4); }
+.columns { display: grid; align-items: start; gap: var(--s-4); margin-top: var(--s-4); }
 .columns > .section { margin-top: 0; }
 @media (min-width: 56rem) {
   .columns { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 
-/* Stats: one tile each, a small label over the number */
+/* Stats: one tile each, a small label over the number. Two to a row on a phone (an odd
+   last one takes the row); on a desktop, seven make a row of four and a row of three. */
 .stats {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 12px;
   margin-top: var(--s-5);
 }
-@media (min-width: 40rem) {
-  .stats { grid-template-columns: repeat(3, minmax(0, 1fr)); }
-}
+.stat:last-child:nth-child(odd) { grid-column: 1 / -1; }
 @media (min-width: 56rem) {
-  .stats { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  .stats { grid-template-columns: repeat(12, minmax(0, 1fr)); }
+  .stat,
+  .stat:last-child:nth-child(odd) { grid-column: span 3; }
+  .stat:first-child:nth-last-child(7) ~ .stat:nth-child(n + 5) { grid-column: span 4; }
 }
 .stat {
   display: grid;
@@ -378,6 +395,7 @@ svg { display: block; }
   letter-spacing: -0.01em;
   overflow-wrap: anywhere;
 }
+.stat-note { display: block; font-size: var(--text-s); font-weight: 400; letter-spacing: 0; color: var(--muted); }
 @media (min-width: 40rem) {
   .stat-value { font-size: var(--text-xl); }
 }
@@ -411,6 +429,36 @@ svg { display: block; }
 .table tr > :last-child { padding-right: 0; }
 .table tbody tr:last-child td { border-bottom: 0; }
 .table-sticky th { position: sticky; top: 0; background: var(--card); }
+
+/* On a phone, a .table-stack shows each row as a short list: the first cell as its title,
+   the others under it with their column's name (data-label) on the left. */
+@media (max-width: 39.99rem) {
+  .table-stack thead {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+  }
+  .table-stack,
+  .table-stack tbody,
+  .table-stack tr { display: block; }
+  .table-stack tr { padding: var(--s-3) 0; border-bottom: 1px solid var(--line); }
+  .table-stack tbody tr:last-child { border-bottom: 0; }
+  .table-stack td,
+  .table-stack td.num {
+    display: flex;
+    justify-content: space-between;
+    gap: var(--s-3);
+    width: auto;
+    padding: 2px 0;
+    text-align: right;
+    border: 0;
+  }
+  .table-stack td::before { content: attr(data-label); color: var(--muted); text-align: left; }
+  .table-stack td:first-child { padding-bottom: var(--s-1); font-weight: 600; text-align: left; }
+  .table-stack td:first-child::before { content: none; }
+}
 
 /* Rows: short lists with a hairline between items */
 .rows { margin: 0; padding: 0; font-size: var(--text-m); list-style: none; }
@@ -678,6 +726,8 @@ textarea { resize: vertical; }
 .kv { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: var(--s-2) var(--s-4); margin: 0; font-size: var(--text-m); }
 .kv dt { color: var(--muted); }
 .kv dd { margin: 0; overflow-wrap: anywhere; }
+.kv-small { gap: 2px var(--s-3); font-size: var(--text-s); }
+.kv-pair { display: contents; }
 
 /* Filters: a row of choices, one selected */
 .filters { display: flex; flex-wrap: wrap; gap: var(--s-1); margin-bottom: var(--s-4); }

@@ -40,25 +40,34 @@ function Body<T>({
   );
 }
 
-function Stat({ label, value }: { label: string; value: string }) {
+function Stat({ label, value, note }: { label: string; value: string; note?: string }) {
   return (
     <div className="stat">
       <dt className="stat-label">{label}</dt>
-      <dd className="stat-value">{value}</dd>
+      <dd className="stat-value">
+        {value}
+        {note && <span className="stat-note">{note}</span>}
+      </dd>
     </div>
   );
 }
 
+// People first (questions, conversations), then the model's work, then what it cost.
 function Stats({ data }: { data: OverviewData }) {
+  const unknown = data.cost_unknown ?? 0;
   return (
     <dl className="stats">
       <Stat label="Questions" value={count(data.questions)} />
+      <Stat label="Conversations" value={count(data.conversations)} />
       <Stat label="Model calls" value={count(data.calls)} />
       <Stat label="Failures" value={count(data.failures)} />
-      <Stat label="Cost" value={costText(data.cost_usd, data.cost_unknown ?? 0)} />
-      <Stat label="Latency p50 / p95" value={`${seconds(data.latency_p50)} / ${seconds(data.latency_p95)}`} />
-      <Stat label="Conversations" value={count(data.conversations)} />
+      <Stat
+        label="Cost"
+        value={costText(data.cost_usd)}
+        note={unknown > 0 && data.cost_usd != null ? `+ ${count(unknown)} unknown` : undefined}
+      />
       <Stat label="Tokens in / out" value={`${count(data.input_tokens)} / ${count(data.output_tokens)}`} />
+      <Stat label="Latency p50 / p95" value={`${seconds(data.latency_p50)} / ${seconds(data.latency_p95)}`} />
     </dl>
   );
 }
@@ -71,7 +80,7 @@ function ByModel({ data }: { data: OverviewData }) {
         <Empty text="No model calls yet today." />
       ) : (
         <div className="table-wrap">
-          <table className="table">
+          <table className="table table-stack">
             <thead>
               <tr>
                 <th scope="col">Model</th>
@@ -93,10 +102,18 @@ function ByModel({ data }: { data: OverviewData }) {
               {data.by_model.map((row, i) => (
                 <tr key={row.model ?? `none-${i}`}>
                   <td>{row.model ?? <span className="muted">none (no model answered)</span>}</td>
-                  <td className="num">{count(row.calls)}</td>
-                  <td className={row.failures > 0 ? 'num danger' : 'num'}>{count(row.failures)}</td>
-                  <td className="num">{costText(row.cost_usd, row.cost_unknown ?? 0)}</td>
-                  <td className="num">{seconds(row.avg_seconds)}</td>
+                  <td className="num" data-label="Calls">
+                    {count(row.calls)}
+                  </td>
+                  <td className={row.failures > 0 ? 'num danger' : 'num'} data-label="Failures">
+                    {count(row.failures)}
+                  </td>
+                  <td className="num" data-label="Cost">
+                    {costText(row.cost_usd, row.cost_unknown ?? 0)}
+                  </td>
+                  <td className="num" data-label="Avg time">
+                    {seconds(row.avg_seconds)}
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -154,38 +171,43 @@ const CHANNEL_ORDER = ['web', 'http', 'telegram'];
 
 function text(value: unknown): string | null {
   if (value === null || value === undefined || value === '') return null;
+  if (typeof value === 'boolean') return value ? 'yes' : 'no';
   return typeof value === 'string' ? value : JSON.stringify(value);
 }
 
-// The lines under a channel's name, from the fields the server reports. The
-// known ones get a sentence; anything else is shown as it came.
-function channelLines(channel: ChannelView): string[] {
+// What a channel reports, as label and value: the known fields get a plain
+// name; anything else is shown as it came.
+function channelFacts(channel: ChannelView): [string, string][] {
   const detail = channel.detail ?? {};
-  const lines: string[] = [];
+  const facts: [string, string][] = [];
   const used = new Set<string>();
   if (channel.name === 'web') {
-    lines.push(`Speech to text: ${text(detail.stt) ?? 'none'}`);
-    lines.push(`Voice: ${text(detail.tts) ?? 'browser voice'}`);
+    facts.push(['Speech to text', text(detail.stt) ?? 'none']);
+    facts.push(['Voice', text(detail.tts) ?? 'browser voice']);
     used.add('stt').add('tts');
   } else if (channel.name === 'http') {
     const host = text(detail.host);
     const port = text(detail.port);
-    if (host || port) lines.push([host, port].filter(Boolean).join(':'));
+    if (host || port) facts.push(['Address', [host, port].filter(Boolean).join(':')]);
     used.add('host').add('port');
   } else if (channel.name === 'telegram') {
     const paired = detail.paired_chats;
-    if (typeof paired === 'number') lines.push(`${count(paired)} paired ${paired === 1 ? 'chat' : 'chats'}`);
+    if (typeof paired === 'number') facts.push(['Paired chats', count(paired)]);
     used.add('paired_chats');
   }
   for (const [key, value] of Object.entries(detail)) {
     if (used.has(key)) continue;
     const shown = text(value);
-    if (shown !== null) lines.push(`${humanize(key)}: ${shown}`);
+    if (shown !== null) {
+      const label = humanize(key);
+      facts.push([label.charAt(0).toUpperCase() + label.slice(1), shown]);
+    }
   }
-  return lines;
+  return facts;
 }
 
 function ChannelRow({ channel }: { channel: ChannelView }) {
+  const facts = channelFacts(channel);
   return (
     <li className="row row-stack">
       <div className="row-main">
@@ -194,11 +216,16 @@ function ChannelRow({ channel }: { channel: ChannelView }) {
           {channel.enabled ? 'on' : 'off'}
         </span>
       </div>
-      {channelLines(channel).map((line) => (
-        <span key={line} className="row-detail">
-          {line}
-        </span>
-      ))}
+      {facts.length > 0 && (
+        <dl className="kv kv-small">
+          {facts.map(([label, value]) => (
+            <div key={label} className="kv-pair">
+              <dt>{label}</dt>
+              <dd>{value}</dd>
+            </div>
+          ))}
+        </dl>
+      )}
     </li>
   );
 }
