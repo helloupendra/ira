@@ -20,6 +20,18 @@
   .action-meta { flex: none; margin-left: auto; }
 }
 
+/* An open proposal: its details in a quiet inset panel under the summary. */
+.action > .disclosure-body {
+  margin: 0 0 var(--s-3);
+  padding: var(--s-3) var(--s-4);
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+}
+@media (min-width: 40rem) {
+  .action > .disclosure-body { margin-left: calc(20px + var(--s-3)); }
+}
+
 /* Parameters and the result, each under a quiet label like the key-value list's */
 .action-part { display: grid; gap: var(--s-1); }
 .action-part-title { font-size: var(--text-m); font-weight: 400; color: var(--muted); }
