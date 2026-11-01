@@ -11,6 +11,10 @@
 }
 .cell-nowrap { white-space: nowrap; }
 .cell-actions { display: flex; align-items: center; gap: var(--s-2); white-space: nowrap; }
+.cell-menu { width: 1%; text-align: right; }
+/* The menu opens over the rows below it, so this table must not clip it. */
+.table-wrap:has(.people-table) { overflow: visible; }
+.person-tail { display: flex; flex: none; align-items: center; gap: var(--s-1); }
 .who { display: inline-flex; flex-wrap: wrap; align-items: center; gap: var(--s-2); overflow-wrap: anywhere; }
 
 .person { display: grid; gap: var(--s-2); }

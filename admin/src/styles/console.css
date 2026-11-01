@@ -707,6 +707,47 @@ textarea { resize: vertical; }
   .switch { min-height: 2rem; }
 }
 
+/* A row's actions menu: a quiet "⋯" button and a small list under it */
+.menu { position: relative; display: inline-block; }
+.menu-button { width: 2.25rem; height: 2.25rem; color: var(--muted); }
+.menu-button[aria-expanded="true"] { color: var(--text); background: var(--bg-sunken); }
+.menu-list {
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 0;
+  z-index: 20;
+  display: grid;
+  width: max-content;
+  min-width: 12rem;
+  max-width: 18rem;
+  padding: 4px;
+  text-align: left;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  box-shadow: var(--shadow);
+}
+.menu-item {
+  display: grid;
+  gap: 2px;
+  min-height: 2.5rem;
+  padding: var(--s-2) 10px;
+  font: inherit;
+  font-size: var(--text-m);
+  text-align: left;
+  white-space: normal;
+  color: var(--text);
+  background: none;
+  border: 0;
+  border-radius: 8px;
+  cursor: pointer;
+}
+.menu-item:hover:not(:disabled),
+.menu-item:focus-visible { background: var(--hover); outline: none; }
+.menu-item.is-danger { color: var(--danger); }
+.menu-item:disabled { color: var(--muted); cursor: default; }
+.menu-hint { font-size: var(--text-xs); line-height: var(--leading-tight); color: var(--muted); }
+
 /* Structured values */
 .json {
   margin: 0;

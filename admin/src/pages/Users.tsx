@@ -5,6 +5,7 @@ import { roleLabel, type Permission } from '../lib/roles';
 import { inviteBadge } from '../ui/badges';
 import { ConfirmDialog } from '../ui/Dialog';
 import { Icon } from '../ui/icons';
+import { Menu } from '../ui/Menu';
 import { Page } from '../ui/Page';
 import { useSession } from '../ui/Session';
 import { Empty, ErrorState, Loading, sentenceFor } from '../ui/states';
@@ -111,40 +112,23 @@ function RoleSelect({
   );
 }
 
-function ResetPinButton({ user, onReset }: Pick<PersonProps, 'user' | 'onReset'>) {
-  const reason = pinReason(user);
+// A person's account actions in one menu: each stays listed, with why when it can't run.
+function PersonMenu({
+  user,
+  note,
+  onReset,
+  onAccount,
+  onRemove,
+}: Pick<PersonProps, 'user' | 'onReset' | 'onAccount' | 'onRemove'> & { note: string | null }) {
   return (
-    <button
-      type="button"
-      className="btn btn-small"
-      disabled={reason !== null}
-      title={reason ?? undefined}
-      onClick={onReset}
-    >
-      Reset PIN
-    </button>
-  );
-}
-
-function AccountButton({ onAccount }: Pick<PersonProps, 'onAccount'>) {
-  return (
-    <button type="button" className="btn btn-small" onClick={onAccount}>
-      Email &amp; password
-    </button>
-  );
-}
-
-function RemoveButton({ reason, onRemove }: { reason: string | null; onRemove: () => void }) {
-  return (
-    <button
-      type="button"
-      className="btn btn-danger btn-small"
-      disabled={reason !== null}
-      title={reason ?? undefined}
-      onClick={onRemove}
-    >
-      Remove
-    </button>
+    <Menu
+      label={`Actions for ${user.email}`}
+      items={[
+        { label: 'Email & password', onSelect: onAccount },
+        { label: 'Reset PIN', onSelect: onReset, reason: pinReason(user) },
+        { label: 'Remove', onSelect: onRemove, reason: note, danger: true },
+      ]}
+    />
   );
 }
 
@@ -188,17 +172,11 @@ function PersonRow({ user, users, meId, role, busy, error, onRole, onReset, onAc
         />
       </td>
       <td>
-        <span className="cell-actions">
-          <PinBadge user={user} long={false} />
-          <ResetPinButton user={user} onReset={onReset} />
-        </span>
+        <PinBadge user={user} long={false} />
       </td>
-      <td className="cell-nowrap">{lastSignIn(user)}</td>
-      <td>
-        <span className="cell-actions">
-          <AccountButton onAccount={onAccount} />
-          <RemoveButton reason={note} onRemove={onRemove} />
-        </span>
+      <td className="cell-nowrap muted">{lastSignIn(user)}</td>
+      <td className="cell-menu">
+        <PersonMenu user={user} note={note} onReset={onReset} onAccount={onAccount} onRemove={onRemove} />
       </td>
     </tr>
   );
@@ -214,7 +192,10 @@ function PersonCard({ user, users, meId, role, busy, error, onRole, onReset, onA
           {user.email}
           <You user={user} meId={meId} />
         </span>
-        <PinBadge user={user} long />
+        <span className="person-tail">
+          <PinBadge user={user} long />
+          <PersonMenu user={user} note={note} onReset={onReset} onAccount={onAccount} onRemove={onRemove} />
+        </span>
       </div>
       <div className="card-meta">
         <span>{signInSentence(user)}</span>
@@ -228,11 +209,6 @@ function PersonCard({ user, users, meId, role, busy, error, onRole, onReset, onA
           {error}
         </p>
       )}
-      <div className="card-actions">
-        <ResetPinButton user={user} onReset={onReset} />
-        <AccountButton onAccount={onAccount} />
-        <RemoveButton reason={note} onRemove={onRemove} />
-      </div>
       {note && <p className="inline-note">{note}</p>}
     </li>
   );
@@ -401,7 +377,7 @@ export default function Users() {
               <th scope="col">PIN</th>
               <th scope="col">Last sign-in</th>
               <th scope="col">
-                <span className="sr-only">Remove</span>
+                <span className="sr-only">Actions</span>
               </th>
             </tr>
           </thead>
@@ -533,19 +509,24 @@ export default function Users() {
       }
     >
       <section className="section">
-        <h2 className="section-title">People</h2>
-        <div className="stack">
-          <p className="inline-note">{PEOPLE_NOTE}</p>
-          <Body state={users} needs="admin.read">
-            {people}
-          </Body>
+        <div className="section-head">
+          <div>
+            <h2 className="section-title">People</h2>
+            <p className="section-desc">{PEOPLE_NOTE}</p>
+          </div>
         </div>
+        <Body state={users} needs="admin.read">
+          {people}
+        </Body>
       </section>
 
       <section className="section">
-        <h2 className="section-title">Invitations</h2>
-        <div className="toolbar">
-          <button type="button" className="btn btn-primary" onClick={() => setInviting(true)}>
+        <div className="section-head">
+          <div>
+            <h2 className="section-title">Invitations</h2>
+            <p className="section-desc">An invitation link works once, within 72 hours of being made.</p>
+          </div>
+          <button type="button" className="btn btn-primary btn-small" onClick={() => setInviting(true)}>
             <Icon name="plus" />
             Invite someone
           </button>
