@@ -2,7 +2,7 @@
    and the buttons under it. Everything else is the shared vocabulary in
    console.css. */
 
-.gate-card.wide { max-width: 36rem; }
+.gate-card.wide { max-width: 40rem; }
 .setup-head { display: grid; gap: var(--s-1); }
 .setup-head p { font-size: var(--text-s); }
 .setup-body:focus { outline: none; box-shadow: none; }

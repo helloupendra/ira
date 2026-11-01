@@ -629,7 +629,21 @@ textarea { resize: vertical; }
   padding: var(--s-6) var(--s-4);
   padding-top: max(var(--s-6), env(safe-area-inset-top, 0px));
 }
-.gate-card { display: grid; gap: var(--s-4); width: 100%; max-width: 22rem; }
+/* The standalone pages (sign in, setup, an invitation) sit in one lifted card. */
+.gate-card {
+  display: grid;
+  gap: var(--s-4);
+  width: 100%;
+  max-width: 24rem;
+  padding: var(--s-5) var(--s-4);
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 20px;
+  box-shadow: var(--shadow);
+}
+@media (min-width: 40rem) {
+  .gate-card { padding: var(--s-6); }
+}
 .gate-card h1 { font-size: var(--text-xl); font-weight: 600; letter-spacing: -0.01em; }
 .gate-card .mark-tile { margin-bottom: var(--s-2); }
 .gate-card .note { font-size: var(--text-s); }
