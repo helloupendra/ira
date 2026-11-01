@@ -112,6 +112,13 @@ class Principal:
         """Who, for the logs: the person's email. The channel is recorded on its own."""
         return self.user.email
 
+    @property
+    def device_id(self) -> int | None:
+        """The paired device this request came from, when it came with a device's token."""
+        if self.via != "device" or not (self.credential_id or "").startswith("device:"):
+            return None
+        return int(str(self.credential_id).split(":", 1)[1])
+
 
 def _user(row: Any) -> User:
     return User(

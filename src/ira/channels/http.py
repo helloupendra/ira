@@ -244,6 +244,7 @@ async def ask(
         actor=principal.actor,
         user_id=principal.user.id,
         can_approve=principal.can("actions"),
+        device_id=principal.device_id,
     )
     data = reply.public()
     data["conversation_id"] = client_id
@@ -354,6 +355,7 @@ async def ask_stream(
             actor=principal.actor,
             user_id=principal.user.id,
             can_approve=principal.can("actions"),
+            device_id=principal.device_id,
         ):
             if event["type"] == "done":
                 event = {**event, "conversation_id": client_id}

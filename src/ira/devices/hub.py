@@ -577,4 +577,5 @@ class DeviceHub:
             run=run,
             skill=first.skill,
             route=route,
+            devices=dict(by_label),
         )

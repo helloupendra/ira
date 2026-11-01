@@ -365,6 +365,7 @@ class LiveCall:
                         actor=self.principal.actor,
                         user_id=self.user_id,
                         can_approve=self.principal.can("actions"),
+                        device_id=getattr(self.principal, "device_id", None),
                     )
                 async for event in events:
                     kind = event.get("type")
@@ -380,7 +381,12 @@ class LiveCall:
                         # The app shows the step ("Reading your Chrome tabs…"), and what was
                         # written before it was a lead-in, not the answer.
                         await self.send(
-                            {"type": "tool", "turn": turn.number, "name": event.get("name")}
+                            {
+                                "type": "tool",
+                                "turn": turn.number,
+                                "name": event.get("name"),
+                                **({"device": event["device"]} if event.get("device") else {}),
+                            }
                         )
                         if turn.seq == 0 and turn.spoken_chars == 0:
                             from ira.language import detect

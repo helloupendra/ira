@@ -267,6 +267,9 @@ class Assistant:
         self.approvals: Any = None
         # The app each device last said was in front, per conversation, for this turn.
         self._front: dict[str, dict[int, str]] = {}
+        # The device each conversation is held from (its token's), when it is one: its own
+        # tools come first, and another device is never used without the person's yes.
+        self._from: dict[str, int] = {}
         self.device_label: Callable[[int], str] = lambda device_id: f"device {device_id}"
         # Told each finished turn, without delaying it: (person, their message). Learning.
         self.after_turn = after_turn
@@ -298,6 +301,7 @@ class Assistant:
         untrusted: bool = False,
         tier_one: list[str] = (),
         spoken: bool = False,
+        here: int | None = None,
     ) -> str:
         """The system prompt for one person's turn.
 
@@ -317,6 +321,14 @@ class Assistant:
         )
         if spoken:
             prompt += f"- {SPOKEN_RULE}\n"
+        if here is not None:
+            device = self.device_label(here)
+            prompt += (
+                f"- The person is talking to you from their device {device}. Anything done on "
+                f"a device is done on {device}, with its own tools. If {device} cannot do it but "
+                "another of their devices can, say so and ask before using the other one; "
+                "always say which device you used.\n"
+            )
         if untrusted:
             prompt += f"- {UNTRUSTED_RULE}\n"
         if tier_one:
@@ -391,6 +403,7 @@ class Assistant:
         actor: str = "owner",
         user_id: int | None = None,
         can_approve: bool = True,
+        device_id: int | None = None,
     ) -> Reply:
         reply = Reply(text="", conversation_id=conversation_id)
         parts: list[str] = []
@@ -403,6 +416,7 @@ class Assistant:
             user_id=user_id,
             stream=False,
             can_approve=can_approve,
+            device_id=device_id,
         ):
             if event["type"] == "delta":
                 parts.append(event["text"])
@@ -435,9 +449,11 @@ class Assistant:
         user_id: int | None = None,
         stream: bool = True,
         can_approve: bool = True,
+        device_id: int | None = None,
     ) -> AsyncIterator[dict[str, Any]]:
         """Run one user turn, yielding events: delta, tool, tool_result, action, done, error.
-        ``can_approve``: the credential may say yes to an action (an ask-only token may not)."""
+        ``can_approve``: the credential may say yes to an action (an ask-only token may not).
+        ``device_id``: the device the person talks from (its own token), when it is one."""
         text = text.strip()
         if looks_like_pin(text):
             # A bare PIN typed into chat: keep it away from every model.
@@ -450,6 +466,10 @@ class Assistant:
             return
 
         self.conversations.ensure(conversation_id, channel=channel, user_id=user_id)
+        if device_id is not None:
+            self._from[conversation_id] = device_id
+        else:
+            self._from.pop(conversation_id, None)
         async with self._one_turn(conversation_id):
             pending = self.guard.awaiting_yes(conversation_id, user_id)
             if pending is not None and is_yes(text) and not can_approve:
@@ -501,15 +521,53 @@ class Assistant:
         yield {"type": "delta", "text": message}
         yield {"type": "done", "text": message, "model": None}
 
-    def _offered(self, user_id: int | None) -> dict[str, PersonalTool]:
-        """This person's own tools for the turn; a registry tool's name always wins."""
+    def _offered(
+        self, user_id: int | None, conversation_id: str | None = None
+    ) -> dict[str, PersonalTool]:
+        """This person's own tools for the turn; a registry tool's name always wins. Held from
+        a device, its own tools say so, and one several devices offer goes to it by default."""
         if self.personal_tools is None or user_id is None:
             return {}
+        here = self._from.get(conversation_id) if conversation_id is not None else None
         offered: dict[str, PersonalTool] = {}
         for extra in self.personal_tools(user_id):
             if extra.name not in self.registry and extra.name not in offered:
-                offered[extra.name] = extra
+                offered[extra.name] = extra if here is None else self._from_here(extra, here)
         return offered
+
+    def _from_here(self, tool: PersonalTool, here: int) -> PersonalTool:
+        """A device's tool as seen from the device `here`, which the person talks from."""
+        if tool.source != "device":
+            return tool
+        name = self.device_label(here)
+        if tool.route is not None and here in tool.devices.values():
+            routed = tool.route
+
+            def route(arguments: dict[str, Any]) -> tuple[int, dict[str, Any]]:
+                if not arguments.get("device"):  # unnamed: the device the person talks from
+                    return here, {k: v for k, v in arguments.items() if k != "device"}
+                return routed(arguments)
+
+            parameters = dict(tool.parameters)
+            parameters["required"] = [r for r in parameters.get("required", []) if r != "device"]
+            return dataclasses.replace(
+                tool, parameters=parameters, route=route,
+                description=f"{tool.description} Without device, it runs on {name}, the device "
+                "the person is talking from; name another only when they ask for it.",
+            )  # fmt: skip
+        if tool.device_id == here:
+            return dataclasses.replace(
+                tool,
+                description=f"{tool.description} This is the device the person is talking from.",
+            )
+        if tool.device_id is not None:
+            return dataclasses.replace(
+                tool,
+                description=f"{tool.description} Not the device the person is talking from "
+                f"({name}): use it only when they ask for {tool.label} by name; otherwise "
+                f"say that {name} cannot do this, and ask.",
+            )
+        return tool
 
     async def follow_up(
         self,
@@ -566,7 +624,7 @@ class Assistant:
             history.append(Message(role="user", content=text))
         asked = text if text is not None else _last_user_text(history)
         keep_foreign = bool(FOREIGN_SCRIPT.search(asked))  # the person writes in it
-        personal = self._offered(user_id)
+        personal = self._offered(user_id, conversation_id)
         tools = self.registry.schemas() + [t.schema() for t in personal.values()]
         untrusted = bool(personal) or any(
             t.untrusted for t in self.registry if self.registry.is_enabled(t.name)
@@ -576,7 +634,10 @@ class Assistant:
         ]
         tier_one += [t.name for t in personal.values() if t.tier == 1]
         spoken = channel == "voice"
-        system = self.system_prompt(user_id, untrusted=untrusted, tier_one=tier_one, spoken=spoken)
+        system = self.system_prompt(
+            user_id, untrusted=untrusted, tier_one=tier_one, spoken=spoken,
+            here=self._from.get(conversation_id),
+        )  # fmt: skip
         tier = self.voice_tier if spoken and self.voice_tier else self.tier
         model: str | None = None
         final_text = ""
@@ -703,6 +764,7 @@ class Assistant:
                     "id": event_id,
                     "name": call.name,
                     "arguments": call.parsed_arguments() or {},
+                    **self._device_of(personal.get(call.name), call),
                 }
                 run = await self._run_tool(
                     call, conversation_id, channel, actor, user_id, personal, tainted
@@ -970,6 +1032,32 @@ class Assistant:
         elif (extra.skill or "") in ("screen", "control", "apps"):
             seen.pop(target, None)  # it may have moved to another app: trust it no more
 
+    def _device_of(self, extra: PersonalTool | None, call: ToolCall) -> dict[str, str]:
+        """The device a call goes to, by name, for its receipt: {"device": "MacBook"}."""
+        if extra is None or extra.source != "device":
+            return {}
+        try:
+            target, _ = extra.target(call.parsed_arguments() or {})
+        except ToolError:
+            return {}
+        return {"device": self.device_label(target)} if target is not None else {}
+
+    def _elsewhere(
+        self, extra: PersonalTool, arguments: dict[str, Any], conversation_id: str
+    ) -> str | None:
+        """Where a device action would happen, when the person talks from another device:
+        "MacBook, not My iPhone". None for a read, or the device they talk from."""
+        here = self._from.get(conversation_id)
+        if here is None or extra.source != "device" or extra.tier < 1:
+            return None
+        try:
+            target, _ = extra.target(arguments)
+        except ToolError:
+            return None
+        if target is None or target == here:
+            return None
+        return f"{self.device_label(target)}, not {self.device_label(here)}"
+
     async def _run_personal(
         self,
         extra: PersonalTool,
@@ -998,7 +1086,17 @@ class Assistant:
             run = _failed(REFUSED_MEMORY, safe_call)
             run.outcome = "refused"
             return run
-        if extra.tier >= 2 and self.approvals is not None and extra.source == "device":
+        elsewhere = self._elsewhere(extra, arguments, conversation_id)
+        if elsewhere is not None:
+            # Asked from one device, acting on another: never at once, never unsaid. The
+            # read-back names the other device, and the person says yes first.
+            extra = dataclasses.replace(extra, tier=max(2, extra.tier), label=elsewhere)
+        if (
+            extra.tier >= 2
+            and self.approvals is not None
+            and extra.source == "device"
+            and elsewhere is None
+        ):
             try:
                 target, _ = extra.target(arguments)
             except ToolError:

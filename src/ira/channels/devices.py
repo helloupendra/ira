@@ -124,9 +124,9 @@ KIND_SKILLS: dict[str, tuple[str, ...]] = {
         "agents",
     ),
     "android": (),
-    # What iOS lets an app do: no call log, SMS or other apps' notifications, and a call
-    # only through the phone's own "Call?" prompt.
-    "ios": ("contacts", "calendar", "reminders", "location", "calls"),
+    # What iOS lets an app do: no call log, SMS or other apps' notifications, a call only
+    # through the phone's own "Call?" prompt, and an app or a page opened while Ira is open.
+    "ios": ("contacts", "calendar", "reminders", "location", "calls", "apps"),
     # Ira for Windows: what the PC itself can do. Calendar, mail and contacts come from the
     # person's accounts on the server (connectors), not from the PC.
     "windows": ("files", "screen", "browser", "apps", "clipboard", "control", "routine"),

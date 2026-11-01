@@ -14,7 +14,7 @@ from __future__ import annotations
 import json
 import re
 from collections.abc import Awaitable, Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any, Literal
 
 # device, web and Drop results were written by others; "ira" results are Ira's own (reminders).
@@ -53,6 +53,8 @@ class PersonalTool:
     skill: str | None = None
     # A tool several devices offer: picks the device from the arguments (raises ToolError).
     route: Callable[[dict[str, Any]], tuple[int, dict[str, Any]]] | None = None
+    # Those devices, by the label the "device" argument names them with.
+    devices: dict[str, int] = field(default_factory=dict)
 
     def target(self, arguments: dict[str, Any]) -> tuple[int | None, dict[str, Any]]:
         """The device a call goes to, and the arguments it gets."""

@@ -35,7 +35,7 @@ IPHONE_TOOLS = [
 def test_an_iphone_is_offered_only_what_ios_allows():
     assert "ios" in KINDS
     iphone = KIND_SKILLS["ios"]
-    assert set(iphone) == {"contacts", "calendar", "reminders", "location", "calls"}
+    assert set(iphone) == {"contacts", "calendar", "reminders", "location", "calls", "apps"}
     # iOS lets no app read the call log, SMS or other apps' notifications.
     for skill in ("messages", "notifications", "screen", "files"):
         assert skill not in iphone
