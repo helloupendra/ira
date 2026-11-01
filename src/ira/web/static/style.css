@@ -273,6 +273,25 @@ code { font-family: var(--mono); font-size: 0.9em; background: var(--bg-sunken);
 .turn.ira .report .text-btn:hover { color: var(--muted); background: none; }
 @keyframes rise { from { opacity: 0; transform: translateY(8px); } }
 .turn.ira .turn-text:empty::after { content: "…"; color: var(--muted); }
+/* The answer being worked on: what Ira is doing, shimmering, and its lens beating. */
+.turn.ira .turn-text[data-working]:empty::after {
+  content: attr(data-working) "…";
+  background: linear-gradient(90deg, var(--muted) 0%, var(--text) 45%, var(--muted) 90%) 0 0 / 200% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: shimmer 1.8s linear infinite;
+}
+.turn.ira.working::before { animation: lens-think 1.2s ease-in-out infinite; }
+.live-receipts { display: flex; flex-wrap: wrap; gap: 6px; margin-top: var(--s-2); }
+.live-receipts:empty { display: none; }
+.receipt.running::before { animation: blink 0.9s ease-in-out infinite; }
+@keyframes shimmer { to { background-position: -200% 0; } }
+@keyframes lens-think {
+  0%, 100% { transform: scale(1); box-shadow: 0 0 0 1px rgb(255 255 255 / 0.06), 0 6px 18px -6px rgb(63 191 152 / 0.6); }
+  50% { transform: scale(1.08); box-shadow: 0 0 0 1px rgb(63 191 152 / 0.35), 0 6px 24px -4px rgb(63 191 152 / 0.9); }
+}
+@keyframes blink { 50% { opacity: 0.25; } }
 .turn.ira.failed .turn-text { color: var(--danger); }
 .turn.ira .retry { margin-top: var(--s-2); min-height: 36px; padding: 0 var(--s-3); border: 1px solid var(--line-strong); }
 
@@ -391,8 +410,15 @@ code { font-family: var(--mono); font-size: 0.9em; background: var(--bg-sunken);
 }
 .mic:hover { transform: scale(1.05); }
 
-.mode-thinking .mic,
-.mode-thinking .hero-mark { animation: breathe 1.6s ease-in-out infinite; }
+/* Thinking: the mic's four bars rise one after another, a slow wave. */
+.mode-thinking .mic .bar { animation: wave 1s ease-in-out infinite; }
+.mode-thinking .mic .bar:nth-child(2) { animation-delay: 0.12s; }
+.mode-thinking .mic .bar:nth-child(3) { animation-delay: 0.24s; }
+.mode-thinking .mic .bar:nth-child(4) { animation-delay: 0.36s; }
+@keyframes wave {
+  0%, 100% { transform: scaleY(1); }
+  40% { transform: scaleY(1.7); }
+}
 .mode-speaking .mic { background: var(--accent); color: var(--accent-text); }
 
 @keyframes breathe {

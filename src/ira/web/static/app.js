@@ -243,9 +243,75 @@ function toolFor(name) {
   return (state.info.tools || []).find((t) => t.name === name);
 }
 
+// What Ira is doing, in words, for the tools people ask about most; the rest by their name.
+const TOOL_PHRASES = {
+  ai_sessions: "Looking at the AI sessions on your computer",
+  ai_session_detail: "Reading that AI session's last steps",
+  code_task_status: "Checking the coding task",
+  browser_tabs: "Reading your browser tabs",
+  browser_show_tab: "Bringing that tab to the front",
+  screen_read: "Reading your screen",
+  files_find: "Looking for the file",
+  file_read: "Reading the file",
+  web_search: "Searching the web",
+  drop_list: "Looking in your Drop",
+  trading_desk: "Checking the trading desk",
+};
+
 function toolPhrase(name) {
+  if (TOOL_PHRASES[name]) return `${TOOL_PHRASES[name]}…`;
   const tool = toolFor(name);
   return `${tool && tool.kind === "action" ? "Preparing" : "Checking"} ${humanize(name)}…`;
+}
+
+// --- the answer being worked on: its lens beats, it says what Ira is doing, and the
+// tools it uses show as receipts while they run ---------------------------------------
+
+function startWorking(li) {
+  stopWorking();
+  const text = $(".turn-text", li);
+  const receipts = document.createElement("div");
+  receipts.className = "live-receipts";
+  $(".how", li).before(receipts);
+  li.classList.add("working");
+  state.working = { li, text, receipts, phrase: "Thinking", since: Date.now(), timer: null };
+  const tick = () => {
+    const w = state.working;
+    if (!w) return;
+    const seconds = Math.floor((Date.now() - w.since) / 1000);
+    w.text.dataset.working = seconds >= 3 ? `${w.phrase} · ${seconds} s` : w.phrase;
+  };
+  tick();
+  state.working.timer = setInterval(tick, 1000);
+}
+
+function workingOn(name) {
+  const w = state.working;
+  if (!w) return;
+  w.phrase = toolPhrase(name).replace(/…$/, "");
+  w.text.dataset.working = w.phrase;
+  const chip = document.createElement("span");
+  chip.className = "receipt running";
+  chip.dataset.tool = name;
+  chip.textContent = humanize(name).toLowerCase();
+  w.receipts.append(chip);
+}
+
+function workedOn(name) {
+  const w = state.working;
+  if (!w) return;
+  const chip = [...w.receipts.children].reverse().find((c) => c.dataset.tool === name && c.classList.contains("running"));
+  if (chip) chip.classList.remove("running");
+}
+
+function stopWorking() {
+  const w = state.working;
+  if (!w) return;
+  clearInterval(w.timer);
+  w.li.classList.remove("working");
+  delete w.text.dataset.working;
+  w.receipts.remove();
+  state.working = null;
 }
 
 function listWords(items) {
@@ -782,6 +848,7 @@ async function send(text, { voice = false, retry = false } = {}) {
   let full = "";
   setMode("thinking");
   setStatus("Thinking…");
+  startWorking(li);
   try {
     const response = await api("/v1/ask/stream", {
       method: "POST",
@@ -797,6 +864,7 @@ async function send(text, { voice = false, retry = false } = {}) {
       else if (event.type === "tool") {
         how.tools.push({ name: event.name, id: event.id, arguments: event.arguments });
         setStatus(toolPhrase(event.name));
+        workingOn(event.name);
       } else if (event.type === "tool_result") {
         const call =
           how.tools.find((t) => t.id !== undefined && t.id === event.id) ||
@@ -805,11 +873,13 @@ async function send(text, { voice = false, retry = false } = {}) {
           call.result = event.result;
           call.ok = event.ok;
         }
+        workedOn(event.name);
       } else if (event.type === "action") actionCard(event.action);
       else if (event.type === "delta") {
         if (!full) {
           setMode("answering");
           setStatus("");
+          stopWorking();
         }
         full += event.text;
         textEl.textContent = full;
@@ -822,6 +892,7 @@ async function send(text, { voice = false, retry = false } = {}) {
         how.messageId = event.message_id || null;
       }
     }
+    stopWorking();
     explain(li, how);
     if (typeof IraPersonal !== "undefined" && how.messageId) IraPersonal.answered(li, how.messageId);
     remember({ role: "user", text });
@@ -829,8 +900,10 @@ async function send(text, { voice = false, retry = false } = {}) {
     announce(full);
     if (full && (speakOn() || voice)) await speak(full);
   } catch (error) {
+    stopWorking();
     failTurn(li, error, text);
   } finally {
+    stopWorking();
     if (state.info) {
       setMode("idle");
       scrollDown();

@@ -192,6 +192,10 @@ switch it on.
   (now 8 by default, from 6), Ira says what it tried, what it found and
   what to do next, in the person's language. And it searches for a file,
   folder or contact with at most three forms of the name, then says so.
+- **You can see Ira working.** While an answer is on its way, its lens beats,
+  the answer's place says what Ira is doing ("Looking at the AI sessions on your
+  computer · 4 s"), each tool shows as a receipt while it runs, and the mic's
+  bars rise in a slow wave.
 - **Listening looks alive, and says when the mic is silent.** While Ira listens,
   its lens beats gently whatever the level (a soft glow with reduced motion),
   so it is plain the mic is on; and when three seconds bring no signal at all,
