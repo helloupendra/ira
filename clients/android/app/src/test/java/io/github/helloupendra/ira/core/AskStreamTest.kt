@@ -24,7 +24,9 @@ class AskStreamTest {
         )
         val action = AskStream.parseLine("""data: {"type": "action", "action": {"id": "a1", "tool": "call_place", "summary": "call Rahul", "tier": 2, "can_approve": true}}""")
         assertTrue(action is AskStream.Event.Action && action.card.tier == 2)
-        for (line in listOf("", ": keepalive", "event: message", "data: not json", """data: {"type": "tool_result"}""")) {
+        // A tool's end: its receipt shows before the answer comes.
+        assertEquals(AskStream.Event.ToolResult("calls_recent", false), AskStream.parseLine("""data: {"type": "tool_result", "name": "calls_recent", "ok": false}"""))
+        for (line in listOf("", ": keepalive", "event: message", "data: not json", """data: {"type": "something_new"}""")) {
             assertNull(line, AskStream.parseLine(line))
         }
     }

@@ -93,6 +93,8 @@ object LiveProtocol {
             "partial" -> Live.Partial(m.string("text").orEmpty(), m.string("language"))
             "heard" -> Live.Heard(m.int("turn") ?: 0, m.string("text").orEmpty(), m.string("language"))
             "delta" -> Live.Delta(m.int("turn") ?: 0, m.string("text").orEmpty())
+            "tool" -> Live.Tool(m.int("turn") ?: 0, m.string("name").orEmpty())
+            "tool_result" -> Live.ToolResult(m.int("turn") ?: 0, m.string("name").orEmpty(), m.bool("ok") != false)
             "audio" ->
                 Live.AudioHeader(
                     turn = m.int("turn") ?: 0,
@@ -131,6 +133,12 @@ sealed interface Live {
     data class Heard(val turn: Int, val text: String, val language: String?) : Live
 
     data class Delta(val turn: Int, val text: String) : Live
+
+    /** Ira is using a tool; text before it was a lead-in, not the answer. */
+    data class Tool(val turn: Int, val name: String) : Live
+
+    /** That tool finished. */
+    data class ToolResult(val turn: Int, val name: String, val ok: Boolean) : Live
 
     /** The next binary frame is this sentence's audio. */
     data class AudioHeader(val turn: Int, val seq: Int, val text: String, val format: String, val bytes: Int) : Live

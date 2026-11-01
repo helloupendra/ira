@@ -108,6 +108,14 @@ class CallMachine(private val assembler: AudioAssembler = AudioAssembler()) {
                 if (phase != Phase.UserSpeaking) phase = Phase.Thinking
                 emptyList()
             }
+            is Live.Tool -> {
+                seen(message.turn)
+                emptyList()
+            }
+            is Live.ToolResult -> {
+                seen(message.turn)
+                emptyList()
+            }
             is Live.Delta, is Live.AudioHeader, is Live.Partial -> {
                 if (message is Live.Delta) seen(message.turn)
                 if (message is Live.AudioHeader) seen(message.turn)

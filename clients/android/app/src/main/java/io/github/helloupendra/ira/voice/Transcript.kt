@@ -43,6 +43,11 @@ class Transcript {
         state.value = emptyList()
     }
 
+    /** Forget Ira's line [key] so far: it was a lead-in before a tool, not the answer. */
+    fun drop(key: String) {
+        state.update { lines -> lines.filterNot { it.key == key && it.fromIra } }
+    }
+
     fun stopped(key: String) {
         state.update { lines -> lines.map { if (it.key == key) it.copy(stopped = true) else it } }
     }

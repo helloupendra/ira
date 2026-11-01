@@ -94,6 +94,10 @@ import io.github.helloupendra.ira.voice.PhoneSession
 import io.github.helloupendra.ira.voice.TalkMode
 import io.github.helloupendra.ira.voice.Transcript
 import kotlinx.coroutines.flow.MutableStateFlow
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.runtime.mutableDoubleStateOf
+import io.github.helloupendra.ira.core.Steps
+import io.github.helloupendra.ira.voice.nowMs
 
 @Composable
 fun TalkScreen(app: IraApp, talkRequests: Int, onSkills: () -> Unit, onSettings: () -> Unit, onDrop: () -> Unit = {}) {
@@ -375,6 +379,7 @@ fun TalkScreen(app: IraApp, talkRequests: Int, onSkills: () -> Unit, onSettings:
             ListeningView(
                 ui = ui,
                 lastAnswer = lines.lastOrNull { it.fromIra }?.text,
+                question = lines.lastOrNull { !it.fromIra }?.text,
                 onCancel = { app.endCall() },
                 onDone = talkTap,
             )
@@ -502,8 +507,9 @@ private fun TalkHeader(ui: CallUi, link: LinkState, onDrop: () -> Unit, onSkills
 @Composable
 private fun Conversation(ui: CallUi, lines: List<Transcript.Line>, modifier: Modifier, greeting: Boolean, onReport: (Transcript.Line) -> Unit) {
     val list = rememberLazyListState()
-    val count = lines.size + 1 + if (ui.caption.isNotBlank()) 1 else 0
-    LaunchedEffect(count, lines.lastOrNull()?.text?.length) { list.animateScrollToItem(count - 1) }
+    val pending = ui.step != null
+    val count = lines.size + 1 + (if (ui.caption.isNotBlank()) 1 else 0) + (if (pending) 1 else 0)
+    LaunchedEffect(count, lines.lastOrNull()?.text?.length, ui.stepsDone.size) { list.animateScrollToItem(count - 1) }
     LazyColumn(
         state = list,
         modifier = modifier.fillMaxWidth().padding(horizontal = 16.dp),
@@ -523,6 +529,7 @@ private fun Conversation(ui: CallUi, lines: List<Transcript.Line>, modifier: Mod
                 )
             }
         }
+        if (pending) item(key = "pending") { PendingRow(ui) }
     }
 }
 
@@ -609,7 +616,7 @@ private fun Bubble(line: Transcript.Line, onReport: (Transcript.Line) -> Unit) {
 
 /** Listening, over the whole screen: the large lens on the voice, what Ira hears, Cancel and Done. */
 @Composable
-private fun ListeningView(ui: CallUi, lastAnswer: String?, onCancel: () -> Unit, onDone: () -> Unit) {
+private fun ListeningView(ui: CallUi, lastAnswer: String?, onCancel: () -> Unit, onDone: () -> Unit, question: String? = null) {
     val colors = Presence.colors
     val label =
         when (ui.status) {
@@ -633,9 +640,22 @@ private fun ListeningView(ui: CallUi, lastAnswer: String?, onCancel: () -> Unit,
         contentAlignment = Alignment.Center,
     ) {
         Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.padding(24.dp)) {
-            Lens(160.dp, level = ui.level, rings = 2, heartbeat = true)
+            val speaking = ui.status == CallStatus.Speaking
+            val working = ui.status == CallStatus.Thinking || (ui.step != null && !speaking)
+            Lens(
+                160.dp,
+                // Her voice plays through the phone's player: a steady level keeps the bars moving.
+                level = if (speaking) 0.04f else ui.level,
+                rings = 2,
+                heartbeat = ui.status == CallStatus.Listening || ui.status == CallStatus.Hearing,
+                thinking = working,
+            )
             Spacer(Modifier.height(22.dp))
             Text(label.uppercase(), style = Presence.label, color = colors.green)
+            if (working) {
+                Spacer(Modifier.height(8.dp))
+                StepLine(ui.step ?: Steps.THINKING, ui.askedAt)
+            }
             Spacer(Modifier.height(14.dp))
             when {
                 ui.caption.isNotBlank() ->
@@ -644,12 +664,45 @@ private fun ListeningView(ui: CallUi, lastAnswer: String?, onCancel: () -> Unit,
                 ui.micSilent -> SilentMic(ui.micName)
                 ui.status == CallStatus.Speaking && !lastAnswer.isNullOrBlank() ->
                     Text(lastAnswer, fontSize = 16.sp, lineHeight = 24.sp, color = colors.muted, textAlign = TextAlign.Center, maxLines = 6)
+                // The question that was taken, while Ira works on it.
+                ui.status == CallStatus.Thinking && !question.isNullOrBlank() ->
+                    Text("“$question”", fontFamily = Presence.serif, fontSize = 24.sp, lineHeight = 30.sp, color = colors.muted, textAlign = TextAlign.Center, maxLines = 3)
                 else -> Text("Speak now", fontFamily = Presence.serif, fontSize = 28.sp, color = colors.faint)
             }
             Spacer(Modifier.height(26.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 PillButton("Cancel", onCancel)
                 PillButton(if (ui.status == CallStatus.Speaking) "Stop" else "Done", onDone, filled = true)
+            }
+        }
+    }
+}
+
+/** What Ira is doing, in words, with its seconds once it has taken 3. */
+@Composable
+private fun StepLine(step: String, since: Double?) {
+    var now by remember { mutableDoubleStateOf(nowMs()) }
+    LaunchedEffect(since) {
+        while (true) {
+            delay(1000)
+            now = nowMs()
+        }
+    }
+    val seconds = since?.let { ((now - it) / 1000).toInt() } ?: 0
+    Text(Steps.line(step, seconds), fontSize = 14.sp, color = Presence.colors.muted, textAlign = TextAlign.Center)
+}
+
+/** The answer on its way, in the chat: the lens rippling, the step, and each tool done so far. */
+@Composable
+private fun PendingRow(ui: CallUi) {
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            Lens(30.dp, thinking = true)
+            StepLine(ui.step ?: Steps.THINKING, ui.askedAt)
+        }
+        if (ui.stepsDone.isNotEmpty()) {
+            FlowRow(Modifier.padding(start = 42.dp), horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                ui.stepsDone.forEach { ReceiptChip(it) }
             }
         }
     }

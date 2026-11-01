@@ -11,6 +11,7 @@ import io.github.helloupendra.ira.core.EnergyVad
 import io.github.helloupendra.ira.core.Live
 import io.github.helloupendra.ira.core.LiveProtocol
 import io.github.helloupendra.ira.core.MicSilence
+import io.github.helloupendra.ira.core.Steps
 import io.github.helloupendra.ira.core.Pairing
 import io.github.helloupendra.ira.net.IraLog
 import io.github.helloupendra.ira.net.Net
@@ -38,6 +39,12 @@ data class CallUi(
     val micSilent: Boolean = false,
     /** The input Ira listens to, for that warning. */
     val micName: String = "",
+    /** While Ira works on an answer: what it is doing, in words ("Searching the web…"). */
+    val step: String? = null,
+    /** When the question was taken (`nowMs`), for the seconds shown with the step. */
+    val askedAt: Double? = null,
+    /** The tools of the answer on its way done so far, as receipts ("web search · 1.2 s"). */
+    val stepsDone: List<String> = emptyList(),
 )
 
 enum class CallStatus { Off, Connecting, Listening, Hearing, Thinking, Speaking, Reconnecting, Ended }
@@ -82,6 +89,8 @@ class LiveSession(
     private var listening = false
 
     private val idle = Runnable { onQuiet() }
+    /** When the tool in use began (`nowMs`), for its receipt. */
+    private var toolStarted: Double? = null
     private val silence = MicSilence()
     private val silenceCheck = Runnable { checkSilence(nowMs()) }
 
@@ -237,15 +246,31 @@ class LiveSession(
             }
             is Live.Partial -> state.update { it.copy(caption = message.text) }
             is Live.Heard -> {
-                state.update { it.copy(caption = "") }
+                toolStarted = null
+                state.update { it.copy(caption = "", step = Steps.THINKING, askedAt = nowMs(), stepsDone = emptyList()) }
                 transcript.add(Transcript.Line(key(message.turn) + ":you", false, message.text))
+            }
+            is Live.Tool -> {
+                // What came before a tool was a lead-in ("let me look"), never the answer.
+                transcript.drop(key(message.turn))
+                toolStarted = nowMs()
+                state.update { it.copy(step = Steps.phrase(message.name), askedAt = it.askedAt ?: nowMs()) }
+            }
+            is Live.ToolResult -> {
+                val seconds = toolStarted?.let { (nowMs() - it) / 1000 } ?: 0.0
+                toolStarted = null
+                state.update { it.copy(stepsDone = it.stepsDone + Steps.receipt(message.name, seconds)) }
             }
             is Live.Delta -> transcript.ira(key(message.turn)) { it.copy(text = it.text + message.text) }
             is Live.Done -> {
                 transcript.ira(key(message.turn)) { it.copy(text = message.text.ifBlank { it.text }, messageId = message.messageId) }
+                state.update { it.copy(step = null, askedAt = null, stepsDone = emptyList()) }
                 quietTimer()
             }
-            is Live.Interrupted -> transcript.stopped(key(message.turn))
+            is Live.Interrupted -> {
+                transcript.stopped(key(message.turn))
+                state.update { it.copy(step = null, askedAt = null, stepsDone = emptyList()) }
+            }
             is Live.Error -> if (!message.fatal) state.update { it.copy(notice = message.message) }
             else -> Unit
         }

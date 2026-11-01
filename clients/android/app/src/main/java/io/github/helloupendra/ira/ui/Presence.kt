@@ -134,11 +134,21 @@ private fun animationsOff(): Boolean {
  * silence, so the person always sees Ira is on; with animations off it fades gently instead.
  */
 @Composable
-fun Lens(size: Dp, modifier: Modifier = Modifier, level: Float = 0f, breathing: Boolean = false, rings: Int = 0, heartbeat: Boolean = false) {
+fun Lens(
+    size: Dp,
+    modifier: Modifier = Modifier,
+    level: Float = 0f,
+    breathing: Boolean = false,
+    rings: Int = 0,
+    heartbeat: Boolean = false,
+    thinking: Boolean = false,
+) {
     val still = animationsOff()
     val transition = rememberInfiniteTransition(label = "lens")
     val phase by transition.animateFloat(0f, 1f, infiniteRepeatable(tween(4000, easing = LinearEasing)), label = "breath")
     val wave by transition.animateFloat(0f, (2 * PI).toFloat(), infiniteRepeatable(tween(700, easing = LinearEasing)), label = "wave")
+    // While Ira works: a slow ripple across the bars, bar after bar, every 1.6 s.
+    val ripple by transition.animateFloat(0f, (2 * PI).toFloat(), infiniteRepeatable(tween(1600, easing = LinearEasing)), label = "ripple")
     // The heartbeat runs on the frame clock, which animations-off does not stop, so the fade still shows.
     var beatMs by remember { mutableLongStateOf(0L) }
     if (heartbeat) LaunchedEffect(Unit) { while (true) withInfiniteAnimationFrameMillis { beatMs = it } }
@@ -214,7 +224,12 @@ fun Lens(size: Dp, modifier: Modifier = Modifier, level: Float = 0f, breathing: 
             val total = heights.size * width + (heights.size - 1) * gap
             val voice = min(level * 10f, 1f)
             heights.forEachIndexed { index, base ->
-                val lift = if (level > 0.002f) 1f + voice * 0.9f * (0.7f + 0.3f * sin(wave + index * 1.7f)) else 1f
+                val lift =
+                    when {
+                        level > 0.002f -> 1f + voice * 0.9f * (0.7f + 0.3f * sin(wave + index * 1.7f))
+                        thinking && !still -> 1f + 0.45f * maxOf(0f, sin(ripple - index * 0.9f))
+                        else -> 1f
+                    }
                 val h = s * base * lift
                 val x = center.x - total / 2 + index * (width + gap)
                 drawRoundRect(
@@ -318,6 +333,20 @@ fun AskPill(
                 modifier = Modifier.size(20.dp),
             )
         }
+    }
+}
+
+/** A tool Ira used and how long it took ("web search · 1.2 s"), under an answer. */
+@Composable
+fun ReceiptChip(text: String) {
+    val colors = Presence.colors
+    Row(
+        Modifier.border(BorderStroke(1.dp, colors.line), RoundedCornerShape(5.dp)).padding(horizontal = 7.dp, vertical = 3.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(Modifier.size(4.dp).clip(CircleShape).background(colors.green))
+        Spacer(Modifier.width(5.dp))
+        Text(text, fontSize = 11.sp, fontFamily = FontFamily.Monospace, color = colors.muted)
     }
 }
 

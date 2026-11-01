@@ -50,6 +50,9 @@ object AskStream {
 
         data class Tool(val name: String) : Event
 
+        /** That tool finished. */
+        data class ToolResult(val name: String, val ok: Boolean) : Event
+
         data class Action(val card: ActionCard) : Event
 
         data class Delta(val text: String) : Event
@@ -66,6 +69,7 @@ object AskStream {
         return when (m.string("type")) {
             "start" -> Event.Start(m.string("conversation_id").orEmpty())
             "tool" -> Event.Tool(m.string("name").orEmpty())
+            "tool_result" -> Event.ToolResult(m.string("name").orEmpty(), m.bool("ok") != false)
             "action" -> Event.Action(ActionCard.from(m.obj("action") ?: JsonObject(emptyMap())))
             "delta" -> Event.Delta(m.string("text").orEmpty())
             "error" -> Event.Error(m.string("message") ?: "no model could answer")

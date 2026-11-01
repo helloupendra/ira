@@ -16,6 +16,7 @@ import android.speech.tts.UtteranceProgressListener
 import io.github.helloupendra.ira.core.AskStream
 import io.github.helloupendra.ira.core.SentenceAudio
 import io.github.helloupendra.ira.core.ServerInfo
+import io.github.helloupendra.ira.core.Steps
 import io.github.helloupendra.ira.core.toJson
 import io.github.helloupendra.ira.net.IraLog
 import io.github.helloupendra.ira.net.Net
@@ -54,6 +55,8 @@ class PhoneSession(
 
     private var ended = false
     private var busy = false
+    /** When the tool in use began (`nowMs`), for its receipt. */
+    private var toolStarted: Double? = null
     private var asks = 0
     private var call: okhttp3.Call? = null
     private var stopped = false
@@ -79,7 +82,10 @@ class PhoneSession(
         // Not listening while Ira works on this and speaks (it would hear her); back after.
         recognizer?.cancel()
         val key = "ask${++asks}:${System.currentTimeMillis()}"
-        state.update { it.copy(status = CallStatus.Thinking, notice = null, caption = "") }
+        toolStarted = null
+        state.update {
+            it.copy(status = CallStatus.Thinking, notice = null, caption = "", step = Steps.THINKING, askedAt = nowMs(), stepsDone = emptyList())
+        }
         val speakAnswer = voice
         var accepted = false
         stopped = false
@@ -110,6 +116,7 @@ class PhoneSession(
             main.post {
                 call = null
                 busy = false
+                if (state.value.step != null) state.update { it.copy(step = null, askedAt = null, stepsDone = emptyList()) }
                 if (!accepted) {
                     done(if (status < 0) AskStream.OFFLINE else AskStream.failure(status))
                     idle()
@@ -125,7 +132,17 @@ class PhoneSession(
         if (ended) return
         when (event) {
             is AskStream.Event.Start -> if (event.conversationId.isNotBlank()) onConversation(event.conversationId)
-            is AskStream.Event.Tool -> Unit
+            is AskStream.Event.Tool -> {
+                // What came before a tool was a lead-in, never the answer.
+                transcript.drop(key)
+                toolStarted = nowMs()
+                state.update { it.copy(step = Steps.phrase(event.name)) }
+            }
+            is AskStream.Event.ToolResult -> {
+                val seconds = toolStarted?.let { (nowMs() - it) / 1000 } ?: 0.0
+                toolStarted = null
+                state.update { it.copy(stepsDone = it.stepsDone + Steps.receipt(event.name, seconds)) }
+            }
             is AskStream.Event.Action -> state.update { it.copy(action = event.card) }
             is AskStream.Event.Delta -> transcript.ira(key) { it.copy(text = it.text + event.text) }
             is AskStream.Event.Error -> {
@@ -134,6 +151,7 @@ class PhoneSession(
             is AskStream.Event.Done -> {
                 if (event.conversationId.isNotBlank()) onConversation(event.conversationId)
                 transcript.ira(key) { it.copy(text = event.text.ifBlank { it.text }, messageId = event.messageId) }
+                state.update { it.copy(step = null, askedAt = null, stepsDone = emptyList()) }
                 busy = false
                 if (speakAnswer && voice && event.text.isNotBlank()) speak(event.text) else idle()
             }
