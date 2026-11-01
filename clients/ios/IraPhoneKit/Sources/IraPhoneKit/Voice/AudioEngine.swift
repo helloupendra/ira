@@ -19,6 +19,9 @@ public final class AudioEngine: NSObject {
     public var onIdle: (() -> Void)?
     /// iOS took the audio away (a phone call, Siri, an alarm): the call ends.
     public var onInterrupted: ((String) -> Void)?
+    /// What the microphone gives, once a listen: its format, and its level over the first
+    /// second ("48000 Hz × 1 ch, echo cancellation on: silent (0.0000)").
+    public var onInputReport: ((String) -> Void)?
 
     private let engine = AVAudioEngine()
     private let player = AVAudioPlayerNode()
@@ -51,10 +54,15 @@ public final class AudioEngine: NSObject {
     // MARK: The audio session
 
     /// Ready the iPhone for a call: play and record, voice chat, the speaker by default.
+    /// Voice chat gave only silence on this iPhone once: the rest of this run uses the
+    /// plain mode, without the system's voice-call handling.
+    public private(set) static var plainMode = false
+
     public func activateSession() throws {
         #if os(iOS)
         let session = AVAudioSession.sharedInstance()
-        try session.setCategory(.playAndRecord, mode: .voiceChat, options: [.defaultToSpeaker, .allowBluetoothHFP])
+        try session.setCategory(
+            .playAndRecord, mode: AudioEngine.plainMode ? .default : .voiceChat, options: [.defaultToSpeaker, .allowBluetoothHFP])
         try session.setPreferredIOBufferDuration(0.02)
         try session.setActive(true)
         if !observers.isEmpty { return }
@@ -90,16 +98,29 @@ public final class AudioEngine: NSObject {
 
     // MARK: Listening
 
+    /// Voice processing's input gave nothing on this iPhone once: the rest of this run
+    /// listens without it.
+    public private(set) static var echoUnavailable = false
+
     public func startListening() throws {
         guard !listening else { return }
+        let muted = AudioEngine.unmuteInput()
         let input = engine.inputNode
-        if !echoCancelling {
+        if !echoCancelling && !AudioEngine.echoUnavailable {
             do {
                 try input.setVoiceProcessingEnabled(true)
                 echoCancelling = true
             } catch {
+                AudioEngine.echoUnavailable = true
                 IraLog.shared.info("voice processing is not available here")
             }
+        }
+        if echoCancelling {
+            // Voice processing's input can come up muted or bypassed: make sure it is neither,
+            // and that its own gain control is on (it evens out a quiet voice).
+            input.isVoiceProcessingInputMuted = false
+            input.isVoiceProcessingBypassed = false
+            input.isVoiceProcessingAGCEnabled = true
         }
         let format = input.outputFormat(forBus: 0)
         guard format.sampleRate > 0, format.channelCount > 0 else {
@@ -108,9 +129,16 @@ public final class AudioEngine: NSObject {
         guard let resampler = Resampler(from: format) else {
             throw ToolFailure("the microphone's audio could not be converted")
         }
+        let setup = "\(Int(format.sampleRate)) Hz × \(format.channelCount) ch, echo cancellation \(echoCancelling ? "on" : "off")"
+            + (AudioEngine.plainMode ? ", plain mode" : "") + (muted ? ", was muted" : "")
+        IraLog.shared.info("listening: \(setup)")
         chunker = FrameChunker()
         input.removeTap(onBus: 0)
-        input.installTap(onBus: 0, bufferSize: 1024, format: format, block: AudioEngine.tap(resampler) { [weak self] samples, end in
+        let probe = InputProbe(seconds: 1, sampleRate: format.sampleRate)
+        input.installTap(onBus: 0, bufferSize: 1024, format: format, block: AudioEngine.tap(
+            resampler, probe: probe, setup: setup,
+            report: { [weak self] line in self?.onInputReport?(line) }
+        ) { [weak self] samples, end in
             self?.collect(samples, endingAt: end)
         })
         if !engine.isRunning {
@@ -120,14 +148,74 @@ public final class AudioEngine: NSObject {
         listening = true
     }
 
-    /// The tap runs on the audio thread: it converts there and hands the samples to
-    /// the main actor. Made outside the actor, so it never claims to run on it.
+    /// Listen again without voice processing: its input gave nothing (pure zeros, or no
+    /// audio at all). Echo cancellation then stays off for the rest of this run, so Ira's
+    /// own voice from the speaker may reach the microphone; the voice detector allows for it.
+    public func restartWithoutEchoCancellation() throws {
+        guard echoCancelling else { return }
+        let wasListening = listening
+        if wasListening { stopListening() }
+        engine.stop()
+        try engine.inputNode.setVoiceProcessingEnabled(false)
+        echoCancelling = false
+        AudioEngine.echoUnavailable = true
+        IraLog.shared.info("listening again without voice processing: its input gave nothing")
+        if wasListening { try startListening() }
+    }
+
+    /// Listen again in the plain mode: voice chat's input gave only silence, with voice
+    /// processing and without. No echo cancellation there either.
+    public func restartInPlainMode() throws {
+        guard !AudioEngine.plainMode else { return }
+        let wasListening = listening
+        if wasListening { stopListening() }
+        engine.stop()
+        if echoCancelling {
+            try? engine.inputNode.setVoiceProcessingEnabled(false)
+            echoCancelling = false
+            AudioEngine.echoUnavailable = true
+        }
+        AudioEngine.plainMode = true
+        IraLog.shared.info("listening again in the plain mode: voice chat's input gave only silence")
+        try activateSession()
+        if wasListening { try startListening() }
+    }
+
+    /// iOS keeps an input mute for each app (voice chat apps, a mute in the system's call
+    /// controls): while it is on, the microphone gives only zeros. Returns whether it was on.
+    @discardableResult
+    static func unmuteInput() -> Bool {
+        #if os(iOS)
+        let app = AVAudioApplication.shared
+        guard app.isInputMuted else { return false }
+        do {
+            try app.setInputMuted(false)
+            IraLog.shared.info("the app's microphone input was muted; it is on again")
+        } catch {
+            IraLog.shared.info("the app's microphone input is muted, and unmuting failed: \(error.localizedDescription)")
+        }
+        return true
+        #else
+        return false
+        #endif
+    }
+
+    /// The tap runs on the audio thread: it mixes the channels and converts there, and hands
+    /// the samples to the main actor. Made outside the actor, so it never claims to run on it.
     nonisolated static func tap(
-        _ resampler: Resampler, deliver: @escaping @MainActor @Sendable ([Float], Double) -> Void
+        _ resampler: Resampler, probe: InputProbe, setup: String,
+        report: @escaping @MainActor @Sendable (String) -> Void,
+        deliver: @escaping @MainActor @Sendable ([Float], Double) -> Void
     ) -> AVAudioNodeTapBlock {
         { buffer, _ in
             let now = monotonicMs()
-            guard let samples = resampler.convert(buffer) else { return }
+            let channels = Resampler.channels(buffer)
+            if let levels = probe.add(channels) {
+                let line = InputProbe.describe(setup: setup, levels: levels)
+                IraLog.shared.info("listening: \(line)")
+                Task { @MainActor in report(line) }
+            }
+            guard let samples = resampler.convert(buffer, channels: channels) else { return }
             Task { @MainActor in deliver(samples, now) }
         }
     }
@@ -291,26 +379,57 @@ extension AudioEngine: AVSpeechSynthesizerDelegate {
 
 /// Converts the microphone's audio to 16 kHz mono floats, one buffer at a time,
 /// on the audio thread (the converter keeps its state between buffers).
+///
+/// Float audio of several channels is first averaged over the channels that carry sound
+/// (`Downmix`), then converted from mono; anything else goes to the converter as it is.
 final class Resampler: @unchecked Sendable {
     private let converter: AVAudioConverter
     private let target: AVAudioFormat
+    /// The mono format the channels are averaged into, when they are.
+    private let mono: AVAudioFormat?
+    private var failed = false
 
     init?(from format: AVAudioFormat) {
-        guard let target = AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: 16_000, channels: 1, interleaved: false),
-            let converter = AVAudioConverter(from: format, to: target)
+        guard let target = AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: 16_000, channels: 1, interleaved: false)
         else { return nil }
-        converter.downmix = true  // a stereo or multichannel microphone becomes one voice
+        let several = format.channelCount > 1 && format.commonFormat == .pcmFormatFloat32
+        let mono = several ? AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: format.sampleRate, channels: 1, interleaved: false) : nil
+        guard let converter = AVAudioConverter(from: mono ?? format, to: target) else { return nil }
+        converter.downmix = true
         self.converter = converter
         self.target = target
+        self.mono = mono
     }
 
-    func convert(_ buffer: AVAudioPCMBuffer) -> [Float]? {
-        let ratio = target.sampleRate / buffer.format.sampleRate
-        let capacity = AVAudioFrameCount(Double(buffer.frameLength) * ratio + 32)
+    /// A float buffer's channels, interleaved or not; empty for any other kind of sample.
+    static func channels(_ buffer: AVAudioPCMBuffer) -> [[Float]] {
+        guard let data = buffer.floatChannelData else { return [] }
+        let count = Int(buffer.frameLength)
+        let channels = Int(buffer.format.channelCount)
+        if buffer.format.isInterleaved {
+            let all = Array(UnsafeBufferPointer(start: data[0], count: count * channels))
+            return (0..<channels).map { channel in stride(from: channel, to: all.count, by: channels).map { all[$0] } }
+        }
+        return (0..<channels).map { Array(UnsafeBufferPointer(start: data[$0], count: count)) }
+    }
+
+    func convert(_ buffer: AVAudioPCMBuffer, channels: [[Float]]? = nil) -> [Float]? {
+        var source = buffer
+        if let mono {
+            let merged = Downmix.average(channels ?? Resampler.channels(buffer))
+            guard let mixed = AVAudioPCMBuffer(pcmFormat: mono, frameCapacity: AVAudioFrameCount(merged.count)),
+                let channel = mixed.floatChannelData?[0]
+            else { return nil }
+            merged.withUnsafeBufferPointer { channel.update(from: $0.baseAddress!, count: merged.count) }
+            mixed.frameLength = AVAudioFrameCount(merged.count)
+            source = mixed
+        }
+        let ratio = target.sampleRate / source.format.sampleRate
+        let capacity = AVAudioFrameCount(Double(source.frameLength) * ratio + 32)
         guard let out = AVAudioPCMBuffer(pcmFormat: target, frameCapacity: capacity) else { return nil }
-        let input = OneBuffer(buffer)
+        let input = OneBuffer(source)
         var error: NSError?
-        converter.convert(to: out, error: &error) { _, status in
+        let status = converter.convert(to: out, error: &error) { _, status in
             guard let next = input.take() else {
                 status.pointee = .noDataNow  // the converter keeps its state for the next buffer
                 return nil
@@ -318,7 +437,13 @@ final class Resampler: @unchecked Sendable {
             status.pointee = .haveData
             return next
         }
-        guard error == nil, let channel = out.floatChannelData?[0] else { return nil }
+        guard status != .error, error == nil, let channel = out.floatChannelData?[0] else {
+            if !failed {
+                failed = true  // said once a listen: it would be said 50 times a second
+                IraLog.shared.info("the microphone's audio could not be converted: \(error?.localizedDescription ?? "no reason given")")
+            }
+            return nil
+        }
         return Array(UnsafeBufferPointer(start: channel, count: Int(out.frameLength)))
     }
 }

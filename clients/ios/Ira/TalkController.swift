@@ -37,6 +37,12 @@ final class TalkController {
     private(set) var speaking = false
     /// The microphone's level, 0 to 1, for the call button.
     private(set) var level: Float = 0
+    /// The last levels, for the call's waveform.
+    private(set) var levels = LevelHistory()
+    /// The microphone gives nothing at all: the call says so instead of "Listening".
+    private(set) var micSilent = false
+    /// What the microphone gave at the start of the last listen, for Settings.
+    private(set) var micReport = ""
     /// What came of answering a proposal, by its id.
     private(set) var outcomes: [String: String] = [:]
     /// A proposal being answered now.
@@ -56,8 +62,22 @@ final class TalkController {
     @ObservationIgnored private var lastActivity = Date()
     @ObservationIgnored private var idleTimer: Timer?
     @ObservationIgnored private var phoneTurnBusy = false
+    @ObservationIgnored private var micWatch = MicWatch()
+    @ObservationIgnored private var micTimer: Timer?
+    @ObservationIgnored private var frames = 0
+    @ObservationIgnored private var triedWithoutEcho = false
+    @ObservationIgnored private var triedPlainMode = false
 
     var inCall: Bool { callState != .idle }
+
+    /// What the call shows now, in one word.
+    var phase: CallPhase {
+        var hearing = false
+        if case .listening(true) = callState { hearing = true }
+        return CallPhase.of(
+            connecting: callState == .connecting, hearing: hearing, speaking: speaking,
+            thinking: step != nil, micSilent: micSilent)
+    }
 
     init(settings: AppSettings) {
         self.settings = settings
@@ -73,6 +93,7 @@ final class TalkController {
             self.vad.replying = false
             self.lastActivity = Date()
         }
+        audio.onInputReport = { [weak self] line in self?.micReport = line }
         audio.onInterrupted = { [weak self] message in
             self?.endCall()
             self?.model?.notice = message
@@ -234,6 +255,48 @@ final class TalkController {
         lastActivity = Date()
         UIApplication.shared.isIdleTimerDisabled = true
         startIdleTimer()
+        startMicWatch()
+    }
+
+    /// Every half second: has the microphone given anything at all? An iPhone gave pure zeros
+    /// in a call, so a silent microphone is tried again without voice processing, then in the
+    /// plain mode instead of voice chat; after that the call says the microphone is silent,
+    /// rather than "Listening" forever.
+    private func startMicWatch() {
+        levels.clear()
+        micSilent = false
+        micWatch.start(at: monotonicMs())
+        micTimer?.invalidate()
+        micTimer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { [weak self] _ in
+            MainActor.assumeIsolated { self?.checkMic() }
+        }
+    }
+
+    private func checkMic() {
+        guard inCall else { return }
+        let now = monotonicMs()
+        let silent = micWatch.check(now: now)
+        if silent, audio.echoCancelling, !triedWithoutEcho {
+            triedWithoutEcho = true
+            do {
+                try audio.restartWithoutEchoCancellation()
+                micWatch.start(at: now)
+                return
+            } catch {
+                IraLog.shared.info("the microphone did not start again without voice processing: \(error.localizedDescription)")
+            }
+        }
+        if silent, !AudioEngine.plainMode, !triedPlainMode {
+            triedPlainMode = true
+            do {
+                try audio.restartInPlainMode()
+                micWatch.start(at: now)
+                return
+            } catch {
+                IraLog.shared.info("the microphone did not start again in the plain mode: \(error.localizedDescription)")
+            }
+        }
+        if silent != micSilent { micSilent = silent }
     }
 
     func endCall() {
@@ -253,6 +316,11 @@ final class TalkController {
         speaking = false
         idleTimer?.invalidate()
         idleTimer = nil
+        micTimer?.invalidate()
+        micTimer = nil
+        micWatch.stop()
+        micSilent = false
+        levels.clear()
         UIApplication.shared.isIdleTimerDisabled = false
         if step == StepWords.connecting || step == StepWords.listening { finished() }
     }
@@ -295,6 +363,11 @@ final class TalkController {
 
     private func frame(_ samples: [Float], at: Double) {
         guard inCall else { return }
+        let rms = EnergyVAD.rms(samples)
+        micWatch.frame(level: rms, at: at)
+        if micSilent, micWatch.check(now: at) == false { micSilent = false }
+        frames += 1
+        if frames % 2 == 0 { levels.add(rms) }  // 25 a second is plenty for the waveform
         if recognizer != nil {
             phoneFrame(samples, at: at)
             return

@@ -16,6 +16,7 @@ public final class AppSettings: @unchecked Sendable {
         static let assistant = "assistantName"
         static let conversationID = "conversationID"
         static let setupDone = "setupDone"
+        static let look = "look"
     }
 
     /// The paired server, e.g. `https://ira.example.com`. Empty until paired.
@@ -62,6 +63,12 @@ public final class AppSettings: @unchecked Sendable {
     /// The server gave the conversation another id (a new one it started).
     public func adoptConversation(_ id: String) {
         if ConversationID.isValid(id) { defaults.set(id, forKey: Key.conversationID) }
+    }
+
+    /// How the app looks: "system" (the default, as the iPhone is set), "light" or "dark".
+    public var look: String {
+        get { defaults.string(forKey: Key.look).flatMap { ["light", "dark", "system"].contains($0) ? $0 : nil } ?? "system" }
+        set { defaults.set(newValue, forKey: Key.look) }
     }
 
     /// The person finished "Get Ira ready" once (it stays reachable in Settings).

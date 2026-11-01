@@ -17,6 +17,8 @@ public struct Entry: Identifiable, Equatable, Sendable {
     public var reported = false
     /// Still being written.
     public var streaming = false
+    /// The tools Ira used for this answer, in order: its receipts.
+    public var tools: [String] = []
 
     public init(role: Role, text: String, source: Int = 0, turn: Int? = nil, action: ActionCard? = nil) {
         self.id = UUID()
@@ -100,7 +102,18 @@ public struct Transcript: Sendable {
                 entries[index].streaming = false
             }
             note(Plain.sentence(message), source: source)
-        case .ready, .partial, .tool, .audio, .say, .closed:
+        case .tool(let turn, let name):
+            guard !name.isEmpty else { break }
+            if let index = answerIndex(source: source, turn: turn) {
+                if entries[index].tools.last != name { entries[index].tools.append(name) }
+            } else {
+                // The answer's words come after its tools: its line starts here, empty.
+                var entry = Entry(role: .ira, text: "", source: source, turn: turn)
+                entry.streaming = true
+                entry.tools = [name]
+                entries.append(entry)
+            }
+        case .ready, .partial, .audio, .say, .closed:
             break
         }
     }
