@@ -205,13 +205,16 @@ def test_a_windows_program_is_trusted_whatever_its_case():
     runtime, _, owner, _, _, _, _ = phone_world([])
     code, _ = runtime.hub.devices.start_pairing(owner.id, "windows", "Home PC", ["control"])
     _, pc = runtime.hub.devices.redeem(code)
-    named = ["Code.EXE", "chrome.exe", "WindowsTerminal.exe", "com.google.Chrome", "not an id"]
+    named = ["Excel.EXE", "chrome.exe", "WindowsTerminal.exe", "com.google.Chrome", "not an id"]
     # The PC reports chrome.exe in lower case; a terminal is never trusted.
     assert runtime.approvals.set_trusted(owner.id, pc.id, named) == [
         "chrome.exe",
-        "code.exe",
         "com.google.Chrome",
+        "excel.exe",
     ]
+    # Nor an editor with a terminal of its own, nor Explorer, whose address bar runs commands.
+    editors = ["Code.exe", "explorer.exe", "com.microsoft.VSCode", "com.jetbrains.goland"]
+    assert runtime.approvals.set_trusted(owner.id, pc.id, editors) == []
 
 
 async def test_a_trusted_app_in_front_lets_screen_steps_run():

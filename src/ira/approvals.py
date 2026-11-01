@@ -47,6 +47,25 @@ NEVER_IDS = frozenset(
      "regedit.exe", "mmc.exe", "microsoft.windowsterminal_8wekyb3d8bbwe!app",
      "taskmgr.exe", "wscript.exe", "cscript.exe", "mshta.exe"}
 )  # fmt: skip
+# Apps Ira may open but never types, clicks or presses keys in: code editors with a terminal
+# of their own (ctrl+` opens it), File Explorer and its Run box (their address bar runs what
+# is typed), and Python's and Node's own windows.
+NEVER_TYPE_WORDS = (
+    "visual studio code", "vscodium", "intellij", "pycharm", "webstorm", "phpstorm", "goland",
+    "rubymine", "clion", "android studio",
+)  # fmt: skip
+NEVER_TYPE_IDS = frozenset(
+    {"com.microsoft.vscode", "com.microsoft.vscodeinsiders", "com.vscodium",
+     "com.todesktop.230313mzl4w4u92", "com.exafunction.windsurf", "dev.zed.zed",
+     "dev.zed.zed-preview", "com.panic.nova", "com.google.android.studio",
+     "explorer", "explorer.exe", "file explorer", "run", "code", "code.exe",
+     "code - insiders.exe", "cursor", "cursor.exe", "windsurf", "windsurf.exe", "zed", "zed.exe",
+     "nova", "idea64.exe", "pycharm64.exe", "webstorm64.exe", "phpstorm64.exe", "goland64.exe",
+     "rubymine64.exe", "clion64.exe", "rider64.exe", "studio64.exe", "python", "python.exe",
+     "pythonw.exe", "py.exe", "idle", "node", "node.exe", "powershell_ise.exe"}
+)  # fmt: skip
+# Whole families, by the start of their bundle id: JetBrains' editors all have a terminal.
+NEVER_TYPE_PREFIXES = ("com.jetbrains.",)
 
 # Files that run something when opened, on a Mac or a PC: file_open never opens them, and an
 # app on the never list is not opened as a file either (Terminal.app).
@@ -99,6 +118,21 @@ def never_app(app: str | None) -> bool:
         return False
     name = app.strip().lower().removesuffix(".app")
     return name in NEVER_IDS or any(word in name for word in NEVER_APPS)
+
+
+def never_type(app: str | None) -> bool:
+    """Whether Ira must never type, click or press keys in this app, nor trust it: the
+    never-list, and the apps that may be opened but run what is typed in them (an
+    editor's terminal, Explorer's address bar)."""
+    if not app:
+        return False
+    name = app.strip().lower().removesuffix(".app")
+    return (
+        never_app(app)
+        or name in NEVER_TYPE_IDS
+        or name.startswith(NEVER_TYPE_PREFIXES)
+        or any(word in name for word in NEVER_TYPE_WORDS)
+    )
 
 
 # An app as a device names it: an Android package or a macOS bundle id.
@@ -252,7 +286,7 @@ class Approvals:
         named = [
             a.strip().lower() if a.strip().lower().endswith(".exe") else a.strip() for a in apps
         ]
-        clean = sorted({a for a in named if APP_ID.fullmatch(a) and not never_app(a)})
+        clean = sorted({a for a in named if APP_ID.fullmatch(a) and not never_type(a)})
         with self.store.transaction():
             self.store.execute(
                 "DELETE FROM trusted_apps WHERE user_id = ? AND device_id = ?",

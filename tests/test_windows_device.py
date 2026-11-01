@@ -9,7 +9,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from ira.accounts import Accounts
-from ira.approvals import never_app
+from ira.approvals import never_app, never_type
 from ira.channels.devices import KIND_SKILLS
 from ira.channels.http import create_app
 from ira.devices import Devices
@@ -128,6 +128,23 @@ def test_windows_shells_are_never_acted_in(app):
     assert never_app(app)
 
 
-@pytest.mark.parametrize("app", ["Notepad", "notepad.exe", "chrome.exe", "Microsoft Edge", "Excel"])
-def test_everyday_windows_apps_are_not_refused(app):
-    assert not never_app(app)
+@pytest.mark.parametrize(
+    "app",
+    # Explorer's address bar and the Run dialog run what is typed; so do editors with a
+    # terminal (ctrl+` opens it) and Python's and Node's own windows.
+    ["explorer.exe", "File Explorer", "Run", "Code.exe", "Visual Studio Code", "cursor.exe",
+     "idea64.exe", "PyCharm Community Edition", "python.exe", "pythonw.exe", "node.exe",
+     "com.microsoft.VSCode", "com.todesktop.230313mzl4w4u92", "com.jetbrains.goland",
+     "dev.zed.Zed", "Android Studio"],
+)  # fmt: skip
+def test_places_that_run_typed_text_are_never_acted_in(app):
+    assert never_type(app) and not never_app(app)  # opened, never typed in
+
+
+@pytest.mark.parametrize(
+    "app",
+    ["Notepad", "notepad.exe", "chrome.exe", "Microsoft Edge", "Excel", "Xcode", "Notes",
+     "com.apple.Notes", "WINWORD.EXE", "Calculator", "Barcode Scanner"],
+)  # fmt: skip
+def test_everyday_apps_are_not_refused(app):
+    assert not never_app(app) and not never_type(app)

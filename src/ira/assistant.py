@@ -29,7 +29,7 @@ from typing import Any
 from pydantic import ValidationError
 
 from ira import toollog
-from ira.approvals import never_app, open_refusal
+from ira.approvals import never_app, never_type, open_refusal
 from ira.conversations import Conversations
 from ira.models.base import ChatResponse, Message, StreamDone, TextDelta, ToolCall
 from ira.models.gateway import Gateway, GatewayError
@@ -960,7 +960,7 @@ class Assistant:
             return
         app = value.get("app")
         seen = self._front.setdefault(conversation_id, {})
-        if isinstance(app, str) and app and never_app(app):
+        if isinstance(app, str) and app and never_type(app):
             # A step landed in Terminal or the like: no approval covers that device now.
             seen.pop(target, None)
             if self.approvals is not None:
@@ -1008,7 +1008,7 @@ class Assistant:
             acting = (extra.skill or "") in ("control", "screen") and not extra.name.endswith(
                 "_read"
             )
-            if acting and (never_app(app) or never_app(front)):
+            if acting and (never_type(app) or never_type(front)):
                 # Whatever is typed there runs as a command: never, PIN or not.
                 return _failed(NEVER_APP_REFUSAL, safe_call)
             window = self.approvals.covers(user_id, target, extra.name, extra.skill)
