@@ -1,17 +1,20 @@
 import AppKit
 import IraKit
+import QuickLook
 import SwiftUI
 import UniformTypeIdentifiers
 
-/// The pane's own state: a drag over it, and an item waiting for "Delete from all devices?".
+/// The pane's own state: a drag over it, an item waiting for "Delete from all devices?", and a
+/// file shown in Quick Look over the window.
 final class DropPaneState: ObservableObject {
     @Published var targeted = false
     @Published var deleting: DropItem?
+    @Published var preview: URL?
 }
 
 /// Drop in the window: every item, newest first, with what can be done with it; files and
 /// text dragged onto it are sent to the person's other devices. A file arriving here is
-/// never saved until Save is chosen.
+/// never saved until it is opened or saved.
 struct DropPane: View {
     @ObservedObject var drop: DropBox
     @StateObject private var state = DropPaneState()
@@ -39,6 +42,7 @@ struct DropPane: View {
             DropPane.receive(providers, into: drop)
             return true
         }
+        .quickLookPreview($state.preview)
         .navigationTitle("Drop")
         .navigationSubtitle("Shared by your devices for 30 days")
         .toolbar {
@@ -94,7 +98,7 @@ struct DropPane: View {
             ForEach(DropList.sections(drop.items)) { section in
                 Section {
                     ForEach(section.items) { item in
-                        DropRow(item: item, saved: drop.savedFile(item) != nil, drop: drop, delete: { state.deleting = item })
+                        DropRow(item: item, saved: drop.savedFile(item) != nil, drop: drop, delete: { state.deleting = item }, look: { look(item) })
                     }
                 } header: {
                     Text(section.title.uppercased())
@@ -122,6 +126,12 @@ struct DropPane: View {
         guard picker.runModal() == .OK else { return }
         let files = picker.urls
         Task { await drop.send(files: files) }
+    }
+
+    /// Save the file if it is not yet, then show it in Quick Look.
+    private func look(_ item: DropItem) {
+        if let saved = drop.savedFile(item) { return state.preview = saved }
+        Task { state.preview = try? await drop.save(item) }
     }
 
     private func openFolder() {
@@ -158,6 +168,8 @@ struct DropRow: View {
     let saved: Bool
     let drop: DropBox
     let delete: () -> Void
+    /// Show the file in Quick Look.
+    let look: () -> Void
 
     var body: some View {
         HStack(alignment: .center, spacing: 12) {
@@ -180,10 +192,8 @@ struct DropRow: View {
             Spacer(minLength: 12)
             HStack(spacing: 4) {
                 if item.isFile {
-                    action(saved ? "Saved" : "Save", icon: saved ? "checkmark.circle" : "arrow.down.circle",
-                           help: "Save to Downloads/Ira") { Task { _ = try? await drop.save(item) } }
-                        .disabled(saved)
-                    action("Show in Finder", icon: "magnifyingglass", help: saved ? "Show in Finder" : "Save it first") { drop.reveal(item) }
+                    action("Open", icon: "eye", help: "Open it here (saves it to Downloads/Ira)", run: look)
+                    action("Show in Finder", icon: "magnifyingglass", help: saved ? "Show in Finder" : "Open or save it first") { drop.reveal(item) }
                         .disabled(!saved)
                 } else {
                     action("Copy", icon: "doc.on.doc", help: "Copy") { Task { await drop.copy(item) } }
@@ -197,8 +207,15 @@ struct DropRow: View {
             }
         }
         .padding(.vertical, 4)
+        .contentShape(Rectangle())
+        // A double click opens a file in Quick Look, a link in the browser.
+        .onTapGesture(count: 2) {
+            if item.isFile { look() } else if item.link != nil { Task { await drop.open(item) } }
+        }
         .contextMenu {
             if item.isFile {
+                Button("Open") { look() }
+                Button("Open With Default App") { Task { await drop.open(item) } }
                 Button("Save to Downloads/Ira") { Task { _ = try? await drop.save(item) } }.disabled(saved)
                 Button("Show in Finder") { drop.reveal(item) }.disabled(!saved)
             } else {

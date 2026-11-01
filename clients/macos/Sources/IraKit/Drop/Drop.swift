@@ -106,6 +106,22 @@ public enum Drop {
         }
     }
 
+    /// This item, saved here before (perhaps before Ira restarted): the file of its name, or a
+    /// numbered copy, with the same bytes. Opening it again then reuses it, never a "name 2.png".
+    public static func alreadySaved(_ item: DropItem, in folder: URL) -> URL? {
+        guard let expected = item.sha256 else { return nil }
+        let name = safeName(item.name)
+        let stem = (name as NSString).deletingPathExtension
+        let ext = (name as NSString).pathExtension
+        for number in 1...9 {
+            let candidate = number == 1 ? name : (ext.isEmpty ? "\(stem) \(number)" : "\(stem) \(number).\(ext)")
+            let url = folder.appendingPathComponent(candidate)
+            guard FileManager.default.fileExists(atPath: url.path) else { continue }
+            if (try? sha256(of: url)) == expected { return url }
+        }
+        return nil
+    }
+
     public static func size(_ bytes: Int) -> String {
         if bytes < 1024 { return "\(bytes) B" }
         if bytes < 1024 * 1024 { return String(format: "%.1f KB", Double(bytes) / 1024) }
@@ -256,6 +272,7 @@ public final class DropClient: @unchecked Sendable {
     /// Save a file into [folder] (made if needed), checked against its SHA-256 and marked as
     /// downloaded, so the Mac checks it before it opens like any download. Returns where it went.
     public func save(_ item: DropItem, into folder: URL) async throws -> URL {
+        if let existing = Drop.alreadySaved(item, in: folder) { return existing }
         let downloaded: URL
         let response: URLResponse
         do {

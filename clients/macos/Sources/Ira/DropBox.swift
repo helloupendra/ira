@@ -195,6 +195,8 @@ final class DropBox: NSObject, ObservableObject {
 
     @discardableResult
     func save(_ item: DropItem) async throws -> URL {
+        // Saved already: the same file, not a second copy ("name 2.png").
+        if let existing = savedFile(item) { return existing }
         guard let client else { throw DropClient.Failure("this Mac is not paired") }
         let saved = try await client.save(item, into: DropBox.folder)
         self.saved[item.id] = saved
@@ -217,7 +219,7 @@ final class DropBox: NSObject, ObservableObject {
         if let link = item.link {
             NSWorkspace.shared.open(link)
         } else if item.isFile, let saved = try? await save(item) {
-            NSWorkspace.shared.activateFileViewerSelecting([saved])
+            NSWorkspace.shared.open(saved)
         }
     }
 

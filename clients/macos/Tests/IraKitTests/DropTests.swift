@@ -97,8 +97,14 @@ struct DropTests {
         #expect(saved.lastPathComponent == "plan.bin")
         #expect(try Data(contentsOf: saved) == content)
         #expect(try saved.resourceValues(forKeys: [.quarantinePropertiesKey]).quarantineProperties != nil)
+        // Opened again, perhaps after a restart: the same bytes are there already, so no "plan 2.bin".
         let again = try await client.save(DropItem(id: 10, kind: "file", name: "plan.bin", sha256: hash), into: downloads)
-        #expect(again.lastPathComponent == "plan 2.bin")
+        #expect(again == saved)
+        // A different file of that name stays, and the download takes the next free name.
+        try Data("someone else's plan".utf8).write(to: saved)
+        let fresh = try await client.save(DropItem(id: 10, kind: "file", name: "plan.bin", sha256: hash), into: downloads)
+        #expect(fresh.lastPathComponent == "plan 2.bin")
+        #expect(try Data(contentsOf: fresh) == content)
         await #expect(throws: DropClient.Failure.self) {
             try await client.save(DropItem(id: 11, kind: "file", name: "x.bin", sha256: hash), into: downloads)
         }
