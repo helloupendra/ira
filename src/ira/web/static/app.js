@@ -172,6 +172,8 @@ async function start() {
 function enterChat() {
   const { user, permissions } = state.info;
   $("#menu-email").textContent = user.email;
+  $("#side-email").textContent = user.email;
+  $("#side-avatar").textContent = user.email.slice(0, 1).toUpperCase();
   $("#menu-role").textContent = user.role;
   $("#menu-admin").hidden = !permissions.includes("admin.read");
   $("#speak-toggle").checked = storage.get("ira.speak") === true;
@@ -441,7 +443,7 @@ $("#menu-open").addEventListener("click", () => {
   $("#menu").showModal();
   loadHistory();
 });
-$("#side-menu").addEventListener("click", () => $("#menu").showModal());
+$("#side-settings").addEventListener("click", () => $("#menu").showModal());
 $("#side-new").addEventListener("click", () => newConversation());
 // From a phone's width to a laptop's: the sidebar appears, with its list.
 matchMedia("(min-width: 64rem)").addEventListener("change", (event) => {

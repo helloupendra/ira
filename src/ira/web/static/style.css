@@ -156,9 +156,35 @@ code { font-family: var(--mono); font-size: 0.9em; background: var(--bg-sunken);
 
 /* The sidebar: on a laptop or desktop only (see Wider screens). */
 .side { display: none; }
-.side-head { display: flex; align-items: center; gap: var(--s-2); min-height: 44px; padding: 0 var(--s-1); }
+.side-head { display: flex; align-items: center; gap: 10px; min-height: 44px; padding: 0 var(--s-1) 0 var(--s-2); }
 .side-head .icon-btn { border-radius: 10px; }
-.side-brand { font-size: var(--text-base); font-weight: 500; letter-spacing: -0.01em; }
+.side-mark { width: 22px; height: 22px; flex: none; border-radius: 50%; background: var(--lens); box-shadow: 0 0 0 1px rgb(255 255 255 / 0.06), 0 6px 14px -6px rgb(63 191 152 / 0.6); }
+.side-brand { flex: 1; font-size: var(--text-base); font-weight: 500; letter-spacing: -0.01em; }
+.side-nav { display: grid; gap: 1px; margin: 0 var(--s-1) var(--s-3); padding-bottom: var(--s-3); border-bottom: 1px solid var(--line); }
+.side-link {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 34px;
+  padding: 0 var(--s-2);
+  font: inherit;
+  font-size: var(--text-m);
+  text-align: left;
+  color: var(--text);
+  background: none;
+  border: 0;
+  border-radius: 8px;
+  cursor: pointer;
+}
+.side-link:hover { background: var(--fill); }
+.side-link svg,
+.side-foot svg { width: 17px; height: 17px; flex: none; fill: none; stroke: var(--muted); stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+.side-link:hover svg { stroke: var(--accent); }
+.side-foot { display: flex; align-items: center; gap: 10px; min-height: 56px; padding: var(--s-2) var(--s-1) max(var(--s-2), env(safe-area-inset-bottom)) var(--s-2); border-top: 1px solid var(--line); }
+.side-avatar { width: 28px; height: 28px; flex: none; display: grid; place-items: center; border-radius: 50%; background: var(--accent-soft); color: var(--accent); font-size: 0.8125rem; font-weight: 600; }
+.side-email { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--text-s); color: var(--muted); }
+.side-foot .icon-btn { border-radius: 10px; }
+.side-foot .icon-btn svg { width: 19px; height: 19px; }
 .side-new {
   display: flex;
   align-items: center;
@@ -756,11 +782,23 @@ select { font: inherit; min-height: var(--tap); padding: 0 var(--s-2); border: 1
     border-right: 1px solid var(--line);
     background: color-mix(in srgb, var(--bg) 70%, transparent);
   }
-  /* The sidebar holds the menu, the name and New; the header keeps Drop. */
-  .top #menu-open,
-  .top .brand-name,
-  .top #new-chat { display: none; }
-  .menu-history { display: none; }
+  /* The sidebar holds the name, Drop, New, Your Ira and Settings: no header above the words. */
+  .top { display: none; }
+  .banner { margin-top: var(--s-4); }
+  /* Settings is a popup with the settings only; the pages are in the sidebar, and open as popups too. */
+  .menu-history,
+  .menu-nav { display: none; }
+  .menu {
+    width: min(30rem, 100% - 4rem);
+    height: fit-content;
+    max-height: min(85dvh, 48rem);
+    margin: auto;
+    border-radius: var(--radius-l);
+    border: 1px solid var(--line);
+  }
+  .menu.panel { width: min(40rem, 100% - 4rem); height: min(85dvh, 48rem); }
+  #panel-back { display: none; }
+  .menu-head { padding-left: var(--s-5); }
   .hero-mark { width: 152px; height: 152px; padding: 38px; }
   .hero-mark::after { inset: -18px; }
   .hello { font-size: 3.5rem; }

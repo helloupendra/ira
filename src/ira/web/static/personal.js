@@ -1105,7 +1105,7 @@ const IraPersonal = (() => {
     drop.items = listed.items;
     drop.hasMore = listed.has_more;
     drop.limits = settings;
-    $("#drop-open").classList.remove("has-new");
+    for (const button of document.querySelectorAll(".drop-btn")) button.classList.remove("has-new");
     const text = el("textarea", { rows: "2", maxlength: String(settings.max_text), placeholder: "Text or a link", "aria-label": "Text or a link to send" });
     const picker = el("input", { type: "file", multiple: true, hidden: true });
     const error = el("p", { className: "error", role: "alert" });
@@ -1325,7 +1325,7 @@ const IraPersonal = (() => {
     if (frame.event === "new" && frame.item) {
       arrived(frame.item);
       if (!dropShown()) {
-        $("#drop-open").classList.add("has-new");
+        for (const button of document.querySelectorAll(".drop-btn")) button.classList.add("has-new");
         announce(`New in your Drop, from ${frame.item.from_label}.`);
       }
     } else if (frame.event === "deleted") {
@@ -1456,7 +1456,8 @@ const IraPersonal = (() => {
 
   function showDrop() {
     $("#drop-open").hidden = !canDrop();
-    document.querySelector('[data-panel="drop"]').hidden = !canDrop();
+    // The menu's link and the sidebar's button.
+    for (const button of document.querySelectorAll('[data-panel="drop"]')) button.hidden = !canDrop();
   }
 
   function forgetDrop() {
