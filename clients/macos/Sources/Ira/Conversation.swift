@@ -368,6 +368,18 @@ final class Conversation: ObservableObject {
     private func checkSilence(at time: Double) {
         if silence.check(at: time) {
             micName = AudioIO.inputName
+            // Voice processing's input gives only zeros on some Macs: try once without it
+            // before telling the person anything.
+            if audio.echoCancelling {
+                IraLog.shared.warning("mic silent for 3 s with echo cancellation on: \(micName); listening again without it")
+                do {
+                    try audio.restartWithoutEchoCancellation()
+                    watchSilence()
+                    return
+                } catch {
+                    IraLog.shared.warning("listening without echo cancellation failed: \(error.localizedDescription)")
+                }
+            }
             micSilent = true
             IraLog.shared.warning("mic silent for 3 s: \(micName)")
         } else if micSilent, !silence.silent {

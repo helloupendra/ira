@@ -109,6 +109,19 @@ final class AudioIO: NSObject {
         listening = true
     }
 
+    /// Listen again without voice processing. On some Macs its input gives only zeros, so a
+    /// silent first listen tries once without it; echo cancellation then stays off this run.
+    func restartWithoutEchoCancellation() throws {
+        guard echoCancelling else { return }
+        let wasListening = listening
+        if wasListening { stopListening() }
+        engine.stop()
+        try engine.inputNode.setVoiceProcessingEnabled(false)
+        echoCancelling = false
+        AudioIO.echoUnavailable = true
+        if wasListening { try startListening() }
+    }
+
     func stopListening() {
         guard listening else { return }
         engine.inputNode.removeTap(onBus: 0)
