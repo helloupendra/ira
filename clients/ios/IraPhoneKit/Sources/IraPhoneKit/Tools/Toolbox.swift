@@ -142,6 +142,10 @@ public final class Toolbox: ToolRunner, @unchecked Sendable {
             return try await LocationTool.now(args)
         case "call_place":
             return try await CallTool.place(args, foreground: await foreground(), open: opener)
+        case "app_open":
+            return try await OpenTool.openApp(args, foreground: await foreground(), open: opener)
+        case "url_open":
+            return try await OpenTool.openURL(args, foreground: await foreground(), open: opener)
         default:
             throw ToolFailure("this iPhone has no tool called \(name)")
         }

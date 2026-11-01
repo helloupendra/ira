@@ -165,7 +165,7 @@ struct ChecklistTests {
             }
         }
         func action(_ id: String) -> ChecklistRow.Action? { rows.first { $0.id == id }?.action }
-        #expect(rows.map(\.id) == ["pair", "microphone", "speech", "contacts", "calendar", "reminders", "location", "calls"])
+        #expect(rows.map(\.id) == ["pair", "microphone", "speech", "contacts", "calendar", "reminders", "location", "calls", "apps"])
         #expect(action("pair") == .pair)
         #expect(action("microphone") == .done)
         #expect(action("speech") == .allow)

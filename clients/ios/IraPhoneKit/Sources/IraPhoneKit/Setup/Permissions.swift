@@ -97,8 +97,8 @@ public final class SystemPermissions: PermissionProvider, @unchecked Sendable {
             case .restricted: return .restricted
             default: return .notAsked
             }
-        case .calls:
-            return .allowed  // a tel: link needs no permission; the person's tap is it
+        case .calls, .apps:
+            return .allowed  // a link needs no permission; tel: still asks the person to tap
         }
     }
 
@@ -119,7 +119,7 @@ public final class SystemPermissions: PermissionProvider, @unchecked Sendable {
     public func request(_ item: ChecklistItem) async -> PermissionState {
         guard state(item) == .notAsked else { return state(item) }
         switch item {
-        case .pair, .skill(.calls):
+        case .pair, .skill(.calls), .skill(.apps):
             break
         case .microphone:
             _ = await AVAudioApplication.requestRecordPermission()

@@ -25,7 +25,7 @@ struct ToolCatalogTests {
                 #expect(parameters["properties"]?[required.stringValue ?? ""] != nil)
             }
         }
-        #expect(Set(ToolCatalog.all.map(\.skill.rawValue)) == ["contacts", "calendar", "reminders", "location", "calls"])
+        #expect(Set(ToolCatalog.all.map(\.skill.rawValue)) == ["contacts", "calendar", "reminders", "location", "calls", "apps"])
     }
 
     @Test func tiersAreFixedHere() {
@@ -36,6 +36,7 @@ struct ToolCatalogTests {
             "reminders_list": 0, "reminders_add": 1, "reminders_done": 1,
             "location_now": 0,
             "call_place": 2,
+            "app_open": 1, "url_open": 2,
         ])
     }
 

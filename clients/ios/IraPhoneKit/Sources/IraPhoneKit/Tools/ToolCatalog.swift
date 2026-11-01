@@ -2,7 +2,7 @@ import Foundation
 
 /// The skills an iPhone can offer, each with the iOS permission it needs.
 public enum Skill: String, CaseIterable, Sendable, Identifiable {
-    case contacts, calendar, reminders, location, calls
+    case contacts, calendar, reminders, location, calls, apps
 
     public var id: String { rawValue }
 
@@ -14,6 +14,7 @@ public enum Skill: String, CaseIterable, Sendable, Identifiable {
         case .reminders: return "Reminders"
         case .location: return "Location"
         case .calls: return "Calls"
+        case .apps: return "Apps and pages"
         }
     }
 
@@ -25,11 +26,12 @@ public enum Skill: String, CaseIterable, Sendable, Identifiable {
         case .reminders: return "So Ira can list your reminders, add one, and tick one off."
         case .location: return "So Ira can say where you are, when you ask. Only while Ira is open."
         case .calls: return "So Ira can start a call after your yes. iOS still asks you to tap Call."
+        case .apps: return "So Ira can open an app (YouTube, WhatsApp, Maps…) or a web page on this iPhone when you ask. Only while Ira is open."
         }
     }
 
     /// Whether iOS has a permission prompt for it (calls have none: the tap is the permission).
-    public var needsPermission: Bool { self != .calls }
+    public var needsPermission: Bool { self != .calls && self != .apps }
 }
 
 /// Every tool this iPhone can offer Ira, as the hello lists them: name,
@@ -129,6 +131,12 @@ public enum ToolCatalog {
                 "number": text("The phone number to call: digits, with + and the country code if known.", maxLength: 24),
                 "name": text("Who is being called, as the person knows them.", maxLength: 80),
              ], required: ["number"]),
+        tool("app_open", skill: .apps, tier: 1,
+             "Open an app on this iPhone by its name: \(OpenTool.apps.map(\.name).joined(separator: ", ")). Only while Ira is open on the iPhone. Say that you opened it, on this iPhone.",
+             properties: ["name": text("The app's name.", maxLength: 60)], required: ["name"]),
+        tool("url_open", skill: .apps, tier: 2,
+             "Open a web page on this iPhone (in the app it belongs to when installed, else the browser). The exact address is read back first. Only while Ira is open on the iPhone.",
+             properties: ["url": text("The web address (https://...).", maxLength: 2000)], required: ["url"]),
     ]
 
     /// The hello's tools, in order.
