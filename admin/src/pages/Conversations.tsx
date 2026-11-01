@@ -77,13 +77,13 @@ function Table({ rows }: { rows: ConversationRow[] }) {
         <tbody>
           {rows.map((row) => (
             <tr key={row.id} className="conv-row" onClick={(event) => open(event, row.id)}>
-              <td className="conv-when">{when(row.last_at)}</td>
+              <td className="conv-when muted">{when(row.last_at)}</td>
               <td className="conv-who">{whoOf(row)}</td>
               <td>
                 <span className="badge badge-muted">{row.channel}</span>
               </td>
               <td className="num">{count(row.turns)}</td>
-              <td className="conv-preview muted">
+              <td className="conv-preview">
                 <Link href={hrefOf(row.id)} className="conv-open">
                   <Preview row={row} />
                 </Link>

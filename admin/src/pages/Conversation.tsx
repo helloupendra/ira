@@ -68,21 +68,35 @@ function Said({ turn }: { turn: SaidTurn }) {
   );
 }
 
-// A tool call and, when one came back, the result it got.
+function noArguments(args: unknown): boolean {
+  const value = typeof args === 'string' ? args.trim() : args;
+  if (value === undefined || value === null || value === '' || value === '{}') return true;
+  return typeof value === 'object' && !Array.isArray(value) && Object.keys(value).length === 0;
+}
+
+// A tool call and, when one came back, the result it got: side by side on a desktop.
 function Call({ turn }: { turn: CallTurn }) {
   return (
     <li className="turn turn-tool">
       <div className="conv-turn-head">
-        <span className="turn-who">Called {humanize(turn.name)}</span>
+        <Icon name="tools" size={14} />
+        <span className="conv-tool-name">Called {humanize(turn.name)}</span>
         <Time at={turn.at} />
       </div>
-      <Json value={turn.args} compact />
-      <span className="turn-who">Returned</span>
-      {turn.result ? (
-        <Json value={turn.result.content ?? undefined} compact />
-      ) : (
-        <p className="inline-note">No result was recorded.</p>
-      )}
+      <div className="conv-io">
+        <div className="conv-io-part">
+          <span className="conv-io-label">Parameters</span>
+          {noArguments(turn.args) ? <p className="inline-note">None.</p> : <Json value={turn.args} compact />}
+        </div>
+        <div className="conv-io-part">
+          <span className="conv-io-label">Returned</span>
+          {turn.result ? (
+            <Json value={turn.result.content ?? undefined} compact />
+          ) : (
+            <p className="inline-note">No result was recorded.</p>
+          )}
+        </div>
+      </div>
       {turn.action && <Proposed action={turn.action} />}
     </li>
   );
@@ -93,7 +107,8 @@ function Result({ turn }: { turn: ResultTurn }) {
   return (
     <li className="turn turn-tool">
       <div className="conv-turn-head">
-        <span className="turn-who">{turn.name ? `${humanize(turn.name)} returned` : 'A tool returned'}</span>
+        <Icon name="tools" size={14} />
+        <span className="conv-tool-name">{turn.name ? `${humanize(turn.name)} returned` : 'A tool returned'}</span>
         <Time at={turn.at} />
       </div>
       <Json value={turn.content ?? undefined} compact />
