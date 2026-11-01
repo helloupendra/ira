@@ -1177,7 +1177,8 @@ const IraPersonal = (() => {
         )
       : null;
     paintDrop();
-    body.replaceChildren(sharedCard(), form, drop.list, drop.more, telegram);
+    // Nothing shared, or no Telegram: left out, never the text "null".
+    body.replaceChildren(...[sharedCard(), form, drop.list, drop.more, telegram].filter(Boolean));
     text.focus();
   }
 
