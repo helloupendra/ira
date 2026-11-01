@@ -234,103 +234,123 @@ public enum TranscriptSummary {
     /// The summary of one transcript from its last lines (oldest first); nil when they hold
     /// no conversation.
     public static func summarise(lines: [String], id: String, modified: Date, now: Date) -> AISession? {
-        var cwd: String?
-        var entrypoint: String?
-        var title: String?
-        var customTitle: String?
-        var request: String?
-        var answer: String?
-        var doing: String?
-        var steps: [AISession.Step] = []
-        var list = TaskList()
-        var last = Last.none
-        var seen = false
+        var fold = TranscriptFold()
+        for line in lines { fold.feed(Data(line.utf8)) }
+        return fold.session(id: id, modified: modified, now: now)
+    }
+}
 
-        func step(_ text: String, _ at: Date?) {
-            steps.append(AISession.Step(at: at, text: text))
-            if steps.count > maxSteps { steps.removeFirst(steps.count - maxSteps) }
-        }
+/// A transcript read line by line, oldest first: what its summary needs and nothing more. It
+/// can take more lines later (what was appended), so a growing transcript is never read twice.
+public struct TranscriptFold: Sendable {
+    var cwd: String?
+    var entrypoint: String?
+    var title: String?
+    var customTitle: String?
+    var request: String?
+    var answer: String?
+    var doing: String?
+    var steps: [AISession.Step] = []
+    var list = TranscriptSummary.TaskList()
+    var last = TranscriptSummary.Last.none
+    var seen = false
+    var index = 0
 
-        for (index, line) in lines.enumerated() {
-            guard line.contains("\"type\""), let entry = JSONValue.parse(line), entry.objectValue != nil else { continue }
-            let type = entry["type"]?.stringValue
-            if type == "ai-title" { title = entry["aiTitle"]?.stringValue ?? title }
-            if type == "custom-title" { customTitle = entry["customTitle"]?.stringValue ?? customTitle }
-            // A helper's own steps, and the summary written when the context was compacted, are not the session's.
-            guard type == "user" || type == "assistant", entry["isSidechain"]?.boolValue != true,
-                entry["isCompactSummary"]?.boolValue != true
-            else { continue }
-            seen = true
-            if let value = entry["cwd"]?.stringValue { cwd = value }
-            if let value = entry["entrypoint"]?.stringValue { entrypoint = value }
-            let at = date(entry["timestamp"]?.stringValue)
-            let content = entry["message"]?["content"]
-            if type == "user" {
-                if let parts = content?.arrayValue, parts.contains(where: { $0["type"] == "tool_result" }) {
-                    for part in parts where part["type"] == "tool_result" { list.answered(part) }
-                    last = .toolResult
-                    continue
-                }
-                let text = content?.stringValue
-                    ?? content?.arrayValue?.compactMap { $0["type"] == "text" ? $0["text"]?.stringValue : nil }.joined(separator: " ") ?? ""
-                let origin = entry["origin"]?["kind"]?.stringValue
-                if text.hasPrefix("[Request interrupted") {
-                    last = .interrupted
-                    step("you stopped it", at)
-                    continue
-                }
-                let human = origin.map { $0 == "human" }
-                    ?? (entry["isMeta"]?.boolValue != true && !text.trimmingCharacters(in: .whitespaces).hasPrefix("<"))
-                let words = ownWords(text)
-                if human && !words.isEmpty {
-                    request = clip(words)
-                    last = .prompt
-                    step("you asked: " + clip(words, 120), at)
-                } else if !words.isEmpty || origin != nil {
-                    last = .injected
-                }
-            } else {
-                var tool: String?
-                for part in content?.arrayValue ?? [] {
-                    switch part["type"]?.stringValue {
-                    case "text":
-                        let text = part["text"]?.stringValue?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-                        if !text.isEmpty {
-                            answer = clip(text)
-                            step("said: " + clip(text, 120), at)
-                        }
-                    case "tool_use":
-                        let name = part["name"]?.stringValue ?? "a tool"
-                        let input = part["input"] ?? .object([:])
-                        list.use(name, input, useID: part["id"]?.stringValue, at: index)
-                        tool = name
-                        let phrase = phrase(name, input)
-                        doing = phrase
-                        step(phrase, at)
-                    default: break
-                    }
-                }
-                // Each block of a reply is its own entry, each with the reply's stop reason.
-                last = .reply(stop: entry["message"]?["stop_reason"]?.stringValue, tool: tool)
+    public init() {}
+
+    /// The person's latest request is in what was read.
+    public var hasRequest: Bool { request != nil }
+
+    mutating func step(_ text: String, _ at: Date?) {
+        steps.append(AISession.Step(at: at, text: text))
+        if steps.count > TranscriptSummary.maxSteps { steps.removeFirst(steps.count - TranscriptSummary.maxSteps) }
+    }
+
+    /// One line of the transcript.
+    public mutating func feed(_ line: Data) {
+        index += 1
+        guard let entry = JSONValue.quick(line), entry.objectValue != nil else { return }
+        let type = entry["type"]?.stringValue
+        if type == "ai-title" { title = entry["aiTitle"]?.stringValue ?? title }
+        if type == "custom-title" { customTitle = entry["customTitle"]?.stringValue ?? customTitle }
+        // A helper's own steps, and the summary written when the context was compacted, are not the session's.
+        guard type == "user" || type == "assistant", entry["isSidechain"]?.boolValue != true,
+            entry["isCompactSummary"]?.boolValue != true
+        else { return }
+        seen = true
+        if let value = entry["cwd"]?.stringValue { cwd = value }
+        if let value = entry["entrypoint"]?.stringValue { entrypoint = value }
+        let at = TranscriptSummary.date(entry["timestamp"]?.stringValue)
+        let content = entry["message"]?["content"]
+        if type == "user" {
+            if let parts = content?.arrayValue, parts.contains(where: { $0["type"] == "tool_result" }) {
+                for part in parts where part["type"] == "tool_result" { list.answered(part) }
+                last = .toolResult
+                return
             }
+            let text = content?.stringValue
+                ?? content?.arrayValue?.compactMap { $0["type"] == "text" ? $0["text"]?.stringValue : nil }.joined(separator: " ") ?? ""
+            let origin = entry["origin"]?["kind"]?.stringValue
+            if text.hasPrefix("[Request interrupted") {
+                last = .interrupted
+                step("you stopped it", at)
+                return
+            }
+            let human = origin.map { $0 == "human" }
+                ?? (entry["isMeta"]?.boolValue != true && !text.trimmingCharacters(in: .whitespaces).hasPrefix("<"))
+            let words = TranscriptSummary.ownWords(text)
+            if human && !words.isEmpty {
+                request = TranscriptSummary.clip(words)
+                last = .prompt
+                step("you asked: " + TranscriptSummary.clip(words, 120), at)
+            } else if !words.isEmpty || origin != nil {
+                last = .injected
+            }
+        } else {
+            var tool: String?
+            for part in content?.arrayValue ?? [] {
+                switch part["type"]?.stringValue {
+                case "text":
+                    let text = part["text"]?.stringValue?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+                    if !text.isEmpty {
+                        answer = TranscriptSummary.clip(text)
+                        step("said: " + TranscriptSummary.clip(text, 120), at)
+                    }
+                case "tool_use":
+                    let name = part["name"]?.stringValue ?? "a tool"
+                    let input = part["input"] ?? .object([:])
+                    list.use(name, input, useID: part["id"]?.stringValue, at: index)
+                    tool = name
+                    let phrase = TranscriptSummary.phrase(name, input)
+                    doing = phrase
+                    step(phrase, at)
+                default: break
+                }
+            }
+            // Each block of a reply is its own entry, each with the reply's stop reason.
+            last = .reply(stop: entry["message"]?["stop_reason"]?.stringValue, tool: tool)
         }
-        guard seen else { return nil }
+    }
 
+    /// The summary as of `now`, for a transcript last written at `modified`.
+    public func session(id: String, modified: Date, now: Date) -> AISession? {
+        guard seen else { return nil }
+        typealias T = TranscriptSummary
         let quiet = now.timeIntervalSince(modified)
-        let headless = place(entrypoint) == "headless"
+        let headless = T.place(entrypoint) == "headless"
         var state = AISession.State.working
         var note: String?
         switch last {
         case .reply(_, let tool) where tool == "AskUserQuestion" || tool == "ExitPlanMode":
-            state = quiet < lostAfter ? .waiting : .finished
+            state = quiet < T.lostAfter ? .waiting : .finished
             note = tool == "AskUserQuestion" ? "asked you a question" : "showed you a plan to approve"
         case .reply(let stop, _) where stop == "end_turn" || stop == "stop_sequence":
-            state = headless || quiet >= idleAfter ? .finished : .waiting
+            state = headless || quiet >= T.idleAfter ? .finished : .waiting
             note = state == .waiting ? "its turn ended; it waits for you" : nil
         case .reply:
-            if quiet < quietAfter {
+            if quiet < T.quietAfter {
                 state = .working
-            } else if quiet < lostAfter {
+            } else if quiet < T.lostAfter {
                 state = .working
                 note = "quiet for \(Int(quiet / 60)) min: a long step, or it may be waiting for your OK"
             } else {
@@ -338,26 +358,53 @@ public enum TranscriptSummary {
                 note = "stopped in the middle of a step"
             }
         case .interrupted:
-            state = quiet >= idleAfter ? .finished : .waiting
+            state = quiet >= T.idleAfter ? .finished : .waiting
             note = "you stopped it"
         case .prompt, .injected, .toolResult, .none:
-            if quiet < thinkingFor {
+            if quiet < T.thinkingFor {
                 state = .working
             } else {
                 state = .finished
                 note = "no answer since \(Int(quiet / 60)) min ago"
             }
         }
-
         let items = list.items
         let current = items?.first(where: { $0.status == "in_progress" })
         let project = cwd.map { ($0 as NSString).lastPathComponent } ?? "a project"
         return AISession(
-            id: id, project: clip(project, 60), title: (customTitle ?? title).map { clip($0, 80) }, place: place(entrypoint),
+            id: id, project: T.clip(project, 60), title: (customTitle ?? title).map { T.clip($0, 80) }, place: T.place(entrypoint),
             state: state, note: note,
             done: items.map { $0.filter { $0.status == "completed" }.count }, total: items?.count,
-            current: current.map { clip($0.active ?? $0.text, 120) },
+            current: current.map { T.clip($0.active ?? $0.text, 120) },
             doing: doing, request: request, answer: answer, updated: modified, steps: steps, task: nil)
+    }
+}
+
+extension JSONValue {
+    /// Parse one line quickly (Foundation's parser: transcripts hold megabytes of JSON, and the
+    /// strict decoder the device protocol uses is many times slower on them).
+    public static func quick(_ data: Data) -> JSONValue? {
+        guard let object = try? JSONSerialization.jsonObject(with: data, options: [.fragmentsAllowed]) else { return nil }
+        return JSONValue(foundation: object)
+    }
+
+    init?(foundation value: Any) {
+        switch value {
+        case let dictionary as [String: Any]:
+            var fields: [String: JSONValue] = [:]
+            for (key, item) in dictionary { fields[key] = JSONValue(foundation: item) ?? .null }
+            self = .object(fields)
+        case let array as [Any]:
+            self = .array(array.map { JSONValue(foundation: $0) ?? .null })
+        case let string as String:
+            self = .string(string)
+        case let number as NSNumber:
+            self = CFGetTypeID(number) == CFBooleanGetTypeID() ? .bool(number.boolValue) : .number(number.doubleValue)
+        case is NSNull:
+            self = .null
+        default:
+            return nil
+        }
     }
 }
 
@@ -366,15 +413,51 @@ public enum TailReader {
     /// The complete lines in the last `bytes` of the file (all of it when smaller), and
     /// whether that is the whole file.
     public static func lines(_ url: URL, bytes: Int) -> (lines: [String], whole: Bool) {
-        guard let handle = try? FileHandle(forReadingFrom: url) else { return ([], true) }
+        let read = tail(url, bytes: bytes)
+        return (read.lines.map { String(decoding: $0, as: UTF8.self) }, read.whole)
+    }
+
+    /// The complete lines in the last `bytes`, as bytes; whether that is the whole file; and
+    /// where the last complete line ends (where to read on from later).
+    public static func tail(_ url: URL, bytes: Int) -> (lines: [Data], whole: Bool, end: UInt64) {
+        guard let handle = try? FileHandle(forReadingFrom: url) else { return ([], true, 0) }
         defer { try? handle.close() }
         let size = (try? handle.seekToEnd()) ?? 0
         let start = size > UInt64(bytes) ? size - UInt64(bytes) : 0
         try? handle.seek(toOffset: start)
         let data = (try? handle.readToEnd()) ?? Data()
-        var lines = String(decoding: data, as: UTF8.self).split(separator: "\n", omittingEmptySubsequences: true).map(String.init)
+        var (lines, used) = split(data)
         if start > 0, !lines.isEmpty { lines.removeFirst() }  // cut in the middle
-        return (lines, start == 0)
+        return (lines, start == 0, start + UInt64(used))
+    }
+
+    /// The complete lines from `offset` on, and where the last of them ends.
+    public static func appended(_ url: URL, from offset: UInt64) -> (lines: [Data], end: UInt64) {
+        guard let handle = try? FileHandle(forReadingFrom: url) else { return ([], offset) }
+        defer { try? handle.close() }
+        try? handle.seek(toOffset: offset)
+        let data = (try? handle.readToEnd()) ?? Data()
+        let (lines, used) = split(data)
+        return (lines, offset + UInt64(used))
+    }
+
+    /// Complete lines, and how many bytes they take. A last line without its newline counts
+    /// when it is already whole JSON; one still being written is left for later.
+    static func split(_ data: Data) -> (lines: [Data], used: Int) {
+        var lines: [Data] = []
+        var lineStart = data.startIndex
+        var used = 0
+        for index in data.indices where data[index] == 0x0A {
+            if index > lineStart { lines.append(data[lineStart..<index]) }
+            lineStart = data.index(after: index)
+            used = lineStart - data.startIndex
+        }
+        let rest = data[lineStart...]
+        if !rest.isEmpty, (try? JSONSerialization.jsonObject(with: rest, options: [.fragmentsAllowed])) != nil {
+            lines.append(rest)
+            used = data.count
+        }
+        return (lines, used)
     }
 }
 
@@ -382,13 +465,25 @@ public enum TailReader {
 public final class AISessions: @unchecked Sendable {
     public static let defaultHours = 12
     public static let maxSessions = 8
-    /// Read from the end in growing pieces until the person's last request is in view.
-    static let reads = [1 << 20, 4 << 20, 16 << 20]
+    /// Read from the end: the last 1 MB, then 4 MB when the person's request is not in it. A
+    /// session whose request is further back is told without it: the answer must come in time.
+    static let reads = [1 << 20, 4 << 20]
+
+    /// What was read of each transcript, kept while its size and time stay: an unchanged file
+    /// is not read again, and a grown one only from where it was left.
+    struct Read {
+        var size: UInt64
+        var modified: Date
+        var end: UInt64
+        var fold: TranscriptFold
+    }
 
     private let roots: @Sendable () -> [URL]
     private let tasks: CodeTasks?
     private let worktrees: @Sendable () -> URL?
     private let now: @Sendable () -> Date
+    private let lock = NSLock()
+    private var reads: [String: Read] = [:]
 
     public init(
         roots: @escaping @Sendable () -> [URL] = { TaskSettings.transcripts() },
@@ -403,34 +498,57 @@ public final class AISessions: @unchecked Sendable {
     }
 
     /// The coding agent's transcripts changed in the last `hours`, newest first.
-    func transcripts(hours: Int) -> [(url: URL, modified: Date)] {
+    func transcripts(hours: Int) -> [(url: URL, size: UInt64, modified: Date)] {
         let since = now().addingTimeInterval(-Double(hours) * 3600)
         let fm = FileManager.default
-        var found: [(URL, Date)] = []
+        let keys: Set<URLResourceKey> = [.contentModificationDateKey, .isRegularFileKey, .fileSizeKey]
+        var found: [(URL, UInt64, Date)] = []
         let folders = roots().flatMap { (try? fm.contentsOfDirectory(at: $0, includingPropertiesForKeys: nil)) ?? [] }
         for folder in folders {
-            let files = (try? fm.contentsOfDirectory(at: folder, includingPropertiesForKeys: [.contentModificationDateKey, .isRegularFileKey])) ?? []
+            let files = (try? fm.contentsOfDirectory(at: folder, includingPropertiesForKeys: Array(keys))) ?? []
             for file in files where file.pathExtension == "jsonl" {
-                let values = try? file.resourceValues(forKeys: [.contentModificationDateKey, .isRegularFileKey])
+                let values = try? file.resourceValues(forKeys: keys)
                 guard values?.isRegularFile == true, let modified = values?.contentModificationDate, modified >= since else { continue }
-                found.append((file, modified))
+                found.append((file, UInt64(values?.fileSize ?? 0), modified))
             }
         }
-        return found.sorted { $0.1 > $1.1 }
+        return found.sorted { $0.2 > $1.2 }
     }
 
-    func summarise(_ url: URL, modified: Date) -> AISession? {
-        let id = url.deletingPathExtension().lastPathComponent
-        var summary: AISession?
-        for bytes in AISessions.reads {
-            let (lines, whole) = TailReader.lines(url, bytes: bytes)
-            summary = TranscriptSummary.summarise(lines: lines, id: id, modified: modified, now: now())
-            if whole || summary?.request != nil { break }
+    /// One transcript's fold: from what was read before when the file is unchanged or grew.
+    func fold(_ url: URL, size: UInt64, modified: Date) -> TranscriptFold {
+        let key = url.path
+        if let known = lock.locked({ reads[key] }) {
+            if known.size == size, known.modified == modified { return known.fold }
+            if size > known.size {
+                var fold = known.fold
+                let more = TailReader.appended(url, from: known.end)
+                for line in more.lines { fold.feed(line) }
+                lock.locked { reads[key] = Read(size: size, modified: modified, end: more.end, fold: fold) }
+                return fold
+            }
         }
-        guard var session = summary else { return nil }
+        var fold = TranscriptFold()
+        var end: UInt64 = 0
+        for bytes in AISessions.reads {
+            fold = TranscriptFold()
+            let tail = TailReader.tail(url, bytes: bytes)
+            for line in tail.lines { fold.feed(line) }
+            end = tail.end
+            if tail.whole || fold.hasRequest { break }
+        }
+        let read = Read(size: size, modified: modified, end: end, fold: fold)
+        lock.locked { reads[key] = read }
+        return fold
+    }
+
+    func summarise(_ url: URL, size: UInt64, modified: Date) -> AISession? {
+        let id = url.deletingPathExtension().lastPathComponent
+        let fold = fold(url, size: size, modified: modified)
+        guard var session = fold.session(id: id, modified: modified, now: now()) else { return nil }
         // A transcript of Ira's own coding task: its worktree is named <repo>-<task id>.
         let roots = worktrees().map { [$0.path, $0.resolvingSymlinksInPath().path] } ?? []
-        if let cwd = TranscriptSummary.cwd(of: url), roots.contains(where: { cwd.hasPrefix($0 + "/") }) {
+        if let cwd = fold.cwd, roots.contains(where: { cwd.hasPrefix($0 + "/") }) {
             let folder = (cwd as NSString).lastPathComponent
             if let dash = folder.lastIndex(of: "-") {
                 let task = String(folder[folder.index(after: dash)...])
@@ -456,8 +574,20 @@ public final class AISessions: @unchecked Sendable {
         }
     }
 
-    public func sessions(hours: Int = defaultHours) -> [AISession] {
-        let found = transcripts(hours: hours).prefix(AISessions.maxSessions * 2).compactMap { summarise($0.url, modified: $0.modified) }
+    public func sessions(hours: Int = defaultHours) async -> [AISession] {
+        let files = Array(transcripts(hours: hours).prefix(AISessions.maxSessions * 2))
+        // Side by side: one big transcript must not hold up the others.
+        let found = await withTaskGroup(of: AISession?.self) { group in
+            for file in files {
+                group.addTask { self.summarise(file.url, size: file.size, modified: file.modified) }
+            }
+            var all: [AISession] = []
+            for await session in group { if let session { all.append(session) } }
+            return all
+        }
+        // Forget what was read of transcripts no longer listed.
+        let listed = Set(files.map(\.url.path))
+        lock.locked { reads = reads.filter { listed.contains($0.key) } }
         let mine = Set(found.compactMap(\.task))
         return Array((found + ownTasks(excluding: mine)).sorted { $0.updated > $1.updated }.prefix(AISessions.maxSessions))
     }
@@ -467,7 +597,7 @@ public final class AISessions: @unchecked Sendable {
     public func list(_ raw: JSONValue) async throws -> JSONValue {
         let args = try ToolArgs(raw, allowed: ["hours"])
         let hours = try args.number("hours", 1...48) ?? AISessions.defaultHours
-        let all = sessions(hours: hours)
+        let all = await sessions(hours: hours)
         let now = now()
         let lines = all.map { AISessions.sentence($0, now: now) }
         var summary = all.isEmpty
@@ -486,7 +616,7 @@ public final class AISessions: @unchecked Sendable {
     public func detail(_ raw: JSONValue) async throws -> JSONValue {
         let args = try ToolArgs(raw, allowed: ["id"])
         let id = try args.required("id", limit: 80, what: "which session (its id from ai_sessions)")
-        let all = sessions(hours: 48)
+        let all = await sessions(hours: 48)
         guard let session = all.first(where: { $0.id == id }) ?? all.first(where: { $0.id.hasPrefix(id) }) else {
             throw ToolFailure("no AI session with that id on this Mac in the last 48 hours")
         }
@@ -552,15 +682,6 @@ public final class AISessions: @unchecked Sendable {
     }
 }
 
-extension TranscriptSummary {
-    /// The working folder a transcript names, from its last lines.
-    static func cwd(of url: URL) -> String? {
-        TailReader.lines(url, bytes: 256 << 10).lines.reversed().lazy.compactMap { line -> String? in
-            guard line.contains("\"cwd\"") else { return nil }
-            return JSONValue.parse(line)?["cwd"]?.stringValue
-        }.first
-    }
-}
 
 /// A running coding agent's task list, from its stream-json output: progress counted in steps
 /// ("4 of 7 done: tests written; now fixing the total"), not only in minutes.
@@ -582,7 +703,7 @@ public struct StepTracker: Sendable {
     /// One line of output; true when another item was done.
     public mutating func feed(_ line: String) -> Bool {
         lines += 1
-        guard line.contains("\"type\""), let entry = JSONValue.parse(line) else { return false }
+        guard line.contains("\"type\""), let entry = JSONValue.quick(Data(line.utf8)) else { return false }
         let parts = entry["message"]?["content"]?.arrayValue ?? []
         var changed = false
         for part in parts {

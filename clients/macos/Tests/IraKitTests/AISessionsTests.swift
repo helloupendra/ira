@@ -206,6 +206,64 @@ struct AISessionsTests {
         #expect(TailReader.lines(file, bytes: 1 << 20).whole)
     }
 
+    /// A transcript of tens of megabytes, as real ones are: the first read takes the last 1 MB
+    /// (4 MB at most), an unchanged file is not read again, and a grown one only from where it
+    /// was left.
+    @Test func bigTranscriptsAreReadOnceAndOnlyFromTheEnd() async throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("ira-big-\(UUID().uuidString)")
+        let project = root.appendingPathComponent("projects/-work-clinic-site")
+        try FileManager.default.createDirectory(at: project, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let output = String(repeating: "x", count: 200_000)
+        var lines = [T.user("An early request, far back")]
+        for index in 0..<120 {
+            lines.append(T.assistant([T.tool("Bash", ["description": .string("Step \(index)")], id: "b\(index)")], stop: "tool_use"))
+            lines.append(T.result("b\(index)", output))
+        }
+        let big = project.appendingPathComponent("b1b1b1b1-0000.jsonl")
+        try (lines + [T.user("Check the booking form"), T.assistant([T.text("Checking.")], stop: "tool_use")])
+            .joined(separator: "\n").appending("\n").write(to: big, atomically: true, encoding: .utf8)
+        // The request is only at the start, 24 MB back: the session is told without it.
+        let far = project.appendingPathComponent("f2f2f2f2-0000.jsonl")
+        try (lines + [T.assistant([T.text("Still on it.")], stop: "tool_use")])
+            .joined(separator: "\n").appending("\n").write(to: far, atomically: true, encoding: .utf8)
+
+        let sessions = AISessions(roots: { [root.appendingPathComponent("projects")] }, worktrees: { nil })
+        var started = Date()
+        let cold = try await sessions.list([:])
+        let coldTime = Date().timeIntervalSince(started)
+        let shown = cold["sessions"]?.arrayValue ?? []
+        #expect(shown.count == 2)
+        let byID = Dictionary(uniqueKeysWithValues: shown.compactMap { s in s["id"]?.stringValue.map { ($0, s) } })
+        #expect(byID["b1b1b1b1-0000"]?["request"] == "Check the booking form")
+        #expect(byID["f2f2f2f2-0000"]?["request"] == nil)
+        #expect(byID["f2f2f2f2-0000"]?["doing"] == "Step 119")
+        #expect(coldTime < 5, "cold read took \(coldTime) s")
+
+        started = Date()
+        _ = try await sessions.list([:])
+        let warmTime = Date().timeIntervalSince(started)
+        #expect(warmTime < 1, "an unchanged read took \(warmTime) s")
+
+        let handle = try FileHandle(forWritingTo: big)
+        try handle.seekToEnd()
+        try handle.write(contentsOf: Data((T.user("Now the footer") + "\n" + T.assistant([T.text("Done.")], stop: "end_turn") + "\n").utf8))
+        try handle.close()
+        started = Date()
+        let grown = try await sessions.list([:])
+        #expect(Date().timeIntervalSince(started) < 1)
+        let again = grown["sessions"]?.arrayValue?.first { $0["id"] == "b1b1b1b1-0000" }
+        #expect(again?["request"] == "Now the footer" && again?["state"] == "waiting")
+    }
+
+    @Test func aLineStillBeingWrittenWaitsForTheRest() throws {
+        let (lines, used) = TailReader.split(Data("{\"a\":1}\n{\"b\":2}\n{\"c\":".utf8))
+        #expect(lines.count == 2 && used == 16)
+        let (whole, all) = TailReader.split(Data("{\"a\":1}\n{\"b\":2}".utf8))
+        #expect(whole.count == 2 && all == 15)
+        #expect(JSONValue.quick(Data(#"{"x": [true, 1.5, null, "s"]}"#.utf8)) == ["x": [true, 1.5, nil, "s"]])
+    }
+
     @Test func theToolsListAndDetailFromTheFolder() async throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent("ira-agents-\(UUID().uuidString)")
         let worktrees = root.appendingPathComponent("tasks")

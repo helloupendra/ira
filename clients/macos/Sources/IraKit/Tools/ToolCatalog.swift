@@ -63,7 +63,7 @@ public enum ToolCatalog {
 
     public static let browser: [JSONValue] = [
         tool("browser_tabs", skill: "browser", tier: 0,
-             "List the tabs open in the browsers on this Mac (Chrome, Safari, Arc, Edge, Brave): each tab's title and address (without its query), which is in front, and an id. Only titles and addresses, never page contents. Use it for 'what is open in Chrome?'.",
+             "List the tabs open in the browsers on this Mac (Chrome, Safari, Arc, Edge, Brave): each tab's title and address (without its query), which is in front, and an id. Only titles and addresses, never page contents. Use it for 'what is open in Chrome?'; not for which AI session or coding agent is running on this Mac (that is ai_sessions).",
              properties: ["browser": text("Only this browser: chrome, safari, arc, edge or brave.")]),
         tool("browser_show_tab", skill: "browser", tier: 1,
              "Bring one browser tab to the front, by words from its title or address or by its id from browser_tabs. To answer what a tab shows ('how far is that upload?'), bring it to the front, then use screen_read. Say that you switched to it.",
@@ -257,7 +257,7 @@ public enum ToolCatalog {
 
     public static let agents: [JSONValue] = [
         tool("ai_sessions", skill: "agents", tier: 0,
-             "What the AI coding sessions on this Mac are doing (a coding agent in VS Code or a terminal, and Ira's coding tasks): for each, the project, whether it is working, waiting for the person or finished, how much of its task list is done and the item in progress, its last step, and the person's latest request and its last answer, cut short. Read and summarised on the Mac; never a transcript or a file. Use it for 'what is the AI doing on my Mac', 'Mac pe AI kya kar raha hai'.",
+             "What the AI coding sessions on this Mac are doing (a coding agent in VS Code or a terminal, and Ira's coding tasks): for each, the project, whether it is working, waiting for the person or finished, how much of its task list is done and the item in progress, its last step, and the person's latest request and its last answer, cut short. Read and summarised on the Mac; never a transcript or a file. Use it for any question about an AI session, AI agent or coding assistant on this Mac, whatever its name, and which one is on: 'what is the AI doing on my Mac', 'which AI session is running', 'Mac pe AI kya kar raha hai'. Not the browser's tabs: a chat open in a tab is not a session here.",
              properties: ["hours": integer("Sessions active in the last this many hours (default 12).", 1...48)]),
         tool("ai_session_detail", skill: "agents", tier: 0,
              "The last 10 steps of one AI session from ai_sessions, each a short phrase (what it read, edited or ran, what was asked and said), and its state. Ira only reads sessions it did not start: to stop one, the person stops it where it runs.",

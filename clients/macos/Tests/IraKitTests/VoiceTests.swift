@@ -460,6 +460,10 @@ struct ScreenTextTests {
         #expect(Toolbox.deadline(for: "screen_read") == 15)
         #expect(Toolbox.lateMessage("screen_read", screenPermitted: true) == ScreenText.restartNeeded)
         #expect(Toolbox.lateMessage("files_find", screenPermitted: false).contains("permission prompt"))
+        // Reading the AI sessions cannot show a permission prompt: never say it might.
+        #expect(Toolbox.deadline(for: "ai_sessions") == 20)
+        #expect(Toolbox.lateMessage("ai_sessions", screenPermitted: false) == "reading the AI sessions took too long; ask again in a moment")
+        #expect(!Toolbox.lateMessage("clipboard_read", screenPermitted: false).contains("permission"))
     }
 
     @Test func readingOrder() {

@@ -205,7 +205,7 @@ public enum AgentOutput {
 
     /// The agent's own session id, which a stream-json line carries.
     public static func session(_ line: String) -> String? {
-        guard line.contains("session_id"), let item = JSONValue.parse(line) else { return nil }
+        guard line.contains("session_id"), let item = JSONValue.quick(Data(line.utf8)) else { return nil }
         return item["session_id"]?.stringValue.flatMap { $0.isEmpty ? nil : String($0.prefix(100)) }
     }
 
@@ -213,7 +213,7 @@ public enum AgentOutput {
     public static func progress(_ line: String) -> (String?, JSONValue?) {
         let line = line.trimmingCharacters(in: .whitespaces)
         guard !line.isEmpty else { return (nil, nil) }
-        guard let item = JSONValue.parse(line) else { return (short(line), nil) }
+        guard let item = JSONValue.quick(Data(line.utf8)) else { return (short(line), nil) }
         guard item.objectValue != nil else { return (nil, nil) }
         if item["type"] == "result" { return (nil, item) }
         if item["type"] == "assistant", let parts = item["message"]?["content"]?.arrayValue {

@@ -131,7 +131,9 @@ public final class Toolbox: ToolRunner, @unchecked Sendable {
     public static func deadline(for name: String) -> Double {
         switch name {
         case "screen_read": return 15
-        case "files_find", "ai_sessions", "ai_session_detail": return 12
+        case "files_find": return 12
+        // Reading the AI sessions' transcripts: the first time, from big files.
+        case "ai_sessions", "ai_session_detail": return 20
         case "mac_type", "mac_keys", "mac_click", "mac_scroll", "mac_menu": return 20
         case "mail_search", "mail_draft", "notes_search", "notes_add", "messages_send",
             "shortcuts_run", "code_task_start", "code_task_push", "code_task_resume", "browser_tabs", "browser_show_tab":
@@ -140,12 +142,26 @@ public final class Toolbox: ToolRunner, @unchecked Sendable {
         }
     }
 
-    /// What to say when a tool ran out of time.
+    /// Tools that can make macOS ask the person for a permission while they run.
+    static let mayAsk: Set<String> = [
+        "files_find", "file_read", "file_open", "screen_read", "browser_tabs", "browser_show_tab", "contacts_lookup",
+        "calendar_read", "calendar_add", "reminders_list", "reminders_set", "mail_search", "mail_draft", "messages_send",
+        "notes_search", "notes_add", "app_open", "shortcuts_list", "shortcuts_run",
+        "mac_type", "mac_keys", "mac_click", "mac_scroll", "mac_menu", "code_task_start", "code_task_push",
+    ]
+
+    /// What to say when a tool ran out of time: a permission prompt only where one can be.
     static func lateMessage(_ name: String, screenPermitted: Bool) -> String {
         if name == "screen_read" && screenPermitted {
             return ScreenText.restartNeeded
         }
-        return "that took too long on this Mac. If macOS is showing a permission prompt, answer it, then ask again"
+        if name == "ai_sessions" || name == "ai_session_detail" {
+            return "reading the AI sessions took too long; ask again in a moment"
+        }
+        if mayAsk.contains(name) {
+            return "that took too long on this Mac. If macOS is showing a permission prompt, answer it, then ask again"
+        }
+        return "that took too long on this Mac; ask again in a moment"
     }
 
     public func call(_ name: String, args: JSONValue) async throws -> JSONValue {
