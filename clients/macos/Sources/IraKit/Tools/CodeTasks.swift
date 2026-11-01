@@ -434,6 +434,19 @@ public final class CodeTasks: @unchecked Sendable {
         }
     }
 
+    /// A new run of the task's agent, counted (with `change`) before the call returns: a run
+    /// it replaces, still ending, then knows at once that it is no longer current, however
+    /// late the new run's own work gets going.
+    private func nextRun(_ id: String, _ change: (inout Job) -> Void = { _ in }) -> Int {
+        lock.locked {
+            guard var task = tasks[id] else { return 0 }
+            change(&task)
+            task.runs += 1
+            tasks[id] = task
+            return task.runs
+        }
+    }
+
     // MARK: The tools
 
     public func start(_ raw: JSONValue) async throws -> JSONValue {
@@ -484,7 +497,8 @@ public final class CodeTasks: @unchecked Sendable {
         lock.locked { tasks[id] = task }
         let open = try args.bool("openInVSCode") ?? settings.openVSCode
         if open { await openVSCode(worktree) }
-        Task { await self.run(id, settings: settings) }
+        let run = nextRun(id)
+        Task { await self.run(id, run, settings: settings) }
         return [
             "id": .string(id), "repo": .string(repo.name), "branch": .string(branch), "worktree": .string(worktree.path),
             "agent": .string(agent.name), "label": .string(task.label), "chat": .bool(chat),
@@ -674,14 +688,14 @@ public final class CodeTasks: @unchecked Sendable {
         guard running < CodeTasks.maxRunning else {
             throw ToolFailure("\(CodeTasks.maxRunning) tasks are running already; wait or stop one")
         }
-        update(task.id) {
+        let run = nextRun(task.id) {
             $0.status = "starting"
             $0.error = ""
             $0.result = ""
             $0.finished = nil
             if let text { $0.progress = Array(($0.progress + ["you said: \(AgentOutput.short(text, 120))"]).suffix(5)) }
         }
-        Task { await self.run(task.id, settings: settings, words: text ?? "Continue where you left off.", session: session) }
+        Task { await self.run(task.id, run, settings: settings, words: text ?? "Continue where you left off.", session: session) }
         return ["id": .string(task.id), "summary": .string("Task \(task.id) goes on in \(task.repo.name) with \(agent.name). Ira says when it is done.")]
     }
 
@@ -760,17 +774,14 @@ public final class CodeTasks: @unchecked Sendable {
         return argv
     }
 
-    /// Run the task's agent: from the start, or with `words` continuing `session`.
-    private func run(_ id: String, settings: TaskSettings, words: String? = nil, session: String? = nil) async {
+    /// Run the task's agent: from the start, or with `words` continuing `session`. `run` is the
+    /// number nextRun gave it.
+    private func run(_ id: String, _ run: Int, settings: TaskSettings, words: String? = nil, session: String? = nil) async {
         guard let task = lock.locked({ tasks[id] }) else { return }
         guard let agent = settings.agent(task.agent) else {
             update(id) { $0.error = "the agent \($0.agent) is no longer set up on this Mac" }
             await finish(id)
             return
-        }
-        let run: Int = lock.locked {
-            tasks[id]?.runs += 1
-            return tasks[id]?.runs ?? 0
         }
         let instruction = task.chat && task.instruction.isEmpty ? CodeTasks.chatOpening : task.instruction
         let prompt = session != nil ? (words ?? "") : CodeTasks.prompt.replacingOccurrences(of: "{repo}", with: task.repo.name)
