@@ -291,7 +291,8 @@ struct AISessionsTests {
         #expect(shown.first?["startedByIra"] == true)
         #expect(shown.last?["state"] == "waiting")
         #expect(list["summary"]?.stringValue?.hasPrefix("2 AI sessions on this Mac in the last 12 hours.") == true)
-        #expect(list["control"]?.stringValue?.contains("Ira only reads these sessions") == true)
+        #expect(list["control"]?.stringValue?.contains("Ira never sends to or stops a session it did not start") == true)
+        #expect(shown.last?["talk"] == false)
 
         let detail = try await sessions.detail(["id": "a1b2"])
         #expect(detail["id"] == "a1b2c3d4-1111")

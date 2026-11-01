@@ -220,37 +220,41 @@ public enum ToolCatalog {
 
     // MARK: Coding tasks
 
+    static let taskID = "Which task: its id, its name (the repository and agent, such as 'shop · main', or part of it), or 'last'."
+
     public static let tasks: [JSONValue] = [
         tool("code_task_start", skill: "tasks", tier: 2,
-             "Start a coding task on this Mac: a coding agent works in a new git worktree of one of the person's allowed repositories, on its own branch, with VS Code open on it so they can watch. It never pushes. Ira says when it is done.",
+             "Start a coding task on this Mac: a coding agent works in a new git worktree of one of the person's allowed repositories, on its own branch, with VS Code open on it so they can watch. It never pushes. Ira says when it is done. With chat, it stays on as a conversation the person can talk to from their phone (code_task_say), until it has been idle for 30 minutes.",
              properties: [
                 "repo": text("An allowed repository's name, from code_task_status."),
-                "instruction": text("What to do, in full."),
+                "instruction": text("What to do, in full. A chat may start without one."),
+                "chat": ["type": "boolean", "description": "Keep the agent on between messages, as a conversation (needs an agent that takes messages)."],
+                "label": text("A short name to call it by (default: the repository and the agent, such as 'shop · main')."),
                 "openInVSCode": ["type": "boolean", "description": "Open VS Code on the worktree (default: as this Mac is set up)."],
                 "agent": text("Which of this Mac's coding agents does it, by the name code_task_status lists (default: this Mac's default agent)."),
-             ], required: ["repo", "instruction"]),
+             ], required: ["repo"]),
         tool("code_task_status", skill: "tasks", tier: 0,
-             "How a coding task is going: running, done, failed or stopped; its latest progress, the files changed and the tests. Without an id: this Mac's coding tasks, newest first, the repositories tasks may use, and its coding agents.",
-             properties: ["id": text("The task's id; leave out to list them all.")]),
+             "How a coding task is going: running, waiting for the person's next message (a chat), paused, done, failed or stopped; its latest progress, the files changed and the tests. Without an id: this Mac's coding tasks by name, newest first, the repositories tasks may use, and its coding agents.",
+             properties: ["id": text(taskID + " Leave out to list them all.")]),
         tool("code_task_stop", skill: "tasks", tier: 1,
              "Stop a running coding task. Its worktree and branch stay.",
-             properties: ["id": text("The task's id.")], required: ["id"]),
+             properties: ["id": text(taskID)], required: ["id"]),
         tool("code_task_push", skill: "tasks", tier: 3,
              "Push a finished task's own branch to the repository's origin: never main, master or the default branch, never forced, nothing merged. Needs the person's PIN.",
-             properties: ["id": text("The task's id.")], required: ["id"]),
+             properties: ["id": text(taskID)], required: ["id"]),
     ]
 
     /// Steering a coding task while it works, pausing it, and going on with it later.
     public static let taskControl: [JSONValue] = [
         tool("code_task_say", skill: "tasks", tier: 2,
-             "Tell a running coding task something, in the person's words ('write the tests first'): its agent reads it after its current step. Only agents that take messages while they work; others say so.",
-             properties: ["id": text("The task's id."), "text": text("What to tell it.")], required: ["id", "text"]),
+             "Send the person's message to one of Ira's own coding tasks on this Mac and hear its reply: for 'tell the shop task to write the tests first', 'OpenFNO wale ko bolo tests likho', 'ask it what it changed'. Its reply comes back here within about 20 seconds, with the steps it took, or later as a message. Only tasks Ira started; sessions the person opened in an editor or a terminal are read-only (ai_sessions).",
+             properties: ["id": text(taskID), "text": text("The person's message, in their words.")], required: ["id", "text"]),
         tool("code_task_pause", skill: "tasks", tier: 1,
              "Pause a running coding task: its agent stops, and its session is kept so code_task_resume goes on from there. Its worktree and branch stay.",
-             properties: ["id": text("The task's id.")], required: ["id"]),
+             properties: ["id": text(taskID)], required: ["id"]),
         tool("code_task_resume", skill: "tasks", tier: 2,
              "Go on with a paused or finished coding task in its worktree, where its agent left off, with the person's words if they gave any ('now update the docs'). Ira says when it is done.",
-             properties: ["id": text("The task's id."), "text": text("What to tell it as it goes on (default: carry on).")], required: ["id"]),
+             properties: ["id": text(taskID), "text": text("What to tell it as it goes on (default: carry on).")], required: ["id"]),
     ]
 
     // MARK: AI sessions

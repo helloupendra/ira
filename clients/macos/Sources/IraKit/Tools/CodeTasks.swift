@@ -203,6 +203,15 @@ public enum AgentOutput {
         return joined.count <= limit ? joined : String(joined.prefix(limit - 1)) + "…"
     }
 
+    /// The steps in one line of the agent's output, as phrases ("edited Invoice.swift").
+    public static func steps(_ line: String) -> [String] {
+        guard line.contains("tool_use"), let item = JSONValue.quick(Data(line.utf8)), item["type"] == "assistant" else { return [] }
+        return (item["message"]?["content"]?.arrayValue ?? []).compactMap { part in
+            guard part["type"] == "tool_use", let name = part["name"]?.stringValue else { return nil }
+            return TranscriptSummary.phrase(name, part["input"] ?? .object([:]))
+        }
+    }
+
     /// The agent's own session id, which a stream-json line carries.
     public static func session(_ line: String) -> String? {
         guard line.contains("session_id"), let item = JSONValue.quick(Data(line.utf8)) else { return nil }
@@ -238,6 +247,15 @@ public final class CodeTasks: @unchecked Sendable {
     public static let stepSpacing: Double = 60
     public static let maxInstruction = 4000
     public static let maxFiles = 50
+    /// How long code_task_say waits for the agent's reply (the server waits 25 s for a tool);
+    /// a later reply goes out as a task_reply event.
+    public static let replyWait: Double = 20
+    /// A chat task with nothing said for this long pauses (its session kept for a resume).
+    public static let chatIdle: Double = 1800
+    /// A reply as the person hears it: secret-masked, cut to this length.
+    public static let maxReply = 800
+    /// Running, or a chat task waiting for the person's next message: its agent is alive.
+    public static let live: Set<String> = ["starting", "running", "waiting"]
     static let noPushURL = "ira-task-cannot-push:"
     static let sandboxExec = "/usr/bin/sandbox-exec"
 
@@ -250,6 +268,9 @@ public final class CodeTasks: @unchecked Sendable {
 
         The task: {instruction}
         """
+
+    /// A chat task's first words when the person gave no task yet.
+    static let chatOpening = "The person will message you here, one message at a time. Say hello in one short line and wait for their first message."
 
     static let profile = """
         (version 1)
@@ -272,7 +293,7 @@ public final class CodeTasks: @unchecked Sendable {
         public let worktree: URL
         public let base: String
         public let started: Date
-        public var status = "starting"  // starting, running, done, failed, stopped
+        public var status = "starting"  // starting, running, waiting (a chat task, between messages), paused, done, failed, stopped
         public var finished: Date?
         public var progress: [String] = []
         public var result = ""
@@ -294,10 +315,21 @@ public final class CodeTasks: @unchecked Sendable {
         /// Which run of its agent is current: a resume starts another, and the one it
         /// replaced (still ending) must not touch the task.
         var runs = 0
+        /// The name the person can say: "shop · main" (the repository and the agent).
+        public var label = ""
+        /// A chat task: its agent stays on between messages, and each reply comes back.
+        public var chat = false
+        /// What the agent did since the person's last message, for its reply.
+        var stepsSince: [String] = []
+        /// code_task_say is waiting for the reply to its message; one that came before it
+        /// was ready to hear it is kept in `early`.
+        var awaiting = false
+        var early: String?
 
         func view() -> JSONValue {
             [
-                "id": .string(id), "repo": .string(repo.name), "branch": .string(branch), "status": .string(status),
+                "id": .string(id), "label": .string(label), "chat": .bool(chat),
+                "repo": .string(repo.name), "branch": .string(branch), "status": .string(status),
                 "instruction": .string(String(instruction.prefix(200))), "worktree": .string(worktree.path),
                 "progress": .array(progress.map { .string($0) }), "summary": .string(String(result.prefix(2000))),
                 "error": .string(error), "files": .array(files.map { .string($0) }), "tests": .string(tests),
@@ -313,17 +345,27 @@ public final class CodeTasks: @unchecked Sendable {
     private let lock = NSLock()
     private var tasks: [String: Job] = [:]
     private var commands: [String: Command] = [:]
+    /// code_task_say waiting for a task's next reply, by task id (with a token: only its own
+    /// timer may end it).
+    private var waiters: [String: (token: UUID, reply: CheckedContinuation<String?, Never>)] = [:]
+    private var idlers: [String: Task<Void, Never>] = [:]
     private let hooks: URL
     private let stepSpacing: Double
+    private let replyWait: Double
+    private let chatIdle: Double
 
     public init(
         settings: @escaping @Sendable () -> TaskSettings? = { TaskSettings.load() },
         openVSCode: @escaping @Sendable (URL) async -> Void = { try? await AppTools.openInVSCode($0) },
         stepSpacing: Double = CodeTasks.stepSpacing,
+        replyWait: Double = CodeTasks.replyWait,
+        chatIdle: Double = CodeTasks.chatIdle,
         announce: @escaping Announce = { _, _, _, _ in }
     ) {
         self.settings = settings
         self.stepSpacing = stepSpacing
+        self.replyWait = replyWait
+        self.chatIdle = chatIdle
         self.openVSCode = openVSCode
         self.announce = announce
         hooks = FileManager.default.temporaryDirectory.appendingPathComponent("ira-task-hooks-\(getpid())")
@@ -349,9 +391,38 @@ public final class CodeTasks: @unchecked Sendable {
     }
 
     private func task(_ args: ToolArgs) throws -> Job {
-        let id = try args.required("id", limit: 40, what: "which task (its id)")
-        guard let task = lock.locked({ tasks[id] }) else { throw ToolFailure("no such task on this Mac") }
-        return task
+        try find(try args.required("id", limit: 80, what: "which task: its id, its name (such as \"shop · main\"), or \"last\""))
+    }
+
+    /// Words as names compare: lower case, no accents, no punctuation.
+    static func fold(_ text: String) -> String {
+        String(text.folding(options: [.caseInsensitive, .diacriticInsensitive], locale: nil)
+            .map { $0.isLetter || $0.isNumber ? $0 : " " })
+            .split(separator: " ").joined(separator: " ")
+    }
+
+    static let lastWords: Set<String> = ["last", "the last one", "last one", "latest", "the latest", "the last task", "that one", "it"]
+
+    /// A task by its id, its name ("shop · main", or part of it such as "shop"), or "last": a
+    /// running or paused one before a finished one, then the newest.
+    public func find(_ wanted: String) throws -> Job {
+        let all = jobs()
+        if let exact = all.first(where: { $0.id == wanted }) { return exact }
+        func best(_ found: [Job]) -> Job? {
+            found.first { CodeTasks.live.contains($0.status) } ?? found.first { $0.status == "paused" } ?? found.first
+        }
+        let key = CodeTasks.fold(wanted)
+        if CodeTasks.lastWords.contains(key), let newest = best(all) { return newest }
+        let named = all.filter { CodeTasks.fold($0.label) == key }
+        if let task = best(named) { return task }
+        let words = key.split(separator: " ")
+        let partly = all.filter { job in
+            let label = CodeTasks.fold(job.label)
+            return !words.isEmpty && words.allSatisfy { label.split(separator: " ").contains($0) }
+        }
+        if let task = best(partly) { return task }
+        let names = all.prefix(5).map { "\($0.label) (\($0.id))" }.joined(separator: ", ")
+        throw ToolFailure(all.isEmpty ? "no tasks on this Mac yet" : "no such task on this Mac; its tasks: \(names)")
     }
 
     private func update(_ id: String, _ change: (inout Job) -> Void) {
@@ -366,7 +437,7 @@ public final class CodeTasks: @unchecked Sendable {
     // MARK: The tools
 
     public func start(_ raw: JSONValue) async throws -> JSONValue {
-        let args = try ToolArgs(raw, allowed: ["repo", "instruction", "openInVSCode", "agent"])
+        let args = try ToolArgs(raw, allowed: ["repo", "instruction", "openInVSCode", "agent", "chat", "label"])
         let settings = try current()
         let name = try args.required("repo", limit: 60, what: "which repository")
         guard let repo = settings.repos[name] else {
@@ -375,12 +446,17 @@ public final class CodeTasks: @unchecked Sendable {
         guard let agent = settings.agent(try args.text("agent", limit: 60)) else {
             throw ToolFailure("no agent by that name on this Mac; agents: \(settings.agentNames.joined(separator: ", "))")
         }
-        let instruction = (try args.required("instruction", limit: 100_000, what: "what the task is"))
-            .split(whereSeparator: \.isWhitespace).joined(separator: " ")
+        let chat = try args.bool("chat") ?? false
+        if chat && !agent.streamsInput {
+            throw ToolFailure("the agent \(agent.name) cannot hold a conversation (it needs \"--input-format\", \"stream-json\" in tasks.json)")
+        }
+        // A chat may start with nothing to do yet ("hello").
+        let given = chat ? try args.text("instruction", limit: 100_000) : try args.required("instruction", limit: 100_000, what: "what the task is")
+        let instruction = (given ?? "").split(whereSeparator: \.isWhitespace).joined(separator: " ")
         guard instruction.count <= CodeTasks.maxInstruction else {
             throw ToolFailure("keep the task under \(CodeTasks.maxInstruction) characters")
         }
-        let running = lock.locked { tasks.values.filter { ["starting", "running"].contains($0.status) }.count }
+        let running = lock.locked { tasks.values.filter { CodeTasks.live.contains($0.status) }.count }
         guard running < CodeTasks.maxRunning else {
             throw ToolFailure("\(CodeTasks.maxRunning) tasks are running already; wait or stop one")
         }
@@ -392,14 +468,29 @@ public final class CodeTasks: @unchecked Sendable {
         _ = try await git(repo.path, ["worktree", "add", "-b", branch, worktree.path, base])
         var task = Job(id: id, repo: repo, instruction: instruction, branch: branch, worktree: worktree, base: base, started: Date())
         task.agent = agent.name
+        task.chat = chat
+        let named = try args.text("label", limit: 60) ?? "\(repo.name) · \(agent.name)"
+        task.label = lock.locked {
+            // Unique among the tasks still going, so it can be said.
+            let taken = Set(tasks.values.filter { $0.status != "stopped" }.map { CodeTasks.fold($0.label) })
+            var label = named
+            var number = 2
+            while taken.contains(CodeTasks.fold(label)) {
+                label = "\(named) \(number)"
+                number += 1
+            }
+            return label
+        }
         lock.locked { tasks[id] = task }
         let open = try args.bool("openInVSCode") ?? settings.openVSCode
         if open { await openVSCode(worktree) }
         Task { await self.run(id, settings: settings) }
         return [
             "id": .string(id), "repo": .string(repo.name), "branch": .string(branch), "worktree": .string(worktree.path),
-            "agent": .string(agent.name),
-            "summary": .string("Task \(id) started in \(repo.name) with \(agent.name) on \(branch)\(open ? ", with VS Code open on it" : ""). Ira says when it is done."),
+            "agent": .string(agent.name), "label": .string(task.label), "chat": .bool(chat),
+            "summary": .string(chat
+                ? "\(task.label) is ready to chat (task \(id), on \(branch)\(open ? ", with VS Code open on it" : "")). Tell it things with code_task_say; its replies come back."
+                : "Task \(id) (\(task.label)) started on \(branch)\(open ? ", with VS Code open on it" : ""). Ira says when it is done."),
         ]
     }
 
@@ -409,7 +500,8 @@ public final class CodeTasks: @unchecked Sendable {
         if case .object(var fields) = view {
             let latest = task.progress.last.map { " Latest: \($0)" } ?? ""
             let steps = task.done.flatMap { done in task.total.map { " \(done) of \($0) steps done." } } ?? ""
-            fields["summary"] = .string("Task \(task.id) in \(task.repo.name) (\(task.agent)) is \(task.status).\(steps)\(latest)")
+            let state = task.status == "waiting" ? "waiting for your next message" : task.status
+            fields["summary"] = .string("\(task.label) (task \(task.id)) is \(state).\(steps)\(latest)")
             view = .object(fields)
         }
         return view
@@ -422,8 +514,8 @@ public final class CodeTasks: @unchecked Sendable {
         return [
             "repos": .array(settings.repos.keys.sorted().map { .string($0) }),
             "agents": .array(settings.agentNames.map { .string($0) }), "defaultAgent": .string(settings.defaultAgent),
-            "tasks": .array(all.map { ["id": .string($0.id), "repo": .string($0.repo.name), "agent": .string($0.agent), "status": .string($0.status), "instruction": .string(String($0.instruction.prefix(200)))] }),
-            "summary": .string(all.isEmpty ? "No tasks yet. Allowed repositories: \(settings.repos.keys.sorted().joined(separator: ", "))." : "\(all.count) task\(all.count == 1 ? "" : "s"); \(all.filter { $0.status == "running" }.count) running."),
+            "tasks": .array(all.map { ["id": .string($0.id), "label": .string($0.label), "chat": .bool($0.chat), "repo": .string($0.repo.name), "agent": .string($0.agent), "status": .string($0.status), "instruction": .string(String($0.instruction.prefix(200)))] }),
+            "summary": .string(all.isEmpty ? "No tasks yet. Allowed repositories: \(settings.repos.keys.sorted().joined(separator: ", "))." : "\(all.count) task\(all.count == 1 ? "" : "s"): " + all.prefix(5).map { "\($0.label) (\($0.status))" }.joined(separator: ", ") + "."),
         ]
     }
 
@@ -433,10 +525,11 @@ public final class CodeTasks: @unchecked Sendable {
             update(task.id) { $0.status = "stopped" }
             return ["id": .string(task.id), "summary": .string("Stopped task \(task.id), which was paused. Its worktree and branch stay.")]
         }
-        guard ["starting", "running"].contains(task.status) else {
+        guard CodeTasks.live.contains(task.status) else {
             return ["id": .string(task.id), "summary": .string("Task \(task.id) had already \(task.status).")]
         }
         update(task.id) { $0.status = "stopped" }
+        lock.locked { idlers.removeValue(forKey: task.id) }?.cancel()
         lock.locked { commands[task.id] }?.stop()
         return ["id": .string(task.id), "summary": .string("Stopped task \(task.id). Its worktree and branch stay.")]
     }
@@ -455,14 +548,16 @@ public final class CodeTasks: @unchecked Sendable {
         return text
     }
 
-    /// Tell a running task something ("write the tests first"): it reads it after its current step.
+    /// Tell a running task something ("write the tests first"), and hear its reply: it reads it
+    /// after its current step, and its answer comes back within `replyWait`, or later as a
+    /// task_reply event.
     public func say(_ raw: JSONValue) async throws -> JSONValue {
         let args = try ToolArgs(raw, allowed: ["id", "text"])
         let task = try task(args)
         let text = try words(args, "text", required: true)!
         let agent = settings()?.agent(task.agent)
-        guard ["starting", "running"].contains(task.status) else {
-            throw ToolFailure("task \(task.id) is \(task.status); to give it more to do, use code_task_resume with your words")
+        guard CodeTasks.live.contains(task.status) else {
+            throw ToolFailure("\(task.label) is \(task.status); to give it more to do, use code_task_resume with your words")
         }
         guard let agent, agent.streamsInput else {
             let other = agent?.resumes == true ? "pause it, then resume it with your words" : "stop it and start a new task"
@@ -472,28 +567,92 @@ public final class CodeTasks: @unchecked Sendable {
             guard let command = commands[task.id], command.acceptsInput else {
                 throw ToolFailure("it has just finished its work; when it is done, resume it with your words")
             }
+            if var job = tasks[task.id] {
+                job.awaiting = true
+                job.early = nil
+                tasks[task.id] = job
+            }
             try command.write(CodeTasks.message(text))
             if var job = tasks[task.id] {
                 job.sent += 1
+                job.stepsSince = []
+                if job.status == "waiting" { job.status = "running" }
                 job.progress = Array((job.progress + ["you said: \(AgentOutput.short(text, 120))"]).suffix(5))
                 tasks[task.id] = job
             }
+            idlers.removeValue(forKey: task.id)?.cancel()
         }
-        return ["id": .string(task.id), "summary": .string("Told task \(task.id): “\(AgentOutput.short(text, 120))”. It reads it after its current step.")]
+        let reply = await nextReply(task.id, seconds: replyWait)
+        let steps = lock.locked { tasks[task.id]?.stepsSince ?? [] }
+        let told = "Told \(task.label) “\(AgentOutput.short(text, 120))”."
+        var out: [String: JSONValue] = [
+            "id": .string(task.id), "label": .string(task.label), "steps": .array(steps.map { .string($0) }),
+        ]
+        if let reply {
+            out["reply"] = .string(reply)
+            out["summary"] = .string("\(told) It says: \(reply)")
+        } else {
+            out["summary"] = .string(task.chat
+                ? "\(told) It is still working on it; its reply comes to you as a message."
+                : "\(told) It reads it after its current step; Ira says when the task is done.")
+        }
+        return .object(out)
+    }
+
+    /// The task's next reply within `seconds`, or nil: then a chat task's reply goes out as a
+    /// task_reply event when it comes.
+    private func nextReply(_ id: String, seconds: Double) async -> String? {
+        let token = UUID()
+        return await withCheckedContinuation { continuation in
+            let (ready, replaced): (String?, CheckedContinuation<String?, Never>?) = lock.locked {
+                if let early = tasks[id]?.early {
+                    tasks[id]?.early = nil
+                    tasks[id]?.awaiting = false
+                    return (early, nil)
+                }
+                let replaced = waiters[id]?.reply
+                waiters[id] = (token, continuation)
+                return (nil, replaced)
+            }
+            replaced?.resume(returning: nil)
+            if let ready {
+                continuation.resume(returning: ready)
+                return
+            }
+            Task {
+                try? await Task.sleep(nanoseconds: UInt64(seconds * 1_000_000_000))
+                let mine: CheckedContinuation<String?, Never>? = self.lock.locked {
+                    guard self.waiters[id]?.token == token else { return nil }
+                    self.tasks[id]?.awaiting = false
+                    return self.waiters.removeValue(forKey: id)?.reply
+                }
+                mine?.resume(returning: nil)
+            }
+        }
+    }
+
+    /// A chat task with nothing said for `chatIdle`: paused when its agent can go on later,
+    /// else stopped.
+    private func idleOut(_ id: String) {
+        guard let job = lock.locked({ tasks[id] }), job.status == "waiting" else { return }
+        let resumes = settings()?.agent(job.agent)?.resumes == true && job.session != nil
+        update(id) { $0.status = resumes ? "paused" : "stopped" }
+        lock.locked { commands[id] }?.stop()
     }
 
     /// Pause a running task: its agent stops, and its session is kept for code_task_resume.
     public func pause(_ raw: JSONValue) async throws -> JSONValue {
         let task = try task(try ToolArgs(raw, allowed: ["id"]))
-        guard ["starting", "running"].contains(task.status) else {
-            throw ToolFailure("task \(task.id) is \(task.status), not running")
+        guard CodeTasks.live.contains(task.status) else {
+            throw ToolFailure("\(task.label) is \(task.status), not running")
         }
         guard settings()?.agent(task.agent)?.resumes == true, task.session != nil else {
             throw ToolFailure("this task's agent cannot continue later, so a pause would lose its place; stop it instead (code_task_stop)")
         }
         update(task.id) { $0.status = "paused" }
+        lock.locked { idlers.removeValue(forKey: task.id) }?.cancel()
         lock.locked { commands[task.id] }?.stop()
-        return ["id": .string(task.id), "summary": .string("Paused task \(task.id). Resume it with code_task_resume, with words for it if you like.")]
+        return ["id": .string(task.id), "summary": .string("Paused \(task.label). Resume it with code_task_resume, with words for it if you like.")]
     }
 
     /// Continue a paused (or finished) task in its worktree, from where its agent left off.
@@ -511,7 +670,7 @@ public final class CodeTasks: @unchecked Sendable {
         guard let session = task.session else {
             throw ToolFailure("its agent never said its session id, so it cannot continue; start a new task")
         }
-        let running = lock.locked { tasks.values.filter { ["starting", "running"].contains($0.status) }.count }
+        let running = lock.locked { tasks.values.filter { CodeTasks.live.contains($0.status) }.count }
         guard running < CodeTasks.maxRunning else {
             throw ToolFailure("\(CodeTasks.maxRunning) tasks are running already; wait or stop one")
         }
@@ -613,9 +772,10 @@ public final class CodeTasks: @unchecked Sendable {
             tasks[id]?.runs += 1
             return tasks[id]?.runs ?? 0
         }
+        let instruction = task.chat && task.instruction.isEmpty ? CodeTasks.chatOpening : task.instruction
         let prompt = session != nil ? (words ?? "") : CodeTasks.prompt.replacingOccurrences(of: "{repo}", with: task.repo.name)
             .replacingOccurrences(of: "{branch}", with: task.branch)
-            .replacingOccurrences(of: "{instruction}", with: task.instruction)
+            .replacingOccurrences(of: "{instruction}", with: instruction)
         do {
             let command = try Command.start(
                 sandboxed(CodeTasks.argv(agent, prompt: prompt, session: session), task: task, settings: settings),
@@ -629,7 +789,8 @@ public final class CodeTasks: @unchecked Sendable {
                 }
             }
             update(id) { if $0.status == "starting" { $0.status = "running" } }
-            let timer = Task {
+            // A chat lasts as long as the person talks to it: it pauses when idle instead.
+            let timer: Task<Void, Error>? = task.chat ? nil : Task {
                 try await Task.sleep(nanoseconds: UInt64(settings.minutes * 60 * 1_000_000_000))
                 self.update(id) { $0.error = "it took longer than \(Int(settings.minutes)) minutes" }
                 command.stop()
@@ -656,6 +817,8 @@ public final class CodeTasks: @unchecked Sendable {
                     announce("task_progress", "Task \(task.id) in \(task.repo.name): \(steps.done) of \(steps.total) done",
                              steps.sentence, ["id": .string(task.id), "repo": .string(task.repo.name)])
                 }
+                let done = AgentOutput.steps(line)
+                if !done.isEmpty { update(id) { $0.stepsSince = Array(($0.stepsSince + done).suffix(10)) } }
                 let (progress, result) = AgentOutput.progress(line)
                 if let progress {
                     update(id) { $0.progress = Array(($0.progress + [progress]).suffix(5)) }
@@ -669,15 +832,47 @@ public final class CodeTasks: @unchecked Sendable {
                 }
                 if let result {
                     final = result
-                    // Every message answered: close its input, so it finishes.
-                    lock.locked {
+                    let reply = AgentOutput.short(SecretFilter.mask(result["result"]?.stringValue ?? ""), CodeTasks.maxReply)
+                    // To code_task_say waiting for it, else kept for it, else (a chat's) as an event.
+                    let (waiter, announced, job): (CheckedContinuation<String?, Never>?, Bool, Job?) = lock.locked {
                         tasks[id]?.answered += 1
-                        if let job = tasks[id], job.answered >= job.sent { command.closeInput() }
+                        let waiter = waiters.removeValue(forKey: id)?.reply
+                        var announced = false
+                        if waiter != nil {
+                            tasks[id]?.awaiting = false
+                        } else if tasks[id]?.awaiting == true {
+                            tasks[id]?.early = reply
+                        } else {
+                            announced = tasks[id]?.chat == true
+                        }
+                        if let job = tasks[id] {
+                            if job.chat {
+                                if job.status == "running" || job.status == "starting" { tasks[id]?.status = "waiting" }
+                            } else if job.answered >= job.sent {
+                                // Every message answered: close its input, so it finishes.
+                                command.closeInput()
+                            }
+                        }
+                        return (waiter, announced, tasks[id])
+                    }
+                    waiter?.resume(returning: reply)
+                    if announced, let job {
+                        announce("task_reply", "\(job.label) says", reply.isEmpty ? "(no words)" : reply,
+                                 ["id": .string(job.id), "label": .string(job.label), "repo": .string(job.repo.name)])
+                    }
+                    if job?.chat == true {
+                        let idle = Task { [weak self, chatIdle] in
+                            try? await Task.sleep(nanoseconds: UInt64(chatIdle * 1_000_000_000))
+                            guard !Task.isCancelled else { return }
+                            self?.idleOut(id)
+                        }
+                        lock.locked { idlers.updateValue(idle, forKey: id) }?.cancel()
                     }
                 }
             }
             let code = await command.wait()
-            timer.cancel()
+            timer?.cancel()
+            lock.locked { idlers.removeValue(forKey: id) }?.cancel()
             let stderr = await errors
             let (current, paused): (Bool, Bool) = lock.locked {
                 let current = tasks[id]?.runs == run

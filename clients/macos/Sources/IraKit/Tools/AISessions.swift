@@ -49,6 +49,8 @@ public struct AISession: Equatable, Sendable {
     public var steps: [Step]
     /// Ira's own task (it can stop it); nil for sessions Ira only reads.
     public var task: String?
+    /// The person can talk to it from their phone (an Ira chat task that is on: code_task_say).
+    public var talk = false
 }
 
 /// One coding agent's transcript, summarised from its last lines.
@@ -563,14 +565,28 @@ public final class AISessions: @unchecked Sendable {
     /// Ira's own coding tasks that have no transcript here (another agent's, or not begun).
     func ownTasks(excluding: Set<String>) -> [AISession] {
         (tasks?.jobs() ?? []).filter { !excluding.contains($0.id) }.map { job in
-            let state: AISession.State = ["starting", "running"].contains(job.status) ? .working : .finished
-            return AISession(
-                id: job.id, project: job.repo.name, title: nil, place: "Ira's task \(job.id)", state: state,
+            let state: AISession.State = job.status == "waiting" ? .waiting : ["starting", "running"].contains(job.status) ? .working : .finished
+            var session = AISession(
+                id: job.id, project: job.repo.name, title: nil, place: "", state: state,
                 note: state == .finished ? job.status : nil, done: nil, total: nil, current: nil,
                 doing: job.progress.last.map { TranscriptSummary.clip($0, 120) },
-                request: TranscriptSummary.clip(job.instruction), answer: job.result.isEmpty ? nil : TranscriptSummary.clip(job.result),
+                request: job.instruction.isEmpty ? nil : TranscriptSummary.clip(job.instruction),
+                answer: job.result.isEmpty ? nil : TranscriptSummary.clip(job.result),
                 updated: job.finished ?? job.started,
                 steps: job.progress.map { AISession.Step(at: nil, text: TranscriptSummary.clip($0, 120)) }, task: job.id)
+            AISessions.mark(&session, job)
+            return session
+        }
+    }
+
+    /// One of Ira's tasks: its name, and whether the person can talk to it now.
+    static func mark(_ session: inout AISession, _ job: CodeTasks.Job) {
+        session.task = job.id
+        session.talk = job.chat && CodeTasks.live.contains(job.status)
+        session.place = (job.chat ? "Ira's chat task " : "Ira's task ") + (job.label.isEmpty ? job.id : job.label)
+        if job.status == "waiting" {
+            session.state = .waiting
+            session.note = "waiting for your next message"
         }
     }
 
@@ -588,8 +604,18 @@ public final class AISessions: @unchecked Sendable {
         // Forget what was read of transcripts no longer listed.
         let listed = Set(files.map(\.url.path))
         lock.locked { reads = reads.filter { listed.contains($0.key) } }
-        let mine = Set(found.compactMap(\.task))
-        return Array((found + ownTasks(excluding: mine)).sorted { $0.updated > $1.updated }.prefix(AISessions.maxSessions))
+        // Ira's own tasks among the transcripts: named, and marked when they can be talked to.
+        let jobs = Dictionary((tasks?.jobs() ?? []).map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+        let named = found.map { session -> AISession in
+            guard let id = session.task, let job = jobs[id] else { return session }
+            var marked = session
+            AISessions.mark(&marked, job)
+            return marked
+        }
+        let mine = Set(named.compactMap(\.task))
+        // The ones the person can talk to come first, then the newest.
+        let all = (named + ownTasks(excluding: mine)).sorted { ($0.talk ? 1 : 0, $0.updated) > ($1.talk ? 1 : 0, $1.updated) }
+        return Array(all.prefix(AISessions.maxSessions))
     }
 
     // MARK: The tools
@@ -625,14 +651,16 @@ public final class AISessions: @unchecked Sendable {
         if case .object(var fields) = view {
             let steps = session.steps.map(\.text).joined(separator: "; ")
             fields["summary"] = .string(AISessions.sentence(session, now: now) + (steps.isEmpty ? "" : " Last steps: \(steps)."))
-            fields["control"] = .string(session.task == nil ? AISessions.control : "Ira started this task: code_task_status and code_task_stop work on it.")
+            fields["control"] = .string(
+                session.talk ? "Ira's chat task: talk to it with code_task_say, by its name."
+                    : session.task == nil ? AISessions.control : "Ira started this task: code_task_status and code_task_stop work on it.")
             view = .object(fields)
         }
         return view
     }
 
     static let control =
-        "Ira only reads these sessions. To stop or steer one Ira did not start, the person does it where it runs (Esc in VS Code's panel, Ctrl-C in a terminal). Ira's own tasks: code_task_status and code_task_stop."
+        "Ira's own chat tasks (talk: true) can be talked to from the phone with code_task_say, by name. Every other session is read-only here: to message one, the person uses the agent's own remote control (its mobile app); to stop it, Esc in VS Code's panel or Ctrl-C in a terminal. Ira never sends to or stops a session it did not start."
 
     static func ago(_ date: Date, now: Date) -> String {
         let minutes = Int(now.timeIntervalSince(date) / 60)
@@ -644,6 +672,7 @@ public final class AISessions: @unchecked Sendable {
     /// One sentence: "ira (VS Code): working, 3 of 7 done, on: writing tests; last step: read Drop.kt."
     static func sentence(_ session: AISession, now: Date) -> String {
         var parts = ["\(session.project) (\(session.place)): \(session.state == .waiting ? "waiting for you" : session.state.rawValue)"]
+        parts.append(session.talk ? "you can talk to it from your phone" : session.task == nil ? "read-only here" : "Ira's task")
         if let note = session.note, session.state != .working || note.hasPrefix("quiet") { parts.append(note) }
         if let done = session.done, let total = session.total, total > 0 { parts.append("\(done) of \(total) done") }
         if let current = session.current { parts.append("on: \(current)") }
@@ -658,6 +687,7 @@ public final class AISessions: @unchecked Sendable {
             "id": .string(session.id), "project": .string(session.project), "place": .string(session.place),
             "state": .string(session.state.rawValue), "updated": .string(ISO8601DateFormatter().string(from: session.updated)),
             "updatedAgo": .string(ago(session.updated, now: now)), "startedByIra": .bool(session.task != nil),
+            "talk": .bool(session.talk),
         ]
         func put(_ key: String, _ value: String?) { if let value { fields[key] = .string(value) } }
         put("title", session.title)

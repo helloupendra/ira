@@ -136,7 +136,7 @@ public final class Toolbox: ToolRunner, @unchecked Sendable {
         case "ai_sessions", "ai_session_detail": return 20
         case "mac_type", "mac_keys", "mac_click", "mac_scroll", "mac_menu": return 20
         case "mail_search", "mail_draft", "notes_search", "notes_add", "messages_send",
-            "shortcuts_run", "code_task_start", "code_task_push", "code_task_resume", "browser_tabs", "browser_show_tab":
+            "shortcuts_run", "code_task_start", "code_task_push", "code_task_resume", "code_task_say", "browser_tabs", "browser_show_tab":
             return 22
         default: return 10
         }

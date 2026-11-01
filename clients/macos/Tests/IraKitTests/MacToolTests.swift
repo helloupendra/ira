@@ -590,7 +590,7 @@ struct CodeTaskTests {
         #expect(list["agents"] == ["first", "second"] && list["defaultAgent"] == "first")
     }
 
-    func tasks(_ root: URL, _ repo: URL, agents: [TaskSettings.Agent], events: EventLog<String>) -> CodeTasks {
+    func tasks(_ root: URL, _ repo: URL, agents: [TaskSettings.Agent], events: EventLog<String>, replyWait: Double = 5, chatIdle: Double = 60) -> CodeTasks {
         var settings = TaskSettings(
             command: [], repos: ["shop": .init(name: "shop", path: repo, test: nil, protected: false)],
             worktrees: root.appendingPathComponent("tasks"), writable: [], minutes: 1, sandbox: false,
@@ -598,8 +598,8 @@ struct CodeTaskTests {
         settings.agents = Dictionary(uniqueKeysWithValues: agents.map { ($0.name, $0) })
         settings.defaultAgent = agents[0].name
         let frozen = settings
-        return CodeTasks(settings: { frozen }, openVSCode: { _ in }, stepSpacing: 0,
-                         announce: { event, title, _, _ in events.add("\(event) | \(title)") })
+        return CodeTasks(settings: { frozen }, openVSCode: { _ in }, stepSpacing: 0, replyWait: replyWait, chatIdle: chatIdle,
+                         announce: { event, title, text, _ in events.add("\(event) | \(title)" + (event == "task_reply" ? " | \(text)" : "")) })
     }
 
     func waitFor(seconds: Double = 5, _ condition: () -> Bool) async -> Bool {
@@ -675,7 +675,7 @@ struct CodeTaskTests {
         await #expect(throws: ToolFailure.self) { try await tasks.say(["id": .string(id), "text": "hi"]) }
         await #expect(throws: ToolFailure.self) { try await tasks.resume(["id": .string(id)]) }  // still running
         let paused = try await tasks.pause(["id": .string(id)])
-        #expect(paused["summary"]?.stringValue?.hasPrefix("Paused task") == true)
+        #expect(paused["summary"]?.stringValue?.hasPrefix("Paused ") == true)
         try await Task.sleep(nanoseconds: 300_000_000)
         #expect(tasks.jobs().first { $0.id == id }?.status == "paused")
         #expect(!events.all.contains { $0.hasPrefix("task_failed") })  // a pause is not a failure
@@ -752,6 +752,98 @@ struct CodeTaskTests {
             #expect(code == 128 + SIGTERM)
             #expect(Date().timeIntervalSince(since) < 3)
         }
+    }
+
+    /// An agent that holds a conversation: hello first, then "Got: <words>" to each message, a
+    /// slow one when asked; it ends when its input does.
+    func chatAgent(in root: URL) throws -> URL {
+        let agent = root.appendingPathComponent("chat.sh")
+        try script(agent, """
+            read first
+            echo '{"type":"system","subtype":"init","session_id":"s-c"}'
+            echo '{"type":"result","result":"Hello! What shall I do?","session_id":"s-c"}'
+            while IFS= read -r line; do
+              words=$(printf '%s' "$line" | sed -n 's/.*"text":"\\([^"]*\\)".*/\\1/p')
+              case "$words" in *slow*) sleep 1.5;; esac
+              echo '{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Bash","input":{"description":"Run the tests"}}]}}'
+              echo "{\\"type\\":\\"result\\",\\"result\\":\\"Got: $words\\",\\"session_id\\":\\"s-c\\"}"
+            done
+            echo ended > ENDED.txt
+
+            """)
+        return agent
+    }
+
+    /// A chat task: talked to by name and as "the last one", each reply comes back with its
+    /// steps, a slow one comes later as a message, and it waits between messages.
+    @Test func aChatTaskRepliesAndALateReplyComesAsAMessage() async throws {
+        let root = try temporaryFolder()
+        let repo = try await repository(in: root)
+        let events = EventLog<String>()
+        let live = TaskSettings.Agent(name: "live", command: [try chatAgent(in: root).path, "--input-format", "stream-json"], resume: ["--resume", "{session}"])
+        let tasks = tasks(root, repo, agents: [live], events: events, replyWait: 0.8)
+        await #expect(throws: ToolFailure.self) { try await tasks.start(["repo": "shop"]) }  // not a chat: it needs a task
+        let started = try await tasks.start(["repo": "shop", "chat": true])
+        #expect(started["label"] == "shop · live" && started["chat"] == true)
+        let id = try #require(started["id"]?.stringValue)
+        // The hello comes as a message: nobody was waiting for it.
+        #expect(await events.waitFor { $0.contains("task_reply | shop · live says | Hello! What shall I do?") })
+        #expect(await waitFor { tasks.jobs().first?.status == "waiting" })
+
+        let first = try await tasks.say(["id": "shop · live", "text": "write the tests"])
+        #expect(first["reply"] == "Got: write the tests")
+        #expect(first["steps"] == ["Run the tests"])
+        #expect(first["summary"]?.stringValue == "Told shop · live “write the tests”. It says: Got: write the tests")
+        let second = try await tasks.say(["id": "last", "text": "add docs"])
+        #expect(second["reply"] == "Got: add docs")
+        #expect(tasks.jobs().first?.status == "waiting")
+
+        let late = try await tasks.say(["id": .string(id), "text": "a slow one"])
+        #expect(late["reply"] == nil)
+        #expect(late["summary"]?.stringValue?.contains("its reply comes to you as a message") == true)
+        #expect(await events.waitFor { $0.contains("task_reply | shop · live says | Got: a slow one") })
+        // Only that late reply and the hello went out as messages.
+        #expect(events.all.filter { $0.hasPrefix("task_reply") }.count == 2)
+
+        // Listed first by ai_sessions, as one to talk to.
+        let sessions = try await AISessions(roots: { [] }, tasks: tasks, worktrees: { nil }).list([:])
+        let mine = sessions["sessions"]?.arrayValue?.first
+        #expect(mine?["talk"] == true && mine?["place"] == "Ira's chat task shop · live" && mine?["state"] == "waiting")
+        _ = try await tasks.stop(["id": "shop"])
+        #expect(await waitFor(seconds: 10) { tasks.jobs().first?.status == "stopped" })
+    }
+
+    @Test func anIdleChatPausesAndGoesOnWhenResumed() async throws {
+        let root = try temporaryFolder()
+        let repo = try await repository(in: root)
+        let events = EventLog<String>()
+        let live = TaskSettings.Agent(name: "live", command: [try chatAgent(in: root).path, "--input-format", "stream-json"], resume: ["--resume", "{session}"])
+        let tasks = tasks(root, repo, agents: [live], events: events, chatIdle: 0.5)
+        let id = try #require(try await tasks.start(["repo": "shop", "chat": true, "instruction": "hello", "label": "docs helper"])["id"]?.stringValue)
+        #expect(tasks.jobs().first?.label == "docs helper")
+        #expect(await waitFor { tasks.jobs().first?.status == "paused" })  // idle: paused, not stopped
+        #expect(tasks.jobs().first?.session == "s-c")
+        #expect(!events.all.contains { $0.hasPrefix("task_failed") })
+        _ = try await tasks.resume(["id": "docs helper", "text": "now the readme"])
+        #expect(await waitFor { tasks.jobs().first?.status == "waiting" })
+        _ = try await tasks.stop(["id": .string(id)])
+    }
+
+    @Test func tasksAreFoundByNameOrAsTheLastOne() async throws {
+        let root = try temporaryFolder()
+        let repo = try await repository(in: root)
+        let events = EventLog<String>()
+        let live = TaskSettings.Agent(name: "live", command: [try chatAgent(in: root).path, "--input-format", "stream-json"], resume: ["--resume", "{session}"])
+        let tasks = tasks(root, repo, agents: [live], events: events)
+        let a = try #require(try await tasks.start(["repo": "shop", "chat": true])["id"]?.stringValue)
+        let b = try await tasks.start(["repo": "shop", "chat": true])
+        #expect(b["label"] == "shop · live 2")  // names stay unique while their tasks go on
+        #expect(try tasks.find("SHOP · LIVE").id == a)
+        #expect(try tasks.find("shop live 2").id == b["id"]?.stringValue)
+        #expect(try tasks.find("the last one").id == b["id"]?.stringValue)
+        #expect(throws: ToolFailure.self) { try tasks.find("billing") }
+        #expect(CodeTasks.fold("Shop · Live!") == "shop live")
+        for task in tasks.jobs() { _ = try await tasks.stop(["id": .string(task.id)]) }
     }
 
     @Test func agentsThatReadMessagesAndTheirCommandLines() {

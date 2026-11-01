@@ -399,6 +399,18 @@ and the last one at once. An agent without a list says how it is going after 5
 minutes, then every 10. `code_task_status` shows the agent, the steps and the
 latest progress.
 
+**Talk to a task, from anywhere.** A task started with `chat` stays on as a
+conversation: "OpenFNO wale ko bolo tests likho" from your phone reaches it
+(`code_task_say`), and its reply comes back to you, with the steps it took,
+within about 20 seconds, or later as a message. It needs an agent that reads
+messages as it works (below). A chat may start with nothing to do ("hello"),
+waits for your next message between turns, and pauses after 30 minutes with
+nothing said (resume it to go on). Every task has a name you can say: the
+repository and the agent ("shop · main", or `label` when you start it), or
+"the last one". Only Ira's own tasks can be talked to: a session you opened
+yourself in an editor or a terminal is read-only here; to message it, use
+that agent's own remote control.
+
 **Steer, pause and go on.** While a task works you can tell it something
 ("write the tests first") with `code_task_say`, if its agent reads messages
 as it works: give it `"--input-format", "stream-json"` in its command, and
@@ -573,8 +585,8 @@ older server keeps the tools it always had:
 | `clipboard_read {}` | `clipboard` | 0 |
 | `shortcuts_list {}`, `shortcuts_run {name, input?}` | `shortcuts` | 0, 2 |
 | `mac_type {text, pressReturn?}`, `mac_keys {keys}`, `mac_click {label, role?, index?}`, `mac_scroll {direction, amount?}`, `mac_menu {path}`, each also `{app?, task?}` | `control` | 3 |
-| `code_task_start {repo, instruction, openInVSCode?, agent?}`, `code_task_status {id?}` (without `id`, lists them, the repositories and the agents), `code_task_stop {id}`, `code_task_push {id}` | `tasks` | 2, 0, 1, 3 |
-| `code_task_say {id, text}`, `code_task_pause {id}`, `code_task_resume {id, text?}` | `tasks` | 2, 1, 2 |
+| `code_task_start {repo, instruction?, openInVSCode?, agent?, chat?, label?}`, `code_task_status {id?}` (without `id`, lists them, the repositories and the agents), `code_task_stop {id}`, `code_task_push {id}` | `tasks` | 2, 0, 1, 3 |
+| `code_task_say {id, text}` (answers with the task's reply), `code_task_pause {id}`, `code_task_resume {id, text?}`; `id` may be a task's name or "last" | `tasks` | 2, 1, 2 |
 | `ai_sessions {hours?}`, `ai_session_detail {id}` | `agents` | 0, 0 |
 
 The coding-task tools are in the hello only when `tasks.json` is set up.
