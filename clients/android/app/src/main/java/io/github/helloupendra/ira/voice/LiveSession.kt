@@ -23,6 +23,7 @@ import okhttp3.WebSocket
 import okhttp3.WebSocketListener
 import okio.ByteString
 import okio.ByteString.Companion.toByteString
+import java.util.concurrent.atomic.AtomicInteger
 
 /** What the talk screen shows besides the transcript. Kept in memory only. */
 data class CallUi(
@@ -81,6 +82,8 @@ class LiveSession(
     private var ready = false
     private var ended = false
     private var generation = 0
+    /** This call among all calls since the app started: a new call's turns start at 1 again. */
+    private val call = callCount.incrementAndGet()
 
     @Volatile
     private var replying = false
@@ -388,8 +391,8 @@ class LiveSession(
             }
         }
 
-    /** Turns restart at 1 on each connection: the connection's number keeps lines apart. */
-    private fun key(turn: Int) = "live$generation:$turn"
+    /** Turns restart at 1 on each connection and each call: both numbers keep lines apart. */
+    private fun key(turn: Int) = lineKey(call, generation, turn)
 
     companion object {
         const val MIC_BUSY =
@@ -399,6 +402,13 @@ class LiveSession(
 
         /** The server's reasons that mean no live call can work here (`channels/live.py`). */
         private val LIVE_UNAVAILABLE = listOf("speech-to-text", "text-to-speech", "talk to Ira by voice")
+        private val callCount = AtomicInteger()
+
+        /**
+         * One turn's lines in the shared transcript. Without the call's number, the second call's
+         * first answer was written into the first call's, and the screen showed the old answer.
+         */
+        internal fun lineKey(call: Int, generation: Int, turn: Int) = "live$call.$generation:$turn"
         private const val QUIET_MS = 120_000L
     }
 }
