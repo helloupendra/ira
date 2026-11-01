@@ -44,6 +44,32 @@ public class ControlToolsTests
     }
 
     [Fact]
+    public void The_PC_refuses_Explorer_the_Run_box_editors_with_a_terminal_and_REPLs()
+    {
+        static WindowInfo Window(string program, string app, string className = "") => new(IntPtr.Zero, program, app, "", className);
+        // Their address bar runs what is typed.
+        Assert.Contains("File Explorer", ControlTools.Refusal(Window("explorer.exe", "Windows Explorer", "CabinetWClass")));
+        Assert.Contains("Run box", ControlTools.Refusal(Window("explorer.exe", "Windows Explorer", "#32770")));
+        // ctrl+` opens a terminal; Python's and Node's own windows run each line.
+        foreach (var (program, app) in new[] { ("code.exe", "Visual Studio Code"), ("cursor.exe", "Cursor"), ("idea64.exe", "IntelliJ IDEA"),
+                                               ("python.exe", "Python"), ("pythonw.exe", "IDLE"), ("node.exe", "Node.js") })
+        {
+            Assert.Contains("terminals", ControlTools.Refusal(Window(program, app)));
+        }
+        Assert.Null(ControlTools.Refusal(Window("notepad.exe", "Notepad")));
+        Assert.Null(ControlTools.Refusal(Window("winword.exe", "Word")));
+    }
+
+    [Fact]
+    public void The_PC_never_acts_in_Iras_own_windows()
+    {
+        // Its approval cards and skill switches: a click there would say yes for the person.
+        var own = new WindowInfo(IntPtr.Zero, "ira.exe", "Ira", "Ira", "");
+        Assert.Contains("Ira's own", ControlTools.Refusal(own, (uint)Environment.ProcessId));
+        Assert.Null(ControlTools.Refusal(new WindowInfo(IntPtr.Zero, "notepad.exe", "Notepad", "", ""), (uint)Environment.ProcessId + 1));
+    }
+
+    [Fact]
     public void What_I_read_says_where_Ira_typed_never_what()
     {
         var target = ReadLog.Target("pc_type", new() { ["text"] = "my secret note", ["app"] = "notepad" },

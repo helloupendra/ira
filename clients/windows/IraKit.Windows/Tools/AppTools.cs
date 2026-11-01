@@ -26,6 +26,18 @@ internal static class AppTools
         "task manager", "taskmgr", "wscript", "cscript", "mshta",
     ];
 
+    /// <summary>
+    /// Apps Ira may open but never types, clicks or presses keys in: editors with a terminal of
+    /// their own (ctrl+` opens it), and Python's and Node's windows, which run each line.
+    /// </summary>
+    public static readonly string[] NeverTypeApps =
+    [
+        "visual studio code", "code.exe", "code - insiders", "vscodium", "cursor.exe", "windsurf",
+        "zed.exe", "idea64", "intellij", "pycharm", "webstorm", "phpstorm", "goland", "rubymine",
+        "clion", "rider64", "android studio", "studio64", "python.exe", "pythonw.exe", "py.exe",
+        "node.exe", "powershell_ise",
+    ];
+
     public static IEnumerable<DeviceTool> Tools(Func<IReadOnlyList<App>> apps) =>
     [
         new("app_open",
@@ -46,8 +58,13 @@ internal static class AppTools
             (args, ct) => Task.Run(() => Clipboard.Read(args), ct)),
     ];
 
-    public static bool IsNever(App app) =>
-        NeverApps.Any(word => app.Name.Contains(word, StringComparison.OrdinalIgnoreCase)
+    public static bool IsNever(App app) => Matches(NeverApps, app);
+
+    /// <summary>Whether Ira must never type, click or press keys in this app.</summary>
+    public static bool IsNeverType(App app) => IsNever(app) || Matches(NeverTypeApps, app);
+
+    private static bool Matches(string[] words, App app) =>
+        words.Any(word => app.Name.Contains(word, StringComparison.OrdinalIgnoreCase)
             || app.Id.Contains(word, StringComparison.OrdinalIgnoreCase));
 
     /// <summary>The app a person means: the exact name, else one that starts so, else one that has the words.</summary>

@@ -83,11 +83,21 @@ internal sealed class ControlTools(Func<IntPtr> targetWindow)
         return Schema.Object(properties, required);
     }
 
-    /// <summary>Why Ira must not act in this window, or null: the PC's own word, by program file.</summary>
-    public static string? Refusal(WindowInfo window)
+    /// <summary>
+    /// Why Ira must not act in this window, or null: the PC's own word, by program file.
+    /// <paramref name="processId"/> is the window's process, looked up when not given.
+    /// </summary>
+    public static string? Refusal(WindowInfo window, uint? processId = null)
     {
-        if (AppTools.IsNever(new AppTools.App(window.AppName, window.Program)))
-            return "I never act in terminals, shells, Task Manager or the like: whatever is typed there runs as a command. Do it yourself";
+        // Its own windows hold the approval cards and the skill switches: a click there would
+        // say yes, or switch a skill on, for the person.
+        if ((processId ?? OwnerOf(window.Handle)) == (uint)Environment.ProcessId)
+            return "I never act in Ira's own windows: approvals and skills are for you to answer. Do it yourself";
+        if (AppTools.IsNeverType(new AppTools.App(window.AppName, window.Program)))
+            return "I never act in terminals, shells, Task Manager, code editors or the like: whatever is typed there runs as a command. Do it yourself";
+        // File Explorer's address bar, and the Run box (also Explorer's), run what is typed.
+        if (window.Program == "explorer.exe" && ScreenTools.Refusal(window) is null)
+            return "I never act in File Explorer or the Run box: what is typed in their address bar runs as a command. Do it yourself";
         if (ScreenTools.NeverRead.TryGetValue(window.Program, out var known))
             return $"I never act in {known}: it holds passwords or asks for them. Do it yourself";
         if (ScreenTools.Refusal(window) is not null)
@@ -108,6 +118,14 @@ internal sealed class ControlTools(Func<IntPtr> targetWindow)
         return window;
     }
 
+    /// <summary>The process a window belongs to; 0 when there is no such window.</summary>
+    private static uint OwnerOf(IntPtr handle)
+    {
+        if (handle == IntPtr.Zero) return 0;
+        Native.GetWindowThreadProcessId(handle, out var pid);
+        return pid;
+    }
+
     /// <summary>A visible top-level window whose program, app name or title has these words.</summary>
     private static WindowInfo? Find(string named)
     {
@@ -118,6 +136,7 @@ internal sealed class ControlTools(Func<IntPtr> targetWindow)
         {
             var handle = new IntPtr(element.Current.NativeWindowHandle);
             if (handle == IntPtr.Zero || !Native.IsWindowVisible(handle)) continue;
+            if (OwnerOf(handle) == (uint)Environment.ProcessId) continue;  // never Ira's own
             if (WindowInfo.Of(handle) is { } info) windows.Add(info);
         }
         bool Has(string text) => text.Contains(wanted, StringComparison.OrdinalIgnoreCase);
