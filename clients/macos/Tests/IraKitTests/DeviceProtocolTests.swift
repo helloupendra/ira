@@ -72,6 +72,7 @@ struct ScriptedTools: ToolRunner {
         [
             ["name": "echo_back", "description": "Echo.", "parameters": ["type": "object"], "tier": 0],
             ["name": "screen_peek", "description": "Peek.", "parameters": ["type": "object"], "skill": "screen", "tier": 0],
+            ["name": "slow_one", "description": "Slow.", "parameters": ["type": "object"], "tier": 0],
         ]
     }
 
@@ -128,7 +129,7 @@ struct DeviceClientTests {
 
         #expect(await channel.waitFor { sent in
             sent.contains(["type": "result", "id": "c1", "ok": true, "content": ["echo": ["x": 1]]])
-                && sent.contains(["type": "result", "id": "c2", "ok": false, "error": "this Mac has no tool 'no_such_tool'"])
+                && sent.contains(["type": "result", "id": "c2", "ok": false, "error": "this Mac did not offer no_such_tool; reload Ira's tools on it"])
                 && sent.contains(["type": "pong"])
         })
         #expect(await states.waitFor { $0.contains(.connected(deviceID: 3, skills: ["files", "screen"])) })

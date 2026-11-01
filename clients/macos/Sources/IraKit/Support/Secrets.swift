@@ -32,6 +32,9 @@ public enum SecretAccount {
     /// The handle of this Mac's Touch ID approval key (base64); the key itself
     /// never leaves the Secure Enclave.
     public static let approvalKey = "approval-key"
+    /// The server the device token belongs to, kept with it: the copy in UserDefaults is
+    /// only a mirror, since any program on this Mac can rewrite UserDefaults.
+    public static let server = "server"
 }
 
 public struct SecretError: LocalizedError {
@@ -180,16 +183,43 @@ public struct PairingRecord: Sendable {
     /// A new pairing: the key is replaced (never deleted first), with its server.
     public func adopt(server: String, token: String, deviceID: Int?, label: String) throws {
         try secrets.save(token, account: SecretAccount.device)
+        try secrets.save(server, account: SecretAccount.server)
         // A Touch ID key was enrolled for the old pairing: it would only count as a wrong PIN now.
         if deviceID != settings.deviceID || server != settings.server { secrets.delete(SecretAccount.approvalKey) }
+        settings.pin(server: server)
         settings.server = server
         settings.deviceID = deviceID
         settings.deviceLabel = label
     }
 
+    /// Use the server the Keychain keeps with the key from now on, whatever UserDefaults
+    /// says: a program that rewrote the address there would otherwise get the key, and
+    /// every skill this Mac gave Ira. Paired before the server was kept with the key: keep
+    /// the current one now. Returns true when UserDefaults had another address.
+    @discardableResult
+    public func pinServer() -> Bool {
+        settings.pin(server: nil)
+        let written = settings.server
+        switch secrets.read(SecretAccount.server) {
+        case .found(let kept):
+            settings.pin(server: kept)
+            guard written != kept else { return false }
+            settings.server = kept  // the mirror, put right
+            return true
+        case .missing:
+            guard !written.isEmpty, case .found = secrets.read(SecretAccount.device) else { return false }
+            try? secrets.save(written, account: SecretAccount.server)
+            settings.pin(server: written)
+            return false
+        case .failed:
+            return false  // the key cannot be read either; the app asks for the Keychain
+        }
+    }
+
     /// The person chose "Remove Ira from this Mac": forget the key and the server.
     public func removeOnPurpose() {
         secrets.delete(SecretAccount.device)
+        secrets.delete(SecretAccount.server)
         secrets.delete("session")  // left by 0.1.0's sign-in, if any
         secrets.delete(SecretAccount.approvalKey)
         settings.forgetPairing()

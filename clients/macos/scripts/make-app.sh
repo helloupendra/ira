@@ -114,6 +114,24 @@ cat > "$app/Contents/Info.plist" <<PLIST
 PLIST
 plutil -lint "$app/Contents/Info.plist" >/dev/null
 
+# The hardened runtime: no other program can load its code into Ira and use what this Mac
+# allowed Ira. Under it, each kind of data Ira asks macOS for needs its own entitlement.
+entitlements="$dist/build.noindex/Ira.entitlements"
+cat > "$entitlements" <<'PLIST'
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>com.apple.security.device.audio-input</key><true/>
+  <key>com.apple.security.personal-information.addressbook</key><true/>
+  <key>com.apple.security.personal-information.calendars</key><true/>
+  <key>com.apple.security.automation.apple-events</key><true/>
+</dict>
+</plist>
+PLIST
+plutil -lint "$entitlements" >/dev/null
+sign="--options runtime --entitlements $entitlements"
+
 # The one asked for; else this Mac's Apple Development certificate; else the local one.
 identity="${IRA_SIGNING_NAME:-}"
 if [ -z "$identity" ]; then
@@ -122,10 +140,12 @@ if [ -z "$identity" ]; then
 fi
 if [ "$identity" != none ] && security find-identity -p codesigning 2>/dev/null | grep -q "\"$identity\""; then
   echo "Signing with \"$identity\""
-  codesign --force --sign "$identity" --identifier "$bundle_id" --timestamp=none "$app"
+  # shellcheck disable=SC2086
+  codesign --force --sign "$identity" --identifier "$bundle_id" --timestamp=none $sign "$app"
 else
   echo "Signing ad hoc (add an Apple Development certificate in Xcode, or run scripts/make-signing-identity.sh, to keep permissions between builds)"
-  codesign --force --sign - --identifier "$bundle_id" --timestamp=none "$app"
+  # shellcheck disable=SC2086
+  codesign --force --sign - --identifier "$bundle_id" --timestamp=none $sign "$app"
 fi
 codesign --verify --strict "$app"
 # What macOS will match permissions against.

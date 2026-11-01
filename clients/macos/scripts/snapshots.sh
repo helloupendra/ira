@@ -21,7 +21,8 @@ app="$here/dist/build.noindex/Ira Test.app"
 lsregister=/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister
 
 forget() {
-  security delete-generic-password -s "$test_id" >/dev/null 2>&1 || true
+  # One item a call: the key, and the server kept with it.
+  while security delete-generic-password -s "$test_id" >/dev/null 2>&1; do :; done
   defaults delete "$test_id" >/dev/null 2>&1 || true
 }
 cleanup() {

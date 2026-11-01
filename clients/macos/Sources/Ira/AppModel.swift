@@ -68,6 +68,9 @@ final class AppModel: ObservableObject {
     var paired: Bool { pairingStatus == .paired }
 
     func route() {
+        if record.pinServer() {
+            IraLog.shared.warning("the server address in Ira's settings was changed outside Ira; using the one it was paired with")
+        }
         pairingStatus = record.status
         switch pairingStatus {
         case .keyUnreadable:

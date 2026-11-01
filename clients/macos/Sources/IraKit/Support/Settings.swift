@@ -4,9 +4,20 @@ import Security
 /// What the app remembers between launches, in UserDefaults. Never a token.
 public final class AppSettings: @unchecked Sendable {
     public let defaults: UserDefaults
+    /// The paired server as the Keychain keeps it with the device key, once
+    /// `PairingRecord.pinServer` has read it: from then on the address in UserDefaults,
+    /// which any program on this Mac can rewrite, no longer decides where the key goes.
+    private var pinned: String?
+    private let lock = NSLock()
 
     public init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
+    }
+
+    public func pin(server: String?) {
+        lock.lock()
+        defer { lock.unlock() }
+        pinned = server
     }
 
     private enum Key {
@@ -56,8 +67,18 @@ public final class AppSettings: @unchecked Sendable {
 
     /// The paired server, e.g. `https://ira.example.com`. Empty until paired.
     public var server: String {
-        get { defaults.string(forKey: Key.server) ?? "" }
-        set { defaults.set(newValue, forKey: Key.server) }
+        get {
+            lock.lock()
+            let pinned = self.pinned
+            lock.unlock()
+            return pinned ?? defaults.string(forKey: Key.server) ?? ""
+        }
+        set {
+            lock.lock()
+            if pinned != nil { pinned = newValue }
+            lock.unlock()
+            defaults.set(newValue, forKey: Key.server)
+        }
     }
 
     public var deviceID: Int? {
@@ -131,6 +152,7 @@ public final class AppSettings: @unchecked Sendable {
 
     /// Forget the pairing (the token is deleted from the Keychain separately).
     public func forgetPairing() {
+        pin(server: nil)
         for key in [Key.server, Key.deviceID, Key.deviceLabel, Key.conversationID, Key.conversationAt] {
             defaults.removeObject(forKey: key)
         }

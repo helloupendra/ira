@@ -332,7 +332,8 @@ public final class DeviceClient: @unchecked Sendable {
         do {
             let offered = tools.definitions
             let allowed = toolLimit
-            try await sender.send(DeviceProtocol.hello(label: label, tools: Array(offered.prefix(allowed))).encoded())
+            let hello = Array(offered.prefix(allowed))
+            try await sender.send(DeviceProtocol.hello(label: label, tools: hello).encoded())
             let first = try await withTimeout(timing.silence) { try await channel.receive() }
             guard case .text(let text) = first,
                 case .welcome(let deviceID, _, let skills, let assistant, let wakePhrase, let maxTools) = try DeviceProtocol.decode(text)
@@ -360,7 +361,7 @@ public final class DeviceClient: @unchecked Sendable {
             defer { lock.locked { currentSkillsUnknown = true } }
             onState(.connected(deviceID: deviceID, skills: skills))
             onWelcome(assistant, wakePhrase)
-            return await session(channel: channel, sender: sender, deviceID: deviceID, skills: skills)
+            return await session(channel: channel, sender: sender, deviceID: deviceID, skills: skills, hello: hello)
         } catch {
             let closed = error as? WebSocketClosed ?? WebSocketClosed(reason: "the connection ended")
             log.info("connection ended: \(closed.code.map(String.init) ?? "") \(closed.reason)")
@@ -369,7 +370,7 @@ public final class DeviceClient: @unchecked Sendable {
     }
 
     private func session(
-        channel: WebSocketChannel, sender: FrameSender, deviceID: Int?, skills: [String]
+        channel: WebSocketChannel, sender: FrameSender, deviceID: Int?, skills: [String], hello: [JSONValue]
     ) async -> WebSocketClosed? {
         let pinger = Task { [timing] in
             while !Task.isCancelled {
@@ -380,9 +381,11 @@ public final class DeviceClient: @unchecked Sendable {
         }
         let events = Task { await self.eventSender(sender) }
         var calls: [Task<Void, Never>] = []
-        // Each tool's skill, as this Mac offered it.
+        // Each tool's skill, as this Mac offered it in its hello, and the tools it offered at all.
         var skillOf: [String: String] = [:]
-        for tool in tools.definitions {
+        var offered: Set<String> = []
+        for tool in hello {
+            if let name = tool["name"]?.stringValue { offered.insert(name) }
             if let name = tool["name"]?.stringValue, let skill = tool["skill"]?.stringValue { skillOf[name] = skill }
         }
         defer {
@@ -412,6 +415,14 @@ public final class DeviceClient: @unchecked Sendable {
                 // The server calls a tool only while its skill is on; this Mac checks too, so a
                 // server bug, or a server it was tricked into pairing with, cannot use a skill
                 // that is off here.
+                // A tool this Mac did not offer on this connection (one added since, by a
+                // reload) is refused too: the server never heard of it from here.
+                guard offered.contains(tool) else {
+                    log.info("call \(tool) refused: not offered")
+                    let refusal = DeviceProtocol.failure(id: id, error: "this Mac did not offer \(tool); reload Ira's tools on it")
+                    try? await sender.send(DeviceProtocol.encodeResult(refusal))
+                    continue
+                }
                 if let skill = skillOf[tool], !skills.contains(skill) {
                     log.info("call \(tool) refused: its skill is off")
                     let refusal = DeviceProtocol.failure(id: id, error: "the \(skill) skill is off for Ira on this Mac")

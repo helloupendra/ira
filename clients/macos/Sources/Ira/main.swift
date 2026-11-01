@@ -5,13 +5,15 @@ import IraKit
 //
 // Two commands for scripts and support, run without any window:
 //   Ira --status          this Mac's pairing: paired, not paired, or a key the Keychain did not hand over
-//   Ira --pair <link>     pair with a pairing link (the same exchange as the app's pairing page)
+//   Ira --pair <link>     pair a Mac that is not paired yet with a pairing link (the same exchange
+//                         as the app's pairing page); pairing again is done in the app's Settings
 //   Ira --remove          what "Remove Ira from this Mac" does: your Ira forgets this Mac, and
 //                         the key and settings here are deleted
 let arguments = CommandLine.arguments
 if arguments.count >= 2, ["--status", "--pair", "--remove"].contains(arguments[1]) {
     let settings = AppSettings()
     let record = PairingRecord(settings: settings, secrets: KeychainStore())
+    record.pinServer()
     if arguments[1] == "--status" {
         switch record.status {
         case .paired: print("paired with \(settings.server) as device \(settings.deviceID.map(String.init) ?? "?")")
@@ -38,6 +40,12 @@ if arguments.count >= 2, ["--status", "--pair", "--remove"].contains(arguments[1
     guard arguments.count >= 3 else {
         print("say the pairing link: Ira --pair \"https://ira.example.com/pair#code=ABCD-EFGH\"")
         exit(2)
+    }
+    // A script must not move a paired Mac to another server: its key, and every skill this
+    // Mac gave Ira, would go there. That is done in the app, where the person sees it.
+    if record.status != .unpaired {
+        print("not paired: this Mac is already paired with \(settings.server). To pair it again, open Ira, Settings, Pair again")
+        exit(1)
     }
     let link = arguments[2]
     let done = DispatchSemaphore(value: 0)

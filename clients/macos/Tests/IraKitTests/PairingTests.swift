@@ -221,10 +221,42 @@ struct PairingRecordTests {
         #expect(settings.deviceID == 9)
         record.removeOnPurpose()
         #expect(store.deletions.contains(SecretAccount.device))
+        #expect(store.deletions.contains(SecretAccount.server))
         #expect(store.deletions.contains(SecretAccount.approvalKey))
         #expect(settings.server == "")
         #expect(!settings.firstRunDone)
         #expect(record.status == .unpaired)
+    }
+
+    /// UserDefaults is a file any program on this Mac can rewrite; the key goes only to the
+    /// server the Keychain keeps with it.
+    @Test func aRewrittenServerAddressIsNotWhereTheKeyGoes() throws {
+        let (record, store, settings) = record()
+        try record.adopt(server: "https://ira.example.com", token: "irad_" + String(repeating: "n", count: 43), deviceID: 9, label: "Mac")
+        #expect(store.load(SecretAccount.server) == "https://ira.example.com")
+        settings.defaults.set("https://elsewhere.example", forKey: "server")
+        #expect(settings.server == "https://ira.example.com")  // pinned when it was paired
+        // A new launch reads it again from the Keychain, and puts UserDefaults right.
+        let relaunched = PairingRecord(settings: AppSettings(defaults: settings.defaults), secrets: store)
+        #expect(relaunched.settings.server == "https://elsewhere.example")
+        #expect(relaunched.pinServer())
+        #expect(relaunched.settings.server == "https://ira.example.com")
+        #expect(settings.defaults.string(forKey: "server") == "https://ira.example.com")
+        #expect(!relaunched.pinServer())
+    }
+
+    /// A Mac paired before the server was kept with the key keeps the one it has.
+    @Test func anOlderPairingKeepsItsServerWithTheKey() {
+        let (record, store, settings) = record()
+        #expect(store.load(SecretAccount.server) == nil)
+        #expect(!record.pinServer())
+        #expect(store.load(SecretAccount.server) == "https://ira.example.com")
+        settings.defaults.set("https://elsewhere.example", forKey: "server")
+        #expect(settings.server == "https://ira.example.com")
+        // Not paired: nothing is kept.
+        let (unpaired, unpairedStore, _) = self.record(token: nil)
+        #expect(!unpaired.pinServer())
+        #expect(unpairedStore.load(SecretAccount.server) == nil)
     }
 
     @Test func aMissingKeyOrServerIsUnpaired() {
