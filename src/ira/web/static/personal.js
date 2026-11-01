@@ -6,7 +6,7 @@
 
 const IraPersonal = (() => {
   const LANGUAGE_NAMES = { en: "English", hi: "Hindi", hinglish: "Hinglish" };
-  const REPLY_NAMES = { auto: "The language I speak", en: "English", hi: "Hindi", hinglish: "Hinglish" };
+  const REPLY_NAMES = { auto: "Same as I speak", en: "English", hi: "Hindi", hinglish: "Hinglish" };
   const TIER_NAMES = ["read", "small change", "needed your yes", "needed your PIN"];
   const OUTCOME_NAMES = {
     ok: "done",
@@ -477,20 +477,33 @@ const IraPersonal = (() => {
     const [settings, grants, approvals, devices] = await Promise.all([call("/v1/me/settings"), call("/v1/me/grants"), call("/v1/me/approvals"), call("/v1/me/devices")]);
     const error = el("p", { className: "error", role: "alert" });
     const saved = el("p", { className: "muted small", role: "status" });
-    const languages = settings.language_options.map((code) =>
-      el("label", { className: "switch" }, el("input", { type: "checkbox", name: "languages", value: code, checked: settings.languages.includes(code) }), el("span", { text: LANGUAGE_NAMES[code] || code })),
+    // The languages as chips to tick, the reply language as one pill of choices.
+    const languages = el(
+      "div",
+      { className: "chips" },
+      settings.language_options.map((code) =>
+        el("label", { className: "chip-toggle" }, el("input", { type: "checkbox", name: "languages", value: code, checked: settings.languages.includes(code) }), el("span", { text: LANGUAGE_NAMES[code] || code })),
+      ),
     );
-    const reply = el("select", { name: "reply_language" }, settings.reply_language_options.map((code) => el("option", { value: code, text: REPLY_NAMES[code] || code })));
-    reply.value = settings.reply_language;
+    const reply = el(
+      "div",
+      { className: "segmented", role: "radiogroup", "aria-label": "Reply in" },
+      settings.reply_language_options.map((code) =>
+        el("label", {}, el("input", { type: "radio", name: "reply_language", value: code, checked: code === settings.reply_language }), el("span", { text: REPLY_NAMES[code] || code })),
+      ),
+    );
     const form = el(
       "form",
       { className: "stack" },
-      el("label", {}, "What you call your assistant", el("input", { name: "assistant_name", maxlength: "32", value: settings.assistant_name.value })),
-      el("label", {}, "Wake phrase (for your phone)", el("input", { name: "wake_phrase", maxlength: "40", value: settings.wake_phrase.value })),
-      el("fieldset", { className: "stack-tight" }, el("legend", { text: "I speak" }), languages),
-      el("label", {}, "Reply in", reply),
-      el("button", { type: "submit", className: "btn btn-primary", text: "Save" }),
-      saved,
+      el(
+        "div",
+        { className: "field-pair" },
+        el("label", {}, "What you call your assistant", el("input", { name: "assistant_name", maxlength: "32", value: settings.assistant_name.value })),
+        el("label", {}, "Wake phrase (for your phone)", el("input", { name: "wake_phrase", maxlength: "40", value: settings.wake_phrase.value })),
+      ),
+      el("fieldset", { className: "stack-tight pick-field" }, el("legend", { text: "I speak" }), languages),
+      el("fieldset", { className: "stack-tight pick-field" }, el("legend", { text: "Ira replies in" }), reply),
+      el("div", { className: "row save-row" }, el("button", { type: "submit", className: "btn btn-primary", text: "Save" }), saved),
       error,
     );
     form.addEventListener("submit", async (event) => {
@@ -634,8 +647,7 @@ const IraPersonal = (() => {
     const form = el(
       "form",
       { className: "stack card" },
-      el("h3", { text: "Web and news search" }),
-      el("label", { className: "switch" }, toggle, el("span", { text: "Let Ira search the web and the news for me. My questions go to the search service." })),
+      skillRow(toggle, "Web and news search: let Ira search the web and the news for you. Your questions go to the search service."),
       readiness.length ? el("p", { className: "muted small", text: `Note: ${readiness.join(", and ")}.` }) : null,
       pin,
       confirm,

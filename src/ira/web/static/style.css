@@ -900,6 +900,38 @@ legend + .skill-row,
 .skill-name { font-weight: 500; }
 .skill-what { font-size: var(--text-s); line-height: 1.5; color: var(--muted); }
 
+/* Two short fields side by side, one above the other on a phone. */
+.field-pair { display: grid; grid-template-columns: repeat(auto-fit, minmax(13rem, 1fr)); gap: var(--s-3); }
+
+/* Several of a few to tick (the languages): chips, green with a tick when on. */
+.chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.chip-toggle { position: relative; display: inline-flex; color: var(--text); cursor: pointer; }
+.chip-toggle input { position: absolute; inset: 0; width: 100%; height: 100%; min-height: 0; margin: 0; padding: 0; opacity: 0; cursor: pointer; }
+.chip-toggle span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 14px;
+  font-size: var(--text-s);
+  border: 1px solid var(--hair);
+  border-radius: 999px;
+  background: var(--card);
+  transition: background var(--ease), border-color var(--ease), color var(--ease);
+}
+.chip-toggle:hover span { border-color: color-mix(in srgb, var(--accent) 45%, transparent); }
+.chip-toggle input:checked + span { background: var(--accent-soft); border-color: color-mix(in srgb, var(--accent) 60%, transparent); color: var(--accent-soft-text); font-weight: 500; }
+.chip-toggle input:checked + span::before { content: ""; width: 8px; height: 4px; border-left: 1.75px solid currentColor; border-bottom: 1.75px solid currentColor; transform: translateY(-1px) rotate(-45deg); }
+.chip-toggle input:focus-visible + span { box-shadow: var(--focus-ring); }
+
+/* A choice of a few, in a form: the menu's pill, its width. */
+.panel-body .segmented { justify-self: start; flex-wrap: wrap; }
+.panel-body .segmented label { display: block; }
+.save-row { align-items: center; gap: var(--s-3); }
+.save-row p { margin: 0; }
+
+/* A card that is one switch (web search): its row needs no rule above. */
+.card > .skill-row:first-child { border-top: 0; padding-top: 0; }
+
 /* "Quick:" presets on Connections: chips, not loose links. */
 .panel-body .row > .text-btn { min-height: 32px; padding: 0 var(--s-3); font-size: var(--text-s); font-weight: 500; border: 1px solid var(--hair); background: var(--fill); }
 .panel-body .row > .text-btn:hover { border-color: color-mix(in srgb, var(--accent) 45%, transparent); background: var(--accent-soft); }
