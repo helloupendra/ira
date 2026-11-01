@@ -8,6 +8,9 @@ struct AskIraIntent: AppIntent {
     static let title: LocalizedStringResource = "Ask Ira"
     static let description = IntentDescription("Ask your own Ira a question and hear the answer.")
     static let openAppWhenRun = false
+    /// Siri answers a locked iPhone too: Ira's answers (your conversations, Drop, mail) are
+    /// only for whoever unlocked it.
+    static let authenticationPolicy: IntentAuthenticationPolicy = .requiresAuthentication
 
     @Parameter(title: "Question", requestValueDialog: IntentDialog("What do you want to ask Ira?"))
     var question: String
@@ -26,6 +29,8 @@ struct TellIraIntent: AppIntent {
     static let title: LocalizedStringResource = "Tell Ira"
     static let description = IntentDescription("Tell your own Ira something to remember, or a reminder to keep.")
     static let openAppWhenRun = false
+    /// What is told goes into your own Ira: only from an unlocked iPhone.
+    static let authenticationPolicy: IntentAuthenticationPolicy = .requiresAuthentication
 
     @Parameter(title: "What to tell Ira", requestValueDialog: IntentDialog("What should I tell Ira?"))
     var note: String
@@ -91,7 +96,8 @@ enum SiriAsk {
         }
         switch card.need {
         case .yes:
-            // Siri answers on a locked iPhone too, so a yes there could be anyone's.
+            // Both intents need an unlocked iPhone; this stays for a Shortcut that runs one
+            // some other way.
             guard await unlocked() else {
                 _ = try? await client.cancel(actionID: card.id)
                 return "\(card.summary). Unlock your iPhone, then ask again. Nothing was done."
