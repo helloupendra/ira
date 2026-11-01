@@ -304,7 +304,7 @@ final class Conversation: ObservableObject {
                 notice = "The microphone did not start: \(error.localizedDescription)"
                 return
             }
-            vad = EnergyVAD()
+            vad = freshVAD()
             listening = true
             mode = .listening
             notice = nil
@@ -353,6 +353,12 @@ final class Conversation: ObservableObject {
         }
     }
 
+    /// The voice detector for how the microphone is set up now: without echo cancellation,
+    /// half-duplex and patient with a slow or quiet voice.
+    private func freshVAD() -> EnergyVAD {
+        EnergyVAD(config: audio.echoCancelling ? EnergyVAD.Config() : .withoutEchoCancellation)
+    }
+
     /// A microphone that gives nothing is said within 3 s, frames or not.
     private func watchSilence() {
         silence.start(at: monotonicMs())
@@ -374,6 +380,7 @@ final class Conversation: ObservableObject {
                 IraLog.shared.warning("mic silent for 3 s with echo cancellation on: \(micName); listening again without it")
                 do {
                     try audio.restartWithoutEchoCancellation()
+                    vad = freshVAD()
                     watchSilence()
                     return
                 } catch {

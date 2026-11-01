@@ -97,6 +97,74 @@ struct VADTests {
         #expect(out.contains { if case .speechStart(let at) = $0.1 { return at == 0 } else { return false } })
     }
 
+    /// Turns (start, end) in what the detector said.
+    static func turns(_ out: [(Double, EnergyVAD.Output)]) -> [(Double, Double?)] {
+        var turns: [(Double, Double?)] = []
+        for (_, output) in out {
+            if case .speechStart(let at) = output { turns.append((at, nil)) }
+            if case .speechEnd(let at) = output, !turns.isEmpty { turns[turns.count - 1].1 = at }
+        }
+        return turns
+    }
+
+    static func frames(_ pattern: [(loud: Bool, count: Int)], amplitude: Float = 0.1) -> [[Float]] {
+        pattern.flatMap { Array(repeating: $0.loud ? Synth.tone(amplitude) : Synth.silence(), count: $0.count) }
+    }
+
+    @Test func withoutEchoCancellationAShortSoundIsNoTurnButHaanIs() {
+        var vad = EnergyVAD(config: .withoutEchoCancellation)
+        let blip = Synth.run(&vad, VADTests.frames([(true, 10), (false, 60)]))  // 200 ms
+        #expect(blip.isEmpty)
+        var haan = EnergyVAD(config: .withoutEchoCancellation)
+        let turns = VADTests.turns(Synth.run(&haan, VADTests.frames([(true, 15), (false, 60)])))  // 300 ms
+        #expect(turns.count == 1)
+        #expect(turns.first?.0 == 0 && turns.first?.1 == 300)
+    }
+
+    @Test func aPauseBetweenWordsKeepsOneTurn() {
+        let speech = VADTests.frames([(true, 20), (false, 35), (true, 20), (false, 60)])  // a 700 ms pause
+        var patient = EnergyVAD(config: .withoutEchoCancellation)
+        #expect(VADTests.turns(Synth.run(&patient, speech)).count == 1)
+        var usual = EnergyVAD()
+        #expect(VADTests.turns(Synth.run(&usual, speech)).count == 2)  // with echo cancellation, as before
+    }
+
+    @Test func dipsBetweenSyllablesCountTowardTheStart() {
+        // 80 ms of voice, 40 ms dips: 320 ms in all, never 250 ms unbroken.
+        let syllables = VADTests.frames([(true, 4), (false, 2), (true, 4), (false, 2), (true, 4), (false, 60)])
+        var vad = EnergyVAD(config: .withoutEchoCancellation)
+        let turns = VADTests.turns(Synth.run(&vad, syllables))
+        #expect(turns.count == 1 && turns.first?.0 == 0)
+        // A dip longer than 80 ms starts the count again.
+        var broken = EnergyVAD(config: .withoutEchoCancellation)
+        #expect(Synth.run(&broken, VADTests.frames([(true, 8), (false, 6), (true, 8), (false, 60)])).isEmpty)
+    }
+
+    @Test func halfDuplexNeverHearsIraOrHerEcho() {
+        var vad = EnergyVAD(config: .withoutEchoCancellation)
+        vad.replying = true
+        var out = Synth.run(&vad, Array(repeating: Synth.tone(0.3), count: 40))  // Ira, loud, from the speakers
+        #expect(out.isEmpty)
+        #expect(vad.noiseFloor == 0)  // her voice is not the room
+        vad.replying = false
+        // Her echo in the room just after: 300 ms, still within the 400 ms tail.
+        for (index, frame) in Array(repeating: Synth.tone(0.3), count: 15).enumerated() {
+            out += vad.process(frame, at: 800 + Double(index) * 20).map { (0, $0) }
+        }
+        #expect(out.isEmpty)
+        // Then the person: heard once the tail is over.
+        for (index, frame) in Array(repeating: Synth.tone(0.1), count: 30).enumerated() {
+            out += vad.process(frame, at: 1100 + Double(index) * 20).map { (0, $0) }
+        }
+        let turns = VADTests.turns(out)
+        #expect(turns.count == 1)
+        #expect(turns.first?.0 == 1180)  // the first frame that ends after the 400 ms tail
+        // With echo cancellation, the person may still talk over Ira (barge-in).
+        var usual = EnergyVAD()
+        usual.replying = true
+        #expect(!VADTests.turns(Synth.run(&usual, Array(repeating: Synth.tone(0.3), count: 40))).isEmpty)
+    }
+
     @Test func pcmAndWav() {
         let pcm = PCM.int16Data([0, 1, -1, 0.5])
         #expect(pcm == Data([0x00, 0x00, 0xFF, 0x7F, 0x01, 0x80, 0xFF, 0x3F]))

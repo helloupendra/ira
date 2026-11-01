@@ -14,6 +14,11 @@ import Foundation
 /// * While Ira is speaking (`replying`), the threshold is raised and speech
 ///   must last longer before it counts, so Ira's own voice from the speakers
 ///   rarely interrupts her; the person's voice does (barge-in).
+/// * Without the Mac's echo cancellation (`withoutEchoCancellation`), Ira would
+///   hear herself, so nothing counts as speech while she speaks and for a moment
+///   after (`halfDuplex`); a turn needs a quarter of a second of voice, with
+///   short dips allowed (`gapMs`), and ends after 900 ms of quiet, so a slow or
+///   quiet speaker is not cut into one-word turns.
 public struct EnergyVAD: Sendable {
     public struct Config: Sendable, Equatable {
         public var sampleRate: Double = 16_000
@@ -26,7 +31,23 @@ public struct EnergyVAD: Sendable {
         public var noiseFactor: Float = 3
         public var replyFactor: Float = 2.5
         public var replyStartMs: Double = 160
+        /// Quiet within the start of speech that does not break it: dips between syllables.
+        public var gapMs: Double = 0
+        /// Nothing counts as speech while Ira speaks, nor for `echoTailMs` after.
+        public var halfDuplex = false
+        public var echoTailMs: Double = 400
         public init() {}
+
+        /// For a microphone without the Mac's echo cancellation: Ira's voice from the
+        /// speakers reaches it, and nothing evens out a quiet voice.
+        public static var withoutEchoCancellation: Config {
+            var config = Config()
+            config.hangoverMs = 900
+            config.startMs = 250
+            config.gapMs = 80
+            config.halfDuplex = true
+            return config
+        }
     }
 
     public enum Output: Equatable, Sendable {
@@ -46,6 +67,8 @@ public struct EnergyVAD: Sendable {
 
     private var recent: [(at: Double, pcm: Data, loud: Bool)] = []
     private var loudRun = 0
+    private var quietRun = 0
+    private var lastReplyEnd = -Double.infinity
     private var runStart: Double = 0
     private var lastLoudEnd: Double = 0
     private var speechStarted: Double = 0
@@ -74,26 +97,35 @@ public struct EnergyVAD: Sendable {
         self.level = level
         let pcm = PCM.int16Data(samples)
         let end = at + Double(samples.count) / config.sampleRate * 1000
-        let loud = level > effectiveThreshold
+        if replying { lastReplyEnd = end }
+        // Half-duplex: Ira's own voice (and its echo in the room) is never the person's turn.
+        let deaf = config.halfDuplex && (replying || end - lastReplyEnd < config.echoTailMs)
+        let loud = !deaf && level > effectiveThreshold
         var out: [Output] = []
 
         if !speaking {
-            if !loud && !replying {
+            if !loud && !replying && !deaf {
                 // Learn the room's quiet level, slowly, only from quiet frames.
                 noiseFloor = noiseFloor == 0 ? level : noiseFloor * 0.95 + level * 0.05
             }
             recent.append((at, pcm, loud))
-            let keep = Int((config.leadInMs + config.replyStartMs) / config.frameMs) + 1
+            let keep = Int((config.leadInMs + max(config.startMs, config.replyStartMs)) / config.frameMs) + 1
             if recent.count > keep { recent.removeFirst(recent.count - keep) }
             if loud {
                 if loudRun == 0 { runStart = at }
                 loudRun += 1
+                quietRun = 0
                 lastLoudEnd = end
-            } else {
-                loudRun = 0
+            } else if loudRun > 0 {
+                // A dip of up to gapMs between syllables keeps the run; a longer one ends it.
+                quietRun += 1
+                if deaf || Double(quietRun) * config.frameMs > config.gapMs {
+                    loudRun = 0
+                    quietRun = 0
+                }
             }
             let needed = replying ? config.replyStartMs : config.startMs
-            if loudRun > 0, end - runStart >= needed {
+            if loud, loudRun > 0, end - runStart >= needed {
                 speaking = true
                 speechStarted = runStart
                 out.append(.speechStart(at: runStart))
@@ -104,6 +136,7 @@ public struct EnergyVAD: Sendable {
                 }
                 recent.removeAll()
                 loudRun = 0
+                quietRun = 0
             }
             return out
         }
@@ -122,6 +155,7 @@ public struct EnergyVAD: Sendable {
         speaking = false
         recent.removeAll()
         loudRun = 0
+        quietRun = 0
     }
 }
 
