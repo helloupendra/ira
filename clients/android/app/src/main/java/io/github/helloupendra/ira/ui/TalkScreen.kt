@@ -97,6 +97,10 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.runtime.mutableDoubleStateOf
 import io.github.helloupendra.ira.core.Steps
+import io.github.helloupendra.ira.core.Now
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.withStyle
 import io.github.helloupendra.ira.voice.nowMs
 
 @Composable
@@ -116,6 +120,8 @@ fun TalkScreen(app: IraApp, talkRequests: Int, onSkills: () -> Unit, onSettings:
     var sending by remember { mutableStateOf(false) }
     var sendError by remember { mutableStateOf<String?>(null) }
     val lines by app.transcript.lines.collectAsState()
+    val dropItems by app.drop.items.collectAsState()
+    var devices by remember { mutableStateOf<List<Now.Device>?>(null) }
     var confirming by remember { mutableStateOf(false) }
     // What happened to the last action, shown once its card is gone: (title, short result).
     var result by remember { mutableStateOf<Pair<String, String?>?>(null) }
@@ -126,6 +132,16 @@ fun TalkScreen(app: IraApp, talkRequests: Int, onSkills: () -> Unit, onSettings:
         refresh++
         app.refreshApprovals()
         onPauseOrDispose { }
+    }
+    // Which of the person's devices are on, for Now; none shown when it can't be read.
+    LaunchedEffect(refresh) {
+        devices =
+            withContext(Dispatchers.IO) {
+                val base = app.settings.server ?: return@withContext null
+                val token = app.secrets.token() ?: return@withContext null
+                runCatching { Net.get(base.trimEnd('/') + Now.DEVICES_PATH, token) }.getOrNull()
+                    ?.takeIf { it.status == 200 }?.let { Now.devices(it.body) }
+            }
     }
 
     var callAfterGrant by remember { mutableStateOf(false) }
@@ -225,7 +241,10 @@ fun TalkScreen(app: IraApp, talkRequests: Int, onSkills: () -> Unit, onSettings:
                 }
             }
             if (Approvals.WINDOW && window != null) ApprovalBanner(app, window.id, window.secondsLeft(now.toDouble()))
-            Conversation(ui, lines, Modifier.weight(1f), greeting = !setup, onReport = { reporting = it })
+            Conversation(
+                ui, lines, Modifier.weight(1f), greeting = !setup, onReport = { reporting = it },
+                now = Now.cards(dropItems.firstOrNull(), devices), onDrop = onDrop,
+            )
             val card = ui.action
             // Only the newest pending action is shown: a new one replaces the card and any result.
             LaunchedEffect(card?.id) {
@@ -493,7 +512,11 @@ private fun TalkHeader(ui: CallUi, link: LinkState, onDrop: () -> Unit, onSkills
         horizontalArrangement = Arrangement.spacedBy(10.dp),
     ) {
         Column(Modifier.weight(1f)) {
-            Text(ui.assistant, fontSize = 17.sp, fontWeight = FontWeight.SemiBold, color = colors.ink)
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                // Green while this phone's link to Ira is up.
+                Box(Modifier.size(7.dp).clip(CircleShape).background(if (link is LinkState.Connected) colors.green else colors.faint))
+                Text(ui.assistant, fontSize = 17.sp, fontWeight = FontWeight.SemiBold, color = colors.ink)
+            }
             Text("$mode$text · $tools", fontSize = 12.sp, color = colors.muted, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
         Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -505,7 +528,15 @@ private fun TalkHeader(ui: CallUi, link: LinkState, onDrop: () -> Unit, onSkills
 }
 
 @Composable
-private fun Conversation(ui: CallUi, lines: List<Transcript.Line>, modifier: Modifier, greeting: Boolean, onReport: (Transcript.Line) -> Unit) {
+private fun Conversation(
+    ui: CallUi,
+    lines: List<Transcript.Line>,
+    modifier: Modifier,
+    greeting: Boolean,
+    onReport: (Transcript.Line) -> Unit,
+    now: List<Now.Card> = emptyList(),
+    onDrop: () -> Unit = {},
+) {
     val list = rememberLazyListState()
     val pending = ui.step != null
     val count = lines.size + 1 + (if (ui.caption.isNotBlank()) 1 else 0) + (if (pending) 1 else 0)
@@ -517,7 +548,7 @@ private fun Conversation(ui: CallUi, lines: List<Transcript.Line>, modifier: Mod
     ) {
         item { Spacer(Modifier.height(8.dp)) }
         // The greeting, unless the setup checklist is showing above.
-        if (greeting && lines.isEmpty() && ui.caption.isBlank()) item { Hero() }
+        if (greeting && lines.isEmpty() && ui.caption.isBlank()) item { Hero(now, onDrop) }
         items(lines, key = { it.key }) { line -> Bubble(line, onReport) }
         if (ui.caption.isNotBlank()) {
             item {
@@ -533,26 +564,60 @@ private fun Conversation(ui: CallUi, lines: List<Transcript.Line>, modifier: Mod
     }
 }
 
-/** An empty conversation: the lens at rest, the greeting, the day and a hint. */
+/** An empty conversation: the lens at rest, the greeting, the day, and Now (or a hint when there is none). */
 @Composable
-private fun Hero() {
+private fun Hero(now: List<Now.Card>, onDrop: () -> Unit) {
     val colors = Presence.colors
-    val hour = LocalTime.now().hour
-    val part = if (hour < 12) "Good morning" else if (hour < 17) "Good afternoon" else "Good evening"
-    Column(Modifier.fillMaxWidth().padding(top = 48.dp, bottom = 16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+    val greeting =
+        buildAnnotatedString {
+            append("Good ")
+            withStyle(SpanStyle(fontStyle = FontStyle.Italic, color = colors.green)) { append(Now.partOfDay(LocalTime.now().hour)) }
+            append(".")
+        }
+    Column(Modifier.fillMaxWidth().padding(top = 40.dp, bottom = 16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
         Lens(104.dp, breathing = true, rings = 1)
         Spacer(Modifier.height(20.dp))
-        Text("$part.", fontFamily = Presence.serif, fontSize = 34.sp, color = colors.ink)
+        Text(greeting, fontFamily = Presence.serif, fontSize = 34.sp, color = colors.ink)
         Spacer(Modifier.height(6.dp))
         Text(LocalDate.now().format(DateTimeFormatter.ofPattern("EEEE, d MMMM")), fontSize = 14.sp, color = colors.muted)
-        Spacer(Modifier.height(18.dp))
-        Text(
-            "Ask in your own words, in any language. Try “kal ka calendar batao”.",
-            fontSize = 13.sp,
-            color = colors.faint,
-            textAlign = TextAlign.Center,
-            modifier = Modifier.padding(horizontal = 24.dp),
-        )
+        Spacer(Modifier.height(22.dp))
+        if (now.isEmpty()) {
+            Text(
+                "Ask in your own words, in any language. Try “kal ka calendar batao”.",
+                fontSize = 13.sp,
+                color = colors.faint,
+                textAlign = TextAlign.Center,
+                modifier = Modifier.padding(horizontal = 24.dp),
+            )
+        } else {
+            Column(Modifier.fillMaxWidth().padding(horizontal = 8.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                now.forEach { card -> NowCard(card, onClick = if (card.opens == Now.Opens.DROP) onDrop else null) }
+            }
+        }
+    }
+}
+
+/** One Now card: a label with a green dot, one line of value, one muted line. */
+@Composable
+private fun NowCard(card: Now.Card, onClick: (() -> Unit)?) {
+    val colors = Presence.colors
+    val shape = RoundedCornerShape(14.dp)
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .clip(shape)
+            .background(colors.card)
+            .border(1.dp, colors.line, shape)
+            .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier)
+            .padding(horizontal = 16.dp, vertical = 12.dp),
+        verticalArrangement = Arrangement.spacedBy(3.dp),
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(7.dp)) {
+            Box(Modifier.size(5.dp).clip(CircleShape).background(colors.green))
+            Text(card.label.uppercase(), style = Presence.label, color = colors.faint)
+        }
+        Text(card.value, fontSize = 14.sp, color = colors.ink, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        Text(card.detail, fontSize = 12.sp, color = colors.muted, maxLines = 1, overflow = TextOverflow.Ellipsis)
     }
 }
 
