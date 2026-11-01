@@ -3,8 +3,10 @@ package io.github.helloupendra.ira.ui
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
@@ -13,7 +15,6 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -28,10 +29,10 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import io.github.helloupendra.ira.IraApp
 import io.github.helloupendra.ira.approvals.DeviceKey
 import io.github.helloupendra.ira.core.Approvals
@@ -52,70 +53,65 @@ fun ApprovalsScreen(app: IraApp, onBack: () -> Unit) {
     LaunchedEffect(Unit) { app.refreshApprovals() }
     val now = System.currentTimeMillis() / 1000.0
 
+    val colors = Presence.colors
     Column(Modifier.fillMaxSize()) {
-        TopRow("Approvals", onBack)
+        ScreenHeader("Approvals", onBack)
         Column(
-            Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 24.dp, vertical = 8.dp),
-            verticalArrangement = Arrangement.spacedBy(14.dp),
+            Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 8.dp),
+            verticalArrangement = Arrangement.spacedBy(24.dp),
         ) {
             Text(
                 "When you confirm a screen or app action on this phone with your PIN, Ira may do the next such " +
                     "steps here (open an app or a link, play, tap and type) without asking again, for a while. " +
                     "Sending, replying, calling, paying, deleting and new permissions always ask.",
-                style = MaterialTheme.typography.bodyMedium,
+                fontSize = 14.sp,
+                lineHeight = 20.sp,
+                color = colors.muted,
+                modifier = Modifier.padding(horizontal = 4.dp),
             )
-            message?.let { Text(it, color = MaterialTheme.colorScheme.error) }
-            Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)) {
-                Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("How long", fontWeight = FontWeight.SemiBold)
-                    Text(
-                        when (val minutes = status?.minutes) {
-                            null -> "Asking your Ira..."
-                            0 -> "Off: every step asks for your PIN."
-                            else -> "$minutes minutes after each PIN."
-                        },
-                    )
-                    TextButton(onClick = { open(context, app.settings.server.orEmpty()) }) { Text("Change it on your Ira (Your assistant)") }
+            message?.let { Text(it, color = colors.down, fontSize = 14.sp, modifier = Modifier.padding(horizontal = 4.dp)) }
+            Section("How long") {
+                ItemRow(
+                    when (val minutes = status?.minutes) {
+                        null -> "Asking your Ira..."
+                        0 -> "Off: every step asks for your PIN."
+                        else -> "$minutes minutes after each PIN."
+                    },
+                )
+                Hairline()
+                ItemRow("Change it on your Ira", "Your assistant", onClick = { open(context, app.settings.server.orEmpty()) }) { Chevron() }
+            }
+            Section("Open now") {
+                val open = status?.windows.orEmpty().filter { it.expiresAt > now }
+                if (open.isEmpty()) ItemRow("None.", titleColor = colors.muted)
+                open.forEachIndexed { index, window ->
+                    if (index > 0) Hairline()
+                    ItemRow(
+                        window.device.ifBlank { "A device" },
+                        (Approvals.banner(window.secondsLeft(now)) ?: "Closing") + " · ${window.steps} steps so far",
+                    ) { PillButton("Stop", { app.stopApproval(window.id) { message = it } }, compact = true) }
+                }
+                if (open.size > 1) {
+                    Hairline()
+                    ItemRow("Stop them all", onClick = { app.stopApproval(null) { message = it } }, titleColor = colors.down)
                 }
             }
-            Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)) {
-                Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("Open now", fontWeight = FontWeight.SemiBold)
-                    val open = status?.windows.orEmpty().filter { it.expiresAt > now }
-                    if (open.isEmpty()) Text("None.", color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    for (window in open) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Column(Modifier.weight(1f)) {
-                                Text(window.device.ifBlank { "A device" })
-                                Text(
-                                    (Approvals.banner(window.secondsLeft(now)) ?: "Closing") + " · ${window.steps} steps so far",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                )
-                            }
-                            TextButton(onClick = { app.stopApproval(window.id) { message = it } }) { Text("Stop") }
-                        }
-                    }
-                    if (open.size > 1) OutlinedButton(onClick = { app.stopApproval(null) { message = it } }) { Text("Stop them all") }
+            Section(
+                "Trusted apps on this phone",
+                note = "In these apps Ira may tap and type without asking, once it has seen the app in front. Sending, calling, paying and deleting still ask.",
+            ) {
+                val apps = status?.trustedOn(app.settings.deviceId).orEmpty()
+                if (apps.isEmpty()) ItemRow("None.", titleColor = colors.muted)
+                apps.forEachIndexed { index, pkg ->
+                    if (index > 0) Hairline()
+                    ItemRow(io.github.helloupendra.ira.tools.Apps.label(context, pkg) ?: pkg)
                 }
-            }
-            Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)) {
-                Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("Trusted apps on this phone", fontWeight = FontWeight.SemiBold)
-                    Text(
-                        "In these apps Ira may tap and type without asking, once it has seen the app in front. " +
-                            "Sending, calling, paying and deleting still ask.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                    val apps = status?.trustedOn(app.settings.deviceId).orEmpty()
-                    if (apps.isEmpty()) Text("None.", color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    for (pkg in apps) Text(io.github.helloupendra.ira.tools.Apps.label(context, pkg) ?: pkg)
-                    // Changing them needs a sign-in (and the PIN to add one): the Ira app on the web.
-                    TextButton(onClick = { open(context, app.settings.server.orEmpty()) }) { Text("Add or remove them on your Ira (Your assistant, Trusted apps)") }
-                }
+                Hairline()
+                // Changing them needs a sign-in (and the PIN to add one): the Ira app on the web.
+                ItemRow("Add or remove them on your Ira", "Your assistant, Trusted apps", onClick = { open(context, app.settings.server.orEmpty()) }) { Chevron() }
             }
             if (Approvals.FINGERPRINT) FingerprintCard(app) { message = it }
+            Spacer(Modifier.height(8.dp))
         }
     }
 }
@@ -129,16 +125,15 @@ private fun FingerprintCard(app: IraApp, onMessage: (String?) -> Unit) {
     var enrolled by remember { mutableStateOf(app.settings.approvalsEnrolled && DeviceKey.usable()) }
     var pin by remember { mutableStateOf("") }
     var busy by remember { mutableStateOf(false) }
-    Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)) {
-        Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text("Fingerprint", fontWeight = FontWeight.SemiBold)
+    Section("Fingerprint") {
+        Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             if (enrolled) {
                 Text("This phone is enrolled: a request that needs your PIN offers your fingerprint first.")
-                OutlinedButton(onClick = {
+                PillButton("Stop using the fingerprint here", {
                     DeviceKey.delete()
                     app.settings.approvalsEnrolled = false
                     enrolled = false
-                }) { Text("Stop using the fingerprint here") }
+                }, compact = true)
             } else {
                 if (app.settings.approvalsEnrolled) {
                     Text(
