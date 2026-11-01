@@ -126,6 +126,8 @@ class Runtime:
             self.assistant.businesses = self.businesses.lines
         if self.assistant.switched_off is None:
             self.assistant.switched_off = self.switched_off
+        if self.assistant.server_notes is None:
+            self.assistant.server_notes = self.server_notes
         hub = self.hub
         self.approvals = Approvals(
             self.store,
@@ -396,6 +398,19 @@ class Runtime:
             log.exception("carrying on after action %s failed", pending.id)
             return None
         return {"text": text, "message_id": message_id}
+
+    def server_notes(self, user_id: int | None) -> list[str]:
+        """What this server cannot do for the person now, for their prompt: web search they
+        switched on, with no key on the server."""
+        if user_id is None or self.search is None or self.search.web_ready:
+            return []
+        if not self.assistant.user_settings.get(user_id).web_search:
+            return []
+        return [
+            "Web search is off on this server: no Brave Search key is set. When asked to "
+            "search the web, say so plainly, and that the server's owner adds a Brave Search "
+            "API key. For today's news, use news_search."
+        ]
 
     def switched_off(self, user_id: int | None) -> list[str]:
         """For each of the person's devices, the skills its tools need that are not switched

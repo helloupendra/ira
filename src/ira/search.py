@@ -275,8 +275,8 @@ class Search:
         key = os.environ.get(self.config.brave_api_key_env)
         if not key:
             raise ToolError(
-                "web search is not configured on this server: the owner sets "
-                f"{self.config.brave_api_key_env} in .env (a Brave Search API key)"
+                "web search is off on this server: the owner adds a Brave Search API key "
+                f"({self.config.brave_api_key_env} in .env). For today's news, use news_search"
             )
         query = " ".join(query.split())[:400]
         if not query:
@@ -483,7 +483,9 @@ class Search:
                 days = 2
             return await self.news(str(arguments.get("query") or ""), days)
 
-        return [
+        # Web search only with its key: without one, the model is told it is off (the
+        # runtime's server notes) and turns to news_search, instead of a call that fails.
+        web_tools = [
             PersonalTool(
                 name="web_search",
                 description="Search the web. Returns titles, links, sites, dates and snippets.",
@@ -494,6 +496,9 @@ class Search:
                 run=web,
                 skill="web",
             ),
+        ]
+        return [
+            *(web_tools if self.web_ready else []),
             PersonalTool(
                 name="news_search",
                 description="Search recent news headlines from the news feeds this server reads.",

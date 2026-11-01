@@ -232,8 +232,10 @@ grant (your questions go to the search provider), so it needs your PIN;
 `{"web_search": false}` never does. `MySettings.web_search` says whether it is
 on, and whether the server can answer: `web_ready` (a Brave Search API key in
 `BRAVE_SEARCH_API_KEY`) and `news_ready` (feeds under `search.news.feeds`).
-Without a key, `web_search` answers that it is not configured. The server
-makes at most 30 web searches an hour, for everyone together.
+Without a key, `web_search` is not offered to the model at all: Ira says
+plainly that web search is off on this server (the owner adds the key) and
+uses `news_search` for today's news. The server makes at most 30 web searches
+an hour, for everyone together.
 
 With search on, **`video_find`** finds something to play: a named news
 channel's live stream (Aaj Tak, NDTV India, ABP News, Zee News, India TV,

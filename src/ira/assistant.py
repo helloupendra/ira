@@ -261,6 +261,8 @@ class Assistant:
         self.businesses: Callable[[int | None], list[str]] | None = None
         # What the person's devices can do but they have not switched on, one line a device.
         self.switched_off: Callable[[int | None], list[str]] | None = None
+        # What this server cannot do for the person now, one line each (web search, keyless).
+        self.server_notes: Callable[[int | None], list[str]] | None = None
         # Approval windows: after a PIN on screen control, its next steps run without asking.
         self.approvals: Any = None
         # The app each device last said was in front, per conversation, for this turn.
@@ -359,6 +361,8 @@ class Assistant:
                 "say which skill is off on which device, and that they can switch it on under "
                 "Your devices with their PIN, then ask again.\n"
             )
+        notes = self.server_notes(user_id) if self.server_notes is not None else []
+        prompt += "".join(f"- {line}\n" for line in notes)
         businesses = self.businesses(user_id) if self.businesses is not None else []
         if businesses:
             prompt += (

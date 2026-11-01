@@ -93,12 +93,17 @@ def search(seen: list, *, status: int = 200, feeds: bool = True, **kwargs: Any) 
     return Search(SearchConfig(news=news, **kwargs), client=client, clock=lambda: NOW, **{})
 
 
-async def test_web_search_without_a_key_says_it_is_not_configured(monkeypatch):
+async def test_web_search_without_a_key_is_not_offered_and_says_so(monkeypatch):
     monkeypatch.delenv("BRAVE_SEARCH_API_KEY", raising=False)
     seen: list = []
-    with pytest.raises(ToolError, match="not configured.*BRAVE_SEARCH_API_KEY"):
-        await search(seen).web("python 3.13")
+    keyless = search(seen)
+    names = {tool.name for tool in keyless.tools()}
+    assert "web_search" not in names and {"news_search", "video_find"} <= names
+    with pytest.raises(ToolError, match="off on this server.*BRAVE_SEARCH_API_KEY.*news_search"):
+        await keyless.web("python 3.13")
     assert seen == []
+    monkeypatch.setenv("BRAVE_SEARCH_API_KEY", KEY)
+    assert "web_search" in {tool.name for tool in keyless.tools()}
 
 
 async def test_web_search_asks_brave_and_returns_sites_and_dates(monkeypatch):
@@ -255,6 +260,20 @@ def test_web_search_is_off_until_its_person_switches_it_on_with_the_pin(
         assert client.get("/v1/me/settings", headers=mine).json()["web_search"]["on"] is False
         log = {row["what"] for row in client.get("/v1/admin/changes", headers=mine).json()}
         assert {"grant.web_search", "grant.revoked"} <= log
+
+
+def test_the_prompt_says_plainly_when_web_search_is_off(runtime_with_people, monkeypatch):
+    runtime, _ = runtime_with_people
+    owner = runtime.accounts.find_user("owner@example.com")
+    staff = runtime.accounts.find_user("staff@example.com")
+    runtime.assistant.user_settings.set(owner.id, "web_search", True)
+    note = "Web search is off on this server: no Brave Search key is set."
+    monkeypatch.delenv("BRAVE_SEARCH_API_KEY", raising=False)
+    prompt = runtime.assistant.system_prompt(owner.id)
+    assert note in prompt and "For today's news, use news_search." in prompt
+    assert note not in runtime.assistant.system_prompt(staff.id)  # never switched it on
+    monkeypatch.setenv("BRAVE_SEARCH_API_KEY", KEY)
+    assert note not in runtime.assistant.system_prompt(owner.id)
 
 
 def test_device_skills_are_grants_an_admin_can_switch_off(runtime_with_people):
