@@ -629,6 +629,14 @@ class Assistant:
                     budget, tight = max(4_000, budget // 4), True
                     continue
                 log.warning("gateway failed: %s", exc)
+                if any(e.kind == "empty" for _, e in exc.errors):
+                    # A model was reached but said nothing: ask again, never answer blank.
+                    from ira.language import detect
+
+                    final_text, model = SAY_AGAIN[detect(asked)], None
+                    yield {"type": "delta", "text": final_text}
+                    history.append(Message(role="assistant", content=final_text))
+                    break
                 message = (
                     "I can't reach a language model right now "
                     f"({len(exc.errors)} tried). Please try again in a minute."
@@ -669,6 +677,12 @@ class Assistant:
                 response.text = cleaned.strip()
 
             if not response.tool_calls:
+                if not (response.text or "").strip():  # nothing left once cleaned
+                    from ira.language import detect
+
+                    log.warning("%s left nothing to say; asking the person again", model)
+                    response.text = SAY_AGAIN[detect(asked)]
+                    yield {"type": "delta", "text": response.text}
                 final_text = response.text
                 if _QUOTED_START.match(final_text or ""):
                     # The leftovers of a call half-written as text, or of a dropped clause.
@@ -1203,10 +1217,12 @@ def fit(
 ) -> list[Message]:
     """What of a conversation goes to the model, within ``budget`` characters: tool results
     of earlier turns are shortened (with ``tight``, this turn's too), then the oldest whole
-    turns are left out, always starting at a message from the person. The stored
-    conversation is never changed."""
-    earlier = [_shortened(m, OLD_TOOL_RESULT_CHARS) for m in history[:current_from]]
-    current = history[current_from:]
+    turns are left out, always starting at a message from the person. An empty answer, which
+    older versions stored, is left out too. The stored conversation is never changed."""
+    earlier = [
+        _shortened(m, OLD_TOOL_RESULT_CHARS) for m in history[:current_from] if not _blank(m)
+    ]
+    current = [m for m in history[current_from:] if not _blank(m)]
     if tight:
         current = [_shortened(m, TIGHT_TOOL_RESULT_CHARS) for m in current]
     total = sum(map(_size, earlier)) + sum(map(_size, current))
@@ -1219,6 +1235,11 @@ def fit(
     if total > budget and current and current[0].role == "user":
         earlier = []  # still too much: this turn alone, which starts with the person's words
     return [*earlier, *current]
+
+
+def _blank(message: Message) -> bool:
+    """An answer with no words and no tool calls."""
+    return message.role == "assistant" and not message.tool_calls and not message.text.strip()
 
 
 def _last_user_text(history: list[Message]) -> str:

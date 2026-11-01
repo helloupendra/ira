@@ -261,10 +261,15 @@ class Gateway:
             except BaseException:  # the caller gave up (cancelled): the attempt still counts
                 self._record(request, tier, purpose, tried, ref, None, "abandoned", started)
                 raise
-            self._warm(ref)
             response.model = ref
             response.attempts = len(tried)
             response.cost_usd = self.cost(ref, response.usage)
+            if _empty(response):
+                errors.append(
+                    (ref, self._empty_answer(request, tier, purpose, tried, response, started))
+                )
+                continue
+            self._warm(ref)
             self._record(request, tier, purpose, tried, ref, response, None, started)
             return response
         if not tried:
@@ -282,7 +287,8 @@ class Gateway:
         """Stream from the first model that answers.
 
         Falling back is only possible until the first text reaches the caller;
-        after that, a failure is raised rather than mixing two models' words.
+        after that, a failure is raised rather than mixing two models' words. A reply
+        with no words (blank space at most) and no tool calls falls back too.
         """
         request = _request()
         errors: list[tuple[str, ProviderError]] = []
@@ -316,6 +322,13 @@ class Gateway:
                         response.model = ref
                         response.attempts = len(tried)
                         response.cost_usd = self.cost(ref, response.usage)
+                        if _empty(response):  # at most blank space went out: the next may answer
+                            recorded = True
+                            error = self._empty_answer(
+                                request, tier, purpose, tried, response, started
+                            )
+                            errors.append((ref, error))
+                            break
                         self._warm(ref)
                         self._record(request, tier, purpose, tried, ref, response, None, started)
                         recorded = True
@@ -335,6 +348,22 @@ class Gateway:
         if not tried:
             self._record(request, tier, purpose, tried, None, None, "no_models", time.monotonic())
         raise GatewayError(tier, errors)
+
+    def _empty_answer(
+        self,
+        request: str,
+        tier: str,
+        purpose: str,
+        tried: list[str],
+        response: ChatResponse,
+        started: float,
+    ) -> ProviderError:
+        """A reply with no words and no tool calls: that model failed this request (some do on a
+        long conversation), not everyone's, so it is not cooled down. Its tokens still count."""
+        ref = response.model or ""
+        log.warning("%s gave an empty answer; trying the next model", ref)
+        self._record(request, tier, purpose, tried, ref, response, "empty", started)
+        return ProviderError(f"{ref}: an empty answer", kind="empty")
 
     def _record(
         self,
@@ -365,7 +394,7 @@ class Gateway:
                 ref,
                 ",".join(tried),
                 len(tried),
-                1 if response else 0,
+                1 if response and error_kind is None else 0,
                 error_kind,
                 round(time.monotonic() - started, 3),
                 usage.input_tokens,
@@ -374,6 +403,10 @@ class Gateway:
                 response.cost_usd if response else None,
             ),
         )
+
+
+def _empty(response: ChatResponse) -> bool:
+    return not response.tool_calls and not (response.text or "").strip()
 
 
 def _request() -> str:

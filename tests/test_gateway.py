@@ -3,7 +3,15 @@ from __future__ import annotations
 import httpx
 import pytest
 
-from ira.models.base import ChatResponse, Message, ProviderError, StreamDone, TextDelta, Usage
+from ira.models.base import (
+    ChatResponse,
+    Message,
+    ProviderError,
+    StreamDone,
+    TextDelta,
+    ToolCall,
+    Usage,
+)
 from ira.models.fake import ScriptedProvider
 from ira.models.gateway import Gateway, GatewayError, Price
 from ira.models.http import BearerAuth, HttpClient
@@ -155,6 +163,48 @@ async def test_stream_never_mixes_two_models_after_text_was_sent(store):
             received.append(event)
     assert [e.text for e in received] == ["partial "]
     assert backup.calls == []
+
+
+async def test_an_empty_answer_moves_on_to_the_next_model(store, caplog):
+    first = ScriptedProvider([ChatResponse(text=" \n")])
+    second = ScriptedProvider(["from the second model"])
+    gw = gateway(store, a=first, b=second)
+
+    response = await gw.chat(HELLO)
+
+    assert response.text == "from the second model" and response.attempts == 2
+    assert "a:m gave an empty answer; trying the next model" in caplog.text
+    assert gw.chain("default") == ["a:m", "b:m"]  # no cool-down: it failed this request only
+    rows = store.query("SELECT model, ok, error_kind, output_tokens FROM calls ORDER BY id")
+    assert [tuple(r) for r in rows] == [("a:m", 0, "empty", 1), ("b:m", 1, None, 5)]
+
+
+async def test_a_streamed_empty_answer_moves_on_to_the_next_model(store):
+    gw = gateway(store, a=ScriptedProvider([""]), b=ScriptedProvider(["streamed answer"]))
+
+    events = [e async for e in gw.stream(HELLO)]
+
+    assert "".join(e.text for e in events if isinstance(e, TextDelta)) == "streamed answer"
+    assert isinstance(events[-1], StreamDone) and events[-1].response.model == "b:m"
+    rows = store.query("SELECT model, ok, error_kind FROM calls ORDER BY id")
+    assert [tuple(r) for r in rows] == [("a:m", 0, "empty"), ("b:m", 1, None)]
+
+
+@pytest.mark.parametrize("stream", [False, True])
+async def test_every_model_empty_is_a_failure(store, stream):
+    gw = gateway(store, a=ScriptedProvider([""]), b=ScriptedProvider([""]))
+    with pytest.raises(GatewayError) as caught:
+        if stream:
+            [e async for e in gw.stream(HELLO)]
+        else:
+            await gw.chat(HELLO)
+    assert [(ref, e.kind) for ref, e in caught.value.errors] == [("a:m", "empty"), ("b:m", "empty")]
+
+
+async def test_a_tool_call_without_words_is_an_answer(store):
+    call = ChatResponse(text="", tool_calls=[ToolCall("c1", "order_status", "{}")])
+    gw = gateway(store, a=ScriptedProvider([call]), b=ScriptedProvider(["unused"]))
+    assert (await gw.chat(HELLO)).tool_calls[0].name == "order_status"
 
 
 async def test_provider_errors_never_carry_the_api_key():

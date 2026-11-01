@@ -7,8 +7,8 @@ import json
 import httpx
 import pytest
 
-from ira.assistant import INVALID_JSON
-from ira.models.base import ChatResponse, ToolCall
+from ira.assistant import INVALID_JSON, SAY_AGAIN
+from ira.models.base import ChatResponse, Message, ToolCall
 from ira.models.fake import ScriptedProvider
 from ira.models.http import HttpClient
 from ira.models.openai_compat import OpenAICompatProvider
@@ -278,3 +278,70 @@ async def test_out_of_steps_with_no_summary_names_the_tools(registry):
     reply = await runtime.assistant.ask("where is A1?", conversation_id="t")
 
     assert reply.text == "I could not finish that in the steps I have. I tried order_status (8x)."
+
+
+def two_models(runtime) -> None:
+    """The one fake provider, as a chain of two models that take its script in turn."""
+    runtime.gateway.tiers["default"] = ["fake:a", "fake:b"]
+
+
+async def answer(runtime, text: str, stream: bool) -> list[dict]:
+    return [e async for e in runtime.assistant.events(text, conversation_id="t", stream=stream)]
+
+
+def said(events: list[dict]) -> str:
+    return "".join(e["text"] for e in events if e["type"] == "delta")
+
+
+@pytest.mark.parametrize("stream", [False, True])
+async def test_an_empty_answer_is_taken_from_the_next_model(registry, stream):
+    provider = ScriptedProvider([ChatResponse(text=""), "It shipped yesterday."])
+    runtime = make_runtime(provider=provider, registry=registry)
+    two_models(runtime)
+
+    events = await answer(runtime, "where is A1?", stream)
+
+    assert said(events) == "It shipped yesterday."
+    assert events[-1]["text"] == "It shipped yesterday." and events[-1]["model"] == "fake:b"
+    assert [c["model"] for c in provider.calls] == ["a", "b"]
+    assert provider.calls[0]["messages"] == provider.calls[1]["messages"]  # the same request
+    assert runtime.assistant.history("t")[-1].text == "It shipped yesterday."
+
+
+@pytest.mark.parametrize("stream", [False, True])
+async def test_every_model_empty_asks_again_in_the_persons_language(registry, stream):
+    provider = ScriptedProvider(["", " "])
+    runtime = make_runtime(provider=provider, registry=registry)
+    two_models(runtime)
+
+    events = await answer(runtime, "mera order kahan hai bhai?", stream)
+
+    assert said(events) == SAY_AGAIN["hinglish"]
+    assert events[-1]["type"] == "done" and events[-1]["text"] == SAY_AGAIN["hinglish"]
+    assert not any(e["type"] == "error" for e in events)
+    stored = runtime.assistant.history("t")
+    assert stored[-1].role == "assistant" and stored[-1].text == SAY_AGAIN["hinglish"]
+
+
+async def test_empty_answers_already_stored_are_not_sent(registry):
+    provider = ScriptedProvider(["Hello again."])
+    runtime = make_runtime(provider=provider, registry=registry)
+    runtime.conversations.ensure("t", channel="api", user_id=None)
+    runtime.conversations.append(
+        "t",
+        [
+            Message(role="user", content="hi"),
+            Message(role="assistant", content=""),
+            Message(role="user", content="are you there?"),
+            Message(role="assistant", content=None),
+        ],
+    )
+
+    await runtime.assistant.ask("hello?", conversation_id="t")
+
+    sent = sent_messages(provider, 0)[1:]
+    assert [(m.role, m.text) for m in sent] == [
+        ("user", "hi"),
+        ("user", "are you there?"),
+        ("user", "hello?"),
+    ]

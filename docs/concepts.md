@@ -116,9 +116,12 @@ tiers:
 Each call tries the models in order and moves on after an error, a timeout or
 a capacity refusal (HTTP 429, 503, 529, "overloaded"). A model that failed
 cools down for `cooldown_seconds` and is tried last until then, so one broken
-model does not add its timeout to every request. When streaming, the gateway
-can only fall back before the first word reaches the user; it never mixes
-two models' answers.
+model does not add its timeout to every request. A reply with no words and no
+tool calls also moves on to the next model, without a cool-down: some models
+do that on one long conversation and are fine on others. If every model gives
+nothing, Ira asks the person to say it again rather than send an empty answer.
+When streaming, the gateway can only fall back before the first word reaches
+the user; it never mixes two models' answers.
 
 Every attempt at a model writes a row to the `calls` table, however it ends:
 answered, failed, timed out, or cut off (the person spoke over Ira, or left).
