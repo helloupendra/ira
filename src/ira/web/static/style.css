@@ -580,6 +580,16 @@ code { font-family: var(--mono); font-size: 0.9em; background: var(--bg-sunken);
 .menu-prefs .switch input:checked { background: var(--accent); }
 .menu-prefs .switch input:checked::before { transform: translateX(16px); }
 .menu-prefs .switch input:focus-visible { box-shadow: var(--focus-ring); }
+
+/* Theme: Light, Dark or System, as one segmented pill. */
+.theme-row { display: flex; align-items: center; justify-content: space-between; gap: var(--s-3); min-height: 44px; font-size: var(--text-m); color: var(--text); }
+.segmented { display: inline-flex; gap: 2px; padding: 3px; border-radius: 999px; background: var(--fill); border: 1px solid var(--hair); }
+.segmented label { position: relative; display: block; }
+.segmented input { position: absolute; inset: 0; width: 100%; height: 100%; min-height: 0; margin: 0; padding: 0; opacity: 0; cursor: pointer; }
+.segmented span { display: block; padding: 5px 12px; border-radius: 999px; font-size: var(--text-s); color: var(--muted); transition: background var(--ease), color var(--ease); }
+.segmented label:hover span { color: var(--text); }
+.segmented input:checked + span { background: var(--deep); color: #eafff7; }
+.segmented input:focus-visible + span { box-shadow: var(--focus-ring); }
 /* The PIN: one row, with Change on the right; the form opens below. */
 .menu-pin { display: grid; gap: var(--s-3); }
 .pin-row { display: flex; align-items: center; gap: var(--s-3); min-height: 32px; }

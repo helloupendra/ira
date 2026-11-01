@@ -30,12 +30,34 @@ const state = {
   online: navigator.onLine,
 };
 
-try {
-  const theme = localStorage.getItem("ira.theme");
-  if (theme === "light" || theme === "dark") document.documentElement.dataset.theme = theme;
-} catch {
-  /* storage can be unavailable in private windows */
+// --- theme: Light, Dark or System, from the menu; theme.js sets it before the first paint --
+
+const THEME_COLOR = { light: "#f4f2ed", dark: "#0b0d0c" };
+const systemDark = matchMedia("(prefers-color-scheme: dark)");
+
+function themeChoice() {
+  try {
+    const choice = localStorage.getItem("ira.theme");
+    if (choice === "light" || choice === "dark" || choice === "system") return choice;
+  } catch {
+    /* storage can be unavailable in private windows */
+  }
+  return "dark";
 }
+
+function applyTheme(choice) {
+  const root = document.documentElement;
+  if (choice === "system") delete root.dataset.theme;
+  else root.dataset.theme = choice;
+  // The browser's own bar takes the page's colour too.
+  const shown = choice === "system" ? (systemDark.matches ? "dark" : "light") : choice;
+  $('meta[name="theme-color"]').setAttribute("content", THEME_COLOR[shown]);
+}
+
+applyTheme(themeChoice());
+systemDark.addEventListener("change", () => {
+  if (themeChoice() === "system") applyTheme("system");
+});
 
 // --- API --------------------------------------------------------------------------
 
@@ -425,6 +447,17 @@ $("#menu").addEventListener("click", (event) => {
 });
 $("#speak-toggle").addEventListener("change", (event) => storage.set("ira.speak", event.target.checked));
 $("#handsfree-toggle").addEventListener("change", (event) => storage.set("ira.handsfree", event.target.checked));
+for (const radio of document.querySelectorAll('input[name="theme"]')) {
+  radio.checked = radio.value === themeChoice();
+  radio.addEventListener("change", () => {
+    try {
+      localStorage.setItem("ira.theme", radio.value);
+    } catch {
+      /* not kept in a private window: it still applies until the page closes */
+    }
+    applyTheme(radio.value);
+  });
+}
 $("#new-chat").addEventListener("click", newConversation);
 
 async function loadPinStatus() {
