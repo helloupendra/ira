@@ -297,6 +297,20 @@ const IraPersonal = (() => {
     { value: "windows", app: "Ira for Windows", icon: '<rect x="3" y="4" width="18" height="12" rx="1.5"/><path d="M9 20h6M12 16v4"/>' },
   ];
 
+  // One choice among a few, as a card: a line drawing, a name and a short line under it.
+  function pickCard(group, value, name, sub, drawing, checked = false) {
+    const icon = el("span", { className: "pick-icon", "aria-hidden": "true" });
+    icon.innerHTML = `<svg viewBox="0 0 24 24">${drawing}</svg>`; // fixed drawings, never data
+    return el(
+      "label",
+      { className: "pick-card" },
+      el("input", { type: "radio", name: group, value, checked }),
+      icon,
+      el("span", { className: "pick-name", text: name }),
+      el("span", { className: "pick-sub", text: sub }),
+    );
+  }
+
   // "Tasks: a coding agent at work…": the skill's name, then what it does.
   function skillWords(description) {
     const cut = description.indexOf(": ");
@@ -320,19 +334,8 @@ const IraPersonal = (() => {
   function addDeviceForm(body, downloads, skills) {
     const picker = el(
       "div",
-      { className: "kind-picker", role: "radiogroup", "aria-label": "Kind" },
-      KINDS.map((kind) => {
-        const icon = el("span", { className: "kind-icon", "aria-hidden": "true" });
-        icon.innerHTML = `<svg viewBox="0 0 24 24">${kind.icon}</svg>`; // fixed drawings, never data
-        return el(
-          "label",
-          { className: "kind-card" },
-          el("input", { type: "radio", name: "kind", value: kind.value, checked: kind.value === "mac" }),
-          icon,
-          el("span", { className: "kind-name", text: KIND_WORDS[kind.value] }),
-          el("span", { className: "kind-app", text: kind.app }),
-        );
-      }),
+      { className: "pick-cards", role: "radiogroup", "aria-label": "Kind" },
+      KINDS.map((kind) => pickCard("kind", kind.value, KIND_WORDS[kind.value], kind.app, kind.icon, kind.value === "mac")),
     );
     const chosenKind = () => $("input[name=kind]:checked", picker).value;
     const name = el("input", { name: "label", maxlength: "60", placeholder: "My Mac" });
@@ -355,7 +358,7 @@ const IraPersonal = (() => {
       "form",
       { className: "stack add-device" },
       el("h3", { text: "Add a device" }),
-      el("fieldset", { className: "stack-tight kind-field" }, el("legend", { text: "Kind" }), picker),
+      el("fieldset", { className: "stack-tight pick-field" }, el("legend", { text: "Kind" }), picker),
       el("label", {}, "Name", name),
       boxes,
       pinField("Your action PIN (a new device is a new permission)"),
@@ -1667,7 +1670,7 @@ const IraPersonal = (() => {
       return;
     }
     const list = el("ul", { className: "cards" });
-    if (!view.connections.length) list.append(el("li", { className: "muted", text: "None yet. A connection lets Ira use a service for you, with its own tiers: reading is free, changes need your yes or your PIN." }));
+    if (!view.connections.length) list.append(el("li", { className: "muted", text: "No services connected yet." }));
     for (const connection of view.connections) list.append(connectionCard(connection, body));
     body.replaceChildren(el("section", { className: "stack" }, list), addConnection(view, body));
   }
@@ -1836,64 +1839,85 @@ const IraPersonal = (() => {
       token.closest("label").hidden = Boolean(chosen);
       needs.replaceChildren(...(chosen ? chosen.needs.map((key) => el("label", {}, key, el("input", { name: `env:${key}`, type: "password", autocomplete: "off", required: true }))) : []));
     };
-    const form = el(
-      "form",
-      { className: "stack card" },
-      el(
-        "div",
-        { className: "row" },
-        el("span", { className: "muted small", text: "Quick:" }),
-        el("button", {
-          type: "button",
-          className: "text-btn",
-          text: "GitHub (read-only)",
-          onClick: () => {
-            setMode("mcp");
-            name.value = PRESETS.github.name;
-            url.value = PRESETS.github.url;
-            server.value = "";
-            showNeeds();
-            hint.textContent = PRESETS.github.hint;
-            token.focus();
-          },
-        }),
-        google && google.available
-          ? el("button", {
-              type: "button",
-              className: "text-btn",
-              text: "Google (Gmail and Calendar)",
-              onClick: () => {
-                setMode("google");
-                name.value = "Google";
-                hint.textContent = "Read-only. You sign in with Google in a page that opens; Ira never sees your password.";
-              },
-            })
-          : null,
-        telegram && telegram.available
-          ? el("button", {
-              type: "button",
-              className: "text-btn",
-              text: "Telegram (as you)",
-              onClick: () => {
-                setMode("telegram");
-                name.value = "Telegram";
-                hint.textContent = "Ira reads your chats when you ask, and sends only after your yes. Telegram allows clients made with your own api_id; heavy automation can get an account limited.";
-                tgId.focus();
-              },
-            })
-          : null,
-        el("button", {
-          type: "button",
-          className: "text-btn",
-          text: "Mail (IMAP)",
-          onClick: () => {
-            setMode("imap");
-            name.value = "Mail";
-            hint.textContent = "Read-only, with an app password. Gmail: Google Account, Security, 2-Step Verification, App passwords.";
-            imapHost.focus();
-          },
-        }),
-      ),
+    const TOKEN_HINT = "The token is sent as Authorization: Bearer, and kept sealed on this server; it is never shown again.";
+    const services = [
+      {
+        id: "github",
+        name: "GitHub",
+        sub: "Read-only",
+        icon: '<circle cx="6" cy="6" r="2.5"/><circle cx="6" cy="18" r="2.5"/><circle cx="18" cy="7" r="2.5"/><path d="M6 8.5v7M18 9.5c0 4.5-5 5-9.5 7.5"/>',
+        pick: () => {
+          setMode("mcp");
+          name.value = PRESETS.github.name;
+          url.value = PRESETS.github.url;
+          server.value = "";
+          showNeeds();
+          hint.textContent = PRESETS.github.hint;
+          token.focus();
+        },
+      },
+      google && google.available
+        ? {
+            id: "google",
+            name: "Google",
+            sub: "Gmail and Calendar",
+            icon: '<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M16 3v4M8 3v4M3 11h18"/>',
+            pick: () => {
+              setMode("google");
+              name.value = "Google";
+              hint.textContent = "Read-only. You sign in with Google in a page that opens; Ira never sees your password.";
+            },
+          }
+        : null,
+      telegram && telegram.available
+        ? {
+            id: "telegram",
+            name: "Telegram",
+            sub: "As you",
+            icon: '<path d="M21 3 10 14"/><path d="m21 3-6.5 18-4.5-7-7-4.5z"/>',
+            pick: () => {
+              setMode("telegram");
+              name.value = "Telegram";
+              hint.textContent = "Ira reads your chats when you ask, and sends only after your yes. Telegram allows clients made with your own api_id; heavy automation can get an account limited.";
+              tgId.focus();
+            },
+          }
+        : null,
+      {
+        id: "imap",
+        name: "Mail",
+        sub: "IMAP, read-only",
+        icon: '<rect x="3" y="5" width="18" height="14" rx="2"/><path d="m3.5 7 8.5 6 8.5-6"/>',
+        pick: () => {
+          setMode("imap");
+          name.value = "Mail";
+          hint.textContent = "Read-only, with an app password. Gmail: Google Account, Security, 2-Step Verification, App passwords.";
+          imapHost.focus();
+        },
+      },
+      {
+        id: "mcp",
+        name: "Other",
+        sub: "Any MCP server",
+        icon: '<rect x="3" y="4" width="18" height="7" rx="1.5"/><rect x="3" y="13" width="18" height="7" rx="1.5"/><path d="M7 7.5h.01M7 16.5h.01"/>',
+        pick: () => {
+          setMode("mcp");
+          name.value = "";
+          url.value = "";
+          hint.textContent = TOKEN_HINT;
+          name.focus();
+        },
+      },
+    ].filter(Boolean);
+    const picker = el(
+      "div",
+      { className: "pick-cards", role: "radiogroup", "aria-label": "Service" },
+      services.map((service) => pickCard("service", service.id, service.name, service.sub, service.icon)),
+    );
+    // What to fill in, once a service is picked.
+    const details = el(
+      "div",
+      { className: "stack connect-details", hidden: true },
       view.servers.length ? el("label", {}, "Where", server) : null,
       el("label", {}, "Name", name),
       el("label", {}, "Address of the MCP server", url),
@@ -1907,6 +1931,13 @@ const IraPersonal = (() => {
       el("button", { type: "submit", className: "btn btn-primary", text: "Connect" }),
       error,
     );
+    picker.addEventListener("change", () => {
+      const chosen = services.find((service) => service.id === $("input[name=service]:checked", picker).value);
+      details.hidden = false;
+      error.textContent = "";
+      chosen.pick();
+    });
+    const form = el("form", { className: "stack connect-form" }, picker, details);
     server.addEventListener("change", showNeeds);
     function setMode(next) {
       mode = next;
@@ -1943,7 +1974,12 @@ const IraPersonal = (() => {
         error.textContent = problem.message;
       }
     });
-    return el("section", { className: "stack" }, el("h3", { text: "Connect a service" }), form);
+    return el(
+      "section",
+      { className: "stack" },
+      el("div", { className: "stack-tight" }, el("h3", { text: "Connect a service" }), el("p", { className: "muted small", text: "Reading is free; anything that changes something needs your yes or your PIN." })),
+      form,
+    );
   }
 
   // Signing in to a service (OAuth): open its page, then wait for the connection to finish.
