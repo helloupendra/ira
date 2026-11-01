@@ -26,6 +26,12 @@ public struct Receipts: Sendable {
         uses[turn] = list
     }
 
+    /// The tools of the turn done so far, without forgetting it: shown one by one before the
+    /// answer arrives.
+    public func finished(turn: Int) -> [String] {
+        (uses[turn] ?? []).compactMap { use in use.end.map { Receipts.line(use.name, seconds: $0.timeIntervalSince(use.start)) } }
+    }
+
     /// The turn's receipts, once; the turn is forgotten after.
     public mutating func take(turn: Int, at: Date = Date()) -> [String] {
         ended(turn: turn, at: at)

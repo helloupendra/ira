@@ -17,4 +17,16 @@ struct ReceiptsTests {
         var none = Receipts()
         #expect(none.take(turn: 9).isEmpty)
     }
+
+    @Test func toolsDoneSoFarShowOneByOne() {
+        let start = Date(timeIntervalSince1970: 1_000)
+        var receipts = Receipts()
+        receipts.began("ai_sessions", turn: 5, at: start)
+        #expect(receipts.finished(turn: 5).isEmpty)  // still running
+        receipts.began("web_search", turn: 5, at: start + 0.8)
+        #expect(receipts.finished(turn: 5) == ["ai sessions · 0.8 s"])
+        receipts.ended(turn: 5, at: start + 2)
+        #expect(receipts.finished(turn: 5) == ["ai sessions · 0.8 s", "web search · 1.2 s"])
+        #expect(receipts.take(turn: 5, at: start + 3).count == 2)  // still there for the answer
+    }
 }

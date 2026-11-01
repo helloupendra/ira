@@ -377,7 +377,7 @@ struct ChatView: View {
                             .id("caption")
                     }
                     if conversation.busy {
-                        ThinkingRow(step: conversation.step, since: conversation.askedAt, stalled: conversation.stalled)
+                        ThinkingRow(step: conversation.step, since: conversation.askedAt, stalled: conversation.stalled, done: conversation.stepsDone)
                             .id("thinking")
                     }
                 }
@@ -392,6 +392,10 @@ struct ChatView: View {
             }
             .onChange(of: conversation.busy) { _, busy in
                 if busy { withAnimation { proxy.scrollTo("thinking", anchor: .bottom) } }
+            }
+            .onChange(of: conversation.stepsDone) { _, _ in
+                // A tool's receipt below the row: keep it in view.
+                if conversation.busy { withAnimation { proxy.scrollTo("thinking", anchor: .bottom) } }
             }
         }
     }
@@ -501,11 +505,24 @@ struct ListeningView: View {
                 colors: [Color(hex: 0x1F6F5C, opacity: scheme == .dark ? 0.22 : 0.12), .clear],
                 center: .center, startRadius: 0, endRadius: 440)
             VStack(spacing: 22) {
-                Lens(size: 168, level: conversation.level, heartbeat: true, rings: 2)
-                Text(label)
-                    .font(Presence.label)
-                    .tracking(1.6)
-                    .foregroundStyle(Presence.green)
+                Lens(
+                    size: 168, level: conversation.mode == .speaking ? conversation.speechLevel : conversation.level,
+                    heartbeat: [.listening, .hearing].contains(conversation.mode), thinking: working, rings: 2)
+                VStack(spacing: 8) {
+                    Text(label)
+                        .font(Presence.label)
+                        .tracking(1.6)
+                        .foregroundStyle(Presence.green)
+                    if working {
+                        // The step in words, from the server's tool events, with the time after 3 s.
+                        TimelineView(.periodic(from: .now, by: 1)) { context in
+                            let seconds = conversation.askedAt.map { Int(context.date.timeIntervalSince($0)) } ?? 0
+                            Text(conversation.step + (seconds >= 3 ? " \(seconds) s" : ""))
+                                .font(Presence.secondary)
+                                .foregroundStyle(Presence.muted)
+                        }
+                    }
+                }
                 words
                     .frame(maxWidth: 620)
                 HStack(spacing: 12) {
@@ -529,12 +546,18 @@ struct ListeningView: View {
         .accessibilityLabel(label)
     }
 
+    /// Ira is working on an answer (and not yet speaking it).
+    private var working: Bool {
+        conversation.mode == .thinking || (conversation.busy && conversation.mode != .speaking)
+    }
+
     private var label: String {
         switch conversation.mode {
         case .hearing: return "HEARING YOU"
         case .thinking: return "THINKING"
         case .speaking: return "SPEAKING"
-        default: return "LISTENING"
+        // A question is on its way while the microphone stays open: say both.
+        default: return conversation.busy ? "THINKING · STILL LISTENING" : "LISTENING"
         }
     }
 
@@ -547,7 +570,7 @@ struct ListeningView: View {
         } else if conversation.micSilent {
             // In place of "Speak now" or Ira's answer, so the stack never outgrows the window.
             silentMic
-        } else if [.thinking, .speaking].contains(conversation.mode),
+        } else if conversation.mode == .speaking,
             let answer = conversation.entries.last(where: { $0.role == .ira })?.text, !answer.isEmpty
         {
             Text(answer)
@@ -555,6 +578,13 @@ struct ListeningView: View {
                 .foregroundStyle(Presence.muted)
                 .multilineTextAlignment(.center)
                 .lineLimit(5)
+        } else if working, let asked = conversation.entries.last(where: { $0.role == .you })?.text {
+            // The question that was taken, while Ira works on it.
+            Text("“\(asked)”")
+                .font(Presence.serif(26))
+                .foregroundStyle(Presence.muted)
+                .multilineTextAlignment(.center)
+                .lineLimit(3)
         } else {
             Text("Speak now")
                 .font(Presence.serif(26))
@@ -589,11 +619,27 @@ struct ThinkingRow: View {
     let step: String
     let since: Date?
     let stalled: Bool
+    /// The tools done so far, shown one by one before the answer comes.
+    var done: [String] = []
 
     var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            row
+            if !done.isEmpty {
+                HStack(spacing: 6) {
+                    ForEach(done, id: \.self) { ReceiptChip(text: $0) }
+                }
+                .padding(.leading, 42)
+                .transition(.opacity)
+            }
+        }
+        .animation(.easeOut(duration: 0.18), value: done)
+    }
+
+    private var row: some View {
         TimelineView(.periodic(from: .now, by: 1)) { context in
             HStack(spacing: 12) {
-                Lens(size: 30, breathing: !stalled)
+                Lens(size: 30, thinking: !stalled)
                 Text(stalled ? "Still waiting…" : step)
                     .font(Presence.body)
                     .foregroundStyle(Presence.muted)

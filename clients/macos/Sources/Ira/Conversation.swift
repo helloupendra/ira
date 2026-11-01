@@ -38,6 +38,12 @@ final class Conversation: ObservableObject {
     @Published var mode: Mode = .idle
     @Published var listening = false
     @Published var level: Float = 0
+    /// How loud Ira's voice is as it plays: the lens's bars follow it while she speaks.
+    @Published var speechLevel: Float = 0
+    /// The tools of the answer on its way, done so far: receipts shown one by one.
+    @Published var stepsDone: [String] = []
+    /// The turn being answered now.
+    private var turnInFlight: Int?
     /// Listening has run 3 s and the microphone gave nothing: macOS may have silenced it.
     @Published var micSilent = false
     /// The input Ira listens to, for that warning.
@@ -102,8 +108,13 @@ final class Conversation: ObservableObject {
             self.mode = .speaking
             self.transport?.played(turn: turn, at: monotonicMs())
         }
+        audio.onOutputLevel = { [weak self] level in
+            guard let self, self.mode == .speaking || level == 0 else { return }
+            if self.speechLevel != level { self.speechLevel = level }
+        }
         audio.onIdle = { [weak self] in
             guard let self else { return }
+            if self.speechLevel != 0 { self.speechLevel = 0 }
             self.vad.replying = false
             if self.mode == .speaking { self.mode = self.listening ? .listening : .idle }
             self.lastActivity = Date()
@@ -227,6 +238,8 @@ final class Conversation: ObservableObject {
 
     private func finished() {
         busy = false
+        stepsDone = []
+        turnInFlight = nil
         stalled = false
         askedAt = nil
         watchdog?.invalidate()
@@ -444,6 +457,8 @@ final class Conversation: ObservableObject {
             caption = text
         case .heard(let turn, let text):
             caption = ""
+            turnInFlight = turn
+            stepsDone = []
             if !busy { began("Thinking…") }
             progressed("Thinking…")
             if lastInputWasVoice { lastQuestion = text }
@@ -455,7 +470,9 @@ final class Conversation: ObservableObject {
             typed = nil
             mode = .thinking
         case .tool(let turn, let name):
+            turnInFlight = turn
             receipts.began(name, turn: turn)
+            stepsDone = receipts.finished(turn: turn)
             progressed(Conversation.phrase(name))
             // What came before a tool was a lead-in ("let me look"), not the answer: never glue
             // it to the answer, even when a turn ends without its final text.
@@ -464,6 +481,7 @@ final class Conversation: ObservableObject {
             }
         case .toolDone(let turn, _, _):
             receipts.ended(turn: turn)
+            stepsDone = receipts.finished(turn: turn)
             progressed()
         case .delta(let turn, let text):
             caption = ""
@@ -474,7 +492,7 @@ final class Conversation: ObservableObject {
             } else {
                 entries.append(Entry(role: .ira, text: text, turn: turn))
             }
-            if mode == .thinking { mode = listening ? .listening : .idle }
+            // Still THINKING while the answer is written: SPEAKING when her voice starts.
         case .audio(let turn, _, _, let data):
             guard turn > interruptedTurn, lastInputWasVoice || settings.speakReplies else { return }
             vad.replying = true
@@ -504,7 +522,8 @@ final class Conversation: ObservableObject {
             let answer = text.isEmpty ? (entryIndex(turn: turn).map { entries[$0].text } ?? "") : text
             onAnswer?(answer)
             caption = ""
-            if mode == .thinking { mode = listening ? .listening : .idle }
+            // Her voice may still be on its way: SPEAKING starts with it, else the turn is over.
+            if mode == .thinking && !audio.playing { mode = listening ? .listening : .idle }
             lastActivity = Date()
         case .interrupted(let turn):
             interruptedTurn = max(interruptedTurn, turn)
@@ -560,7 +579,16 @@ final class Conversation: ObservableObject {
         case "mac_menu": return "Choosing from the menu…"
         case "clipboard_read": return "Reading the clipboard…"
         case "shortcuts_list", "shortcuts_run": return "Running the shortcut…"
-        case "code_task_start", "code_task_status", "code_task_stop", "code_task_push": return "Working on the task…"
+        case "code_task_start", "code_task_status", "code_task_stop", "code_task_push", "code_task_pause", "code_task_resume":
+            return "Working on the task…"
+        case "code_task_say": return "Telling the task…"
+        case "ai_sessions", "ai_session_detail": return "Looking at the AI sessions on your Mac…"
+        case "web_search": return "Searching the web…"
+        case "news_search": return "Looking at the news…"
+        case "video_find": return "Finding a video…"
+        case "drop_list", "drop_send": return "Checking your Drop…"
+        case "remind_me", "my_reminders": return "Checking your reminders…"
+        case "remember_person", "forget_person", "remember_business": return "Noting it…"
         default: return "Working…"
         }
     }

@@ -68,6 +68,33 @@ enum Snapshot {
             save(main.window, to: folder.appendingPathComponent("listening-silent-\(dark ? "dark" : "light").png"))
         }
         model.conversation.micSilent = false
+        // Working on a question: THINKING with the step in words, then the same with the
+        // microphone still open, then the chat's row with a tool done so far.
+        let conversation = model.conversation
+        conversation.entries = sample + [Entry(role: .you, text: "Which AI session is running on my Mac?")]
+        conversation.busy = true
+        conversation.askedAt = Date().addingTimeInterval(-5)
+        conversation.step = Conversation.phrase("ai_sessions")
+        for (name, mode) in [("listening-thinking", Conversation.Mode.thinking), ("listening-still", .listening)] {
+            conversation.mode = mode
+            for dark in [false, true] {
+                main.window.appearance = NSAppearance(named: dark ? .darkAqua : .aqua)
+                wait(1)
+                save(main.window, to: folder.appendingPathComponent("\(name)-\(dark ? "dark" : "light").png"))
+            }
+        }
+        conversation.listening = false
+        conversation.mode = .thinking
+        conversation.step = Conversation.phrase("web_search")
+        conversation.stepsDone = [Receipts.line("ai_sessions", seconds: 0.8)]
+        for dark in [false, true] {
+            main.window.appearance = NSAppearance(named: dark ? .darkAqua : .aqua)
+            wait(1)
+            save(main.window, to: folder.appendingPathComponent("chat-thinking-\(dark ? "dark" : "light").png"))
+        }
+        conversation.busy = false
+        conversation.stepsDone = []
+        conversation.mode = .idle
         model.conversation.listening = false
         // A new conversation: what an empty Chat says.
         model.conversation.clear()

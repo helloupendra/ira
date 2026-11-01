@@ -69,6 +69,8 @@ struct Lens: View {
     /// While listening: a pulse every 1.2 s and a ring that spreads and fades, even in
     /// silence, so the person always sees Ira is on. A slow fade instead with Reduce Motion.
     var heartbeat = false
+    /// While Ira works on an answer: the bars ripple one after another, a slow wave.
+    var thinking = false
     /// Hairline rings around it: one at rest, two while listening, none as an avatar.
     var rings = 0
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -77,7 +79,7 @@ struct Lens: View {
     private static let bars: [CGFloat] = [0.17, 0.33, 0.42, 0.25]
 
     var body: some View {
-        TimelineView(.animation(minimumInterval: 1.0 / 30, paused: !breathing && !heartbeat && level <= 0)) { context in
+        TimelineView(.animation(minimumInterval: 1.0 / 30, paused: !breathing && !heartbeat && !thinking && level <= 0)) { context in
             let t = context.date.timeIntervalSinceReferenceDate
             // Where in the 1.2 s beat: 0 at rest, 1 at its fullest.
             let beat = Lens.beat(t)
@@ -147,9 +149,13 @@ struct Lens: View {
                 radius: size * 0.23, y: size * 0.16)
     }
 
-    /// How tall a bar stands now: as drawn at rest, taller with the voice.
+    /// How tall a bar stands now: as drawn at rest, taller with the voice, or rippling while
+    /// Ira works (bar after bar, every 1.6 s).
     private func lift(_ index: Int, _ t: TimeInterval) -> CGFloat {
-        guard level > 0.002 else { return 1 }
+        guard level > 0.002 else {
+            guard thinking, !reduceMotion else { return 1 }
+            return 1 + 0.45 * CGFloat(max(0, sin(t * 2 * .pi / 1.6 - Double(index) * 0.9)))
+        }
         let voice = CGFloat(min(level * 10, 1))
         let wave = 0.7 + 0.3 * sin(t * 9 + Double(index) * 1.7)
         return 1 + voice * 0.9 * CGFloat(wave)

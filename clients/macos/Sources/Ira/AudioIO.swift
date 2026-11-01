@@ -17,6 +17,8 @@ final class AudioIO: NSObject {
     var onTurnStarted: ((Int) -> Void)?
     /// Nothing is left to play.
     var onIdle: (() -> Void)?
+    /// How loud Ira's voice is now, as it plays (0 when silent): the lens's bars follow it.
+    var onOutputLevel: ((Float) -> Void)?
 
     private let engine = AVAudioEngine()
     private let player = AVAudioPlayerNode()
@@ -45,6 +47,11 @@ final class AudioIO: NSObject {
         engine.attach(player)
         engine.connect(player, to: engine.mainMixerNode, format: playFormat)
         synthesizer.delegate = self
+        // Ira's voice level as it plays, for the lens: on the audio thread, then the main one.
+        player.installTap(onBus: 0, bufferSize: 1024, format: playFormat) { [weak self] buffer, _ in
+            let level = EnergyVAD.rms(AudioIO.channels(buffer).first ?? [])
+            Task { @MainActor in self?.onOutputLevel?(level) }
+        }
     }
 
     nonisolated static var micPermission: AVAuthorizationStatus {
@@ -329,8 +336,14 @@ final class AudioIO: NSObject {
 }
 
 extension AudioIO: AVSpeechSynthesizerDelegate {
+    nonisolated func speechSynthesizer(_ synthesizer: AVSpeechSynthesizer, didStart utterance: AVSpeechUtterance) {
+        // The Mac's own voice plays outside the engine: a steady level keeps the bars moving.
+        Task { @MainActor in self.onOutputLevel?(0.04) }
+    }
+
     nonisolated func speechSynthesizer(_ synthesizer: AVSpeechSynthesizer, didFinish utterance: AVSpeechUtterance) {
         Task { @MainActor in
+            self.onOutputLevel?(0)
             self.busy = false
             self.next()
         }
@@ -338,6 +351,7 @@ extension AudioIO: AVSpeechSynthesizerDelegate {
 
     nonisolated func speechSynthesizer(_ synthesizer: AVSpeechSynthesizer, didCancel utterance: AVSpeechUtterance) {
         Task { @MainActor in
+            self.onOutputLevel?(0)
             self.busy = false
         }
     }
