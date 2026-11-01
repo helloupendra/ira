@@ -22,6 +22,18 @@ function DeviceStatus({ device }: { device: DeviceView }) {
   return <span className={status.tone === 'ok' ? 'badge badge-ok' : 'badge badge-muted'}>{status.label}</span>;
 }
 
+// "Files: find files by name, ..." reads as a bold name and its description.
+function SkillText({ description }: { description: string }) {
+  const at = description.indexOf(': ');
+  if (at <= 0 || at > 24) return <span className="skill-desc">{description}</span>;
+  return (
+    <span className="skill-text">
+      <span className="skill-name">{description.slice(0, at)}</span>
+      <span className="skill-desc">{description.charAt(at + 2).toUpperCase() + description.slice(at + 3)}</span>
+    </span>
+  );
+}
+
 function Tools({ device }: { device: DeviceView }) {
   if (!device.tools.length) return null;
   return (
@@ -152,12 +164,15 @@ function MyDevices({ state }: { state: ApiState<DeviceView[]> }) {
 
   return (
     <>
-      <div className="toolbar">
+      <div className="section-head">
+        <div>
+          <h2 className="section-title">Your devices</h2>
+          <p className="section-desc">A device works for you alone, with the skills you switch on.</p>
+        </div>
         <button type="button" className="btn btn-primary btn-small" onClick={() => setAdding(true)}>
           <Icon name="plus" />
           Add a device
         </button>
-        <span className="inline-note">A device works for you alone, with the skills you switch on.</span>
       </div>
       <Body state={state} needs="ask">
         {(rows) =>
@@ -167,32 +182,39 @@ function MyDevices({ state }: { state: ApiState<DeviceView[]> }) {
               text="Pair your Mac with Ira for Mac to let Ira find your files and read your screen and browser tabs when you ask."
             />
           ) : (
-            <ul className="cards">
+            <ul className="devices">
               {rows.map((device) => (
-                <li key={device.id}>
-                  <div className="card-head">
-                    <span className="card-title">{device.label}</span>
+                <li key={device.id} className="device">
+                  <div className="device-head">
+                    <span className="device-icon" aria-hidden="true">
+                      <Icon name="devices" size={18} />
+                    </span>
+                    <div className="device-name">
+                      <span className="card-title">{device.label}</span>
+                      <span className="card-meta">
+                        <span>{kindWord(device.kind)}</span>
+                        {device.version && <span>version {device.version}</span>}
+                        <span>paired {when(device.created_at)}</span>
+                      </span>
+                    </div>
                     <DeviceStatus device={device} />
                   </div>
-                  <div className="card-meta">
-                    <span>{kindWord(device.kind)}</span>
-                    {device.version && <span>version {device.version}</span>}
-                    <span>paired {when(device.created_at)}</span>
-                  </div>
-                  <ul className="devices-skill-list">
-                    {device.skills.map((skill) => (
-                      <li key={skill.name}>
-                        <Switch
-                          checked={skill.on}
-                          label={`${skill.name} on ${device.label}`}
-                          onChange={(next) => void switchSkill(device, skill.name, next)}
-                        />
-                        <span>{skill.description}</span>
-                      </li>
-                    ))}
-                  </ul>
-                  <Tools device={device} />
-                  <div className="card-actions">
+                  {device.skills.length > 0 && (
+                    <ul className="devices-skill-list">
+                      {device.skills.map((skill) => (
+                        <li key={skill.name}>
+                          <SkillText description={skill.description} />
+                          <Switch
+                            checked={skill.on}
+                            label={`${skill.name} on ${device.label}`}
+                            onChange={(next) => void switchSkill(device, skill.name, next)}
+                          />
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                  <div className="device-foot">
+                    <Tools device={device} />
                     <button type="button" className="btn btn-ghost btn-small" onClick={() => setRevoking(device)}>
                       <Icon name="trash" />
                       Remove
@@ -268,32 +290,37 @@ function EveryonesDevices({ state, onChanged }: { state: ApiState<DeviceView[]>;
 
   return (
     <>
-      <p className="inline-note devices-note">
-        You can switch a skill off or revoke a device. Only its owner switches a skill on, and nobody else sees what
-        a device read.
-      </p>
+      <div className="section-head">
+        <div>
+          <h2 className="section-title">Everyone's devices</h2>
+          <p className="section-desc">
+            You can switch a skill off or revoke a device. Only its owner switches a skill on, and nobody else sees
+            what a device read.
+          </p>
+        </div>
+      </div>
       <Body state={state} needs="admin.write">
         {(rows) =>
           rows.length === 0 ? (
             <Empty text="Nobody has paired a device yet." />
           ) : (
-            <ul className="cards">
+            <ul className="rows devices-all">
               {rows.map((device) => (
-                <li key={device.id}>
-                  <div className="card-head">
+                <li key={device.id} className="device-row">
+                  <div className="device-row-main">
                     <span className="card-title">
                       {device.label} <span className="muted">· {device.email}</span>
                     </span>
-                    <DeviceStatus device={device} />
-                  </div>
-                  <div className="card-meta">
-                    <span>{kindWord(device.kind)}</span>
-                    <span>{device.tools.length} tools</span>
-                    <span>
-                      skills on: {device.skills.filter((s) => s.on).map((s) => s.name).join(', ') || 'none'}
+                    <span className="card-meta">
+                      <span>{kindWord(device.kind)}</span>
+                      <span>{device.tools.length} tools</span>
+                      <span>
+                        skills on: {device.skills.filter((s) => s.on).map((s) => s.name).join(', ') || 'none'}
+                      </span>
                     </span>
                   </div>
-                  <div className="card-actions">
+                  <DeviceStatus device={device} />
+                  <div className="device-row-actions">
                     {device.skills
                       .filter((s) => s.on)
                       .map((skill) => (
@@ -354,15 +381,16 @@ function Grants({ state, onChanged }: { state: ApiState<GrantView[]>; onChanged:
         rows.length === 0 ? (
           <Empty text="Nothing is switched on for anyone." />
         ) : (
-          <ul className="cards">
+          <ul className="rows devices-all">
             {rows.map((grant) => (
-              <li key={grant.id}>
-                <div className="card-head">
-                  <span className="card-title">{grantTitle(grant)}</span>
-                  <span className="muted">{grant.email}</span>
+              <li key={grant.id} className="device-row">
+                <div className="device-row-main">
+                  <span className="card-title">
+                    {grantTitle(grant)} <span className="muted">· {grant.email}</span>
+                  </span>
+                  <span className="card-meta">{grant.description}</span>
                 </div>
-                <p className="card-meta">{grant.description}</p>
-                <div className="card-actions">
+                <div className="device-row-actions">
                   <button type="button" className="btn btn-ghost btn-small" onClick={() => void turnOff(grant)}>
                     Turn off
                   </button>
@@ -403,21 +431,23 @@ export default function Devices() {
       }
     >
       <section className="section">
-        <h2 className="section-title">Your devices</h2>
         <MyDevices state={mine} />
       </section>
       {manage && (
         <>
           <section className="section">
-            <h2 className="section-title">Everyone's devices</h2>
             <EveryonesDevices state={everyone} onChanged={reload} />
           </section>
           <section className="section">
-            <h2 className="section-title">Grants</h2>
-            <p className="inline-note devices-note">
-              Everything anyone allowed Ira to use: a skill on a device, or web search. Turning one off takes effect at
-              once.
-            </p>
+            <div className="section-head">
+              <div>
+                <h2 className="section-title">Grants</h2>
+                <p className="section-desc">
+                  Everything anyone allowed Ira to use: a skill on a device, or web search. Turning one off takes
+                  effect at once.
+                </p>
+              </div>
+            </div>
             <Grants state={grants} onChanged={reload} />
           </section>
         </>
