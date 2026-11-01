@@ -4,6 +4,15 @@
 
 .channels-note { margin-top: var(--s-3); font-size: var(--text-s); }
 
+/* On a wide screen the cards flow down two columns, each as tall as its content. */
+.channels-grid { display: grid; gap: var(--s-4); margin-top: var(--s-5); }
+.channels-grid > .section { margin-top: 0; }
+@media (min-width: 72rem) {
+  .channels-grid { display: block; columns: 2; column-gap: var(--s-4); }
+  .channels-grid > * { break-inside: avoid; }
+  .channels-grid > .section { margin-bottom: var(--s-4); }
+}
+
 .channel-title { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s-2); margin-bottom: var(--s-3); }
 .channel-title .section-title { margin-bottom: 0; }
 

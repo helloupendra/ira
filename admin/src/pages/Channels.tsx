@@ -487,18 +487,20 @@ export default function Channels() {
       <p className="muted channels-note">
         Channels are set in ira.yaml on the server; only Telegram's paired chats can be changed here.
       </p>
-      <Body state={channels} needs="admin.read">
-        {(list) =>
-          list.length === 0 ? (
-            <Empty text="No channels reported." />
-          ) : (
-            sortChannels(list).map((channel) => (
-              <Channel key={channel.name} channel={channel} name={name} telegram={telegram} />
-            ))
-          )
-        }
-      </Body>
-      {channels.data && <Phone name={name} url={httpUrl(channels.data) ?? origin} />}
+      <div className="channels-grid">
+        <Body state={channels} needs="admin.read">
+          {(list) =>
+            list.length === 0 ? (
+              <Empty text="No channels reported." />
+            ) : (
+              sortChannels(list).map((channel) => (
+                <Channel key={channel.name} channel={channel} name={name} telegram={telegram} />
+              ))
+            )
+          }
+        </Body>
+        {channels.data && <Phone name={name} url={httpUrl(channels.data) ?? origin} />}
+      </div>
     </Page>
   );
 }
