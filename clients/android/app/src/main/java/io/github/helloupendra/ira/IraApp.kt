@@ -26,6 +26,7 @@ import io.github.helloupendra.ira.tools.PhoneState
 import io.github.helloupendra.ira.tools.PhoneTools
 import io.github.helloupendra.ira.ui.MainActivity
 import io.github.helloupendra.ira.core.ServerInfo
+import io.github.helloupendra.ira.core.ThemeChoice
 import io.github.helloupendra.ira.net.Net
 import io.github.helloupendra.ira.voice.Conversation
 import io.github.helloupendra.ira.voice.LiveSession
@@ -64,6 +65,15 @@ class IraApp : Application() {
 
     private val skills = MutableStateFlow<Set<String>>(emptySet())
     val skillsOn: StateFlow<Set<String>> = skills
+
+    /** Light, Dark or as the phone is: every screen redraws when it changes. */
+    private val themeChoice = MutableStateFlow(ThemeChoice.SYSTEM)
+    val theme: StateFlow<ThemeChoice> = themeChoice
+
+    fun chooseTheme(choice: ThemeChoice) {
+        settings.theme = choice.name
+        themeChoice.value = choice
+    }
 
     /** The person's approval windows, as the server last said (`GET /v1/me/approvals`). */
     private val approvalState = MutableStateFlow<Approvals.Status?>(null)
@@ -167,6 +177,7 @@ class IraApp : Application() {
         tools = PhoneTools(this)
         drop = DropBox(this)
         skills.value = settings.skillsOn
+        themeChoice.value = ThemeChoice.from(settings.theme)
         ProcessLifecycleOwner.get().lifecycle.addObserver(
             object : DefaultLifecycleObserver {
                 override fun onStart(owner: LifecycleOwner) = hold("screen")

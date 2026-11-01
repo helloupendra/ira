@@ -44,6 +44,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import io.github.helloupendra.ira.BuildConfig
 import io.github.helloupendra.ira.IraApp
 import io.github.helloupendra.ira.core.Approvals
@@ -51,6 +52,7 @@ import io.github.helloupendra.ira.core.Flavor
 import io.github.helloupendra.ira.core.PairError
 import io.github.helloupendra.ira.core.Pairing
 import io.github.helloupendra.ira.core.Plain
+import io.github.helloupendra.ira.core.ThemeChoice
 import io.github.helloupendra.ira.device.LinkState
 import io.github.helloupendra.ira.net.Net
 import kotlinx.coroutines.Dispatchers
@@ -94,23 +96,6 @@ fun IraScreens(app: IraApp, talkRequests: Int, dropRequests: Int = 0) {
 }
 
 @Composable
-fun TopRow(title: String, onBack: (() -> Unit)? = null, actions: @Composable () -> Unit = {}) {
-    Row(
-        Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        if (onBack != null) TextButton(onClick = onBack) { Text("Back") }
-        Text(
-            title,
-            style = MaterialTheme.typography.titleLarge,
-            fontWeight = FontWeight.SemiBold,
-            modifier = Modifier.padding(horizontal = 8.dp).weight(1f),
-        )
-        actions()
-    }
-}
-
-@Composable
 fun PairScreen(app: IraApp, onPaired: () -> Unit) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -120,52 +105,57 @@ fun PairScreen(app: IraApp, onPaired: () -> Unit) {
     var error by remember { mutableStateOf<String?>(null) }
     val typedCode = Regex("^[A-Za-z0-9-]{8,20}$").matches(entry.trim())
 
+    val colors = Presence.colors
     Column(
-        Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(24.dp),
+        Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 20.dp, vertical = 24.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
-        Spacer(Modifier.height(24.dp))
-        Text("Pair this phone with your Ira", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold)
+        Spacer(Modifier.height(16.dp))
+        Lens(56.dp)
+        Text("Pair this phone with your Ira", fontSize = 26.sp, lineHeight = 32.sp, fontWeight = FontWeight.SemiBold, color = colors.ink)
         Text(
             "On your Ira, open Your devices, add a device, choose Android phone and the skills it may use, " +
                 "and enter your PIN. Then paste the pairing link here, or type the 8-character code " +
                 "and your Ira's address. A code works once, for 10 minutes.",
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            fontSize = 14.sp,
+            lineHeight = 20.sp,
+            color = colors.muted,
         )
-        OutlinedTextField(
-            value = entry,
-            onValueChange = {
-                entry = it
-                error = null
-            },
-            label = { Text("Pairing link or code") },
-            placeholder = { Text("https://ira.example.com/pair#code=ABCD-EFGH") },
-            singleLine = true,
-            modifier = Modifier.fillMaxWidth(),
-        )
-        OutlinedButton(onClick = {
-            val clip = context.getSystemService(ClipboardManager::class.java).primaryClip
-            clip?.getItemAt(0)?.coerceToText(context)?.toString()?.trim()?.let {
-                entry = it
-                error = null
-            }
-        }) { Text("Paste") }
-        if (typedCode) {
+        Column(Modifier.fillMaxWidth().presenceCard(colors, radius = 16.dp).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             OutlinedTextField(
-                value = server,
+                value = entry,
                 onValueChange = {
-                    server = it
+                    entry = it
                     error = null
                 },
-                label = { Text("Your Ira's address") },
-                placeholder = { Text("https://ira.example.com") },
+                label = { Text("Pairing link or code") },
+                placeholder = { Text("https://ira.example.com/pair#code=ABCD-EFGH") },
                 singleLine = true,
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri),
                 modifier = Modifier.fillMaxWidth(),
             )
+            PillButton("Paste", {
+                val clip = context.getSystemService(ClipboardManager::class.java).primaryClip
+                clip?.getItemAt(0)?.coerceToText(context)?.toString()?.trim()?.let {
+                    entry = it
+                    error = null
+                }
+            }, compact = true)
+            if (typedCode) {
+                OutlinedTextField(
+                    value = server,
+                    onValueChange = {
+                        server = it
+                        error = null
+                    },
+                    label = { Text("Your Ira's address") },
+                    placeholder = { Text("https://ira.example.com") },
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri),
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
+            error?.let { Text(it, color = colors.down, fontSize = 14.sp) }
         }
-        error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
         Button(
             enabled = !busy && entry.isNotBlank(),
             onClick = {
@@ -195,8 +185,9 @@ fun PairScreen(app: IraApp, onPaired: () -> Unit) {
         }
         Text(
             "The phone keeps its own key in Android's Keystore. Removing the phone on your Ira stops the key at once.",
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            fontSize = 12.sp,
+            lineHeight = 17.sp,
+            color = colors.muted,
         )
     }
 }
@@ -210,45 +201,72 @@ fun SettingsScreen(app: IraApp, onBack: () -> Unit, onApprovals: () -> Unit, onU
     var another by remember { mutableStateOf(false) }
     var server by remember { mutableStateOf(app.settings.server.orEmpty()) }
     var switched by remember { mutableStateOf<String?>(null) }
+    val theme by app.theme.collectAsState()
     Column(Modifier.fillMaxSize()) {
-        TopRow("Settings", onBack)
+        ScreenHeader("Settings", onBack)
         Column(
-            Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 24.dp, vertical = 8.dp),
-            verticalArrangement = Arrangement.spacedBy(14.dp),
+            Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 8.dp),
+            verticalArrangement = Arrangement.spacedBy(24.dp),
         ) {
-            Fact("Your Ira", server)
-            switched?.let { Text(it, color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.bodyMedium) }
-            Fact("This phone", app.settings.label)
-            Fact("Connection for the phone's tools", linkText(link))
-            Fact(
-                "App",
-                BuildConfig.VERSION_NAME + " (" +
-                    when (app.tools.flavor) {
-                        Flavor.PLAY -> "Google Play build"
-                        Flavor.PLAY_LITE -> "Google Play build, without call history and SMS"
-                        Flavor.PERSONAL -> "personal build"
-                    } + ")",
-            )
-            HorizontalDivider()
-            if (Approvals.WINDOW) TextButton(onClick = onApprovals) { Text("Approvals: fewer PINs for one task") }
-            TextButton(onClick = { app.settings.checklistHidden = false; onBack() }) { Text("Show the setup checklist") }
-            TextButton(onClick = { openAppSettings(context) }) { Text("Android's settings for Ira (permissions, notifications)") }
-            TextButton(onClick = { open(context, app.settings.server.orEmpty()) }) { Text("Export or delete your data (on your Ira, Your data)") }
-            TextButton(onClick = { open(context, PRIVACY_URL) }) { Text("Privacy policy") }
-            TextButton(onClick = { open(context, "https://github.com/helloupendra/ira") }) { Text("Source code (MIT licence)") }
-            HorizontalDivider()
-            OutlinedButton(onClick = { another = true }, enabled = !removing) { Text("Pair with another Ira…") }
-            Text(
-                "Move this phone to another Ira server. It stays paired with this one until the new pairing works.",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            OutlinedButton(onClick = { confirm = true }, enabled = !removing) { Text(if (removing) "Removing..." else "Remove this phone from Ira") }
-            Text(
-                "Removing the phone stops its key on your Ira at once and forgets it here. To use Ira again, pair the phone again.",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
+            Section("Appearance", note = "System follows the light or dark setting of your phone.") {
+                SegmentedPill(
+                    options = ThemeChoice.entries.map { it.label },
+                    selected = ThemeChoice.entries.indexOf(theme),
+                    onSelect = { app.chooseTheme(ThemeChoice.entries[it]) },
+                    modifier = Modifier.fillMaxWidth().padding(12.dp),
+                )
+            }
+            Section("This phone") {
+                ItemRow("Your Ira", server)
+                switched?.let {
+                    Text(it, color = Presence.colors.green, fontSize = 13.sp, modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 12.dp))
+                }
+                Hairline()
+                ItemRow("This phone", app.settings.label)
+                Hairline()
+                ItemRow("Connection for the phone's tools", linkText(link))
+                Hairline()
+                ItemRow(
+                    "App",
+                    BuildConfig.VERSION_NAME + " (" +
+                        when (app.tools.flavor) {
+                            Flavor.PLAY -> "Google Play build"
+                            Flavor.PLAY_LITE -> "Google Play build, without call history and SMS"
+                            Flavor.PERSONAL -> "personal build"
+                        } + ")",
+                )
+            }
+            Section("Ira and Android") {
+                if (Approvals.WINDOW) {
+                    ItemRow("Approvals", "Fewer PINs for one task", onClick = onApprovals) { Chevron() }
+                    Hairline()
+                }
+                ItemRow("Show the setup checklist", onClick = { app.settings.checklistHidden = false; onBack() }) { Chevron() }
+                Hairline()
+                ItemRow("Android's settings for Ira", "Permissions, notifications", onClick = { openAppSettings(context) }) { Chevron() }
+            }
+            Section("Your data") {
+                ItemRow("Export or delete your data", "On your Ira, Your data", onClick = { open(context, app.settings.server.orEmpty()) }) { Chevron() }
+                Hairline()
+                ItemRow("Privacy policy", onClick = { open(context, PRIVACY_URL) }) { Chevron() }
+                Hairline()
+                ItemRow("Source code", "MIT licence", onClick = { open(context, "https://github.com/helloupendra/ira") }) { Chevron() }
+            }
+            Section("Pairing") {
+                ItemRow(
+                    "Pair with another Ira…",
+                    "Move this phone to another Ira server. It stays paired with this one until the new pairing works.",
+                    onClick = if (removing) null else ({ another = true }),
+                ) { Chevron() }
+                Hairline()
+                ItemRow(
+                    if (removing) "Removing..." else "Remove this phone from Ira",
+                    "Removing the phone stops its key on your Ira at once and forgets it here. To use Ira again, pair the phone again.",
+                    onClick = if (removing) null else ({ confirm = true }),
+                    titleColor = Presence.colors.down,
+                )
+            }
+            Spacer(Modifier.height(8.dp))
         }
     }
     if (another) {
@@ -276,14 +294,6 @@ fun SettingsScreen(app: IraApp, onBack: () -> Unit, onApprovals: () -> Unit, onU
             },
             dismissButton = { TextButton(onClick = { confirm = false }) { Text("Cancel") } },
         )
-    }
-}
-
-@Composable
-private fun Fact(label: String, value: String) {
-    Column {
-        Text(label, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        Text(value, style = MaterialTheme.typography.bodyLarge)
     }
 }
 

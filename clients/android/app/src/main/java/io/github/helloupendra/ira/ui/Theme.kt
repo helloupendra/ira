@@ -1,12 +1,20 @@
 package io.github.helloupendra.ira.ui
 
+import android.graphics.Color as AndroidColor
+import androidx.activity.ComponentActivity
+import androidx.activity.SystemBarStyle
+import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.graphics.Color
+import io.github.helloupendra.ira.IraApp
 
 /** IRA's colours, "Presence" (see Presence.kt): near-black when the phone is dark, warm paper when light. */
 private val Light =
@@ -59,9 +67,26 @@ private val Dark =
     )
 
 @Composable
-fun IraTheme(content: @Composable () -> Unit) {
-    val dark = isSystemInDarkTheme()
+fun IraTheme(dark: Boolean = isSystemInDarkTheme(), content: @Composable () -> Unit) {
     CompositionLocalProvider(LocalPresence provides if (dark) DarkPresence else LightPresence) {
         MaterialTheme(colorScheme = if (dark) Dark else Light, content = content)
     }
+}
+
+/**
+ * The person's theme (Settings: System, Light or Dark), live: System follows the phone as it
+ * changes. A full-screen `activity` has its status and navigation bars follow it too.
+ */
+@Composable
+fun IraTheme(app: IraApp, activity: ComponentActivity? = null, content: @Composable () -> Unit) {
+    val choice by app.theme.collectAsState()
+    val dark = choice.dark(isSystemInDarkTheme())
+    if (activity != null) {
+        LaunchedEffect(dark) {
+            val bars =
+                if (dark) SystemBarStyle.dark(AndroidColor.TRANSPARENT) else SystemBarStyle.light(AndroidColor.TRANSPARENT, AndroidColor.TRANSPARENT)
+            activity.enableEdgeToEdge(statusBarStyle = bars, navigationBarStyle = bars)
+        }
+    }
+    IraTheme(dark, content)
 }

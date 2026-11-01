@@ -53,7 +53,7 @@ class ShareActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         val app = application as IraApp
         val shared = shared(intent)
-        setContent { IraTheme { ShareSheet(app, shared) { finish() } } }
+        setContent { IraTheme(app) { ShareSheet(app, shared) { finish() } } }
     }
 
     /** What came in: the words, and the files (each readable while this screen is open). */

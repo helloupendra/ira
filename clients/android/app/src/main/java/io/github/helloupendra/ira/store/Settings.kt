@@ -42,6 +42,11 @@ class Settings(context: Context) {
         get() = prefs.getBoolean("approvals_enrolled", false)
         set(value) = prefs.edit().putBoolean("approvals_enrolled", value).apply()
 
+    /** Light, Dark or System (the default): a ThemeChoice's name. */
+    var theme: String?
+        get() = prefs.getString("theme", null)
+        set(value) = prefs.edit().putString("theme", value).apply()
+
     /** The person hid the first-run checklist (Settings can show it again). */
     var checklistHidden: Boolean
         get() = prefs.getBoolean("checklist_hidden", false)

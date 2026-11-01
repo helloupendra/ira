@@ -26,7 +26,7 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         handle(intent)
         val app = application as IraApp
-        setContent { IraTheme { IraScreens(app, talkRequests.intValue, dropRequests.intValue) } }
+        setContent { IraTheme(app, this) { IraScreens(app, talkRequests.intValue, dropRequests.intValue) } }
     }
 
     override fun onNewIntent(intent: Intent) {
