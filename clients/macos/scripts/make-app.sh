@@ -7,18 +7,21 @@
 #   BUNDLE_ID=in.ira.mac.test ...    a test build with its own settings and Keychain item,
 #                                    named "Ira Test" so it is never taken for Ira (no zip or dmg)
 #   IRA_SIGNING_NAME=none ...        ad hoc, even when a signing identity exists
+#   IRA_SIGNING_NAME="..." ...       that identity, by its name in the keychain
 #
 # Output, in clients/macos/dist/: Ira-<version>.zip and Ira-<version>.dmg.
 # The app itself is built in dist/build.noindex/, a folder Spotlight skips, so
 # Launchpad and Spotlight never show a second Ira that is not installed.
 #
-# Signing: with the identity scripts/make-signing-identity.sh makes (once per
-# Mac), every build is the same app to macOS, so its permissions stay; the
-# Keychain still asks once per build whether Ira may use its key (Always
-# Allow). Without it, the app is signed ad hoc, and macOS asks for everything
-# again after each build. Either way a dmg needs right-click, Open the first
-# time on another Mac; a Developer ID and notarization need the paid Apple
-# Developer Program (docs/clients/macos.md).
+# Signing: with an Apple Development certificate (a free Personal Team: Xcode,
+# Settings, Accounts, Manage Certificates), every build is the same app to macOS
+# and to the Keychain, so neither asks again. Without one, with the identity
+# scripts/make-signing-identity.sh makes (once per Mac), permissions stay but the
+# Keychain asks once per build whether Ira may use its key (Always Allow).
+# Without either, the app is signed ad hoc, and macOS asks for everything again
+# after each build. Either way a dmg needs right-click, Open the first time on
+# another Mac; a Developer ID and notarization need the paid Apple Developer
+# Program (docs/clients/macos.md).
 set -eu
 
 here=$(cd "$(dirname "$0")/.." && pwd)
@@ -111,12 +114,17 @@ cat > "$app/Contents/Info.plist" <<PLIST
 PLIST
 plutil -lint "$app/Contents/Info.plist" >/dev/null
 
-identity="${IRA_SIGNING_NAME:-Ira Local Signing}"
+# The one asked for; else this Mac's Apple Development certificate; else the local one.
+identity="${IRA_SIGNING_NAME:-}"
+if [ -z "$identity" ]; then
+  identity=$(security find-identity -v -p codesigning 2>/dev/null | sed -n 's/.*"\(Apple Development: [^"]*\)".*/\1/p' | head -1)
+  [ -n "$identity" ] || identity="Ira Local Signing"
+fi
 if [ "$identity" != none ] && security find-identity -p codesigning 2>/dev/null | grep -q "\"$identity\""; then
   echo "Signing with \"$identity\""
   codesign --force --sign "$identity" --identifier "$bundle_id" --timestamp=none "$app"
 else
-  echo "Signing ad hoc (run scripts/make-signing-identity.sh once to keep permissions between builds)"
+  echo "Signing ad hoc (add an Apple Development certificate in Xcode, or run scripts/make-signing-identity.sh, to keep permissions between builds)"
   codesign --force --sign - --identifier "$bundle_id" --timestamp=none "$app"
 fi
 codesign --verify --strict "$app"

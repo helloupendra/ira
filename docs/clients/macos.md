@@ -534,6 +534,17 @@ ID ties Ira's key to that exact build, so the first time a new build reads
 it, macOS asks once whether Ira may use it. Choose **Always Allow** (not
 Allow), and that build doesn't ask again.
 
+An **Apple Development certificate** ends that too, and needs no paid
+account: in Xcode, Settings, Accounts, add your Apple ID (a free Personal
+Team), then Manage Certificates, +, Apple Development. `make-app.sh` signs
+with it whenever the Mac has one (before "Ira Local Signing"; set
+`IRA_SIGNING_NAME` to choose another). A signature with a team ID keeps Ira's
+key for every later build, so after one last **Always Allow** on the first
+such build, the Keychain doesn't ask again. If `codesign` says it is "unable
+to build chain to self-signed root", add Apple's intermediate certificate
+(Apple Worldwide Developer Relations, G3, from apple.com/certificateauthority)
+to the login keychain.
+
 **Notarization** is the owner's decision: a Developer ID certificate and
 Apple's notary service need the Apple Developer Program ($99 a year). With
 them, `make-app.sh` would sign with the Developer ID and the hardened
