@@ -49,9 +49,29 @@ public struct SpeechQueue<Item: Sendable>: Sendable {
         if nextSeq[turn, default: 0] == seq { nextSeq[turn] = seq + 1 }
     }
 
-    /// Barge-in or Stop: drop `turn` and everything before it.
-    public mutating func stop(through turn: Int) {
+    /// The oldest turn waits for a sentence that has not come, while later ones have: play on
+    /// from the first that is here. Returns whether a gap was skipped.
+    @discardableResult
+    public mutating func skipGap() -> Bool {
+        guard let turn = waiting.map(\.turn).min() else { return false }
+        let wanted = nextSeq[turn, default: 0]
+        guard let first = waiting.filter({ $0.turn == turn }).map(\.seq).min(), first > wanted else { return false }
+        nextSeq[turn] = first
+        return true
+    }
+
+    /// Something is waiting, but not the next sentence of its turn.
+    public var stuck: Bool {
+        guard let turn = waiting.map(\.turn).min() else { return false }
+        return !waiting.contains { $0.turn == turn && $0.seq == nextSeq[turn, default: 0] }
+    }
+
+    /// Barge-in or Stop: drop `turn` and everything before it. Returns how many were dropped.
+    @discardableResult
+    public mutating func stop(through turn: Int) -> Int {
         stoppedThrough = max(stoppedThrough, turn)
+        let before = waiting.count
         waiting.removeAll { $0.turn <= stoppedThrough }
+        return before - waiting.count
     }
 }

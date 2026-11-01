@@ -22,13 +22,22 @@ struct SettingsView: View {
                             .foregroundStyle(.secondary)
                     }
                 }
-                if !model.talk.micReport.isEmpty {
-                    Section("Microphone, last call") {
-                        Text(model.talk.micReport)
-                            .font(.footnote.monospaced())
-                            .foregroundStyle(.secondary)
-                            .textSelection(.enabled)
-                            .accessibilityIdentifier("mic-report")
+                if !model.talk.micReport.isEmpty || !model.talk.callReport.isEmpty {
+                    Section("Last call") {
+                        if !model.talk.callReport.isEmpty {
+                            Text(model.talk.callReport)
+                                .font(.footnote)
+                                .foregroundStyle(.secondary)
+                                .textSelection(.enabled)
+                                .accessibilityIdentifier("call-report")
+                        }
+                        if !model.talk.micReport.isEmpty {
+                            Text("Microphone: \(model.talk.micReport)")
+                                .font(.footnote.monospaced())
+                                .foregroundStyle(.secondary)
+                                .textSelection(.enabled)
+                                .accessibilityIdentifier("mic-report")
+                        }
                     }
                 }
                 Section {

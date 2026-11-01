@@ -41,6 +41,11 @@ public final class AudioEngine: NSObject {
     private var startedTurns: Set<Int> = []
     private var generation = 0
     private var observers: [NSObjectProtocol] = []
+    /// Which sentence is playing now, for the watchdog that notices one that never finishes.
+    private var playingToken = 0
+    private var gapWait: Task<Void, Never>?
+    /// What happened in this call: sentences received, played and cut, and restarts.
+    public var stats = CallStats()
 
     public var playing: Bool { busy || !queue.isEmpty }
 
@@ -49,6 +54,47 @@ public final class AudioEngine: NSObject {
         engine.attach(player)
         engine.connect(player, to: engine.mainMixerNode, format: playFormat)
         synthesizer.delegate = self
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(configurationChanged), name: .AVAudioEngineConfigurationChange, object: engine)
+    }
+
+    /// iOS stopped the engine: the audio route or its format changed (headphones, Bluetooth,
+    /// the speaker, another app). Without starting again, Ira went quiet in the middle of an
+    /// answer and heard nothing more for the rest of the call.
+    @objc nonisolated private func configurationChanged(_ note: Notification) {
+        Task { @MainActor in self.audioChanged() }
+    }
+
+    func audioChanged() {
+        guard listening || playing else { return }
+        stats.restarts += 1
+        IraLog.shared.info("the iPhone's audio changed; starting it again")
+        let wasListening = listening
+        if wasListening {
+            engine.inputNode.removeTap(onBus: 0)
+            listening = false
+        }
+        if busy, !synthesizer.isSpeaking {
+            generation += 1  // the sentence that was playing stopped with the engine: go on
+            busy = false
+        }
+        do {
+            if wasListening {
+                try startListening()
+            } else if !engine.isRunning, playing {
+                engine.prepare()
+                try engine.start()
+            }
+        } catch {
+            onInterrupted?("The iPhone's audio stopped and did not start again. Tap Call to talk again.")
+            return
+        }
+        next()
+    }
+
+    /// Ira's voice turned down (while a sound is checked: the person, or her echo?) or up again.
+    public func duck(_ on: Bool) {
+        player.volume = on ? 0.15 : 1
     }
 
     // MARK: The audio session
@@ -203,12 +249,12 @@ public final class AudioEngine: NSObject {
     // MARK: Speaking
 
     public func play(mp3: Data, turn: Int, seq: Int) {
-        queue.add(turn: turn, seq: seq, .mp3(mp3))
+        if queue.add(turn: turn, seq: seq, .mp3(mp3)) { stats.received += 1 }
         next()
     }
 
     public func say(_ text: String, turn: Int, seq: Int) {
-        queue.add(turn: turn, seq: seq, .say(text))
+        if queue.add(turn: turn, seq: seq, .say(text)) { stats.received += 1 }
         next()
     }
 
@@ -216,8 +262,9 @@ public final class AudioEngine: NSObject {
     /// (barge-in or Stop).
     public func stopPlayback(through turn: Int) {
         generation += 1
-        queue.stop(through: turn)
+        stats.cut += queue.stop(through: turn) + (busy ? 1 : 0)
         player.stop()
+        player.volume = 1
         if synthesizer.isSpeaking { synthesizer.stopSpeaking(at: .immediate) }
         busy = false
     }
@@ -225,7 +272,11 @@ public final class AudioEngine: NSObject {
     private func next() {
         guard !busy else { return }
         guard let entry = queue.next() else {
-            if queue.isEmpty { onIdle?() }
+            if queue.isEmpty {
+                onIdle?()
+            } else if queue.stuck {
+                waitForGap()
+            }
             return
         }
         busy = true
@@ -248,19 +299,51 @@ public final class AudioEngine: NSObject {
                 return
             }
             started(entry.turn)
+            playingToken += 1
+            let token = playingToken
             player.scheduleBuffer(buffer, completionCallbackType: .dataPlayedBack,
                                   completionHandler: AudioEngine.whenPlayed { [weak self] in
-                guard let self, self.generation == generation else { return }
+                guard let self, self.generation == generation, self.playingToken == token else { return }
+                self.stats.played += 1
                 self.busy = false
                 self.next()
             })
             if !player.isPlaying { player.play() }
+            watch(token, for: Double(buffer.frameLength) / playFormat.sampleRate)
         case .say(let text):
             started(entry.turn)
             let utterance = AVSpeechUtterance(string: text)
             utterance.voice = AVSpeechSynthesisVoice(language: SpeechLanguage.of(text))
                 ?? AVSpeechSynthesisVoice(language: "en-IN") ?? AVSpeechSynthesisVoice(language: "en-US")
             synthesizer.speak(utterance)
+        }
+    }
+
+    /// A sentence that never says it finished (its engine stopped under it): two seconds
+    /// after it should have, the next one plays.
+    private func watch(_ token: Int, for seconds: Double) {
+        Task { [weak self] in
+            try? await Task.sleep(nanoseconds: UInt64((seconds + 2) * 1_000_000_000))
+            guard let self, self.playingToken == token, self.busy else { return }
+            self.stats.stalls += 1
+            IraLog.shared.info("a sentence did not finish playing; going on with the next")
+            self.busy = false
+            self.next()
+        }
+    }
+
+    /// The next sentence of a turn has not come while later ones have: after three seconds,
+    /// Ira plays on from the first that is here, rather than waiting for good.
+    private func waitForGap() {
+        guard gapWait == nil else { return }
+        gapWait = Task { [weak self] in
+            try? await Task.sleep(nanoseconds: 3_000_000_000)
+            guard let self else { return }
+            self.gapWait = nil
+            guard !self.busy, self.queue.skipGap() else { return }
+            self.stats.stalls += 1
+            IraLog.shared.info("a sentence never came; playing on from the next one")
+            self.next()
         }
     }
 
@@ -283,6 +366,10 @@ public final class AudioEngine: NSObject {
         queue = SpeechQueue()
         generation += 1
         busy = false
+        stats = CallStats()
+        player.volume = 1
+        gapWait?.cancel()
+        gapWait = nil
     }
 
     /// An MP3 sentence as PCM in the player's format. AVAudioFile reads files only,
@@ -324,6 +411,7 @@ public final class AudioEngine: NSObject {
 extension AudioEngine: AVSpeechSynthesizerDelegate {
     nonisolated public func speechSynthesizer(_ synthesizer: AVSpeechSynthesizer, didFinish utterance: AVSpeechUtterance) {
         Task { @MainActor in
+            self.stats.played += 1
             self.busy = false
             self.next()
         }

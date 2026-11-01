@@ -60,7 +60,7 @@ struct LocalServerCheck {
         var answer = ""
         for try await event in client.askStream("contacts lookup query=Rahul", conversationID: conversation) {
             switch event {
-            case .tool(_, let name): names.append(name)
+            case .tool(_, let name, _): names.append(name)
             case .done(let text, _, _): answer = text
             default: break
             }

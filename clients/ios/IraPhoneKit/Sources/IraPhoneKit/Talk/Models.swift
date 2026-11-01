@@ -70,7 +70,7 @@ public struct Answer: Equatable, Sendable {
 /// One event of `POST /v1/ask/stream`.
 public enum AskEvent: Equatable, Sendable {
     case start(conversationID: String)
-    case tool(id: String, name: String)
+    case tool(id: String, name: String, device: String? = nil)
     case toolResult(id: String, name: String, ok: Bool)
     case action(ActionCard)
     case delta(String)
@@ -84,7 +84,7 @@ public enum AskEvent: Equatable, Sendable {
         case "start":
             self = .start(conversationID: json["conversation_id"]?.stringValue ?? "")
         case "tool":
-            self = .tool(id: json["id"]?.stringValue ?? "", name: json["name"]?.stringValue ?? "")
+            self = .tool(id: json["id"]?.stringValue ?? "", name: json["name"]?.stringValue ?? "", device: json["device"]?.stringValue)
         case "tool_result":
             self = .toolResult(
                 id: json["id"]?.stringValue ?? "", name: json["name"]?.stringValue ?? "",

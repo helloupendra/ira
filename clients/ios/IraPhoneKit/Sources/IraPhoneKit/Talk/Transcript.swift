@@ -102,15 +102,17 @@ public struct Transcript: Sendable {
                 entries[index].streaming = false
             }
             note(Plain.sentence(message), source: source)
-        case .tool(let turn, let name):
+        case .tool(let turn, let name, let device):
             guard !name.isEmpty else { break }
+            // The receipt names the device when the tool ran on one: "app_open · MacBook".
+            let receipt = device.map { "\(name) · \($0)" } ?? name
             if let index = answerIndex(source: source, turn: turn) {
-                if entries[index].tools.last != name { entries[index].tools.append(name) }
+                if entries[index].tools.last != receipt { entries[index].tools.append(receipt) }
             } else {
                 // The answer's words come after its tools: its line starts here, empty.
                 var entry = Entry(role: .ira, text: "", source: source, turn: turn)
                 entry.streaming = true
-                entry.tools = [name]
+                entry.tools = [receipt]
                 entries.append(entry)
             }
         case .ready, .partial, .audio, .say, .closed:

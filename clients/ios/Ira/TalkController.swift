@@ -50,6 +50,9 @@ final class TalkController {
 
     private let audio = AudioEngine()
     @ObservationIgnored private var vad = EnergyVAD()
+    @ObservationIgnored private var bargeIn = BargeIn()
+    /// What happened in the last call, for Settings: sentences, barge-ins, echoes, restarts.
+    private(set) var callReport = ""
     @ObservationIgnored private var live: LiveVoiceTransport?
     @ObservationIgnored private var recognizer: PhoneRecognizer?
     @ObservationIgnored private var asking: AskSession?
@@ -247,6 +250,7 @@ final class TalkController {
         try audio.activateSession()
         audio.newCall()
         vad = EnergyVAD()
+        bargeIn.reset()
         try audio.startListening()
         callState = .listening(hearing: false)
         finished()
@@ -287,8 +291,11 @@ final class TalkController {
         recognizer?.cancel()
         recognizer = nil
         phoneTurnBusy = false
+        callReport = audio.stats.line  // before hanging up drops what was still to say
+        IraLog.shared.info("call ended: \(callReport)")
         audio.shutDown()
         vad.reset()
+        bargeIn.reset()
         callState = .idle
         mode = nil
         caption = ""
@@ -353,13 +360,35 @@ final class TalkController {
             return
         }
         vad.replying = speaking
-        for output in vad.process(samples, at: at) {
+        let outputs = vad.process(samples, at: at)
+        level = vad.level
+        guard speaking || bargeIn.checking else {
+            send(outputs)
+            return
+        }
+        // Ira is talking: a sound may be the person, or her own voice from the speaker. She is
+        // turned down while it is checked, and stops only for the person.
+        for step in bargeIn.feed(outputs, loud: vad.level > vad.effectiveThreshold, at: at) {
+            switch step {
+            case .duck:
+                audio.duck(true)
+            case .release:
+                audio.duck(false)
+                vad.reset()
+                audio.stats.echoes += 1
+            case .confirm(_, let held):
+                audio.stats.bargeIns += 1
+                stopSpeaking()  // without waiting for the server
+                send(held)
+            }
+        }
+    }
+
+    /// The voice detector's outputs, on to the live call.
+    private func send(_ outputs: [EnergyVAD.Output]) {
+        for output in outputs {
             switch output {
             case .speechStart(let start):
-                if speaking {
-                    // Barge-in: stop at once, without waiting for the server.
-                    stopSpeaking()
-                }
                 callState = .listening(hearing: true)
                 lastActivity = Date()
                 live?.speechStart(at: start)
@@ -372,7 +401,6 @@ final class TalkController {
                 began(StepWords.thinking)
             }
         }
-        level = vad.level
     }
 
     /// Phone mode: the iPhone hears one turn while Ira is quiet; no barge-in
@@ -435,7 +463,7 @@ final class TalkController {
             caption = ""
             lastTurn = max(lastTurn, turn)
             began(StepWords.thinking)
-        case .tool(_, let name):
+        case .tool(_, let name, _):
             began(StepWords.tool(name))
         case .delta:
             caption = ""

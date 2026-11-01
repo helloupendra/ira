@@ -83,9 +83,9 @@ struct ReceiptTests {
     @Test func theToolsIraUsedStayWithTheAnswer() {
         var transcript = Transcript()
         transcript.said("kal ka schedule?", source: 1001, turn: 1)
-        transcript.apply(.tool(turn: 1, name: "calendar_read"), source: 1001)
-        transcript.apply(.tool(turn: 1, name: "calendar_read"), source: 1001)  // the same one again: once
-        transcript.apply(.tool(turn: 1, name: "contacts_lookup"), source: 1001)
+        transcript.apply(.tool(turn: 1, name: "calendar_read", device: nil), source: 1001)
+        transcript.apply(.tool(turn: 1, name: "calendar_read", device: nil), source: 1001)  // the same one again: once
+        transcript.apply(.tool(turn: 1, name: "contacts_lookup", device: nil), source: 1001)
         transcript.apply(.delta(turn: 1, text: "Kal do meetings hain."), source: 1001)
         transcript.apply(.done(turn: 1, text: "Kal do meetings hain.", messageID: 7), source: 1001)
         let answers = transcript.entries.filter { $0.role == .ira }
@@ -93,9 +93,11 @@ struct ReceiptTests {
         #expect(answers[0].tools == ["calendar_read", "contacts_lookup"])
         #expect(answers[0].text == "Kal do meetings hain.")
         #expect(!answers[0].streaming)
-        // Another turn's tools are its own.
-        transcript.apply(.tool(turn: 2, name: "web_search"), source: 1001)
+        // Another turn's tools are its own; one that ran on a device names it.
+        transcript.apply(.tool(turn: 2, name: "web_search", device: nil), source: 1001)
         #expect(transcript.entries.last?.tools == ["web_search"])
+        transcript.apply(.tool(turn: 3, name: "app_open", device: "MacBook (Mac)"), source: 1001)
+        #expect(transcript.entries.last?.tools == ["app_open · MacBook (Mac)"])
     }
 }
 
@@ -132,5 +134,85 @@ struct InputMixTests {
         #expect(InputProbe.describe(setup: "48000 Hz × 1 ch, echo cancellation on", levels: [0])
             == "48000 Hz × 1 ch, echo cancellation on: silent (0.0000)")
         #expect(InputProbe.describe(setup: "x", levels: [0, 0.0123]).hasSuffix("sound (0.0000, 0.0123)"))
+    }
+}
+
+@Suite("Talking over Ira")
+struct BargeInTests {
+    /// Frames as the detector gives them while Ira speaks: speech starts at 1000 ms.
+    func started() -> [EnergyVAD.Output] { [.speechStart(at: 1000), .audio(Data([1, 2]))] }
+
+    @Test func herOwnEchoFadesWhenSheIsTurnedDownAndSheCarriesOn() {
+        var barge = BargeIn()
+        let quiet = barge.feed([], loud: false, at: 980)
+        #expect(quiet.isEmpty)
+        let first = barge.feed(started(), loud: true, at: 1000)
+        #expect(first == [.duck])
+        #expect(barge.checking)
+        var steps: [BargeIn.Step] = []
+        // Turned down, the echo is mostly under the threshold.
+        for (index, at) in stride(from: 1020.0, through: 1320, by: 20).enumerated() {
+            steps += barge.feed([.audio(Data([3]))], loud: index % 4 == 0, at: at)
+        }
+        #expect(steps == [.release])
+        #expect(!barge.checking)
+    }
+
+    @Test func thePersonStaysLoudAndSheStopsWithNothingOfTheirsLost() {
+        var barge = BargeIn()
+        _ = barge.feed(started(), loud: true, at: 1000)
+        var steps: [BargeIn.Step] = []
+        for at in stride(from: 1020.0, through: 1320, by: 20) {
+            steps += barge.feed([.audio(Data([4]))], loud: true, at: at)
+        }
+        guard case .confirm(let start, let held)? = steps.first else {
+            Issue.record("no barge-in: \(steps)")
+            return
+        }
+        #expect(steps.count == 1)
+        #expect(start == 1000)
+        #expect(held.first == .speechStart(at: 1000))
+        #expect(held.count == 2 + 15)  // the start and lead-in, then each frame until 300 ms
+    }
+
+    @Test func aSoundOverBeforeItIsCheckedIsNotThePerson() {
+        var barge = BargeIn()
+        _ = barge.feed(started(), loud: true, at: 1000)
+        let ended = barge.feed([.audio(Data()), .speechEnd(at: 1100)], loud: false, at: 1100)
+        #expect(ended == [.release])
+    }
+
+    @Test func theLastCallIsSaidInOneLine() {
+        var stats = CallStats()
+        stats.received = 12
+        stats.played = 9
+        stats.cut = 3
+        stats.bargeIns = 1
+        stats.echoes = 4
+        #expect(stats.line == "12 sentences from Ira, 9 played; 3 cut short; 1 times you talked over her; 4 echoes of her voice ignored")
+    }
+}
+
+@Suite("A missing sentence")
+struct SpeechGapTests {
+    @Test func laterSentencesPlayWhenOneNeverComes() {
+        var queue = SpeechQueue<String>()
+        queue.add(turn: 1, seq: 0, "a")
+        let a = queue.next()?.item
+        #expect(a == "a")
+        queue.add(turn: 1, seq: 2, "c")  // seq 1 was lost
+        let waiting = queue.next()
+        #expect(waiting == nil)
+        #expect(queue.stuck)
+        let skipped = queue.skipGap()
+        #expect(skipped)
+        let c = queue.next()?.item
+        #expect(c == "c")
+        #expect(!queue.stuck)
+        let again = queue.skipGap()
+        #expect(!again)
+        queue.add(turn: 2, seq: 0, "d")
+        let dropped = queue.stop(through: 2)
+        #expect(dropped == 1)
     }
 }

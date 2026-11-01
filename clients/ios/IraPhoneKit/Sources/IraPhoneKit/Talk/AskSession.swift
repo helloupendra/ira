@@ -108,8 +108,8 @@ public final class AskSession: @unchecked Sendable {
                 switch event {
                 case .start(let id):
                     if !id.isEmpty { events(.ready(conversationID: id, assistant: nil)) }
-                case .tool(_, let name):
-                    events(.tool(turn: turn, name: name))
+                case .tool(_, let name, let device):
+                    events(.tool(turn: turn, name: name, device: device))
                 case .toolResult, .other:
                     break
                 case .delta(let piece):

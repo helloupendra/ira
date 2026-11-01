@@ -11,6 +11,7 @@ public enum LiveProtocol {
         case partial(text: String, language: String?)
         case heard(turn: Int, text: String, language: String?)
         case delta(turn: Int, text: String)
+        case tool(turn: Int, name: String, device: String?)
         /// The next binary frame is this sentence's audio.
         case audio(turn: Int, seq: Int, text: String, format: String, bytes: Int?)
         case action(turn: Int, action: JSONValue)
@@ -41,6 +42,8 @@ public enum LiveProtocol {
             return .heard(turn: turn, text: message["text"]?.stringValue ?? "", language: message["language"]?.stringValue)
         case "delta":
             return .delta(turn: turn, text: message["text"]?.stringValue ?? "")
+        case "tool":
+            return .tool(turn: turn, name: message["name"]?.stringValue ?? "", device: message["device"]?.stringValue)
         case "audio":
             return .audio(
                 turn: turn, seq: message["seq"]?.intValue ?? 0, text: message["text"]?.stringValue ?? "",
@@ -203,6 +206,8 @@ public final class LiveVoiceTransport: VoiceTransport, @unchecked Sendable {
                     events(.heard(turn: turn, text: text))
                 case .delta(let turn, let text):
                     events(.delta(turn: turn, text: text))
+                case .tool(let turn, let name, let device):
+                    events(.tool(turn: turn, name: name, device: device))
                 case .audio(let turn, let seq, let text, _, _):
                     pendingAudio = (turn, seq, text)
                 case .action(let turn, let action):
