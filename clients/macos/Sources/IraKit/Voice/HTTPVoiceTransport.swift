@@ -167,6 +167,8 @@ public final class HTTPVoiceTransport: VoiceTransport, @unchecked Sendable {
                     }
                 case "tool":
                     emit(.tool(turn: turn, name: event["name"]?.stringValue ?? ""))
+                case "tool_result":
+                    emit(.toolDone(turn: turn, name: event["name"]?.stringValue ?? "", ok: event["ok"]?.boolValue ?? true))
                 case "delta":
                     let piece = event["text"]?.stringValue ?? ""
                     full += piece

@@ -91,6 +91,8 @@ Messages are JSON text frames, except audio, which goes in binary frames.
 | `{"type": "partial", "text": "kal subah", "language": "hi-IN"}` | live captions while you speak; each replaces the last |
 | `{"type": "heard", "turn": 3, "text": "kal subah 9 baje yaad dilana", "language": "hi-IN"}` | the final text of your turn; Ira starts answering |
 | `{"type": "delta", "turn": 3, "text": "..."}` | the answer's text as it is written, as in `/v1/ask/stream` |
+| `{"type": "tool", "turn": 3, "name": "calendar_read"}` | Ira is using a tool: show the step. Text written before it was a lead-in, not the answer (`done` has the answer) |
+| `{"type": "tool_result", "turn": 3, "name": "calendar_read", "ok": true}` | that tool finished |
 | `{"type": "audio", "turn": 3, "seq": 0, "text": "Theek hai.", "format": "mp3", "bytes": 5321}` | the next binary frame is this sentence's audio. Play them in `seq` order |
 | `{"type": "action", "turn": 3, "action": {...}}` | a proposed action, as in `/v1/ask`. Tier 2: say yes or no. Tier 3: show the card; the PIN is typed |
 | `{"type": "done", "turn": 3, "text": "...", "message_id": 812, "timings": {"stt_ms": 240, "model_first_ms": 610, "tts_first_ms": 130}}` | the answer is complete. `timings`: from `speech_end` arriving to the final transcript, to the model's first words, and the first sentence's speech synthesis |

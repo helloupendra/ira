@@ -351,6 +351,12 @@ struct StreamingTests {
 
 @Suite("Live voice")
 struct LiveVoiceTests {
+    @Test func toolStepsOnACall() throws {
+        #expect(try LiveProtocol.decode(#"{"type":"tool","turn":3,"name":"browser_tabs"}"#) == .tool(turn: 3, name: "browser_tabs"))
+        #expect(try LiveProtocol.decode(#"{"type":"tool_result","turn":3,"name":"browser_tabs","ok":false}"#)
+            == .toolResult(turn: 3, name: "browser_tabs", ok: false))
+    }
+
     func connect(_ channel: FakeChannel) -> (LiveVoiceTransport, FakeConnector) {
         let connector = FakeConnector(channel: channel)
         let live = try! LiveVoiceTransport(

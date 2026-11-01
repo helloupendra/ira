@@ -239,6 +239,11 @@ def test_a_tool_call_is_announced_and_odd_scripts_are_not_spoken():
         seen = until(ws, "done")
     spoken = [m["text"] for m in seen if m["type"] == "audio"]
     assert spoken == ["Ek second.", "Upload 63% ho gaya hai."]
+    # The app hears of the step, and of its end, so it can show it.
+    steps = [(m["type"], m["name"]) for m in seen if m["type"] in ("tool", "tool_result")]
+    assert steps == [("tool", "nothing_here"), ("tool_result", "nothing_here")]
+    result = next(m for m in seen if m["type"] == "tool_result")
+    assert result["turn"] == 1 and result["ok"] is False  # no such tool
 
 
 async def test_a_call_asks_for_spoken_answers_and_may_use_its_own_tier():

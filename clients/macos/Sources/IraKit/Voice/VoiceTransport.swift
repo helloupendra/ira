@@ -8,8 +8,11 @@ public enum TalkEvent: Equatable, Sendable {
     case partial(String)
     /// The final text of the person's spoken turn.
     case heard(turn: Int, text: String)
-    /// Ira used a tool (shown as "Looking for files…").
+    /// Ira used a tool (shown as "Looking for files…"). Text of the turn before it was a
+    /// lead-in, not the answer.
     case tool(turn: Int, name: String)
+    /// That tool finished.
+    case toolDone(turn: Int, name: String, ok: Bool)
     /// More of the answer's text.
     case delta(turn: Int, text: String)
     /// One sentence of the answer as MP3, to play in `seq` order.

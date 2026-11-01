@@ -376,10 +376,25 @@ class LiveCall:
                         )
                         for sentence in sentences.feed(event["text"]):
                             self._queue(turn, speech, sentence)
-                    elif kind == "tool" and turn.seq == 0 and turn.spoken_chars == 0:
-                        from ira.language import detect
+                    elif kind == "tool":
+                        # The app shows the step ("Reading your Chrome tabs…"), and what was
+                        # written before it was a lead-in, not the answer.
+                        await self.send(
+                            {"type": "tool", "turn": turn.number, "name": event.get("name")}
+                        )
+                        if turn.seq == 0 and turn.spoken_chars == 0:
+                            from ira.language import detect
 
-                        self._queue(turn, speech, ONE_MOMENT[detect(turn.text)])
+                            self._queue(turn, speech, ONE_MOMENT[detect(turn.text)])
+                    elif kind == "tool_result":
+                        await self.send(
+                            {
+                                "type": "tool_result",
+                                "turn": turn.number,
+                                "name": event.get("name"),
+                                "ok": bool(event.get("ok")),
+                            }
+                        )
                     elif kind == "action":
                         action = event["action"]
                         self._read_back(turn, speech, action)

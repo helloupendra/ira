@@ -457,6 +457,14 @@ final class Conversation: ObservableObject {
         case .tool(let turn, let name):
             receipts.began(name, turn: turn)
             progressed(Conversation.phrase(name))
+            // What came before a tool was a lead-in ("let me look"), not the answer: never glue
+            // it to the answer, even when a turn ends without its final text.
+            if let index = entryIndex(turn: turn), entries[index].action == nil, entries[index].receipts.isEmpty {
+                entries.remove(at: index)
+            }
+        case .toolDone(let turn, _, _):
+            receipts.ended(turn: turn)
+            progressed()
         case .delta(let turn, let text):
             caption = ""
             receipts.ended(turn: turn)

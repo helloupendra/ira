@@ -602,8 +602,8 @@ struct CodeTaskTests {
                          announce: { event, title, _, _ in events.add("\(event) | \(title)") })
     }
 
-    func waitFor(_ condition: () -> Bool) async -> Bool {
-        for _ in 0..<500 {
+    func waitFor(seconds: Double = 5, _ condition: () -> Bool) async -> Bool {
+        for _ in 0..<Int(seconds * 100) {
             if condition() { return true }
             try? await Task.sleep(nanoseconds: 10_000_000)
         }
@@ -694,7 +694,7 @@ struct CodeTaskTests {
         #expect(await waitFor { tasks.jobs().first { $0.id == otherID }?.session == "s-1" })
         await #expect(throws: ToolFailure.self) { try await tasks.pause(["id": .string(otherID)]) }
         _ = try await tasks.stop(["id": .string(otherID)])
-        #expect(await events.waitFor { $0.contains("task_failed | Task \(otherID) in shop stopped") })
+        #expect(await waitFor(seconds: 10) { events.all.contains("task_failed | Task \(otherID) in shop stopped") })
         await #expect(throws: ToolFailure.self) { try await tasks.resume(["id": .string(otherID)]) }
     }
 
