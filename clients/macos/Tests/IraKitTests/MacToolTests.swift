@@ -1229,7 +1229,17 @@ struct ControlTests {
                           ("com.apple.ScriptEditor2", "Script Editor"), ("com.github.wez.wezterm", "WezTerm")] {
             #expect(MacControl.refusal(bundleID: id, app: app, window: nil) == NeverApps.refusal, "\(app)")
         }
+        // Code editors with a terminal of their own may be opened, never typed in: ctrl+` opens
+        // the terminal, and Return runs the line.
+        for (id, app) in [("com.microsoft.VSCode", "Code"), ("com.todesktop.230313mzl4w4u92", "Cursor"),
+                          ("com.jetbrains.pycharm.ce", "PyCharm CE"), ("dev.zed.Zed", "Zed"), (nil, "Visual Studio Code")] {
+            #expect(MacControl.refusal(bundleID: id, app: app, window: nil) == NeverApps.editorRefusal, "\(app)")
+            #expect(!NeverApps.contains(bundleID: id, name: app), "\(app) can still be opened")
+        }
         #expect(!NeverApps.contains(bundleID: "com.apple.Notes", name: "Notes"))
+        for (id, app) in [("com.apple.dt.Xcode", "Xcode"), ("com.example.barcode", "Barcode Scanner"), ("com.apple.Notes", "Notes")] {
+            #expect(!NeverApps.neverType(bundleID: id, name: app), "\(app)")
+        }
         let policy = PathPolicy(home: FileManager.default.homeDirectoryForCurrentUser)
         #expect(Toolbox.openRefusal("/System/Applications/Utilities/Terminal.app", policy: policy) == NeverApps.refusal)
         #expect(Toolbox.openRefusal("/System/Applications/Shortcuts.app", policy: policy) == NeverApps.refusal)

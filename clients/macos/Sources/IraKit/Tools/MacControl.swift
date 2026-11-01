@@ -57,6 +57,9 @@ public enum MacControl {
         if NeverApps.contains(bundleID: bundleID, name: app) {
             return NeverApps.refusal
         }
+        if NeverApps.neverType(bundleID: bundleID, name: app) {
+            return NeverApps.editorRefusal
+        }
         if let bundleID, ScreenText.systemUI.contains(bundleID) {
             return "a macOS prompt is in front (\(app)). Answer it yourself"
         }
