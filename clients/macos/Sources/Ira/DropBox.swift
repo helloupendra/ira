@@ -267,7 +267,7 @@ final class DropNotes: NSObject, UNUserNotificationCenterDelegate {
     }
 
     func post(title: String, body: String, copy: String? = nil, save: Int? = nil, reveal: URL? = nil) {
-        guard available else { return }
+        guard available, !Snapshot.active else { return }
         let center = UNUserNotificationCenter.current()
         center.requestAuthorization(options: [.alert, .sound]) { granted, _ in
             guard granted else { return }

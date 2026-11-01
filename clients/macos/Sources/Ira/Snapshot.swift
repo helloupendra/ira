@@ -7,6 +7,10 @@ import IraKit
 /// app in front: no Dock icon, and the window is fully transparent and lets clicks through.
 @MainActor
 enum Snapshot {
+    /// A snapshot run asks macOS for nothing: no permission, no notification, no microphone,
+    /// so the test build never appears in System Settings' lists.
+    nonisolated static let active = !(ProcessInfo.processInfo.environment["IRA_SNAPSHOT"] ?? "").isEmpty
+
     static func run(into folder: URL) {
         let app = NSApplication.shared
         app.setActivationPolicy(.prohibited)

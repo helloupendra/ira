@@ -4,7 +4,8 @@
 #
 #   scripts/make-app.sh              this Mac's architecture
 #   UNIVERSAL=1 scripts/make-app.sh  Apple silicon and Intel in one app (slower)
-#   BUNDLE_ID=in.ira.mac.test ...    a test build with its own settings and Keychain item
+#   BUNDLE_ID=in.ira.mac.test ...    a test build with its own settings and Keychain item,
+#                                    named "Ira Test" so it is never taken for Ira (no zip or dmg)
 #   IRA_SIGNING_NAME=none ...        ad hoc, even when a signing identity exists
 #
 # Output, in clients/macos/dist/: Ira-<version>.zip and Ira-<version>.dmg.
@@ -28,7 +29,10 @@ version=$(sed -n 's/.*static let version = "\(.*\)".*/\1/p' Sources/IraKit/Suppo
 build="${BUILD_NUMBER:-$(git -C "$repo" rev-list --count HEAD 2>/dev/null || echo 1)}"
 dist="$here/dist"
 bundle_id="${BUNDLE_ID:-in.ira.mac}"
-app="$dist/build.noindex/Ira.app"
+# Only the real Ira is called Ira: a test build is "Ira Test" everywhere macOS shows a name.
+name="Ira"
+if [ "$bundle_id" != in.ira.mac ]; then name="Ira Test"; fi
+app="$dist/build.noindex/$name.app"
 rm -rf "$dist/Ira.app"  # an older layout
 
 arch_flags=""
@@ -75,8 +79,8 @@ cat > "$app/Contents/Info.plist" <<PLIST
 <plist version="1.0">
 <dict>
   <key>CFBundleIdentifier</key><string>$bundle_id</string>
-  <key>CFBundleName</key><string>Ira</string>
-  <key>CFBundleDisplayName</key><string>Ira</string>
+  <key>CFBundleName</key><string>$name</string>
+  <key>CFBundleDisplayName</key><string>$name</string>
   <key>CFBundleExecutable</key><string>Ira</string>
   <key>CFBundleIconFile</key><string>Ira</string>
   <key>CFBundlePackageType</key><string>APPL</string>
@@ -119,6 +123,11 @@ codesign --verify --strict "$app"
 # What macOS will match permissions against.
 codesign -d -r- "$app" 2>&1 | sed -n 's/^#* *designated => /Designated requirement: /p'
 codesign -dvv "$app" 2>&1 | sed -n 's/^Authority=/Signed by: /p' | head -1
+
+if [ "$name" != Ira ]; then
+  echo "Built (a test build, not for anyone to install): $app"
+  exit 0
+fi
 
 zip="$dist/Ira-$version.zip"
 dmg="$dist/Ira-$version.dmg"

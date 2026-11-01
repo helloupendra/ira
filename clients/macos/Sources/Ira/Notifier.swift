@@ -4,6 +4,7 @@ import UserNotifications
 /// A note in Notification Center when Ira answers while its window is hidden.
 enum Notifier {
     static func post(title: String, body: String) {
+        guard !Snapshot.active else { return }
         let center = UNUserNotificationCenter.current()
         center.requestAuthorization(options: [.alert, .sound]) { granted, _ in
             guard granted else { return }

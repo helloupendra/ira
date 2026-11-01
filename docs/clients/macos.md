@@ -507,6 +507,7 @@ swift build                  # debug build
 scripts/test.sh              # the tests (Swift Testing)
 scripts/make-app.sh          # dist/Ira.app, dist/Ira-<version>.zip and .dmg
 UNIVERSAL=1 scripts/make-app.sh   # Apple silicon and Intel in one app
+scripts/snapshots.sh <folder>     # the window in PNGs, offscreen, from a throwaway "Ira Test" build
 scripts/make-signing-identity.sh  # once: keep permissions between your builds
 ```
 
@@ -549,7 +550,7 @@ SDKs make a macro whose plugin ships with Xcode only.
 | `Sources/IraKit/Device/` | pairing (`POST /v1/devices/pair`, as the Python companion's `exchange()`), the device WebSocket's frames, and the client that holds it: hello, calls, ping and pong, 90-second silence, reconnect with backoff, `bye` when removed |
 | `Sources/IraKit/Tools/` | `ToolCatalog` (every tool's JSON Schema, skill and tier) and `Toolbox` (calls and "What I read"); the path policy and its deny list; Spotlight; PDF, Word, RTF and text reading; ScreenCaptureKit and Vision; Contacts; EventKit; Mail, Notes and Messages through fixed AppleScripts that take the model's words only as arguments; apps, the clipboard and Shortcuts; coding tasks and the push guard; the AI sessions' summaries (`AISessions`: transcripts read from their end, `SecretFilter` over every excerpt) |
 | `Sources/IraKit/Voice/`, `Talk/` | `VoiceTransport`: live voice over `/v1/voice/live` ([Real-time voice](../realtime.md), protocol 1) with the device token, or the HTTP API with the same token (tried again on the next mic press); the energy voice detector; sentence splitting |
-| `Sources/Ira/` | the app: its window (a SwiftUI sidebar with Chat, Drop, This Mac and Settings), the menu bar and the four-bar icon, the global hotkey (Carbon, so no Accessibility permission), microphone and speaker on one `AVAudioEngine` with echo cancellation. `IRA_SNAPSHOT=<folder>` draws the window into PNGs without showing it, for docs and reviews |
+| `Sources/Ira/` | the app: its window (a SwiftUI sidebar with Chat, Drop, This Mac and Settings), the menu bar and the four-bar icon, the global hotkey (Carbon, so no Accessibility permission), microphone and speaker on one `AVAudioEngine` with echo cancellation. `IRA_SNAPSHOT=<folder>` draws the window into PNGs without showing it, for docs and reviews; `scripts/snapshots.sh <folder> [pairing link]` does it with a test build ("Ira Test", `in.ira.mac.test`) that asks for no permission and leaves nothing behind (its Keychain item, settings, permissions and LaunchServices entry go after the run), so System Settings never lists a second Ira |
 | `Tests/IraKitTests/` | pairing against a URLProtocol stub, device and live-voice frames against a fake WebSocket, the deny list, a tiny `.docx` fixture, a PDF drawn in the test, tool schemas and deadlines, the browser scripts, the routine readings, taking over the companion, the wake phrase, and the voice detector on synthetic audio. No test opens a network connection |
 | `Tests/IraAppTests/` | the window and menus: the standard menu bar, Cmd-V reaching the Ask field through the Edit menu (with the pasteboard put back after), the four bars' menu holding only Open and Quit, and the pane kept for the next launch |
 

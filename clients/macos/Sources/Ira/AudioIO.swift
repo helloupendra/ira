@@ -52,7 +52,8 @@ final class AudioIO: NSObject {
     }
 
     nonisolated static func askMicPermission() async -> Bool {
-        await AVCaptureDevice.requestAccess(for: .audio)
+        guard !Snapshot.active else { return false }
+        return await AVCaptureDevice.requestAccess(for: .audio)
     }
 
     /// The input the engine listens to: the Mac's default input, named as Sound settings names it.

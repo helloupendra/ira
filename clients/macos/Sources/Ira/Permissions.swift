@@ -152,6 +152,7 @@ final class PermissionCenter: ObservableObject {
     /// Ira's window stays while macOS asks: it steps below the dialog, and
     /// comes back with the answer.
     func ask(_ permission: Permission) async {
+        guard !Snapshot.active else { return }
         NotificationCenter.default.post(name: .iraAskingPermission, object: nil)
         defer { NotificationCenter.default.post(name: .iraAskedPermission, object: nil) }
         switch permission.id {

@@ -49,7 +49,7 @@ final class WakeListener {
     }
 
     func start() async throws {
-        guard !listening else { return }
+        guard !listening, !Snapshot.active else { return }
         guard let recognizer = WakeListener.recognizer() else { throw Problem.notOnDevice }
         if SFSpeechRecognizer.authorizationStatus() == .notDetermined {
             await withCheckedContinuation { continuation in
