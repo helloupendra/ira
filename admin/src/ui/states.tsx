@@ -27,7 +27,8 @@ export function sentenceFor(error: Error): string {
   if (error.status === 0) return 'Cannot reach the server. Check the connection and try again.';
   if (error.status === 401) return 'Your session has expired. Sign in again.';
   if (error.status === 429) return 'Too many requests. Wait a moment and try again.';
-  return `Couldn't load this. ${error.detail}`;
+  const detail = error.detail.charAt(0).toUpperCase() + error.detail.slice(1);
+  return `Couldn't load this. ${detail}`;
 }
 
 export function ErrorState({

@@ -177,7 +177,16 @@ export function Layout({ children }: { children: ReactNode }) {
             </button>
           </div>
           <nav className="sheet-nav" aria-label="More pages">
-            {navList(MORE_NAV)}
+            {NAV_GROUPS.map((group) => {
+              const items = MORE_NAV.filter((item) => item.group === group);
+              if (items.length === 0) return null;
+              return (
+                <div key={group} className="nav-group">
+                  <p className="nav-group-label">{group}</p>
+                  {navList(items)}
+                </div>
+              );
+            })}
           </nav>
           <div className="sheet-foot">
             <UserBlock user={user} />

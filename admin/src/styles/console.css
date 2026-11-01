@@ -123,8 +123,11 @@ svg { display: block; }
   text-decoration: none;
   cursor: pointer;
 }
+.tab .icon { padding: 2px 14px; box-sizing: content-box; border-radius: 999px; transition: background var(--ease); }
 .tab[aria-current="page"],
-.tab.is-active { color: var(--accent); }
+.tab.is-active { color: var(--accent-soft-text); font-weight: 600; }
+.tab[aria-current="page"] .icon,
+.tab.is-active .icon { background: var(--accent-soft); }
 
 @media (min-width: 56rem) {
   .rail {
@@ -276,6 +279,7 @@ svg { display: block; }
 }
 .sheet-head { display: flex; align-items: center; justify-content: space-between; }
 .sheet-head h2 { font-size: var(--text-base); font-weight: 600; }
+.sheet-nav { display: grid; gap: var(--s-4); }
 .sheet .nav-link { min-height: var(--tap); }
 .sheet-foot { display: grid; gap: var(--s-4); padding-top: var(--s-4); border-top: 1px solid var(--line); }
 .sheet-foot .btn { justify-self: start; }
@@ -347,10 +351,14 @@ svg { display: block; }
 .section-head .section-title { margin-bottom: 0; }
 .section-desc { max-width: 44rem; font-size: var(--text-s); color: var(--muted); }
 
-/* The pages whose list is the whole page (conversations, tools, an empty list): one card too. */
+/* The pages whose list is the whole page (conversations, tools, an empty list), and a
+   whole page's loading or error state: one card too. */
 .page > .conv-list,
 .page > .tools,
-.page > .empty {
+.page > .empty,
+.page > .skeleton,
+.page > .error-state,
+.page > .forbidden {
   margin-top: var(--s-5);
   padding: var(--s-3) var(--s-4);
   background: var(--card);
@@ -360,7 +368,10 @@ svg { display: block; }
 @media (min-width: 40rem) {
   .page > .conv-list,
   .page > .tools,
-  .page > .empty { padding: var(--s-3) 22px; }
+  .page > .empty,
+  .page > .skeleton,
+  .page > .error-state,
+  .page > .forbidden { padding: var(--s-4) 22px; }
 }
 .page > .tools > .disclosure:first-child,
 .page > .tools > :first-child > .disclosure:first-child { border-top: 0; }
