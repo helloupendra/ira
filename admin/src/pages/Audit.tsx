@@ -234,11 +234,14 @@ function ActionEvents({ tick }: { tick: number }) {
 
 // Cost: the last 30 days, by day, and the model calls behind them.
 
-function Stat({ label, value }: { label: string; value: string }) {
+function Stat({ label, value, note }: { label: string; value: string; note?: string }) {
   return (
     <div className="stat">
       <dt className="stat-label">{label}</dt>
-      <dd className="stat-value">{value}</dd>
+      <dd className="stat-value">
+        {value}
+        {note && <span className="stat-note">{note}</span>}
+      </dd>
     </div>
   );
 }
@@ -256,7 +259,11 @@ function CostDays({ rows }: { rows: CostDay[] }) {
       <dl className="stats cost-stats">
         <Stat label="Calls" value={count(sum.calls)} />
         <Stat label="Failures" value={count(sum.failures)} />
-        <Stat label="Cost" value={costText(sum.cost_usd, sum.cost_unknown)} />
+        <Stat
+          label="Cost"
+          value={costText(sum.cost_usd)}
+          note={sum.cost_unknown > 0 && sum.cost_usd != null ? `+ ${count(sum.cost_unknown)} unknown` : undefined}
+        />
         <Stat label="Tokens in / out" value={`${count(sum.input_tokens)} / ${count(sum.output_tokens)}`} />
       </dl>
       <p className="inline-note cost-note">Cost is in US dollars, as configured in ira.yaml's price table.</p>

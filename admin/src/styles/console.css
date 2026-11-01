@@ -324,6 +324,15 @@ svg { display: block; }
 }
 .page > .section:first-of-type,
 .page-head + .section { margin-top: var(--s-5); }
+/* A part inside a card is not a card again: a hairline and space set it apart. */
+.section .section {
+  margin-top: var(--s-5);
+  padding: var(--s-4) 0 0;
+  background: none;
+  border: 0;
+  border-top: 1px solid var(--line);
+  border-radius: 0;
+}
 .section-title { margin-bottom: var(--s-3); font-size: var(--text-base); font-weight: 600; letter-spacing: -0.01em; }
 /* A card's heading: title and a line about it on the left, its main button on the right. */
 .section-head {

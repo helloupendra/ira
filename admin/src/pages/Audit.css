@@ -12,6 +12,18 @@
 .change-what { font-weight: 500; }
 .change-who { font-size: var(--text-s); color: var(--muted); overflow-wrap: anywhere; }
 
+/* An open change: its details in a quiet inset panel, like an open action's. */
+.change > .disclosure-body {
+  margin: 0 0 var(--s-3);
+  padding: var(--s-3) var(--s-4);
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+}
+@media (min-width: 40rem) {
+  .change > .disclosure-body { margin-left: calc(20px + var(--s-3)); }
+}
+
 /* Before and after, each under a quiet label like the key-value list's */
 .change-part { display: grid; gap: var(--s-1); }
 .change-part-title { font-size: var(--text-m); font-weight: 400; color: var(--muted); }
