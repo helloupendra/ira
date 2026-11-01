@@ -16,6 +16,7 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.ProvideTextStyle
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -29,6 +30,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
@@ -126,6 +128,7 @@ private fun FingerprintCard(app: IraApp, onMessage: (String?) -> Unit) {
     var pin by remember { mutableStateOf("") }
     var busy by remember { mutableStateOf(false) }
     Section("Fingerprint") {
+      ProvideTextStyle(TextStyle(fontSize = 14.sp, lineHeight = 20.sp, color = Presence.colors.ink)) {
         Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             if (enrolled) {
                 Text("This phone is enrolled: a request that needs your PIN offers your fingerprint first.")
@@ -177,6 +180,7 @@ private fun FingerprintCard(app: IraApp, onMessage: (String?) -> Unit) {
                 }) { Text(if (busy) "Enrolling..." else "Enroll with PIN") }
             }
         }
+      }
     }
 }
 
