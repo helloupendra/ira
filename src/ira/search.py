@@ -423,12 +423,14 @@ class Search:
             "type": "video",
             "maxResults": 5,
             "q": query,
-            "key": key,
         }
         if live:
             params["eventType"] = "live"
         try:
-            response = await self.client.get(YOUTUBE_SEARCH, params=params, timeout=15)
+            # The key in a header, not the address: addresses end up in logs.
+            response = await self.client.get(
+                YOUTUBE_SEARCH, params=params, headers={"X-Goog-Api-Key": key}, timeout=15
+            )
         except httpx.HTTPError as exc:
             raise ToolError(f"YouTube could not be reached ({type(exc).__name__})") from None
         if response.status_code in (400, 403):

@@ -79,7 +79,8 @@ async def test_youtube_api_with_a_key_and_a_short_cache(monkeypatch):
     assert found["videos"][0]["live"] is True and found["videos"][1]["live"] is False
     params = seen[0].url.params
     assert seen[0].url.host == "www.googleapis.com" and params["eventType"] == "live"
-    assert params["type"] == "video" and params["key"] == "yt-key"
+    assert params["type"] == "video" and seen[0].headers["X-Goog-Api-Key"] == "yt-key"
+    assert "key" not in params and "yt-key" not in str(seen[0].url)  # addresses get logged
 
     finder = search(handle)
     await finder.video("monsoon")

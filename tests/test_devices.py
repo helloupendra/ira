@@ -726,6 +726,44 @@ def test_tokens_in_websocket_urls_are_masked_in_logs():
     assert "token=***&v=1" in record.getMessage()
 
 
+def test_secrets_in_outgoing_and_sign_in_addresses_are_masked_in_logs(caplog):
+    """httpx logs each request's full address; Telegram's has the bot token in its path,
+    and a sign-in comes back with ?code=&state=."""
+    import httpx
+
+    from ira.channels.devices import mask_tokens_in_logs
+
+    mask_tokens_in_logs()
+    bot = "/bot123456:" + "AAF-made_up_value"
+    client = httpx.Client(transport=httpx.MockTransport(lambda r: httpx.Response(200)))
+    with caplog.at_level(logging.INFO, logger="httpx"):
+        client.get(f"https://api.telegram.org{bot}/getUpdates?timeout=30")
+        client.get("https://example.com/search?q=x&key=made-up-key")
+    logged = caplog.text
+    assert "AAF-made_up_value" not in logged and "/bot***/getUpdates" in logged
+    assert "made-up-key" not in logged and "key=***" in logged
+
+    record = logging.LogRecord(
+        "uvicorn.access",
+        logging.INFO,
+        __file__,
+        1,
+        '%s - "%s %s"',
+        ("127.0.0.1:5000", "GET", "/v1/connectors/oauth/callback?code=abc123&state=st456"),
+        None,
+    )
+    TokenFilter().filter(record)
+    assert "abc123" not in record.getMessage() and "st456" not in record.getMessage()
+
+
+def test_ira_serve_keeps_the_http_clients_request_lines_out_of_the_log():
+    from ira.cli import setup_logging
+
+    setup_logging()
+    assert logging.getLogger("httpx").getEffectiveLevel() >= logging.WARNING
+    assert logging.getLogger("httpcore").getEffectiveLevel() >= logging.WARNING
+
+
 def test_registry_tools_win_over_a_devices_tool_of_the_same_name(store):
     registry = ToolRegistry()
 

@@ -87,6 +87,16 @@ def cmd_setup(args: argparse.Namespace) -> int:
     return 0
 
 
+def setup_logging() -> None:
+    """INFO for Ira itself. The HTTP client logs every request's full address at INFO,
+    and some carry a secret (Telegram's bot token is in its path): warnings only there."""
+    logging.basicConfig(
+        level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s"
+    )
+    for name in ("httpx", "httpcore"):
+        logging.getLogger(name).setLevel(logging.WARNING)
+
+
 def cmd_serve(args: argparse.Namespace) -> int:
     import uvicorn
 
@@ -94,9 +104,7 @@ def cmd_serve(args: argparse.Namespace) -> int:
     from ira.runtime import build_runtime
 
     settings = _settings(args)
-    logging.basicConfig(
-        level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s"
-    )
+    setup_logging()
     runtime = build_runtime(settings)
     host = args.host or settings.channels.http.host
     port = args.port or settings.channels.http.port

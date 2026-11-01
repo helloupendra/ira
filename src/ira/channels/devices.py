@@ -60,27 +60,43 @@ from ira.runtime import Runtime
 
 router = APIRouter(tags=["devices"], responses=ERRORS)
 
-# A device that cannot set a header sends its token as ?token=. Servers log request
-# lines, uvicorn included, so the value is masked in every log record that carries one.
-_TOKEN_IN_URL = re.compile(r"([?&]token=)[^&\s\"']+")
+# A device that cannot set a header sends its token as ?token=, a sign-in comes back
+# with ?code=&state=, and Telegram's API has the bot token in its path. Servers log
+# request lines, uvicorn and httpx included, so these are masked in every log record.
+_SECRET_IN_URL = re.compile(
+    r"([?&](?:token|access_token|refresh_token|key|api_key|code|state)=)[^&\s\"']+"
+)
+_BOT_TOKEN_IN_PATH = re.compile(r"(/bot)[0-9]+:[A-Za-z0-9_-]+")
+
+
+def mask_secrets(text: str) -> str:
+    """The text with the secrets in its addresses replaced by ``***``."""
+    return _BOT_TOKEN_IN_PATH.sub(r"\1***", _SECRET_IN_URL.sub(r"\1***", text))
+
+
+def _masked(value: Any) -> Any:
+    if value is None or isinstance(value, (bool, int, float)):
+        return value
+    text = value if isinstance(value, str) else str(value)  # httpx logs URL objects
+    masked = mask_secrets(text)
+    return value if masked == text else masked
 
 
 class TokenFilter(logging.Filter):
-    """Mask ``token=...`` in log records: uvicorn logs each WebSocket's path and query."""
+    """Mask secrets in addresses in log records: uvicorn logs each request's path and
+    query, httpx each outgoing request's address."""
 
     def filter(self, record: logging.LogRecord) -> bool:
         if isinstance(record.args, tuple) and record.args:
-            record.args = tuple(
-                _TOKEN_IN_URL.sub(r"\1***", a) if isinstance(a, str) else a for a in record.args
-            )
-        if isinstance(record.msg, str) and "token=" in record.msg:
-            record.msg = _TOKEN_IN_URL.sub(r"\1***", record.msg)
+            record.args = tuple(_masked(a) for a in record.args)
+        if isinstance(record.msg, str):
+            record.msg = mask_secrets(record.msg)
         return True
 
 
 def mask_tokens_in_logs() -> None:
     """Install the filter on the loggers that write request lines (once)."""
-    for name in ("uvicorn.error", "uvicorn.access", "uvicorn"):
+    for name in ("uvicorn.error", "uvicorn.access", "uvicorn", "httpx", "httpcore"):
         logger = logging.getLogger(name)
         if not any(isinstance(f, TokenFilter) for f in logger.filters):
             logger.addFilter(TokenFilter())
