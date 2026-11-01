@@ -83,7 +83,7 @@ function ActionItem({
         </span>
       </summary>
       <div className="disclosure-body">
-        <dl className="kv">
+        <dl className="kv kv-stack">
           <dt>Tool</dt>
           <dd>
             {humanize(row.tool)} <span className="mono muted">{row.tool}</span>

@@ -727,11 +727,11 @@ textarea { resize: vertical; }
 .kv dt { color: var(--muted); }
 .kv dd { margin: 0; overflow-wrap: anywhere; }
 .kv-small { gap: 2px var(--s-3); font-size: var(--text-s); }
-/* On a phone a full key-value list stacks: each label over its value. */
+/* A .kv-stack stacks on a phone, each label over its value, for long values. */
 @media (max-width: 39.99rem) {
-  .kv:not(.kv-small) { grid-template-columns: minmax(0, 1fr); gap: 2px; }
-  .kv:not(.kv-small) dt { font-size: var(--text-s); }
-  .kv:not(.kv-small) dd + dt { margin-top: var(--s-2); }
+  .kv-stack { grid-template-columns: minmax(0, 1fr); gap: 2px; }
+  .kv-stack dt { font-size: var(--text-s); }
+  .kv-stack dd + dt { margin-top: var(--s-2); }
 }
 .kv-pair { display: contents; }
 

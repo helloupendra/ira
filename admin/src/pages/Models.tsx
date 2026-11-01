@@ -534,28 +534,30 @@ function Settings({
   const options = voices.map((voice) => ({ value: voice.id, label: voiceLabel(voice) }));
   return (
     <>
-      <div className="form">
-        <SettingForm
-          id="setting-name"
-          label="Name"
-          setting={data.name}
-          canWrite={canWrite}
-          onSave={(name) => onSave({ name }, 'Name saved and written to the change log.')}
-          onReset={() => onSave({ name: null }, 'Name follows ira.yaml again.')}
-        />
-        <SettingForm
-          id="setting-voice"
-          label="Voice"
-          setting={data.voice}
-          canWrite={canWrite}
-          hint="The text-to-speech voice id: for Polly e.g. Joanna, for OpenAI e.g. alloy."
-          offHint="Text-to-speech is off (tts: none), so there is no voice to choose."
-          options={options}
-          optionsHint="Voices for the text-to-speech in use; others are accepted."
-          onSave={(voice) => onSave({ voice }, 'Voice saved and written to the change log.')}
-          onReset={() => onSave({ voice: null }, 'Voice follows ira.yaml again.')}
-        />
-        <dl className="kv">
+      <div className="settings-grid">
+        <div className="form">
+          <SettingForm
+            id="setting-name"
+            label="Name"
+            setting={data.name}
+            canWrite={canWrite}
+            onSave={(name) => onSave({ name }, 'Name saved and written to the change log.')}
+            onReset={() => onSave({ name: null }, 'Name follows ira.yaml again.')}
+          />
+          <SettingForm
+            id="setting-voice"
+            label="Voice"
+            setting={data.voice}
+            canWrite={canWrite}
+            hint="The text-to-speech voice id: for Polly e.g. Joanna, for OpenAI e.g. alloy."
+            offHint="Text-to-speech is off (tts: none), so there is no voice to choose."
+            options={options}
+            optionsHint="Voices for the text-to-speech in use; others are accepted."
+            onSave={(voice) => onSave({ voice }, 'Voice saved and written to the change log.')}
+            onReset={() => onSave({ voice: null }, 'Voice follows ira.yaml again.')}
+          />
+        </div>
+        <dl className="kv settings-facts">
           <dt>Business</dt>
           <dd>{data.business}</dd>
           <dt>Tier</dt>
@@ -565,8 +567,8 @@ function Settings({
           <dt>Text to speech</dt>
           <dd>{data.tts ?? 'none'}</dd>
         </dl>
-        <p className="inline-note">Changes take effect at once and are written to the change log.</p>
       </div>
+      <p className="inline-note">Changes take effect at once and are written to the change log.</p>
     </>
   );
 }
