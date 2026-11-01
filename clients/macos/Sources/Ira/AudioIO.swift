@@ -89,25 +89,76 @@ final class AudioIO: NSObject {
                 IraLog.shared.info("echo cancellation is not available on this Mac")
             }
         }
+        if echoCancelling {
+            // Voice processing's input gave pure zeros on a MacBook Air: make sure it is not
+            // muted or bypassed, and that its own gain control is on.
+            input.isVoiceProcessingInputMuted = false
+            input.isVoiceProcessingBypassed = false
+            input.isVoiceProcessingAGCEnabled = true
+        }
         let format = input.outputFormat(forBus: 0)
         guard format.sampleRate > 0, format.channelCount > 0 else {
             throw ToolFailure("no microphone is connected")
         }
         let target = AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: 16_000, channels: 1, interleaved: false)!
-        let converter = AVAudioConverter(from: format, to: target)
+        // Several channels (voice processing gives that on some Macs, the voice in one of
+        // them): they are averaged here, skipping empty ones, then made 16 kHz mono. The
+        // converter alone would keep channel 0 only.
+        let mono = AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: format.sampleRate, channels: 1, interleaved: false)!
+        let several = format.channelCount > 1 && format.commonFormat == .pcmFormatFloat32 && !format.isInterleaved
+        let converter = AVAudioConverter(from: several ? mono : format, to: target)
+        let probe = InputProbe(seconds: 1, sampleRate: format.sampleRate)
+        let setup = "echo cancellation \(echoCancelling ? "on" : "off"), input \(Int(format.sampleRate)) Hz × \(format.channelCount) ch"
+            + (echoCancelling ? ", muted \(input.isVoiceProcessingInputMuted), bypassed \(input.isVoiceProcessingBypassed), its gain control \(input.isVoiceProcessingAGCEnabled ? "on" : "off")" : "")
         pending = []
         input.removeTap(onBus: 0)
         // The tap runs on the audio thread: convert there, collect on the main thread.
         input.installTap(onBus: 0, bufferSize: 2048, format: format) { [weak self] buffer, _ in
             let now = monotonicMs()
-            guard let samples = AudioIO.convert(buffer, with: converter, to: target) else { return }
+            let channels = AudioIO.channels(buffer)
+            if let levels = probe.add(channels) {
+                let shown = levels.map { String(format: "%.4f", $0) }.joined(separator: ", ")
+                IraLog.shared.info("listening: \(setup); first second, per channel: \(shown)")
+            }
+            let samples: [Float]?
+            if several, let merged = AudioIO.buffer(Downmix.average(channels), format: mono) {
+                samples = AudioIO.convert(merged, with: converter, to: target)
+            } else {
+                samples = AudioIO.convert(buffer, with: converter, to: target)
+            }
+            guard let samples else { return }
             Task { @MainActor in self?.collect(samples, endingAt: now) }
         }
         if !engine.isRunning {
             engine.prepare()
             try engine.start()
         }
+        // Voice processing works on input and output together: keep the output side running
+        // while listening, even with nothing to play.
+        if !player.isPlaying { player.play() }
         listening = true
+    }
+
+    /// A buffer's channels, as float samples (empty when they are not float).
+    nonisolated static func channels(_ buffer: AVAudioPCMBuffer) -> [[Float]] {
+        guard let data = buffer.floatChannelData else { return [] }
+        let count = Int(buffer.frameLength)
+        if buffer.format.isInterleaved {
+            let channels = Int(buffer.format.channelCount)
+            let all = Array(UnsafeBufferPointer(start: data[0], count: count * channels))
+            return (0..<channels).map { channel in stride(from: channel, to: all.count, by: channels).map { all[$0] } }
+        }
+        return (0..<Int(buffer.format.channelCount)).map { Array(UnsafeBufferPointer(start: data[$0], count: count)) }
+    }
+
+    /// Samples as a buffer of `format` (mono).
+    nonisolated static func buffer(_ samples: [Float], format: AVAudioFormat) -> AVAudioPCMBuffer? {
+        guard let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: AVAudioFrameCount(samples.count)),
+            let channel = buffer.floatChannelData?[0]
+        else { return nil }
+        samples.withUnsafeBufferPointer { channel.update(from: $0.baseAddress!, count: samples.count) }
+        buffer.frameLength = AVAudioFrameCount(samples.count)
+        return buffer
     }
 
     /// Listen again without voice processing. On some Macs its input gives only zeros, so a
@@ -289,5 +340,34 @@ extension AudioIO: AVSpeechSynthesizerDelegate {
         Task { @MainActor in
             self.busy = false
         }
+    }
+}
+
+/// What the input gives in the first second of a listen, per channel, for the log: once, so a
+/// Mac whose microphone gives zeros (or speaks in another channel) says so.
+final class InputProbe: @unchecked Sendable {
+    private let lock = NSLock()
+    private let wanted: Int
+    private var squares: [Double] = []
+    private var frames = 0
+    private var told = false
+
+    init(seconds: Double, sampleRate: Double) {
+        wanted = max(1, Int(seconds * sampleRate))
+    }
+
+    /// One buffer's channels; each channel's RMS once a second has been heard, else nil.
+    func add(_ channels: [[Float]]) -> [Float]? {
+        lock.lock()
+        defer { lock.unlock() }
+        guard !told, let length = channels.first?.count, length > 0 else { return nil }
+        if squares.count != channels.count { squares = Array(repeating: 0, count: channels.count) }
+        for (index, channel) in channels.enumerated() {
+            squares[index] += channel.reduce(0) { $0 + Double($1) * Double($1) }
+        }
+        frames += length
+        guard frames >= wanted else { return nil }
+        told = true
+        return squares.map { Float(($0 / Double(frames)).squareRoot()) }
     }
 }
