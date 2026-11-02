@@ -209,6 +209,31 @@ pairing a device (any new grant); and any action of a connection. A tool
 whose name says send, reply, call, pay, buy, transfer, delete, remove,
 push, grant or pair is never covered, whatever its skill.
 
+### Operating a computer: a session asked for by name (built)
+
+The person may ask for it in words from any of their devices ("mera Mac control karo, 30
+minute"): `control_start` is Tier 3, so it takes their PIN on a card, for the length they pick
+(5 to 60 minutes, 30 by default), and opens the window below on that computer. Nothing a page
+or a screen says can start it or lengthen it: after reading a screen the turn is tainted, and a
+tainted turn cannot propose. While it is on:
+
+- the Mac shows a bar over every app and desktop, with Stop;
+- saying only "stop", "ruk jao", "रुक जाओ", "bas" or "band karo" ends it at once, with no model in
+  the way, and a task under way finds control off at its next step;
+- it has up to 40 steps a turn instead of 8, and must say where it stopped when it runs out;
+- every step is written to **What Ira did**, and it ends by itself.
+
+Inside it, a step still asks when it may pay or delete: its label or menu path says pay, buy,
+checkout, transfer, delete and the like (a click by id is read by the label the last look showed),
+its keys delete a file, or the app, window or address is a bank's or a payment service's. The
+words are a net, not a proof, so `NEVER` above and the tools' own tiers stay.
+
+**Where Ira may not work.** Terminals and code editors with a terminal are on lists the person
+may change, per device, with their PIN (`PUT /v1/me/approvals/unlocked`, groups `terminals` and
+`editors`). Ira for Mac keeps its own copy: the server's can take one away, never add one, so a
+server alone cannot unlock them. Password managers, the password prompts and Ira's own windows
+are not on those lists and nothing unlocks them.
+
 ### 1. The approval window (built)
 
 When the person confirms a **screen-control** action on one of their
