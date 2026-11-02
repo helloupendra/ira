@@ -45,7 +45,7 @@ struct CatalogTests {
             table[tool["name"]!.stringValue!] = "\(tool["skill"]!.stringValue!) \(tool["tier"]!.intValue!)"
         }
         #expect(table == [
-            "files_find": "files 0", "file_read": "files 0", "file_open": "files 1", "screen_read": "screen 0", "apps_list": "screen 0",
+            "files_find": "files 0", "file_read": "files 0", "file_open": "files 1", "screen_read": "screen 0", "apps_list": "screen 0", "window_elements": "screen 0",
             "browser_tabs": "browser 0", "browser_show_tab": "browser 1",
             "contacts_lookup": "contacts 0",
             "calendar_read": "calendar 0", "calendar_add": "calendar 2",
@@ -57,7 +57,7 @@ struct CatalogTests {
             "clipboard_read": "clipboard 0",
             "shortcuts_list": "shortcuts 0", "shortcuts_run": "shortcuts 2",
             "mac_type": "control 3", "mac_keys": "control 3", "mac_click": "control 3", "mac_scroll": "control 3",
-            "mac_menu": "control 3",
+            "mac_menu": "control 3", "mac_drag": "control 3", "mac_window": "control 3",
             "code_task_start": "tasks 2", "code_task_status": "tasks 0",
             "code_task_stop": "tasks 1", "code_task_push": "tasks 3",
             "ai_sessions": "agents 0", "ai_session_detail": "agents 0",
@@ -1142,6 +1142,7 @@ final class FakeNode: MacControl.Node {
     let actions: [String]
     let frame: CGRect?
     var nodes: [FakeNode]
+    var shownValue: String?
 
     init(_ role: String, _ names: [String] = [], subrole: String? = nil, enabled: Bool = true,
          actions: [String] = [], y: CGFloat = 0, _ nodes: [FakeNode] = []) {
@@ -1323,5 +1324,94 @@ struct NamedWindowTests {
         #expect(Toolbox.lateMessage("screen_read", screenPermitted: true) == ScreenText.readingLate)
         #expect(!ScreenText.readingLate.contains("restart"))
         #expect(Toolbox.deadline(for: "screen_read") < 25)  // the server's limit
+    }
+}
+
+@Suite("Seeing a window, and acting by id")
+struct WindowElementsTests {
+    private func field(_ names: [String], value: String?, subrole: String? = nil, y: CGFloat) -> FakeNode {
+        let node = FakeNode("AXTextField", names, subrole: subrole, y: y)
+        node.shownValue = value
+        return node
+    }
+
+    @Test func itListsWhatAPersonPointsAtInReadingOrder() {
+        let window = FakeNode("AXWindow", ["Mail"], [
+            FakeNode("AXGroup", [], y: 0, [
+                FakeNode("AXButton", ["Send"], actions: ["AXPress"], y: 300),
+                field(["Subject"], value: "Hello", y: 200),
+            ]),
+            FakeNode("AXStaticText", ["Inbox"], y: 100),
+            FakeNode("AXGroup", ["only holds others"], y: 50),
+        ])
+        let seen = WindowElements.list(window)
+        #expect(seen.elements.map(\.label) == ["Inbox", "Subject", "Send"])
+        #expect(seen.elements.map(\.kind) == ["text", "field", "button"])
+        #expect(seen.elements.map(\.id) == ["e1", "e2", "e3"])
+        #expect(seen.elements[1].value == "Hello")
+        #expect(seen.nodes["e3"]?.names == ["Send"])
+        #expect(!seen.more)
+    }
+
+    @Test func aPasswordFieldsValueIsNeverRead() {
+        let window = FakeNode("AXWindow", [], [field(["Password"], value: "hunter2", subrole: "AXSecureTextField", y: 10)])
+        let seen = WindowElements.list(window)
+        #expect(seen.elements.first?.label == "Password")
+        #expect(seen.elements.first?.value == nil)
+        #expect(!String(describing: WindowElements.json(seen.elements[0])).contains("hunter2"))
+    }
+
+    @Test func aFieldWithNoNameIsStillAPlaceToType() {
+        let window = FakeNode("AXWindow", [], [field([], value: nil, y: 10)])
+        #expect(WindowElements.list(window).elements.first?.kind == "field")
+    }
+
+    @Test func aLongWindowSaysThereIsMore() {
+        let window = FakeNode("AXWindow", [], (0..<30).map { FakeNode("AXStaticText", ["Line \($0)"], y: CGFloat($0)) })
+        let seen = WindowElements.list(window, limit: 10)
+        #expect(seen.elements.count == 10 && seen.more)
+    }
+
+    @Test func anIDLastsAMinuteAndOnlyForThatApp() {
+        let seen = WindowElements.Seen()
+        let node = AXNode(AXUIElementCreateSystemWide())
+        let now = Date()
+        seen.keep(["e1": node], pid: 7, now: now)
+        #expect(seen.node("e1", pid: 7, now: now.addingTimeInterval(30)) != nil)
+        #expect(seen.node("e1", pid: 8, now: now) == nil)
+        #expect(seen.node("e2", pid: 7, now: now) == nil)
+        #expect(seen.node("e1", pid: 7, now: now.addingTimeInterval(61)) == nil)
+    }
+
+    @Test func theToolsTakeIDs() throws {
+        let tools = ToolCatalog.all(tasksConfigured: false)
+        func parameters(_ name: String) throws -> JSONValue {
+            try #require(tools.first { $0["name"]?.stringValue == name }?["parameters"])
+        }
+        #expect(try parameters("mac_click")["properties"]?["id"] != nil)
+        #expect(try parameters("mac_click")["required"] == nil)
+        #expect(try parameters("mac_type")["properties"]?["id"] != nil)
+        #expect(try parameters("mac_window")["properties"]?["action"] != nil)
+    }
+
+    @Test func theListsOpenOnlyWhatWasUnlocked() {
+        let terminal = (id: "com.apple.Terminal", name: "Terminal")
+        let code = (id: "com.microsoft.VSCode", name: "Visual Studio Code")
+        #expect(NeverApps.neverType(bundleID: terminal.id, name: terminal.name, unlocked: []))
+        #expect(NeverApps.neverType(bundleID: code.id, name: code.name, unlocked: []))
+        #expect(!NeverApps.neverType(bundleID: terminal.id, name: terminal.name, unlocked: [NeverApps.terminals]))
+        #expect(NeverApps.neverType(bundleID: code.id, name: code.name, unlocked: [NeverApps.terminals]))
+        #expect(!NeverApps.neverType(bundleID: code.id, name: code.name, unlocked: [NeverApps.editors]))
+        #expect(NeverApps.neverType(bundleID: terminal.id, name: terminal.name, unlocked: [NeverApps.editors]))
+    }
+
+    @Test func passwordManagersAndIraStayBlockedWhateverIsUnlocked() {
+        #expect(MacControl.refusal(bundleID: "com.1password.1password", app: "1Password", window: nil) != nil)
+        #expect(MacControl.refusal(bundleID: "in.ira.mac", app: "Ira", window: nil) != nil)
+    }
+
+    @Test func aControlFrameIsRead() throws {
+        #expect(try DeviceProtocol.decode(#"{"type":"control","open":true}"#) == .control(open: true))
+        #expect(try DeviceProtocol.decode(#"{"type":"control","open":false}"#) == .control(open: false))
     }
 }

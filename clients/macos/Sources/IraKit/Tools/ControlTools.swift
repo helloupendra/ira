@@ -107,10 +107,18 @@ struct ControlTools: Sendable {
     // MARK: mac_type
 
     func type(_ raw: JSONValue) async throws -> JSONValue {
-        let args = try ToolArgs(raw, allowed: ["text", "app", "pressReturn", "task"])
+        let args = try ToolArgs(raw, allowed: ["text", "app", "id", "pressReturn", "task"])
         let text = try args.required("text", limit: 2000, what: "what to type (text)")
         let pressReturn = try args.bool("pressReturn") ?? false
+        let id = try args.text("id", limit: 20)
         let target = try await target(try MacControl.step(args))
+        if let id {
+            guard let field = WindowElements.Seen.shared.node(id, pid: target.pid) else { throw ToolFailure(WindowElements.staleID) }
+            if MacControl.isSecure(role: field.role, subrole: field.subrole) {
+                throw ToolFailure("that is a password field in \(target.name): I never type passwords. Type it yourself")
+            }
+            guard field.set(kAXFocusedAttribute, kCFBooleanTrue) else { throw ToolFailure("that element in \(target.name) does not take typing") }
+        }
         try await Task.sleep(nanoseconds: 150_000_000)
         guard let focused = AXNode(AXUIElementCreateSystemWide()).focused, focused.pid == target.pid else {
             throw ToolFailure("nothing in \(target.name) is ready for typing. Put the cursor in the field first with mac_click")
@@ -162,8 +170,17 @@ struct ControlTools: Sendable {
     // MARK: mac_click
 
     func click(_ raw: JSONValue) async throws -> JSONValue {
-        let args = try ToolArgs(raw, allowed: ["label", "role", "index", "app", "task"])
-        let label = try args.required("label", limit: 200, what: "what to click: its label as shown")
+        let args = try ToolArgs(raw, allowed: ["id", "label", "x", "y", "role", "index", "app", "task"])
+        if let id = try args.text("id", limit: 20) {
+            let target = try await target(try MacControl.step(args))
+            guard let node = WindowElements.Seen.shared.node(id, pid: target.pid) else { throw ToolFailure(WindowElements.staleID) }
+            let shown = node.names.first(where: { !$0.isEmpty }) ?? MacControl.kind(node.role)
+            return try await press(MacControl.Match(node: node, score: 3, label: shown), in: target)
+        }
+        if let x = try args.number("x", 0...20_000), let y = try args.number("y", 0...20_000) {
+            return try await clickPoint(CGPoint(x: x, y: y), in: try await target(try MacControl.step(args)))
+        }
+        let label = try args.required("label", limit: 200, what: "what to click: an id from window_elements, or its label as shown")
         var role = try args.text("role")?.lowercased()
         if role == "any" { role = nil }
         if let role, MacControl.roles[role] == nil {
@@ -188,6 +205,81 @@ struct ControlTools: Sendable {
             return try await press(match, in: target)
         }
         return try await clickWords(label, index: index, in: target)
+    }
+
+    /// The last resort: a place on the screen, only inside the app's own window.
+    private func clickPoint(_ point: CGPoint, in target: Target) async throws -> JSONValue {
+        guard let frame = target.app.focusedWindow?.frame, frame.contains(point) else {
+            throw ToolFailure("that point is not on \(target.name)'s window. Look with window_elements and use an id")
+        }
+        await acting { ControlTools.post(click: point) }
+        let front = await inFront()
+        log.info("mac_click a point in \(target.name)")
+        return [
+            "clicked": .string("a point"), "kind": .string("point"), "actedIn": .string(target.name), "app": .string(front.bundleID), "appName": .string(front.name),
+            "summary": .string("Clicked at that point in \(target.name)'s window. \(front.name) is in front now. Look again before the next step."),
+        ]
+    }
+
+    // MARK: mac_drag
+
+    func drag(_ raw: JSONValue) async throws -> JSONValue {
+        let args = try ToolArgs(raw, allowed: ["from", "to", "app", "task"])
+        let target = try await target(try MacControl.step(args))
+        let place: (String) throws -> CGPoint = { id in
+            guard let frame = WindowElements.Seen.shared.node(id, pid: target.pid)?.frame, frame.width > 0, frame.height > 0 else {
+                throw ToolFailure(WindowElements.staleID)
+            }
+            return CGPoint(x: frame.midX, y: frame.midY)
+        }
+        let from = try place(try args.required("from", limit: 20, what: "the id to drag, from window_elements"))
+        let to = try place(try args.required("to", limit: 20, what: "the id to drop on, from window_elements"))
+        await acting { ControlTools.post(dragFrom: from, to: to) }
+        let front = await inFront()
+        log.info("mac_drag in \(target.name)")
+        return [
+            "dragged": .bool(true), "actedIn": .string(target.name), "app": .string(front.bundleID), "appName": .string(front.name),
+            "summary": .string("Dragged in \(target.name)'s window. \(front.name) is in front now. Look again before the next step."),
+        ]
+    }
+
+    // MARK: mac_window
+
+    func window(_ raw: JSONValue) async throws -> JSONValue {
+        let args = try ToolArgs(raw, allowed: ["action", "app", "window", "task"])
+        let action = try args.required("action", limit: 12, what: "what to do: focus, minimise, restore, zoom or close").lowercased()
+        guard ["focus", "minimise", "minimize", "restore", "zoom", "close"].contains(action) else {
+            throw ToolFailure("action must be focus, minimise, restore, zoom or close")
+        }
+        let wanted = try args.text("window", limit: 200)
+        let target = try await target(try MacControl.step(args))
+        let windows = target.app.windows
+        let chosen = wanted.flatMap { name in windows.first { MacControl.fit($0.string(kAXTitleAttribute) ?? "", name) > 0 } }
+            ?? (wanted == nil ? target.app.focusedWindow ?? windows.first : nil)
+        guard let window = chosen else {
+            throw ToolFailure(wanted.map { "\(target.name) has no window called “\($0)”" } ?? "\(target.name) has no window open")
+        }
+        let title = window.string(kAXTitleAttribute) ?? target.name
+        let done: Bool = await acting {
+            switch action {
+            case "minimise", "minimize": return window.set(kAXMinimizedAttribute, kCFBooleanTrue)
+            case "restore":
+                let back = window.set(kAXMinimizedAttribute, kCFBooleanFalse)
+                return window.perform(kAXRaiseAction) || back
+            case "zoom": return window.node(kAXZoomButtonAttribute)?.perform("AXPress") ?? false
+            case "close": return window.node(kAXCloseButtonAttribute)?.perform("AXPress") ?? false
+            default:
+                window.set(kAXMainAttribute, kCFBooleanTrue)
+                return window.perform(kAXRaiseAction)
+            }
+        }
+        guard done else { throw ToolFailure("“\(title)” in \(target.name) did not respond to \(action)") }
+        let front = await inFront()
+        log.info("mac_window \(action) in \(target.name)")
+        return [
+            "did": .string(action), "actedIn": .string(target.name), "app": .string(front.bundleID), "appName": .string(front.name),
+            "summary": .string("\(action.capitalized): “\(title)” in \(target.name). \(front.name) is in front now."),
+        ]
     }
 
     private func press(_ match: MacControl.Match<AXNode>, in target: Target) async throws -> JSONValue {
@@ -383,6 +475,21 @@ struct ControlTools: Sendable {
                 .post(tap: .cghidEventTap)
             usleep(20_000)
         }
+    }
+
+    static func post(dragFrom from: CGPoint, to: CGPoint) {
+        post(move: from)
+        CGEvent(mouseEventSource: source, mouseType: .leftMouseDown, mouseCursorPosition: from, mouseButton: .left)?
+            .post(tap: .cghidEventTap)
+        usleep(80_000)
+        for step in 1...10 {
+            let at = CGPoint(x: from.x + (to.x - from.x) * Double(step) / 10, y: from.y + (to.y - from.y) * Double(step) / 10)
+            CGEvent(mouseEventSource: source, mouseType: .leftMouseDragged, mouseCursorPosition: at, mouseButton: .left)?
+                .post(tap: .cghidEventTap)
+            usleep(20_000)
+        }
+        CGEvent(mouseEventSource: source, mouseType: .leftMouseUp, mouseCursorPosition: to, mouseButton: .left)?
+            .post(tap: .cghidEventTap)
     }
 
     static func post(scroll direction: String, lines: Int32) {

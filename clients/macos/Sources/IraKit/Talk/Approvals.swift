@@ -31,9 +31,14 @@ public struct ApprovalState: Equatable, Sendable {
     public var windows: [ApprovalWindow]
     /// Bundle ids (or Android packages) by device id.
     public var trustedApps: [Int: [String]]
+    /// What is off the never-lists, by device id.
+    public var unlocked: [Int: [String]] = [:]
 }
 
 public enum Approvals {
+    /// The server says control was turned on or off: ask it now.
+    public static let changed = Notification.Name("in.ira.mac.approvals-changed")
+
     public static func parse(_ json: JSONValue) -> ApprovalState {
         let windows = (json["windows"]?.arrayValue ?? []).compactMap { item -> ApprovalWindow? in
             guard let id = item["id"]?.stringValue, let device = item["device_id"]?.intValue,
@@ -49,7 +54,12 @@ public enum Approvals {
             guard let device = entry["device_id"]?.intValue else { continue }
             trusted[device] = (entry["apps"]?.arrayValue ?? []).compactMap(\.stringValue)
         }
-        return ApprovalState(minutes: json["minutes"]?.intValue ?? 0, windows: windows, trustedApps: trusted)
+        var unlocked: [Int: [String]] = [:]
+        for entry in json["unlocked"]?.arrayValue ?? [] {
+            guard let device = entry["device_id"]?.intValue else { continue }
+            unlocked[device] = (entry["groups"]?.arrayValue ?? []).compactMap(\.stringValue)
+        }
+        return ApprovalState(minutes: json["minutes"]?.intValue ?? 0, windows: windows, trustedApps: trusted, unlocked: unlocked)
     }
 
     /// Where the person adds or removes trusted apps: the web app's Your assistant page
@@ -67,7 +77,7 @@ public enum Approvals {
 
     /// The tools an approval covers (the server decides; this only says when to look).
     public static func covers(_ tool: String) -> Bool {
-        tool.hasPrefix("mac_") || ["screen_read", "apps_list", "app_open", "url_open"].contains(tool)
+        tool.hasPrefix("mac_") || ["screen_read", "apps_list", "window_elements", "app_open", "url_open"].contains(tool)
     }
 }
 

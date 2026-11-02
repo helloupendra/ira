@@ -166,6 +166,8 @@ public enum MacControl {
         var actions: [String] { get }
         var frame: CGRect? { get }
         var nodes: [Self] { get }
+        /// What it holds now, as shown: a field's text, a checkbox's state.
+        var shownValue: String? { get }
         /// The same element of the app, reached another way.
         func isSame(_ other: Self) -> Bool
     }
@@ -369,6 +371,18 @@ public struct AXNode: MacControl.Node, @unchecked Sendable {
     }
 
     public var enabled: Bool { (value(kAXEnabledAttribute) as? Bool) ?? true }
+
+    public var shownValue: String? {
+        guard let value = value(kAXValueAttribute) else { return nil }
+        if let text = value as? String { return text.isEmpty ? nil : text }
+        if let number = value as? NSNumber { return number.stringValue }
+        return nil
+    }
+
+    /// The app's windows, front to back.
+    var windows: [AXNode] {
+        (value(kAXWindowsAttribute) as? [AXUIElement] ?? []).map(AXNode.init)
+    }
 
     public var actions: [String] {
         var names: CFArray?
