@@ -28,7 +28,7 @@ final class ApprovalMonitor: ObservableObject {
         self.settings = settings
         self.secrets = secrets
         NotificationCenter.default.addObserver(forName: Approvals.changed, object: nil, queue: .main) { [weak self] _ in
-            MainActor.assumeIsolated { Task { await self?.refresh() } }
+            MainActor.assumeIsolated { self?.refreshIfStale(0) }
         }
     }
 
