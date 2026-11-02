@@ -29,6 +29,8 @@ public struct EnergyVAD: Sendable {
         public var noiseFactor: Float = 3
         public var replyFactor: Float = 2.5
         public var replyStartMs: Double = 200
+        /// Quiet within the start of speech that does not break it: dips between syllables.
+        public var gapMs: Double = 80
         public init() {}
     }
 
@@ -49,6 +51,7 @@ public struct EnergyVAD: Sendable {
 
     private var recent: [(at: Double, pcm: Data, loud: Bool)] = []
     private var loudRun = 0
+    private var quietRun = 0
     private var runStart: Double = 0
     private var lastLoudEnd: Double = 0
     private var speechStarted: Double = 0
@@ -91,12 +94,18 @@ public struct EnergyVAD: Sendable {
             if loud {
                 if loudRun == 0 { runStart = at }
                 loudRun += 1
+                quietRun = 0
                 lastLoudEnd = end
-            } else {
-                loudRun = 0
+            } else if loudRun > 0 {
+                // A dip of up to gapMs between syllables keeps the run; a longer one ends it.
+                quietRun += 1
+                if Double(quietRun) * config.frameMs > config.gapMs {
+                    loudRun = 0
+                    quietRun = 0
+                }
             }
             let needed = replying ? config.replyStartMs : config.startMs
-            if loudRun > 0, end - runStart >= needed {
+            if loud, loudRun > 0, end - runStart >= needed {
                 speaking = true
                 speechStarted = runStart
                 out.append(.speechStart(at: runStart))
@@ -107,6 +116,7 @@ public struct EnergyVAD: Sendable {
                 }
                 recent.removeAll()
                 loudRun = 0
+                quietRun = 0
             }
             return out
         }
@@ -125,6 +135,7 @@ public struct EnergyVAD: Sendable {
         speaking = false
         recent.removeAll()
         loudRun = 0
+        quietRun = 0
     }
 }
 

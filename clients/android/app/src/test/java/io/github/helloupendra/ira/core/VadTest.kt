@@ -54,6 +54,18 @@ class VadTest {
     }
 
     @Test
+    fun `a dip between syllables keeps the start of speech`() {
+        val out = run(EnergyVad(), repeat(silence, 20) + repeat(tone(0.2), 5) + repeat(silence, 2) + repeat(tone(0.2), 5) + repeat(silence, 2))
+        assertEquals(1, out.count { it.second is EnergyVad.Output.SpeechStart })
+    }
+
+    @Test
+    fun `two knocks are not speech`() {
+        val out = run(EnergyVad(), repeat(silence, 20) + repeat(tone(0.3), 6) + repeat(silence, 10) + repeat(tone(0.3), 6) + repeat(silence, 40))
+        assertTrue(out.isEmpty())
+    }
+
+    @Test
     fun `a breath in the middle of a sentence does not end the turn`() {
         val out = run(EnergyVad(), repeat(silence, 20) + repeat(tone(0.2), 25) + repeat(silence, 35) + repeat(tone(0.2), 25) + repeat(silence, 60))
         assertEquals(1, out.count { it.second is EnergyVad.Output.SpeechStart })

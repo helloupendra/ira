@@ -73,6 +73,25 @@ struct VADTests {
         #expect(out.filter { if case .speechEnd = $0.1 { return true } else { return false } }.count == 1)
     }
 
+    /// A quiet voice dips between its syllables: those dips do not break the start of speech.
+    @Test func aDipBetweenSyllablesKeepsTheStart() {
+        var vad = EnergyVAD()
+        let syllable = Array(repeating: Synth.tone(0.2), count: 5)  // 100 ms
+        let frames = Array(repeating: Synth.silence(), count: 20) + syllable
+            + Array(repeating: Synth.silence(), count: 2) + syllable + Array(repeating: Synth.silence(), count: 2)
+        let starts = Synth.run(&vad, frames).filter { if case .speechStart = $0.1 { return true } else { return false } }
+        #expect(starts.count == 1)
+    }
+
+    /// Two knocks have a longer quiet between them: neither is speech.
+    @Test func twoKnocksAreNotSpeech() {
+        var vad = EnergyVAD()
+        let knock = Array(repeating: Synth.tone(0.3), count: 6)  // 120 ms
+        let frames = Array(repeating: Synth.silence(), count: 20) + knock
+            + Array(repeating: Synth.silence(), count: 10) + knock + Array(repeating: Synth.silence(), count: 40)
+        #expect(Synth.run(&vad, frames).isEmpty)
+    }
+
     @Test func aCoughIsNotSpeech() {
         var vad = EnergyVAD()
         let frames = Array(repeating: Synth.silence(), count: 10) + Array(repeating: Synth.tone(0.5), count: 6)

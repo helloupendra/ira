@@ -31,6 +31,8 @@ class EnergyVad(val config: Config = Config()) {
         val noiseFactor: Float = 3f,
         val replyFactor: Float = 2.5f,
         val replyStartMs: Double = 200.0,
+        /** Quiet within the start of speech that does not break it: dips between syllables. */
+        val gapMs: Double = 80.0,
     )
 
     sealed interface Output {
@@ -57,6 +59,7 @@ class EnergyVad(val config: Config = Config()) {
     private val recent = ArrayDeque<Frame>()
     private var loudRun = 0
     private var runStart = 0.0
+    private var quietRun = 0
     private var lastLoudEnd = 0.0
     private var speechStarted = 0.0
 
@@ -87,12 +90,18 @@ class EnergyVad(val config: Config = Config()) {
             if (loud) {
                 if (loudRun == 0) runStart = at
                 loudRun++
+                quietRun = 0
                 lastLoudEnd = end
-            } else {
-                loudRun = 0
+            } else if (loudRun > 0) {
+                // A dip of up to gapMs between syllables keeps the run; a longer one ends it.
+                quietRun++
+                if (quietRun * config.frameMs > config.gapMs) {
+                    loudRun = 0
+                    quietRun = 0
+                }
             }
             val needed = if (replying) config.replyStartMs else config.startMs
-            if (loudRun > 0 && end - runStart >= needed) {
+            if (loud && loudRun > 0 && end - runStart >= needed) {
                 speaking = true
                 speechStarted = runStart
                 out.add(Output.SpeechStart(runStart))
@@ -101,6 +110,7 @@ class EnergyVad(val config: Config = Config()) {
                 for (frame in recent) if (frame.at >= from - 0.001) out.add(Output.Audio(frame.pcm))
                 recent.clear()
                 loudRun = 0
+                quietRun = 0
             }
             return out
         }
@@ -119,6 +129,7 @@ class EnergyVad(val config: Config = Config()) {
         speaking = false
         recent.clear()
         loudRun = 0
+        quietRun = 0
     }
 
     companion object {
