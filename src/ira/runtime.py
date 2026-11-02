@@ -166,6 +166,7 @@ class Runtime:
         if self.assistant.personal_tools is None:
             self.assistant.personal_tools = self.personal_tools
             self.assistant.tool_missing = self.hub.tool_missing
+            self.assistant.device_roster = self.hub.roster
         if self.guard.device_runner is None:
             self.guard.device_runner = self.hub.run_action
         if self.guard.personal_runner is None:

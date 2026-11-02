@@ -31,9 +31,17 @@ from pydantic import ValidationError
 from ira import toollog
 from ira.approvals import never_app, never_type, open_refusal
 from ira.conversations import Conversations
+from ira.devices.naming import Roster, named_devices
 from ira.models.base import ChatResponse, Message, StreamDone, TextDelta, ToolCall
 from ira.models.gateway import Gateway, GatewayError
 from ira.models.leaked import MarkupGate, before_markup, recover
+from ira.promises import (
+    PromiseGate,
+    asks_more_than_one_thing,
+    asks_which_device,
+    claims_done,
+    promises,
+)
 from ira.security import looks_like_pin
 from ira.store import Store
 from ira.tools.actions import ActionGuard, PendingAction
@@ -107,6 +115,25 @@ SAY_AGAIN = {
     "hinglish": "Maaf kijiye, samajh nahi aaya. Phir se boliye?",
     "en": "Sorry, I didn't get that. Could you say it again?",
 }
+# A turn that said something happened when no tool ran, after one more chance.
+NOT_DONE = {
+    "hi": "मैंने अभी कुछ नहीं किया। फिर से कहेंगे?",
+    "hinglish": "Maine abhi kuch nahi kiya. Phir se boliye?",
+    "en": "I haven't done anything yet. Could you ask again?",
+}
+PROMISE_RULE = (
+    "Your last answer said you did or will do something, and you called no tool: nothing has "
+    "happened. Call the tool now, or say plainly that you cannot. Never say a thing is done "
+    "unless a tool did it."
+)
+NAMED_RULE = (
+    "The person named a device that is connected, and you used none of its tools. Use its tool "
+    "now if one fits, or say plainly that it cannot do this. No general advice."
+)
+GOAL_RULE = (
+    "You have done only one step of what the person asked. If they asked for more, call the next "
+    "tool now; if the goal is really done, answer."
+)
 SPOKEN_RULE = (
     "This is a live voice call: answer in one to three short sentences meant to be heard, "
     "the most useful thing first. No lists, tables, markdown or web addresses; say numbers "
@@ -253,6 +280,9 @@ class Assistant:
             self.conversations.personal = lambda name: name not in self.registry
         self.personal_tools = personal_tools
         self.tool_missing: Callable[[int | None, str], str | None] | None = None
+        self.device_roster: Callable[[int], list[Roster]] | None = None
+        # This turn's tools that are not on offer, and why: said if the model calls one anyway.
+        self._hidden: dict[str, dict[str, str]] = {}
         self.user_settings = user_settings or UserSettings(store)
         self.tool_limit = ToolRateLimit(tool_calls_per_minute)
         # What the person let Ira learn about them and approved, for their prompt.
@@ -303,6 +333,8 @@ class Assistant:
         tier_one: list[str] = (),
         spoken: bool = False,
         here: int | None = None,
+        roster: list[Roster] | None = None,
+        named: set[int] | None = None,
     ) -> str:
         """The system prompt for one person's turn.
 
@@ -334,6 +366,10 @@ class Assistant:
                 "something on it needs their yes, and they are asked by name. Always say which "
                 "device you used.\n"
             )
+        if roster:
+            prompt += "- Their devices now: " + "; ".join(_device_line(d) for d in roster) + ".\n"
+        if named is not None and roster is not None:
+            prompt += _named_line(named, roster)
         if untrusted:
             prompt += f"- {UNTRUSTED_RULE}\n"
         if tier_one:
@@ -513,7 +549,9 @@ class Assistant:
             )
             if outcome.status in ("executed", "failed"):
                 # The model sees what it did (or why it failed) and carries on with the plan.
-                async for event in self._turn(text, conversation_id, channel, actor, True, user_id):
+                async for event in self._turn(
+                    text, conversation_id, channel, actor, True, user_id, confirmed=True
+                ):
                     yield event
                 return
         else:
@@ -527,17 +565,34 @@ class Assistant:
         yield {"type": "done", "text": message, "model": None}
 
     def _offered(
-        self, user_id: int | None, conversation_id: str | None = None
+        self,
+        user_id: int | None,
+        conversation_id: str | None = None,
+        named: set[int] | None = None,
     ) -> dict[str, PersonalTool]:
         """This person's own tools for the turn; a registry tool's name always wins. Held from
-        a device, its own tools say so, and one several devices offer goes to it by default."""
+        a device, its own tools say so, and one several devices offer goes to it by default.
+        What the turn must not reach is not on offer at all: another device's tools when the
+        person named one, and from a device, what changes something on one they did not name."""
         if self.personal_tools is None or user_id is None:
             return {}
         here = self._from.get(conversation_id) if conversation_id is not None else None
+        approved = (
+            {w.device_id for w in self.approvals.for_user(user_id)} if self.approvals else set()
+        )
         offered: dict[str, PersonalTool] = {}
+        hidden: dict[str, str] = {}
         for extra in self.personal_tools(user_id):
-            if extra.name not in self.registry and extra.name not in offered:
-                offered[extra.name] = extra if here is None else self._from_here(extra, here)
+            if extra.name in self.registry or extra.name in offered:
+                continue
+            seen = extra if here is None else self._from_here(extra, here)
+            why = None if extra.source != "device" else _not_on_offer(seen, named, here, approved)
+            if why is not None:
+                hidden[extra.name] = why
+                continue
+            offered[extra.name] = _toward_named(seen, named)
+        if conversation_id is not None:
+            self._hidden[conversation_id] = hidden
         return offered
 
     def _from_here(self, tool: PersonalTool, here: int) -> PersonalTool:
@@ -623,10 +678,12 @@ class Assistant:
         user_id: int | None = None,
         *,
         cue: str | None = None,
+        confirmed: bool = False,
     ) -> AsyncIterator[dict[str, Any]]:
         """One turn. ``text`` None continues the conversation without a new message (after a
         confirmed action); ``cue`` is then said to the model, never stored, unless the
-        history already ends with the action's result."""
+        history already ends with the action's result. ``confirmed``: the text is the yes that
+        just ran an action."""
         history = self.history(conversation_id)
         start = len(history)
         self._front.pop(conversation_id, None)  # what was in front last turn may not be now
@@ -634,7 +691,14 @@ class Assistant:
             history.append(Message(role="user", content=text))
         asked = text if text is not None else _last_user_text(history)
         keep_foreign = bool(FOREIGN_SCRIPT.search(asked))  # the person writes in it
-        personal = self._offered(user_id, conversation_id)
+        here = self._from.get(conversation_id)
+        roster = (
+            self.device_roster(user_id)
+            if self.device_roster is not None and user_id is not None
+            else []
+        )
+        named = named_devices(asked, roster) if roster else None
+        personal = self._offered(user_id, conversation_id, named)
         tools = self.registry.schemas() + [t.schema() for t in personal.values()]
         untrusted = bool(personal) or any(
             t.untrusted for t in self.registry if self.registry.is_enabled(t.name)
@@ -646,8 +710,19 @@ class Assistant:
         spoken = channel == "voice"
         system = self.system_prompt(
             user_id, untrusted=untrusted, tier_one=tier_one, spoken=spoken,
-            here=self._from.get(conversation_id),
+            here=here, roster=roster, named=named,
         )  # fmt: skip
+        # What this turn has really done, to tell an answer from an empty promise.
+        # (A turn carrying on after a yes or a PIN has done what was confirmed, before it began.)
+        on_devices = (
+            text is not None
+            and not confirmed
+            and any(t.source == "device" for t in personal.values())
+        )
+        used: list[str] = []
+        waiting = False
+        asked_for: set[str] = set()
+        named_up = named is not None and any(d.connected and d.id in named for d in roster)
         tier = self.voice_tier if spoken and self.voice_tier else self.tier
         model: str | None = None
         final_text = ""
@@ -674,23 +749,37 @@ class Assistant:
             # Markup first: the foreign-script filter would take DSML's full-width bars out.
             gate = MarkupGate()
             foreign = ForeignGate(keep_foreign)
+            # Nothing that may be an empty promise goes out before the model's next move is
+            # known. With a check still to come on the whole answer, nothing at all does.
+            hold_all = on_devices and (
+                (named_up and not used and "named" not in asked_for)
+                or (
+                    len(set(used)) == 1
+                    and "goal" not in asked_for
+                    and asks_more_than_one_thing(asked)
+                )
+            )
+            promise = PromiseGate(hold_all) if on_devices else None
             try:
                 response: ChatResponse | None = None
                 if stream:
                     async for event in self.gateway.stream(messages, tools or None, tier=tier):
                         if isinstance(event, TextDelta):
                             piece = foreign.feed(gate.feed(event.text))
+                            piece = promise.feed(piece) if promise else piece
                             if piece:
                                 yield {"type": "delta", "text": piece}
                         elif isinstance(event, StreamDone):
                             response = event.response
                     piece = foreign.feed(gate.flush()) + foreign.flush()
+                    piece = promise.feed(piece) + promise.flush() if promise else piece
                     if piece:
                         yield {"type": "delta", "text": piece}
                 else:
                     response = await self.gateway.chat(messages, tools or None, tier=tier)
                     shown = gate.feed(response.text or "") + gate.flush()
                     piece = _without_foreign(shown, keep_foreign)
+                    piece = promise.feed(piece) + promise.flush() if promise else piece
                     if piece:
                         yield {"type": "delta", "text": piece}
             except GatewayError as exc:
@@ -747,6 +836,28 @@ class Assistant:
                     yield {"type": "delta", "text": cleaned}
                 response.text = cleaned.strip()
 
+            if promise is not None:
+                held = promise.take()
+                if not response.tool_calls and not waiting:
+                    words = response.text or ""
+                    empty = promises(words) or (not used and claims_done(words))
+                    why = _ask_again(
+                        words, empty, asked, used, here, named, named_up, asked_for,
+                        self.device_label,
+                    )  # fmt: skip
+                    if why is not None:
+                        log.warning("%s: asked to go on (%s)", model, why[0])
+                        asked_for.add(why[0])
+                        system += f"- {why[1]}\n"
+                        continue
+                    if empty:  # it had its chance: say what is true
+                        from ira.language import detect
+
+                        log.warning("%s still said it did something, with no tool", model)
+                        response.text = held = NOT_DONE[detect(asked)]
+                if held:
+                    yield {"type": "delta", "text": held}
+
             if not response.tool_calls:
                 if not (response.text or "").strip():  # nothing left once cleaned
                     from ira.language import detect
@@ -780,6 +891,8 @@ class Assistant:
                     call, conversation_id, channel, actor, user_id, personal, tainted
                 )
                 tainted = tainted or run.untrusted
+                used.append(call.name)
+                waiting = waiting or run.pending is not None
                 replayed.append(run.call)
                 results.append(
                     Message(
@@ -916,7 +1029,9 @@ class Assistant:
         elif not known:
             # A tool of a device that left since it was seen says so: the model must not
             # make up a reason of its own.
-            missing = self.tool_missing(user_id, call.name) if self.tool_missing else None
+            missing = self._hidden.get(conversation_id, {}).get(call.name)
+            if missing is None and self.tool_missing is not None:
+                missing = self.tool_missing(user_id, call.name)
             run = _failed(missing or f"unknown tool '{call.name}'", _safe(call))
         elif not self.tool_limit.allow(user_id, call.name):
             limit = self.tool_limit.limit
@@ -1228,6 +1343,101 @@ def _result(value: Any, limit: int = MAX_TOOL_RESULT_CHARS) -> str:
     if len(text) > limit:
         text = text[:limit] + "... (truncated)"
     return text
+
+
+def _device_line(device: Roster) -> str:
+    if not device.connected:
+        return f"{device.label} (offline)"
+    can = f": {', '.join(device.skills)}" if device.skills else ""
+    return f"{device.label} (connected){can}"
+
+
+def _named_line(named: set[int], roster: list[Roster]) -> str:
+    """What the turn is about, when the person named a device. Its tools are the only device
+    tools on offer, so the model need not choose."""
+    if not named:
+        return (
+            "- The person named a device they have not paired with you: say so. Never use another "
+            "device's tools as if they were that one's.\n"
+        )
+    chosen = [d for d in roster if d.id in named]
+    names = ", ".join(d.label for d in chosen)
+    if not any(d.connected for d in chosen):
+        return (
+            f"- The person named {names}, which is offline right now: say that it is offline. Do "
+            "not use another device instead, and give no other reason.\n"
+        )
+    return (
+        f"- The person named {names}: only its tools are on offer. If it cannot do this, say that "
+        "it cannot. Never present another device's output as its own.\n"
+    )
+
+
+def _not_on_offer(
+    tool: PersonalTool, named: set[int] | None, here: int | None, approved: set[int]
+) -> str | None:
+    """Why this device's tool may not be used in this turn, or None."""
+    devices = set(tool.devices.values()) or ({tool.device_id} if tool.device_id else set())
+    if named is not None:
+        if devices & named:
+            return None
+        return (
+            f"Not run: the person named another device, and {tool.name} is on {tool.label}. Tell "
+            "them the device they named cannot do this. Do not use another device's tool."
+        )
+    if here is None or tool.tier < 1 or here in devices or devices & approved:
+        return None
+    return (
+        f"Not run: {tool.name} changes something on {tool.label}, and the person did not name "
+        f"it. Ask whether they mean {tool.label}."
+    )
+
+
+def _toward_named(tool: PersonalTool, named: set[int] | None) -> PersonalTool:
+    """A tool several devices offer, sent to the device the person named unless the model names
+    one of the same, and never to any other."""
+    if named is None or tool.route is None or not tool.devices:
+        return tool
+    labels = {label: device for label, device in tool.devices.items() if device in named}
+    first = next(iter(labels), None)
+    if first is None:
+        return tool
+    route = tool.route
+
+    def routed(arguments: dict[str, Any]) -> tuple[int, dict[str, Any]]:
+        wanted = arguments.get("device")
+        if wanted in labels:
+            return route(arguments)
+        if wanted:
+            raise ToolError(f"the person named {first}, not {wanted}")
+        return labels[first], {k: v for k, v in arguments.items() if k != "device"}
+
+    return dataclasses.replace(tool, route=routed, devices=labels)
+
+
+def _ask_again(
+    words: str,
+    empty: bool,
+    asked: str,
+    used: list[str],
+    here: int | None,
+    named: set[int] | None,
+    named_up: bool,
+    asked_for: set[str],
+    label: Callable[[int], str],
+) -> tuple[str, str] | None:
+    """One more chance for a turn that ended short of the goal: which, and the rule that says
+    so. Each is asked once, so a turn always ends."""
+    if empty and "promise" not in asked_for:
+        return "promise", PROMISE_RULE
+    if here is not None and named is None and "which" not in asked_for and asks_which_device(words):
+        rule = f"They mean {label(here)}, the device they are talking from. Use its tool now."
+        return "which", rule
+    if named_up and not used and "named" not in asked_for:
+        return "named", NAMED_RULE
+    if len(set(used)) == 1 and "goal" not in asked_for and asks_more_than_one_thing(asked):
+        return "goal", GOAL_RULE
+    return None
 
 
 def _failed(message: str, call: ToolCall) -> ToolRun:

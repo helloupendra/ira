@@ -160,3 +160,68 @@ class MarkupGate:
         """What is still held when the answer ends: text, unless markup had started."""
         held, self._held = self._held, ""
         return "" if self.cut else held
+
+
+_THINK = re.compile(r"<think(?:ing)?>.*?</think(?:ing)?>", re.DOTALL | re.IGNORECASE)
+_THINK_OPEN = re.compile(r"<think(?:ing)?>", re.IGNORECASE)
+_THINK_CLOSE = re.compile(r"</think(?:ing)?>", re.IGNORECASE)
+_THINK_TAGS = ("<think>", "<thinking>", "</think>", "</thinking>")
+
+
+def strip_think(text: str) -> str:
+    """An answer without a model's reasoning. A closing tag alone means all before it was reasoning
+    too; an opening tag alone, all after it."""
+    out = _THINK.sub("", text)
+    closing = list(_THINK_CLOSE.finditer(out))
+    if closing:
+        out = out[closing[-1].end() :]
+    opening = _THINK_OPEN.search(out)
+    if opening:
+        out = out[: opening.start()]
+    return out.strip() if out != text else text
+
+
+class ThinkGate:
+    """Streamed text with a model's think tags and what is inside them kept out, whichever way the
+    pieces are cut. What came before a closing tag with no opening one has already gone out; the
+    final text (``strip_think``) leaves it out."""
+
+    def __init__(self) -> None:
+        self._held = ""
+        self._inside = False
+
+    def feed(self, piece: str) -> str:
+        text = self._held + piece
+        self._held = ""
+        out = ""
+        while text:
+            if self._inside:
+                end = _THINK_CLOSE.search(text)
+                if end is None:
+                    self._held = text[-12:]  # a closing tag may be cut in two
+                    return out
+                text = text[end.end() :]
+                self._inside = False
+                continue
+            start = _THINK_OPEN.search(text)
+            stray = _THINK_CLOSE.search(text)
+            if stray is not None and (start is None or stray.start() < start.start()):
+                out += text[: stray.start()]
+                text = text[stray.end() :]
+                continue
+            if start is not None:
+                out += text[: start.start()]
+                text = text[start.end() :]
+                self._inside = True
+                continue
+            at = text.rfind("<")
+            tail = text[at:].lower() if at != -1 else ""
+            if tail and any(tag.startswith(tail) for tag in _THINK_TAGS):
+                self._held = text[at:]
+                text = text[:at]
+            return out + text
+        return out
+
+    def flush(self) -> str:
+        held, self._held = self._held, ""
+        return "" if self._inside else held

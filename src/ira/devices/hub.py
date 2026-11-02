@@ -21,6 +21,7 @@ from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from typing import Any, Protocol
 
+from ira.devices.naming import Roster
 from ira.devices.protocol import (
     CALL_SECONDS,
     CLOSE_BAD_HELLO,
@@ -500,6 +501,13 @@ class DeviceHub:
                     names.add(name)
                     out.append(self._offline(device, raw))
         return out
+
+    def roster(self, user_id: int) -> list[Roster]:
+        """This person's devices as a turn sees them: connected or not, and what they can do."""
+        return [
+            Roster(d.id, d.label, d.kind, self.connected(d.id), tuple(sorted(d.skills)))
+            for d in self.devices.for_user(user_id)
+        ]
 
     def tool_missing(self, user_id: int | None, name: str) -> str | None:
         """Why a device's tool is not on offer now, if it is one of this person's."""

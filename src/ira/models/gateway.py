@@ -28,6 +28,7 @@ from ira.models.base import (
     TextDelta,
     Usage,
 )
+from ira.models.leaked import ThinkGate, strip_think
 from ira.store import Store
 
 log = logging.getLogger("ira.gateway")
@@ -264,6 +265,7 @@ class Gateway:
             response.model = ref
             response.attempts = len(tried)
             response.cost_usd = self.cost(ref, response.usage)
+            response.text = strip_think(response.text or "")
             if _empty(response):
                 errors.append(
                     (ref, self._empty_answer(request, tier, purpose, tried, response, started))
@@ -302,6 +304,7 @@ class Gateway:
             )
             emitted = False
             recorded = False
+            thinking = ThinkGate()
             try:
                 while True:
                     try:
@@ -315,10 +318,17 @@ class Gateway:
                             f"{ref}: stream stalled for {self.timeout_seconds}s", kind="timeout"
                         ) from None
                     if isinstance(event, TextDelta):
-                        emitted = True
-                        yield event
+                        shown = thinking.feed(event.text)
+                        if shown:
+                            emitted = True
+                            yield TextDelta(shown)
                     elif isinstance(event, StreamDone):
+                        rest = thinking.flush()
+                        if rest:
+                            emitted = True
+                            yield TextDelta(rest)
                         response = event.response
+                        response.text = strip_think(response.text or "")
                         response.model = ref
                         response.attempts = len(tried)
                         response.cost_usd = self.cost(ref, response.usage)

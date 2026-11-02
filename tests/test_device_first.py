@@ -81,7 +81,7 @@ async def turn(runtime: Any, owner: Any, text: str, device_id: int | None) -> li
 
 async def test_from_the_iphone_the_mac_opens_nothing_without_a_yes_that_names_it():
     runtime, owner, mac, iphone, ran = world([call("app_open", {"name": "YouTube"}), "Shall I?"])
-    events = await turn(runtime, owner, "youtube on karo", iphone.id)
+    events = await turn(runtime, owner, "mac par youtube on karo", iphone.id)
     assert ran == []  # nothing was opened on the Mac
     proposed = [e for e in events if e["type"] == "action"]
     assert len(proposed) == 1
@@ -98,8 +98,8 @@ async def test_ira_is_told_which_device_the_person_talks_from():
     system = runtime.test_provider.calls[0]["messages"][0].content
     assert "talking to you from their device My iPhone" in system
     offered = {t["name"]: t for t in runtime.test_provider.calls[0]["tools"]}
-    assert "not on My iPhone" in offered["app_open"]["description"]
-    assert "they are asked for their yes" in offered["app_open"]["description"]
+    assert "not on My iPhone" in offered["screen_read"]["description"]
+    assert "app_open" not in offered  # it changes something on a device they did not name
     assert (
         "This is the device the person is talking from" in offered["contacts_lookup"]["description"]
     )
