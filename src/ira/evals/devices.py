@@ -17,6 +17,7 @@ from __future__ import annotations
 import asyncio
 import json
 import re
+import statistics
 import time
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
@@ -28,7 +29,7 @@ from ira.config import Settings
 from ira.devices.hub import Connection, ToolError
 from ira.devices.protocol import DeviceTool
 from ira.models.base import Message, ToolCall
-from ira.promises import claims_done
+from ira.promises import claims_done, promises
 
 HERE = Path(__file__).resolve().parent
 CASES = HERE / "devices.yaml"
@@ -63,6 +64,7 @@ SPOKEN_TIME = re.compile(
 # What the gate on merging counts, whatever else went wrong.
 FALSE_DONE = "said it did something, with nothing run"
 WRONG_DEVICE = "wrong device"
+PROMISE = "promised and did nothing"
 # Counting what was shown ("3 apps") is not inventing a number.
 SMALL = 12
 DEVANAGARI_DIGITS = str.maketrans("०१२३४५६७८९", "0123456789")
@@ -97,6 +99,8 @@ class Turn:
     summaries: list[str] = field(default_factory=list)
     seen: str = ""  # everything the model was given: what it may quote numbers from
     error: str | None = None
+    first_word: float | None = None  # seconds to the first words out
+    checks: list[str] = field(default_factory=list)  # why it was asked to go on
 
 
 @dataclass
@@ -115,6 +119,9 @@ class Result:
     runs: int = 1
     false_done: int = 0
     wrong_device: int = 0
+    promises: int = 0
+    first_word: float | None = None
+    checks: int = 0
 
 
 @dataclass
@@ -209,6 +216,8 @@ def score(case: Case, turn: Turn) -> list[str]:
         problems.append(f"a number from nowhere: {', '.join(made_up)}")
     if not turn.ran and not turn.waiting and claims_done(turn.reply):
         problems.append(f"{FALSE_DONE}: {turn.reply[:80]}")
+    if not turn.waiting and promises(turn.reply):
+        problems.append(f"{PROMISE}: {turn.reply[:80]}")
     allowed = {case.device, case.origin}
     if case.device:
         strays = [
@@ -342,6 +351,7 @@ async def run_case(runtime: Any, world: World, case: Case, attempt: int = 0) -> 
     if case.history:
         runtime.assistant.conversations.ensure(conversation, channel="api", user_id=world.owner.id)
         runtime.assistant.conversations.append(conversation, _past(case.history))
+    began = time.monotonic()
     try:
         async for event in runtime.assistant.events(
             case.say,
@@ -357,8 +367,11 @@ async def run_case(runtime: Any, world: World, case: Case, attempt: int = 0) -> 
                 target = world.names.get(pending.device_id) if pending else None
                 turn.waiting.append((str(action.get("tool")), target or "server"))
                 turn.summaries.append(str(action.get("summary", "")))
+            elif event["type"] == "delta" and turn.first_word is None:
+                turn.first_word = round(time.monotonic() - began, 2)
             elif event["type"] == "done":
                 turn.reply = str(event.get("text") or "")
+                turn.checks = list(event.get("checks") or [])
             elif event["type"] == "tool":  # what it worked out itself: 5 minutes is 300 seconds
                 turn.seen += f" {json.dumps(event.get('arguments'), ensure_ascii=False)}"
             elif event["type"] == "tool_result":
@@ -374,6 +387,7 @@ async def run_cases(runtime: Any, cases: list[Case], runs: int = 1) -> Report:
     world = World(runtime, load_tools(), load_world())
     report = Report(model=", ".join(runtime.gateway.tiers.get(runtime.assistant.tier, [])))
     began = time.monotonic()
+    firsts: dict[str, list[float]] = {}
     for case in cases:
         started = time.monotonic()
         # What each try did; a failing one is what the card shows, so noise can be told from a
@@ -404,9 +418,17 @@ async def run_cases(runtime: Any, cases: list[Case], runs: int = 1) -> Report:
             result.wrong_device = (previous.wrong_device if previous else 0) + any(
                 p.startswith(WRONG_DEVICE) for p in problems
             )
+            result.promises = (previous.promises if previous else 0) + any(
+                p.startswith(PROMISE) for p in problems
+            )
+            result.checks = (previous.checks if previous else 0) + len(turn.checks)
+            if turn.first_word is not None:
+                firsts.setdefault(case.id, []).append(turn.first_word)
         assert result is not None
         result.ok = result.passed == runs
         result.seconds = round(time.monotonic() - started, 2)
+        if firsts.get(case.id):
+            result.first_word = statistics.median(firsts[case.id])
         report.results.append(result)
     report.seconds = round(time.monotonic() - began, 1)
     row = runtime.store.one(
@@ -438,6 +460,7 @@ async def run(
     limit: int | None,
     runs: int = 1,
     model: str | None = None,
+    holds: bool = True,
 ) -> Report:
     from ira.runtime import build_runtime
     from ira.store import Store
@@ -452,6 +475,7 @@ async def run(
     try:
         if model:
             only_model(runtime, model)
+        runtime.assistant.check_promises = holds
         return await run_cases(runtime, cases, runs)
     finally:
         await runtime.aclose()
@@ -466,6 +490,10 @@ def render(report: Report) -> str:
     share = round(100 * good / tries) if tries else 0
     false_done = sum(r.false_done for r in report.results)
     wrong = sum(r.wrong_device for r in report.results)
+    promised = sum(r.promises for r in report.results)
+    checks = sum(r.checks for r in report.results)
+    firsts = [r.first_word for r in report.results if r.first_word is not None]
+    first = f"{statistics.median(firsts):.2f} s" if firsts else "none"
     runs = report.results[0].runs if report.results else 1
     lines = [
         "# Ira's device scorecard",
@@ -475,7 +503,8 @@ def render(report: Report) -> str:
         f"{report.output_tokens} out, cost {cost}, {report.seconds} s.",
         "",
         f"**{good} of {tries} tries passed ({share}%), over {runs} run(s).** False done: "
-        f"{false_done}. Wrong device: {wrong}.",
+        f"{false_done}. Wrong device: {wrong}. Promises: {promised}. First words, median of "
+        f"cases: {first}. Asked to go on: {checks} times.",
         "",
         "| Group | Passed |",
         "|---|---|",
@@ -485,9 +514,10 @@ def render(report: Report) -> str:
         lines.append(f"| {group} | {sum(r.ok for r in some)} of {len(some)} |")
     lines += [
         "",
-        "| | Passed | Case | From | Said | Used | Waiting for a yes | Problems | Ira said |",
+        "| | Passed | Case | From | Said | Used | Waiting for a yes | First words (s) | Problems "
+        "| Ira said |",
     ]
-    lines.append("|---|---|---|---|---|---|---|---|---|")
+    lines.append("|---|---|---|---|---|---|---|---|---|---|")
     for r in report.results:
         cells = [
             "pass" if r.ok else "FAIL",
@@ -497,6 +527,7 @@ def render(report: Report) -> str:
             r.say,
             ", ".join(r.ran),
             ", ".join(r.waiting),
+            "" if r.first_word is None else f"{r.first_word:.2f}",
             "; ".join(r.problems),
             r.reply[:400],
         ]
@@ -516,8 +547,11 @@ def main(
     as_json: bool = False,
     runs: int = 1,
     model: str | None = None,
+    holds: bool = True,
 ) -> int:
-    report = asyncio.run(run(settings, group=group, only=only, limit=limit, runs=runs, model=model))
+    report = asyncio.run(
+        run(settings, group=group, only=only, limit=limit, runs=runs, model=model, holds=holds)
+    )
     card = render(report)
     if out:
         Path(out).write_text(card, encoding="utf-8")

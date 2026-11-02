@@ -216,3 +216,29 @@ def test_one_model_alone_has_no_chain_behind_it():
 
 def test_the_bad_past_cases_are_there():
     assert len([c for c in load_cases() if c.group == "bad-past"]) >= 6
+
+
+def test_a_promise_that_went_nowhere_is_its_own_count():
+    case = Case("c", "g", "iphone", "Avery ka number", tools=["contacts_lookup"], device="iphone")
+    turn = Turn(reply="मैं आपके iPhone पर Avery का नंबर ढूंढता हूं।")
+    assert any(p.startswith("promised and did nothing") for p in score(case, turn))
+
+
+async def test_the_card_counts_promises_time_and_checks():
+    cases = [c for c in load_cases() if c.id == "here-iphone-contact"]
+    runtime = make_runtime(provider=ScriptedProvider(["Main dhundti hoon.", "Main dhundti hoon."]))
+    report = await run_cases(runtime, cases)
+    result = report.results[0]
+    assert result.checks >= 1
+    assert result.first_word is not None
+    card = render(report)
+    assert "Promises:" in card and "First words" in card and "Asked to go on" in card
+
+
+async def test_holds_can_be_switched_off_to_measure_them():
+    cases = [c for c in load_cases() if c.id == "here-iphone-contact"]
+    runtime = make_runtime(provider=ScriptedProvider(["Main dhundti hoon."]))
+    runtime.assistant.check_promises = False
+    report = await run_cases(runtime, cases)
+    assert report.results[0].checks == 0
+    assert report.calls == 1
