@@ -193,6 +193,25 @@ struct BargeInTests {
     }
 }
 
+@Suite("A sentence with a pause")
+struct ReplacedTurnTests {
+    @Test func theFirstHalfGoesWhenTheWholeSentenceComes() {
+        var transcript = Transcript()
+        transcript.apply(.heard(turn: 1, text: "kal ka schedule"), source: 1001)
+        transcript.apply(.delta(turn: 1, text: "Kal do"), source: 1001)
+        transcript.apply(.replaced(turn: 1), source: 1001)
+        transcript.apply(.heard(turn: 2, text: "kal ka schedule aur parso ka bhi"), source: 1001)
+        #expect(transcript.entries.map(\.text) == ["kal ka schedule aur parso ka bhi"])
+    }
+
+    @Test func theServersNewWordsAreRead() throws {
+        let heard = try LiveProtocol.decode(#"{"type":"heard","turn":2,"text":"a b","replaces":1}"#)
+        #expect(heard == .heard(turn: 2, text: "a b", language: nil, replaces: 1))
+        let ignored = try LiveProtocol.decode(#"{"type":"speech_ignored"}"#)
+        #expect(ignored == .speechIgnored)
+    }
+}
+
 @Suite("A missing sentence")
 struct SpeechGapTests {
     @Test func laterSentencesPlayWhenOneNeverComes() {

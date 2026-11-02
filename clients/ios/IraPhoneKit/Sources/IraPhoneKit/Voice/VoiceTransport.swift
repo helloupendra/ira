@@ -8,6 +8,10 @@ public enum TalkEvent: Equatable, Sendable {
     case partial(String)
     /// The final text of the person's spoken turn.
     case heard(turn: Int, text: String)
+    /// That turn was the first half of a sentence: its line and its answer go.
+    case replaced(turn: Int)
+    /// What was sent held no words of the person's: Ira comes back up, her answer goes on.
+    case speechIgnored
     /// Ira used a tool (shown as "Checking your calendar…"), on this device when named.
     case tool(turn: Int, name: String, device: String?)
     /// More of the answer's text.

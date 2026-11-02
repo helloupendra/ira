@@ -4,10 +4,11 @@ import Foundation
 /// (the same as Ira for Mac's).
 ///
 /// * Speech starts when the level stays above the threshold for `startMs`
-///   (60 ms), so a click or a cough does not count.
+///   (160 ms), so a click or a cough does not count.
 /// * When it starts, the last `leadInMs` (about 300 ms) before it are sent
 ///   too, so the first syllable is not cut.
-/// * Speech ends after `hangoverMs` (about 600 ms) of quiet; the end is
+/// * Speech ends after `hangoverMs` (about 900 ms) of quiet, so a breath in the
+///   middle of a sentence does not end the turn; the end is
 ///   stamped at the last loud frame's end, not when the hangover ran out.
 /// * The threshold follows the room: it is at least `threshold`, and at least
 ///   `noiseFactor` times the quiet level heard so far, so a fan does not
@@ -21,13 +22,13 @@ public struct EnergyVAD: Sendable {
         public var sampleRate: Double = 16_000
         public var frameMs: Double = 20
         public var threshold: Float = 0.02
-        public var startMs: Double = 60
-        public var hangoverMs: Double = 600
+        public var startMs: Double = 160
+        public var hangoverMs: Double = 900
         public var leadInMs: Double = 300
         public var maxSpeechMs: Double = 60_000
         public var noiseFactor: Float = 3
         public var replyFactor: Float = 2.5
-        public var replyStartMs: Double = 160
+        public var replyStartMs: Double = 200
         public init() {}
     }
 

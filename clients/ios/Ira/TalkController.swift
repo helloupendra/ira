@@ -51,6 +51,17 @@ final class TalkController {
     private let audio = AudioEngine()
     @ObservationIgnored private var vad = EnergyVAD()
     @ObservationIgnored private var bargeIn = BargeIn()
+    /// The person is talking over Ira: their speech is going to the server, and she is turned
+    /// down until it answers, by their words.
+    @ObservationIgnored private var talkingOver = false
+    @ObservationIgnored private var duckedAt: Double?
+    /// Ira's voice may still be in the room this long after she stopped.
+    @ObservationIgnored private var echoUntil: Double = 0
+    /// Turns whose answer is complete, and the last whose voice has come.
+    @ObservationIgnored private var doneThrough = 0
+    @ObservationIgnored private var voicedTurn = 0
+    /// The last turn the server heard from the person.
+    @ObservationIgnored private var heardTurn = 0
     /// What happened in the last call, for Settings: sentences, barge-ins, echoes, restarts.
     private(set) var callReport = ""
     @ObservationIgnored private var live: LiveVoiceTransport?
@@ -90,15 +101,28 @@ final class TalkController {
         }
         audio.onIdle = { [weak self] in
             guard let self else { return }
-            self.speaking = false
-            self.vad.replying = false
             self.lastActivity = Date()
+            // Between two sentences she is still speaking: the next is on its way.
+            guard self.voicedTurn <= self.doneThrough else { return }
+            self.quiet()
         }
         audio.onInputReport = { [weak self] line in self?.micReport = line }
         audio.onInterrupted = { [weak self] message in
             self?.endCall()
             self?.model?.notice = message
         }
+    }
+
+    /// Ira has finished: nothing more of hers is playing or coming.
+    private func quiet() {
+        if speaking { echoUntil = monotonicMs() + 400 }
+        speaking = false
+        undo()
+    }
+
+    private func undo() {
+        audio.duck(false)
+        duckedAt = nil
     }
 
     // MARK: Showing what Ira is doing
@@ -251,6 +275,12 @@ final class TalkController {
         audio.newCall()
         vad = EnergyVAD()
         bargeIn.reset()
+        talkingOver = false
+        duckedAt = nil
+        echoUntil = 0
+        doneThrough = 0
+        voicedTurn = 0
+        heardTurn = 0
         try audio.startListening()
         callState = .listening(hearing: false)
         finished()
@@ -276,6 +306,11 @@ final class TalkController {
     private func checkMic() {
         guard inCall else { return }
         let now = monotonicMs()
+        // The server always answers what was sent; if that was lost, Ira does not stay down.
+        if let duckedAt, !vad.speaking, now - duckedAt > 8000 {
+            undo()
+            talkingOver = false
+        }
         let silent = micWatch.check(now: now)
         if silent != micSilent {
             micSilent = silent
@@ -296,6 +331,8 @@ final class TalkController {
         audio.shutDown()
         vad.reset()
         bargeIn.reset()
+        talkingOver = false
+        duckedAt = nil
         callState = .idle
         mode = nil
         caption = ""
@@ -325,7 +362,9 @@ final class TalkController {
         stoppedThrough = turn
         audio.stopPlayback(through: turn)
         speaking = false
-        vad.replying = false
+        talkingOver = false
+        duckedAt = nil
+        echoUntil = monotonicMs() + 400
     }
 
     private func startIdleTimer() {
@@ -359,26 +398,28 @@ final class TalkController {
             phoneFrame(samples, at: at)
             return
         }
-        vad.replying = speaking
+        let replying = speaking || at < echoUntil
+        vad.replying = replying && !talkingOver
         let outputs = vad.process(samples, at: at)
         level = vad.level
-        guard speaking || bargeIn.checking else {
+        guard !talkingOver, replying || bargeIn.checking else {
             send(outputs)
             return
         }
         // Ira is talking: a sound may be the person, or her own voice from the speaker. She is
-        // turned down while it is checked, and stops only for the person.
+        // turned down while it is checked; only their words, on the server, stop her.
         for step in bargeIn.feed(outputs, loud: vad.level > vad.effectiveThreshold, at: at) {
             switch step {
             case .duck:
                 audio.duck(true)
+                duckedAt = at
             case .release:
-                audio.duck(false)
+                undo()
                 vad.reset()
                 audio.stats.echoes += 1
             case .confirm(_, let held):
                 audio.stats.bargeIns += 1
-                stopSpeaking()  // without waiting for the server
+                talkingOver = true
                 send(held)
             }
         }
@@ -396,6 +437,7 @@ final class TalkController {
                 live?.audio(pcm)
             case .speechEnd(let end):
                 live?.speechEnd(at: end)
+                talkingOver = false
                 callState = .listening(hearing: false)
                 lastActivity = Date()
                 began(StepWords.thinking)
@@ -462,26 +504,39 @@ final class TalkController {
         case .heard(let turn, _):
             caption = ""
             lastTurn = max(lastTurn, turn)
+            heardTurn = max(heardTurn, turn)
             began(StepWords.thinking)
+        case .replaced:
+            break
+        case .speechIgnored:
+            // A noise, or her own voice: she comes back up, and the answer on its way stands.
+            undo()
+            if heardTurn <= doneThrough { finished() } else { began(StepWords.thinking) }
         case .tool(_, let name, _):
             began(StepWords.tool(name))
         case .delta:
             caption = ""
         case .audio(let turn, let seq, _, let data):
             guard inCall, turn > stoppedThrough else { return }
-            vad.replying = true
+            voicedTurn = max(voicedTurn, turn)
             audio.play(mp3: data, turn: turn, seq: seq)
         case .say(let turn, let seq, let text):
             guard inCall, turn > stoppedThrough else { return }
-            vad.replying = true
+            voicedTurn = max(voicedTurn, turn)
             audio.say(text, turn: turn, seq: seq)
         case .action:
             break
-        case .done:
+        case .done(let turn, _, _):
             finished()
+            doneThrough = max(doneThrough, turn)
+            if !audio.playing, voicedTurn <= doneThrough { quiet() }
         case .interrupted(let turn):
             stoppedThrough = max(stoppedThrough, turn)
+            doneThrough = max(doneThrough, turn)
             audio.stopPlayback(through: turn)
+            speaking = false
+            duckedAt = nil
+            echoUntil = monotonicMs() + 400
             finished()
         case .error(let message, let fatal):
             finished()

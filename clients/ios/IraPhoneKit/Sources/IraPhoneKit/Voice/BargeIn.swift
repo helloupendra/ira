@@ -4,8 +4,10 @@ import Foundation
 /// speaker, which echo cancellation does not always take out (a loud speaker, a phone lying
 /// flat). Stopping her for her own echo cut her answers short, and sent her own words back
 /// to her as the person's. So it is checked first: her voice is turned down at once, and if
-/// the sound stays loud for `checkMs` with her quieter, it is the person, and she stops; if it
-/// fades with her voice, it was her echo, and she carries on as before.
+/// the sound stays loud for `checkMs` with her quieter, it may be the person, and it goes to
+/// the server, whose speech-to-text decides by the words (`interrupted` stops her,
+/// `speech_ignored` brings her back up). If it fades with her voice, it was her echo, and
+/// nothing is sent.
 public struct BargeIn: Sendable {
     public struct Config: Sendable, Equatable {
         /// How long the sound is watched with Ira turned down.
@@ -18,7 +20,7 @@ public struct BargeIn: Sendable {
     public enum Step: Equatable, Sendable {
         /// Turn Ira down while the sound is checked.
         case duck
-        /// It is the person: stop Ira, and send their speech from `start`, with what was held.
+        /// It may be the person: send their speech from `start`, with what was held.
         case confirm(start: Double, held: [EnergyVAD.Output])
         /// It was Ira's own voice: turn her up again, and forget it.
         case release

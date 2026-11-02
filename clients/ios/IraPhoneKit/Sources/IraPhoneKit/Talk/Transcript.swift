@@ -115,7 +115,9 @@ public struct Transcript: Sendable {
                 entry.tools = [receipt]
                 entries.append(entry)
             }
-        case .ready, .partial, .audio, .say, .closed:
+        case .replaced(let turn):
+            entries.removeAll { $0.source == source && $0.turn == turn && $0.action == nil }
+        case .ready, .partial, .audio, .say, .closed, .speechIgnored:
             break
         }
     }

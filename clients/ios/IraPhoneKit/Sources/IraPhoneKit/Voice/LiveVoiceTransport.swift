@@ -9,7 +9,8 @@ public enum LiveProtocol {
     public enum Incoming: Equatable, Sendable {
         case ready(conversationID: String?, assistant: String?, languages: [String], tts: String?)
         case partial(text: String, language: String?)
-        case heard(turn: Int, text: String, language: String?)
+        case heard(turn: Int, text: String, language: String?, replaces: Int?)
+        case speechIgnored
         case delta(turn: Int, text: String)
         case tool(turn: Int, name: String, device: String?)
         /// The next binary frame is this sentence's audio.
@@ -39,7 +40,11 @@ public enum LiveProtocol {
         case "partial":
             return .partial(text: message["text"]?.stringValue ?? "", language: message["language"]?.stringValue)
         case "heard":
-            return .heard(turn: turn, text: message["text"]?.stringValue ?? "", language: message["language"]?.stringValue)
+            return .heard(
+                turn: turn, text: message["text"]?.stringValue ?? "", language: message["language"]?.stringValue,
+                replaces: message["replaces"]?.intValue)
+        case "speech_ignored":
+            return .speechIgnored
         case "delta":
             return .delta(turn: turn, text: message["text"]?.stringValue ?? "")
         case "tool":
@@ -202,8 +207,11 @@ public final class LiveVoiceTransport: VoiceTransport, @unchecked Sendable {
                     events(.ready(conversationID: conversation, assistant: assistant))
                 case .partial(let text, _):
                     events(.partial(text))
-                case .heard(let turn, let text, _):
+                case .heard(let turn, let text, _, let replaces):
+                    if let replaces { events(.replaced(turn: replaces)) }
                     events(.heard(turn: turn, text: text))
+                case .speechIgnored:
+                    events(.speechIgnored)
                 case .delta(let turn, let text):
                     events(.delta(turn: turn, text: text))
                 case .tool(let turn, let name, let device):

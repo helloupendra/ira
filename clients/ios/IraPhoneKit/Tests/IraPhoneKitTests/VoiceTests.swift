@@ -42,24 +42,42 @@ struct VADTests {
         var vad = EnergyVAD()
         // 1 s quiet, 400 ms speech, 1 s quiet.
         let frames = Array(repeating: Synth.silence(), count: 50) + Array(repeating: Synth.tone(0.2), count: 20)
-            + Array(repeating: Synth.silence(), count: 50)
+            + Array(repeating: Synth.silence(), count: 60)
         let out = Synth.run(&vad, frames)
         let starts = out.compactMap { if case .speechStart(let at) = $0.1 { return at } else { return nil } }
         let ends = out.compactMap { if case .speechEnd(let at) = $0.1 { return at } else { return nil } }
         #expect(starts == [1000])  // where speech began, not when it was confirmed
         #expect(ends == [1400])  // the end of the last loud frame
         let audio = out.filter { if case .audio = $0.1 { return true } else { return false } }
-        // Confirmed after 60 ms: the 300 ms lead-in and the three loud frames go at once.
-        #expect(audio.first?.0 == 1040)
-        #expect(audio.filter { $0.0 == 1040 }.count == 15 + 3)
-        // Then every frame until the end, quiet included: 1060 ms to 1980 ms.
-        #expect(audio.last?.0 == 1980)
-        #expect(audio.count == 18 + 47)
-        // speech_end comes after the last audio of the turn, 600 ms after the last loud frame.
+        // Confirmed after 160 ms: the 300 ms lead-in and the eight loud frames go at once.
+        #expect(audio.first?.0 == 1140)
+        #expect(audio.filter { $0.0 == 1140 }.count == 15 + 8)
+        // Then every frame until the end, quiet included: 1160 ms to 2280 ms.
+        #expect(audio.last?.0 == 2280)
+        #expect(audio.count == 23 + 57)
+        // speech_end comes after the last audio of the turn, 900 ms after the last loud frame.
         let endIndex = out.firstIndex { if case .speechEnd = $0.1 { return true } else { return false } }!
-        #expect(out[endIndex].0 == 1980)
+        #expect(out[endIndex].0 == 2280)
         #expect(!out[(endIndex + 1)...].contains { if case .audio = $0.1 { return true } else { return false } })
         if case .audio(let data) = audio[0].1 { #expect(data.count == 640) }  // 16-bit PCM, 20 ms
+    }
+
+    /// A breath in the middle of a sentence is not the end of the turn.
+    @Test func aPauseInASentenceDoesNotEndTheTurn() {
+        var vad = EnergyVAD()
+        let frames = Array(repeating: Synth.silence(), count: 20) + Array(repeating: Synth.tone(0.2), count: 25)
+            + Array(repeating: Synth.silence(), count: 35)  // 700 ms
+            + Array(repeating: Synth.tone(0.2), count: 25) + Array(repeating: Synth.silence(), count: 60)
+        let out = Synth.run(&vad, frames)
+        #expect(out.filter { if case .speechStart = $0.1 { return true } else { return false } }.count == 1)
+        #expect(out.filter { if case .speechEnd = $0.1 { return true } else { return false } }.count == 1)
+    }
+
+    @Test func aCoughIsNotSpeech() {
+        var vad = EnergyVAD()
+        let frames = Array(repeating: Synth.silence(), count: 10) + Array(repeating: Synth.tone(0.5), count: 6)
+            + Array(repeating: Synth.silence(), count: 40)
+        #expect(Synth.run(&vad, frames).isEmpty)
     }
 
     @Test func aClickIsNotSpeech() {
