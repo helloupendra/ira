@@ -266,6 +266,7 @@ class TriesAfterReading(ScriptedProvider):
                 "Done with that.",
             ]
         )
+        self.asks = set()
 
 
 async def test_a_refused_call_is_on_the_card():

@@ -14,12 +14,13 @@ import time
 from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
+from urllib.parse import urlsplit
 
 from ira.store import Store
 
 COVERED_SKILLS = frozenset({"screen", "control"})
 COVERED_TOOLS = frozenset(
-    {"app_open", "url_open", "media_play", "media_control", "settings_toggle"}
+    {"app_open", "url_open", "browser_show_tab", "media_play", "media_control", "settings_toggle"}
 )
 # Never covered, whatever the skill: a name that says it sends, calls, pays, deletes...
 NEVER = re.compile(
@@ -30,12 +31,55 @@ MINUTES_CHOICES = (0, 5, 10, 15, 20, 30, 45, 60)
 # Ira's own windows are on no list here: the devices refuse those whatever is unlocked.
 UNLOCKABLE = frozenset({"terminals", "editors"})
 NOTHING_UNLOCKED: frozenset[str] = frozenset()
-# Inside a window too, these ask every time: money, and what cannot be undone.
-RISKY_WORDS = re.compile(
+# Inside a window too, these ask every time: money, what goes out to others, what cannot be undone.
+RISKY_MONEY = re.compile(
     r"\b(pay|payment|buy|purchase|checkout|check out|place order|order now|transfer|send money|"
-    r"upi|delete|erase|empty trash|move to trash|move to bin)\b"
-    r"|भुगतान|ख़रीद|खरीद|हटाओ|डिलीट|मिटाओ|पेमेंट",
+    r"upi)\b|भुगतान|ख़रीद|खरीद|पेमेंट",
     re.IGNORECASE,
+)
+RISKY_DELETE = re.compile(
+    r"\b(delete|erase|empty trash|move to trash|move to bin)\b|हटाओ|डिलीट|मिटाओ",
+    re.IGNORECASE,
+)
+RISKY_SEND = re.compile(
+    r"\b(send|reply|reply all|forward|post|publish|share|submit|tweet)\b|भेजें|भेजो|सेंड|पोस्ट",
+    re.IGNORECASE,
+)
+# Where Return sends what was typed.
+SENDING_APPS = re.compile(
+    r"slack|messages|whatsapp|telegram|signal|discord|microsoft teams|\bteams\b|mail|gmail|outlook",
+    re.IGNORECASE,
+)
+# What each kind of risky step is, for the asked-for check: only ever these fixed words, since a
+# step's label is what a page wrote.
+RISK_ACTIONS = {
+    "money": ("pay_or_buy", "Pay for or buy something, or send money."),
+    "delete": ("delete_something", "Delete something."),
+    "send": ("send_something", "Send, post or share something to others."),
+}
+# Pasting, and anything that fills in what is saved, is a way out for what the person holds.
+PASTE_KEYS = re.compile(
+    r"(?:cmd|command|ctrl|control)\+(?:shift\+|alt\+|option\+)*v(?![a-z])", re.I
+)
+PASTE_WORDS = re.compile(r"\bpaste\b|auto-?fill|\bfill (?:in )?saved|पेस्ट|ऑटोफ़िल|ऑटोफिल", re.I)
+PASTE_ACTION = (
+    "paste_or_autofill",
+    "Paste what is on the clipboard, or autofill saved details, into the app in front.",
+)
+TYPE_ACTION = ("type_text", "Type text into the app in front.")
+# A step that goes on to here: what it opens or acts in, by the argument that names it.
+MOVES = {
+    "url_open": "url",
+    "app_open": "app",
+    "file_open": "path",
+    "browser_show_tab": "match",
+}
+# Reads that hold only what is on the screen or the device's own state, not the person's data.
+OPEN_SKILLS = frozenset({"screen", "control", "browser", "apps", "media", "settings"})
+# A step that sends a mail or starts a task is as outward as its name says, whatever it is called.
+OUTWARD_SKILLS = frozenset({"shortcuts", "tasks"})
+_NOT_A_NAME = frozenset(
+    {"com", "org", "net", "www", "app", "http", "https", "html", "the", "desktop", "mac", "ios"}
 )
 RISKY_PLACES = re.compile(
     r"\b(bank|banking|netbanking|paypal|razorpay|paytm|phonepe|gpay|stripe|checkout|wallet|"
@@ -126,20 +170,119 @@ def open_refusal(
     return None
 
 
+def _step_words(arguments: dict[str, Any], looked: dict[str, Any]) -> str:
+    """What a step says it is: its label or menu path, and for a click by id the label last seen."""
+    shown = (looked.get("elements") or {}).get(str(arguments.get("id") or ""))
+    return " ".join(str(arguments.get(key) or "") for key in ("label", "path")) + f" {shown or ''}"
+
+
+def _risk(
+    tool: str, arguments: dict[str, Any], looked: dict[str, Any] | None
+) -> tuple[str, str] | None:
+    looked = looked or {}
+    said = _step_words(arguments, looked)
+    if RISKY_MONEY.search(said):
+        return "money", f"it may pay: {said.strip()[:80]}"
+    if RISKY_DELETE.search(said):
+        return "delete", f"it may delete: {said.strip()[:80]}"
+    if RISKY_SEND.search(said):
+        return "send", f"it may send: {said.strip()[:80]}"
+    if RISKY_KEYS.search(str(arguments.get("keys") or "")):
+        return "delete", "those keys delete a file"
+    place = " ".join(str(looked.get(key) or "") for key in ("appName", "window"))
+    if RISKY_PLACES.search(f"{place} {arguments.get('url') or ''} {arguments.get('app') or ''}"):
+        return "money", f"a banking or payment place: {place.strip()[:80]}"
+    if pressing_return(tool, arguments) and SENDING_APPS.search(
+        f"{place} {arguments.get('app') or ''}"
+    ):
+        return "send", f"Return sends it in {place.strip()[:60]}"
+    return None
+
+
 def risky_step(tool: str, arguments: dict[str, Any], looked: dict[str, Any] | None) -> str | None:
     """Why this step needs its own yes inside an approval, or None. `looked`: what the last look
     at that device's window showed, so a click by id is read by its label."""
-    looked = looked or {}
-    shown = (looked.get("elements") or {}).get(str(arguments.get("id") or ""))
-    said = " ".join(str(arguments.get(key) or "") for key in ("label", "path")) + f" {shown or ''}"
-    if RISKY_WORDS.search(said):
-        return f"it may pay or delete: {said.strip()[:80]}"
-    if RISKY_KEYS.search(str(arguments.get("keys") or "")):
-        return "those keys delete a file"
-    place = " ".join(str(looked.get(key) or "") for key in ("appName", "window"))
-    if RISKY_PLACES.search(f"{place} {arguments.get('url') or ''} {arguments.get('app') or ''}"):
-        return f"a banking or payment place: {place.strip()[:80]}"
-    return None
+    risk = _risk(tool, arguments, looked)
+    return risk[1] if risk else None
+
+
+def risk_action(
+    tool: str, arguments: dict[str, Any], looked: dict[str, Any] | None
+) -> tuple[str, str] | None:
+    """The kind of a risky step, in fixed words the asked-for check can be given."""
+    risk = _risk(tool, arguments, looked)
+    return RISK_ACTIONS[risk[0]] if risk else None
+
+
+def pressing_return(tool: str, arguments: dict[str, Any]) -> bool:
+    if tool == "mac_type":
+        return arguments.get("pressReturn") is True
+    keys = str(arguments.get("keys") or "").lower()
+    return tool == "mac_keys" and bool(re.search(r"(?<![a-z])(?:return|enter)(?![a-z])", keys))
+
+
+def pasting(tool: str, arguments: dict[str, Any], looked: dict[str, Any] | None) -> bool:
+    """A paste keystroke, or a Paste or AutoFill button or menu item."""
+    if PASTE_KEYS.search(str(arguments.get("keys") or "")):
+        return True
+    return bool(PASTE_WORDS.search(_step_words(arguments, looked or {})))
+
+
+def blind_click(tool: str, arguments: dict[str, Any], looked: dict[str, Any] | None) -> bool:
+    """A click that does not say what it presses, so nothing can tell whether it pays: by position
+    when the last look listed elements to click by id (with none listed, a canvas, it may), or by an
+    id that look did not show."""
+    if not tool.endswith("_click"):
+        return False
+    elements = (looked or {}).get("elements") or {}
+    if arguments.get("id"):
+        return str(arguments["id"]) not in elements
+    return not arguments.get("label") and "x" in arguments and bool(elements)
+
+
+def named_in(words: str, place: str) -> bool:
+    """Whether these words name this app, site or file: "youtube kholo" names youtube.com, and
+    com.example.TaskPulse is named by "taskpulse". A name in another script is not seen, and such a
+    step only asks."""
+    place = place.strip().casefold()
+    if "://" in place or place.startswith("www."):
+        host = urlsplit(place if "://" in place else f"//{place}").hostname or ""
+        parts = host.split(".")
+        # A site is named by what comes before its ending: "bbc" in bbc.co.uk, never "evil" in
+        # youtube.evil.net by "youtube".
+        short_ending = len(parts) >= 3 and len(parts[-1]) == 2 and len(parts[-2]) <= 3
+        names = [parts[-3]] if short_ending else parts[-2:-1] or parts
+    else:
+        names = [p for p in re.findall(r"[^\W_]{3,}", place) if p not in _NOT_A_NAME]
+    said = set(re.findall(r"[^\W_]+", words.casefold()))
+    return any(name in said for name in names)
+
+
+def moved_to(tool: str, arguments: dict[str, Any]) -> str | None:
+    """Where this step opens or acts, when it names a place."""
+    key = MOVES.get(tool, "app")
+    place = arguments.get(key)
+    return place if isinstance(place, str) and place.strip() else None
+
+
+def in_an_app(tool: str) -> bool:
+    """This step names the app it acts in, which may be the one already in front."""
+    return tool == "app_open" or tool not in MOVES
+
+
+def outward(tool: str, skill: str | None) -> bool:
+    """It reaches others or runs what no card can show in full, so a read may never lead to it."""
+    return bool(NEVER.search(tool)) or (skill or "") in OUTWARD_SKILLS
+
+
+def private_read(skill: str | None) -> bool:
+    """A read of what the person holds, not of what is on the screen. An unknown skill is one."""
+    return (skill or "") not in OPEN_SKILLS
+
+
+def runs_there(place: str | None) -> bool:
+    """Whatever Return does in this app runs as a command, were it not unlocked. Unknown may."""
+    return place is None or never_type(place)
 
 
 def never_app(app: str | None, unlocked: frozenset[str] = NOTHING_UNLOCKED) -> bool:

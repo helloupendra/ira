@@ -55,8 +55,8 @@ on its own it can never change anything.
   model and is never stored; Telegram deletes such a voice note.
 - **What taints a turn.** After Ira reads text that others wrote (a
   screen, a message, a notification, a file, mail, a web page, a calendar,
-  a connection's output), an action that needs a yes or a PIN may come only
-  from the person's own words in a new message. A device's own status ("Opened
+  a connection's output), an act may come only from the person's own words
+  ("What she reads cannot steer her", below). A device's own status ("Opened
   YouTube", an alarm set) and the person's own data (their contacts, call
   log, location) do not taint it. A skill the server does not know does.
 - **Never "running" for ever.** A confirmed action that does not finish in
@@ -79,8 +79,9 @@ on its own it can never change anything.
   "yes" from the person who asked, 3 needs a PIN. The model cannot lower it.
 - Text written by others (web results, a device's output, a tool marked
   `untrusted`) reaches the model wrapped as data, with a rule that it is
-  never instructions. A turn that has read any of it cannot propose a Tier 2
-  or 3 action; the call is refused and logged as `refused`.
+  never instructions. In a turn that has read any of it, an act goes on only
+  on the person's own words ("What she reads cannot steer her", below); any
+  other call is refused and logged as `refused`.
 - A "yes" to a Tier 2 proposal never goes to a model: the assistant matches a
   short yes or no ("haan", "theek hai", "nahi") itself, only from the person
   who asked, in the same conversation, within 120 seconds.
@@ -214,8 +215,8 @@ push, grant or pair is never covered, whatever its skill.
 The person may ask for it in words from any of their devices ("mera Mac control karo, 30
 minute"): `control_start` is Tier 3, so it takes their PIN on a card, for the length they pick
 (5 to 60 minutes, 30 by default), and opens the window below on that computer. Nothing a page
-or a screen says can start it or lengthen it: after reading a screen the turn is tainted, and a
-tainted turn cannot propose. While it is on:
+or a screen says can start it or lengthen it: a Tier 3 action never follows a read in the same
+turn. While it is on:
 
 - the Mac shows a bar over every app and desktop, with Stop;
 - saying only "stop", "ruk jao", "रुक जाओ", "bas" or "band karo" ends it at once, with no model in
@@ -223,10 +224,56 @@ tainted turn cannot propose. While it is on:
 - it has up to 40 steps a turn instead of 8, and must say where it stopped when it runs out;
 - every step is written to **What Ira did**, and it ends by itself.
 
-Inside it, a step still asks when it may pay or delete: its label or menu path says pay, buy,
-checkout, transfer, delete and the like (a click by id is read by the label the last look showed),
-its keys delete a file, or the app, window or address is a bank's or a payment service's. The
-words are a net, not a proof, so `NEVER` above and the tools' own tiers stay.
+Inside it, a step still asks when it may pay, send or delete: its label or menu path says pay,
+buy, checkout, transfer, send, reply, post, share, submit, delete and the like (a click by id is
+read by the label the last look showed), its keys delete a file, Return would send what was typed
+in a messaging or mail app, or the app, window or address is a bank's or a payment service's. The
+words are a net, not a proof, so `NEVER` above and the tools' own tiers stay. A click that does
+not say what it presses is refused: by an id the last look did not show, or by position when that
+look listed elements to click by id.
+
+### What she reads cannot steer her
+
+A screen, a page or a mail may try to give Ira a task. The model that reads them cannot be trusted
+to ignore that, so these rules are in code. All of them apply once a turn has read text others
+wrote.
+
+**The asked-for check.** A separate model call (`ira.asked`) is given what the person said and what
+the action is, and answers which actions those words ask for. It is never given a tool's result, a
+window's text, a step's label or the conversation's past, so nothing read can change its answer. An
+error, or an answer it cannot read, is a no. While a session is on, what the person said is the
+words that started it and their last few messages, so "haan wahi karo" still means something.
+
+**Outside a session.** An act of a device, even one that needs no yes, goes on to its usual gate only
+if the check passes. These never follow a read, whatever was said: a tool that reaches others or
+runs what a card cannot show in full (`NEVER` above, shortcuts, coding tasks), anything that takes a
+PIN, Drop, memory, and any action of a connection. The person says so in a new message instead.
+
+**Rounds that push a model.** When a turn stops short and the model is asked to go on, it is offered
+what reads and only the acts the check passed. A tool is required only when an act that passed has
+not run; otherwise it may simply answer. A device tool is offered for three rounds of a turn.
+
+**Inside a session**, from any of the person's devices, seeing, acting and checking run on without
+asking, and:
+
+- turning control on never follows a read;
+- a step that may pay, send or delete, and a tool that does, needs the check, then shows its card
+  with what it would do (a PIN where the tool's tier asks for one);
+- opening an app or a site, or acting in an app, that their words do not name needs the check, then
+  a card. This is the line a page cannot cross alone. A name in another script is not recognised,
+  and such a step only asks;
+- reading what they hold (files, mail, notes, messages, the clipboard and so on), or looking at an
+  app they did not name, needs the check;
+- typing, and pasting or autofilling by key, menu or button, needs the check: otherwise a page could
+  have the clipboard put in its own form with no read tool called;
+- where the person has unlocked a terminal or an editor, plain typing flows if asked for, and Return
+  shows a card with the text it will run.
+
+**What this does not solve.** Inside one app or site, a plain click a page talked her into cannot be
+told apart from a click for the goal, and once typing has been asked for, the text she types is not
+checked. What bounds that is the lists of apps she never acts in, the risky words and places, the
+card on leaving the app or site, the time limit, Stop, and What Ira did. Keep control on only while
+you are there to see it.
 
 **Where Ira may not work.** Terminals and code editors with a terminal are on lists the person
 may change, per device, with their PIN (`PUT /v1/me/approvals/unlocked`, groups `terminals` and
@@ -244,7 +291,7 @@ there runs without asking:
 
 - covered: the `screen` and `control` skills (`screen_read`, `screen_act`,
   and Ira for Mac's `mac_*` control tools), and `app_open`, `url_open`,
-  `media_play`, `media_control` and `settings_toggle`;
+  `browser_show_tab`, `media_play`, `media_control` and `settings_toggle`;
 - each run is written to **What Ira did** as "within your approval", and
   counted on the window;
 - the model is told the window is open, so it does not ask for a PIN at

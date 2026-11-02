@@ -107,19 +107,19 @@ async def test_a_page_cannot_turn_it_on():
 
 
 async def test_once_on_steps_run_without_asking_and_are_counted():
-    runtime, owner, mac, socket, ran, _, _ = world([call("mac_click", {"id": "e3"}), "Clicked."])
+    runtime, owner, mac, socket, ran, _, _ = world([call("mac_click", {"label": "OK"}), "Clicked."])
     await tool_named(runtime, owner, "control_start").run({"minutes": 30})
     assert socket.sent[-1] == {"type": "control", "open": True}
     window = runtime.approvals.active(owner.id, mac.id)
     assert 29 * 60 < window.expires_at - window.opened_at <= 30 * 60
     events = await turn(runtime, owner, "ok button dabao")
-    assert ran == [("mac_click", {"id": "e3"})]
+    assert ran == [("mac_click", {"label": "OK"})]
     assert not [e for e in events if e["type"] == "action"]
     assert runtime.approvals.active(owner.id, mac.id).steps == 1
 
 
 async def test_it_gets_more_steps_while_on():
-    script: list[Any] = [call("mac_click", {"id": "e1"}) for _ in range(20)] + ["Done."]
+    script: list[Any] = [call("mac_click", {"label": "Next"}) for _ in range(20)] + ["Done."]
     runtime, owner, _, _, ran, _, _ = world(script)
     await tool_named(runtime, owner, "control_start").run({})
     await turn(runtime, owner, "poora form bharo")

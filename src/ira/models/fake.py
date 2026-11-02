@@ -42,6 +42,17 @@ class ScriptedProvider:
         self.delay = delay
         self.calls: list[dict[str, Any]] = []
         self.forced: list[str | None] = []  # each chat's tool_choice
+        # The asked-for check is answered here, off the script: what it says yes to (all it lists
+        # by default), and what it was given.
+        self.asks: set[str] | None = None
+        self.asked: list[str] = []
+
+    def _answer_asked(self, model: str, messages: list[Message]) -> ChatResponse:
+        given = messages[1].text
+        self.asked.append(given)
+        listed = re.findall(r"^- ([a-z0-9_]+): ", given.split("Actions:")[-1], re.MULTILINE)
+        yes = [name for name in listed if self.asks is None or name in self.asks]
+        return ChatResponse(text=json.dumps(yes), model=model)
 
     async def _next(
         self, model: str, messages: list[Message], tools: list[dict[str, Any]] | None
@@ -73,6 +84,10 @@ class ScriptedProvider:
         timeout: float,
         tool_choice: str | None = None,
     ) -> ChatResponse:
+        from ira.asked import RULE
+
+        if messages and messages[0].text == RULE:
+            return self._answer_asked(model, messages)
         self.forced.append(tool_choice)
         return await self._next(model, messages, tools)
 
