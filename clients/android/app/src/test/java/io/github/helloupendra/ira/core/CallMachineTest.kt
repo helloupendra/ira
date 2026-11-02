@@ -49,21 +49,21 @@ class CallMachineTest {
     }
 
     @Test
-    fun `speaking over Ira stops her at once and drops the rest of her answer`() {
+    fun `a sound over Ira stops nothing until the server has heard words`() {
         val m = ready()
         m.onSpeechStart(0.0)
         m.onSpeechEnd(500.0)
         m.onServer(Live.Heard(1, "aaj ki khabar batao", "hi-IN"), 0.0)
         m.audio(1, 0)
         m.onSentenceStarted(1, 1_500.0)
-        val barge = m.onSpeechStart(2_000.0)
-        assertTrue(Effect.StopPlayback in barge)
-        assertEquals(listOf("speech_start"), sent(barge))
+        val heard = m.onSpeechStart(2_000.0)
+        assertTrue(Effect.StopPlayback !in heard)
+        assertEquals(listOf("speech_start"), sent(heard))
         assertEquals(Phase.UserSpeaking, m.phase)
-        assertTrue(!m.playing)
-        // Sentences of the old answer still on their way are never played...
-        assertTrue(played(m.audio(1, 1)).isEmpty())
-        m.onServer(Live.Interrupted(1), 0.0)
+        assertEquals(listOf(1 to 1), played(m.audio(1, 1)))
+        // Words: she stops, and the rest of the old answer is never played...
+        assertTrue(Effect.StopPlayback in m.onServer(Live.Interrupted(1), 0.0))
+        assertTrue(played(m.audio(1, 2)).isEmpty())
         // ...but the next answer is.
         m.onSpeechEnd(2_800.0)
         m.onServer(Live.Heard(2, "ruko", "hi-IN"), 0.0)
@@ -71,15 +71,32 @@ class CallMachineTest {
     }
 
     @Test
-    fun `speaking while Ira is still thinking drops that answer too`() {
+    fun `a noise while Ira thinks leaves her answer alone`() {
         val m = ready()
         m.onSpeechStart(0.0)
         m.onSpeechEnd(500.0)
         m.onServer(Live.Heard(1, "one", "en-IN"), 0.0)
-        val barge = m.onSpeechStart(900.0)
-        assertTrue(Effect.StopPlayback in barge)
-        assertTrue(played(m.audio(1, 0)).isEmpty())
-        assertTrue(m.onServer(Live.Action(1, ActionCard("a", "sms_send", "send", 2, true, 120)), 0.0).isEmpty())
+        assertTrue(Effect.StopPlayback !in m.onSpeechStart(900.0))
+        m.onSpeechEnd(1_000.0)
+        assertTrue(Effect.Unduck in m.onServer(Live.SpeechIgnored, 0.0))
+        assertEquals(Phase.Thinking, m.phase)
+        assertEquals(listOf(1 to 0), played(m.audio(1, 0)))
+        assertTrue(m.onServer(Live.Action(1, ActionCard("a", "sms_send", "send", 2, true, 120)), 0.0).isNotEmpty())
+    }
+
+    @Test
+    fun `she is still replying between two sentences, until her answer is done`() {
+        val m = ready()
+        m.onServer(Live.Heard(1, "x", null), 0.0)
+        assertTrue(!m.replying) // thinking: nothing of hers is in the room
+        m.audio(1, 0)
+        assertTrue(m.replying)
+        m.onSentenceStarted(1, 10.0)
+        m.onSentenceFinished()
+        assertTrue(!m.playing)
+        assertTrue(m.replying) // the next sentence is on its way
+        m.onServer(Live.Done(1, "x", null), 0.0)
+        assertTrue(!m.replying)
     }
 
     @Test

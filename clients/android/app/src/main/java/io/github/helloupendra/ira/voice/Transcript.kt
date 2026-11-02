@@ -48,6 +48,11 @@ class Transcript {
         state.update { lines -> lines.filterNot { it.key == key && it.fromIra } }
     }
 
+    /** The person's own line [key]: its words are in a newer line now. */
+    fun dropYours(key: String) {
+        state.update { lines -> lines.filterNot { it.key == key && !it.fromIra } }
+    }
+
     fun stopped(key: String) {
         state.update { lines -> lines.map { if (it.key == key) it.copy(stopped = true) else it } }
     }

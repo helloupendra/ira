@@ -6,11 +6,11 @@ import kotlin.math.sqrt
  * A simple energy voice detector, run on the phone on 20 ms frames of 16 kHz audio.
  * The same rules as the Mac app's (`clients/macos/Sources/IraKit/Voice/VAD.swift`):
  *
- * - Speech starts when the level stays above the threshold for [Config.startMs] (60 ms),
+ * - Speech starts when the level stays above the threshold for [Config.startMs] (160 ms),
  *   so a click or a cough does not count.
  * - When it starts, the last [Config.leadInMs] (about 300 ms) before it are sent too, so
  *   the first syllable is not cut.
- * - Speech ends after [Config.hangoverMs] (about 600 ms) of quiet. The quiet is sent too
+ * - Speech ends after [Config.hangoverMs] (about 900 ms) of quiet: a breath is not the end. The quiet is sent too
  *   (it lets the transcript settle on the last word); the end is stamped at the last loud
  *   frame's end, not when the hangover ran out.
  * - The threshold follows the room: at least [Config.threshold], and at least
@@ -24,13 +24,13 @@ class EnergyVad(val config: Config = Config()) {
         val sampleRate: Int = 16_000,
         val frameMs: Double = 20.0,
         val threshold: Float = 0.02f,
-        val startMs: Double = 60.0,
-        val hangoverMs: Double = 600.0,
+        val startMs: Double = 160.0,
+        val hangoverMs: Double = 900.0,
         val leadInMs: Double = 300.0,
         val maxSpeechMs: Double = 60_000.0,
         val noiseFactor: Float = 3f,
         val replyFactor: Float = 2.5f,
-        val replyStartMs: Double = 160.0,
+        val replyStartMs: Double = 200.0,
     )
 
     sealed interface Output {

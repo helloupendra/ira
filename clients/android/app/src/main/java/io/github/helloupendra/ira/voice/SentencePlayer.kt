@@ -79,8 +79,14 @@ class SentencePlayer(context: Context, private val listener: Listener) {
         player.play()
     }
 
+    /** Ira's voice turned down (while a sound is checked: the person, or her echo?) or up. */
+    fun duck(on: Boolean) {
+        player.volume = if (on) 0.15f else 1f
+    }
+
     /** Stop now and forget everything queued (a barge-in, or the stop button). */
     fun stop() {
+        player.volume = 1f
         player.stop()
         player.clearMediaItems()
         audio.clear()

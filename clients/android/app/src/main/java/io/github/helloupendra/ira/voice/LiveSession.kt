@@ -6,6 +6,7 @@ import android.os.Looper
 import io.github.helloupendra.ira.BuildConfig
 import io.github.helloupendra.ira.core.ActionCard
 import io.github.helloupendra.ira.core.Backoff
+import io.github.helloupendra.ira.core.BargeIn
 import io.github.helloupendra.ira.core.CallMachine
 import io.github.helloupendra.ira.core.EnergyVad
 import io.github.helloupendra.ira.core.Live
@@ -87,6 +88,21 @@ class LiveSession(
 
     @Volatile
     private var replying = false
+
+    /** Ira's voice may still be in the room until then, after she stopped. */
+    @Volatile
+    private var echoUntil = 0.0
+
+    /** The person is talking over Ira: their speech goes to the server, which decides. */
+    @Volatile
+    private var talkingOver = false
+
+    /** Her echo was held back: the mic thread forgets the speech it thought it heard. */
+    @Volatile
+    private var forgetSpeech = false
+
+    private val bargeIn = BargeIn()
+    private val undo = Runnable { player.duck(false) }
 
     @Volatile
     private var listening = false
@@ -249,6 +265,10 @@ class LiveSession(
             }
             is Live.Partial -> state.update { it.copy(caption = message.text) }
             is Live.Heard -> {
+                message.replaces?.let {
+                    transcript.drop(key(it))
+                    transcript.dropYours(key(it) + ":you")
+                }
                 toolStarted = null
                 state.update { it.copy(caption = "", step = Steps.THINKING, askedAt = nowMs(), stepsDone = emptyList()) }
                 transcript.add(Transcript.Line(key(message.turn) + ":you", false, message.text))
@@ -286,14 +306,27 @@ class LiveSession(
         for (effect in effects) {
             when (effect) {
                 is CallMachine.Effect.Send -> sent = (socket?.send(effect.json) == true) && sent
-                is CallMachine.Effect.StopPlayback -> player.stop()
+                is CallMachine.Effect.StopPlayback -> {
+                    main.removeCallbacks(undo)
+                    player.stop()
+                }
+                is CallMachine.Effect.Unduck -> {
+                    main.removeCallbacks(undo)
+                    player.duck(false)
+                }
                 is CallMachine.Effect.Play -> player.enqueue(effect.sentences)
                 is CallMachine.Effect.ShowAction -> state.update { it.copy(action = effect.card) }
                 is CallMachine.Effect.End -> end(effect.reason)
             }
         }
-        replying = machine.playing
+        noteReplying()
         return sent
+    }
+
+    private fun noteReplying() {
+        val now = machine.replying
+        if (replying && !now) echoUntil = nowMs() + ECHO_TAIL_MS
+        replying = now
     }
 
     // The microphone (its own thread) and the voice detector.
@@ -318,29 +351,64 @@ class LiveSession(
     }
 
     private fun onMicFrame(samples: ShortArray, at: Double) {
-        vad.replying = replying
+        if (forgetSpeech) {
+            forgetSpeech = false
+            vad.reset()
+        }
+        val guarded = replying || at < echoUntil
+        vad.replying = guarded && !talkingOver
         val outputs = vad.process(samples, at)
         val level = vad.level
+        val loud = level > vad.effectiveThreshold
         main.post {
             if (ended || !ready) return@post
             silence.feed(samples)
             checkSilence(at + 20)
-            for (output in outputs) {
-                when (output) {
-                    is EnergyVad.Output.SpeechStart -> {
-                        main.removeCallbacks(idle)
-                        apply(machine.onSpeechStart(output.at))
-                    }
-                    is EnergyVad.Output.Audio -> {
-                        for (chunk in LiveProtocol.chunks(output.pcm)) socket?.send(chunk.toByteString())
-                    }
-                    is EnergyVad.Output.SpeechEnd -> {
-                        apply(machine.onSpeechEnd(output.at))
-                        quietTimer()
+            if (!talkingOver && (guarded || bargeIn.checking)) {
+                // Ira is talking: a sound may be the person, or her own voice from the speaker.
+                // She is turned down while it is checked; only their words, on the server, stop her.
+                for (step in bargeIn.feed(outputs, loud, at)) {
+                    when (step) {
+                        is BargeIn.Step.Duck -> {
+                            player.duck(true)
+                            main.removeCallbacks(undo)
+                            main.postDelayed(undo, DUCK_AT_MOST_MS)
+                        }
+                        is BargeIn.Step.Release -> {
+                            main.removeCallbacks(undo)
+                            player.duck(false)
+                            forgetSpeech = true
+                        }
+                        is BargeIn.Step.Confirm -> {
+                            talkingOver = true
+                            deliver(step.held)
+                        }
                     }
                 }
+            } else {
+                deliver(outputs)
             }
             state.update { it.copy(level = level, status = statusOf(machine.phase)) }
+        }
+    }
+
+    /** The voice detector's outputs, on to the server. */
+    private fun deliver(outputs: List<EnergyVad.Output>) {
+        for (output in outputs) {
+            when (output) {
+                is EnergyVad.Output.SpeechStart -> {
+                    main.removeCallbacks(idle)
+                    apply(machine.onSpeechStart(output.at))
+                }
+                is EnergyVad.Output.Audio -> {
+                    for (chunk in LiveProtocol.chunks(output.pcm)) socket?.send(chunk.toByteString())
+                }
+                is EnergyVad.Output.SpeechEnd -> {
+                    talkingOver = false
+                    apply(machine.onSpeechEnd(output.at))
+                    quietTimer()
+                }
+            }
         }
     }
 
@@ -359,7 +427,7 @@ class LiveSession(
 
     override fun onSentenceFinished(turn: Int, seq: Int) {
         machine.onSentenceFinished()
-        replying = machine.playing
+        noteReplying()
         state.update { it.copy(status = statusOf(machine.phase)) }
         quietTimer()
     }
@@ -410,5 +478,11 @@ class LiveSession(
          */
         internal fun lineKey(call: Int, generation: Int, turn: Int) = "live$call.$generation:$turn"
         private const val QUIET_MS = 120_000L
+
+        /** Ira's voice may still be in the room this long after she stopped. */
+        private const val ECHO_TAIL_MS = 400.0
+
+        /** The server always answers what was sent; if that was lost, she does not stay down. */
+        private const val DUCK_AT_MOST_MS = 15_000L
     }
 }

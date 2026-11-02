@@ -91,7 +91,8 @@ object LiveProtocol {
                     tts = m.string("tts"),
                 )
             "partial" -> Live.Partial(m.string("text").orEmpty(), m.string("language"))
-            "heard" -> Live.Heard(m.int("turn") ?: 0, m.string("text").orEmpty(), m.string("language"))
+            "heard" -> Live.Heard(m.int("turn") ?: 0, m.string("text").orEmpty(), m.string("language"), m.int("replaces"))
+            "speech_ignored" -> Live.SpeechIgnored
             "delta" -> Live.Delta(m.int("turn") ?: 0, m.string("text").orEmpty())
             "tool" -> Live.Tool(m.int("turn") ?: 0, m.string("name").orEmpty())
             "tool_result" -> Live.ToolResult(m.int("turn") ?: 0, m.string("name").orEmpty(), m.bool("ok") != false)
@@ -130,7 +131,11 @@ sealed interface Live {
 
     data class Partial(val text: String, val language: String?) : Live
 
-    data class Heard(val turn: Int, val text: String, val language: String?) : Live
+    /** With [replaces]: that turn was this sentence's first half; its line and answer go. */
+    data class Heard(val turn: Int, val text: String, val language: String?, val replaces: Int? = null) : Live
+
+    /** What was sent held no words of the person's: Ira comes back up, her answer goes on. */
+    data object SpeechIgnored : Live
 
     data class Delta(val turn: Int, val text: String) : Live
 

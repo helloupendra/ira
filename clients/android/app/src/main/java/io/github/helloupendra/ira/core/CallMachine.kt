@@ -4,11 +4,11 @@ package io.github.helloupendra.ira.core
  * The turn-taking of one live call, with no Android in it: what the voice detector and
  * the server say go in, and what the app must do comes out as [Effect]s.
  *
- * Barge-in: when the person starts speaking while Ira answers (thinking or talking), the
- * app stops playing at once, without waiting for the server, drops every sentence of the
- * answer it already has or will still receive, and sends `speech_start`, which the server
- * takes as the interruption. Audio of an interrupted turn that was already on its way is
- * dropped here, so nothing of the old answer is heard after the person spoke.
+ * Barge-in is by words: a sound while Ira answers goes to the server (`speech_start`) and
+ * stops nothing here. When the speech-to-text gives words that are not her own voice, the
+ * server sends `interrupted`: the app stops playing and drops the rest of that answer, so
+ * nothing of it is heard after that. A cough, a click or her echo end in `speech_ignored`,
+ * and her answer goes on. The stop button and typing still stop her at once.
  */
 class CallMachine(private val assembler: AudioAssembler = AudioAssembler()) {
     enum class Phase { Connecting, Listening, UserSpeaking, Thinking, Speaking }
@@ -19,6 +19,9 @@ class CallMachine(private val assembler: AudioAssembler = AudioAssembler()) {
 
         /** Stop the speaker now and forget what is queued. */
         data object StopPlayback : Effect
+
+        /** Ira's voice back up: what was heard over her was not the person. */
+        data object Unduck : Effect
 
         /** Queue these sentences, in this order, after what is already queued. */
         data class Play(val sentences: List<SentenceAudio>) : Effect
@@ -37,9 +40,16 @@ class CallMachine(private val assembler: AudioAssembler = AudioAssembler()) {
     var latestTurn: Int = 0
         private set
 
-    /** True while sentences are playing: the voice detector raises its threshold. */
+    /** True while sentences are playing. */
     var playing: Boolean = false
         private set
+
+    /**
+     * Ira is speaking, or between two sentences of an answer that has more to come: the voice
+     * detector keeps its threshold raised, and a sound is checked before it is sent.
+     */
+    val replying: Boolean
+        get() = playing || queued > 0 || (latestTurn in playedTurns && latestTurn !in doneTurns && latestTurn > droppedThrough)
 
     var conversationId: String? = null
         private set
@@ -54,13 +64,8 @@ class CallMachine(private val assembler: AudioAssembler = AudioAssembler()) {
     // The voice detector.
 
     fun onSpeechStart(at: Double): List<Effect> {
-        val out = ArrayList<Effect>()
-        if (phase == Phase.Thinking || phase == Phase.Speaking || playing) {
-            out += bargeIn()
-        }
         phase = Phase.UserSpeaking
-        out += Effect.Send(LiveProtocol.speechStart(at))
-        return out
+        return listOf(Effect.Send(LiveProtocol.speechStart(at)))
     }
 
     fun onSpeechEnd(at: Double): List<Effect> {
@@ -134,13 +139,26 @@ class CallMachine(private val assembler: AudioAssembler = AudioAssembler()) {
             }
             is Live.Interrupted -> {
                 val out = ArrayList<Effect>()
-                if (playing) {
+                doneTurns += message.turn
+                if (playing || queued > 0) {
                     out += Effect.StopPlayback
                     playing = false
                     queued = 0
                 }
                 if (phase == Phase.Speaking || phase == Phase.Thinking) phase = Phase.Listening
                 out
+            }
+            is Live.SpeechIgnored -> {
+                // A noise, or her own voice: back to what she was doing.
+                if (phase != Phase.UserSpeaking) {
+                    phase =
+                        when {
+                            playing -> Phase.Speaking
+                            latestTurn > droppedThrough && latestTurn !in doneTurns -> Phase.Thinking
+                            else -> Phase.Listening
+                        }
+                }
+                listOf(Effect.Unduck)
             }
             is Live.Ping -> listOf(Effect.Send(LiveProtocol.pong()))
             is Live.Error ->

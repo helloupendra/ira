@@ -35,36 +35,43 @@ class VadTest {
     }
 
     @Test
-    fun `speech starts after 60 ms of voice, with about 300 ms of lead-in`() {
+    fun `speech starts after 160 ms of voice, with about 300 ms of lead-in`() {
         val vad = EnergyVad()
         val out = run(vad, repeat(silence, 30) + repeat(tone(0.2), 10))
         val start = out.first { it.second is EnergyVad.Output.SpeechStart }
         assertEquals(600.0, (start.second as EnergyVad.Output.SpeechStart).at, 0.001)
-        // Started on the third loud frame (600 + 60 ms), with 300 ms before it and the 3 loud frames.
-        assertEquals(640.0, start.first, 0.001)
+        // Started on the eighth loud frame (600 + 160 ms), with 300 ms before it and the 8 loud frames.
+        assertEquals(740.0, start.first, 0.001)
         val lead = out.takeWhile { it.first == start.first }.count { it.second is EnergyVad.Output.Audio }
-        assertEquals(15 + 3, lead)
+        assertEquals(15 + 8, lead)
         assertTrue(vad.speaking)
     }
 
     @Test
-    fun `a click is not speech`() {
-        val out = run(EnergyVad(), repeat(silence, 10) + repeat(tone(0.3), 2) + repeat(silence, 40))
+    fun `a click or a cough is not speech`() {
+        val out = run(EnergyVad(), repeat(silence, 10) + repeat(tone(0.3), 6) + repeat(silence, 40))
         assertTrue(out.none { it.second is EnergyVad.Output.SpeechStart })
     }
 
     @Test
-    fun `the end comes after 600 ms of quiet, stamped at the last loud frame, and the quiet is sent`() {
+    fun `a breath in the middle of a sentence does not end the turn`() {
+        val out = run(EnergyVad(), repeat(silence, 20) + repeat(tone(0.2), 25) + repeat(silence, 35) + repeat(tone(0.2), 25) + repeat(silence, 60))
+        assertEquals(1, out.count { it.second is EnergyVad.Output.SpeechStart })
+        assertEquals(1, out.count { it.second is EnergyVad.Output.SpeechEnd })
+    }
+
+    @Test
+    fun `the end comes after 900 ms of quiet, stamped at the last loud frame, and the quiet is sent`() {
         val vad = EnergyVad()
-        val out = run(vad, repeat(silence, 10) + repeat(tone(0.2), 25) + repeat(silence, 40))
+        val out = run(vad, repeat(silence, 10) + repeat(tone(0.2), 25) + repeat(silence, 50))
         val end = out.first { it.second is EnergyVad.Output.SpeechEnd }
-        // The voice ran from 200 ms to 700 ms (25 frames); quiet then lasted 600 ms.
+        // The voice ran from 200 ms to 700 ms (25 frames); quiet then lasted 900 ms.
         assertEquals(700.0, (end.second as EnergyVad.Output.SpeechEnd).at, 0.001)
-        assertEquals(1280.0, end.first, 0.001)
+        assertEquals(1580.0, end.first, 0.001)
         val sent = out.count { it.second is EnergyVad.Output.Audio }
         // The 10 quiet frames before (all there were of the 300 ms lead-in), the 25 loud ones,
-        // and the 30 quiet frames of the hangover.
-        assertEquals(10 + 25 + 30, sent)
+        // and the 45 quiet frames of the hangover.
+        assertEquals(10 + 25 + 45, sent)
         assertTrue(!vad.speaking)
         assertTrue(out.drop(out.indexOf(end) + 1).isEmpty())
     }
