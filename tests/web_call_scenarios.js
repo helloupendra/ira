@@ -181,6 +181,63 @@ const scenarios = {
     assert.ok(!call.ducked());
   },
 
+  async "a soft voice is heard over her once her echo is known to be small"() {
+    const call = await newCall();
+    await call.sentence(1);
+    call.frames(0.001, 300); // 6 s of her, with echo cancelling leaving almost nothing
+    call.frames(0.025, 30); // quieter than the first bar, a normal voice in a room
+    assert.strictEqual(call.spoke(), 1);
+    assert.strictEqual(call.sent.find((m) => m.type === "speech_start").over, true);
+  },
+
+  async "her strong echo raises the bar, and she stays at full volume"() {
+    const call = await newCall();
+    await call.sentence(1);
+    call.frames(0.02, 300); // her voice reaches the microphone well
+    call.frames(0.04, 30); // a peak of it
+    assert.deepStrictEqual(call.volume, []);
+    assert.strictEqual(call.spoke(), 0);
+  },
+
+  async "she comes back up when the sound ends, without waiting for the server"() {
+    const call = await newCall();
+    const voice = await call.sentence(1);
+    call.frames(VOICE, 30);
+    assert.ok(call.ducked());
+    call.frames(QUIET, 50);
+    assert.ok(!call.ducked());
+    assert.ok(!voice.stopped);
+  },
+
+  async "if you keep talking she stops, without waiting for words"() {
+    const call = await newCall();
+    const voice = await call.sentence(1);
+    call.frames(VOICE, 50); // a second: the server has not found words yet
+    assert.ok(!voice.stopped);
+    call.frames(VOICE, 30);
+    assert.ok(voice.stopped);
+    assert.strictEqual(call.types().filter((t) => t === "interrupt").length, 1);
+    call.frames(VOICE, 100);
+    assert.strictEqual(call.types().filter((t) => t === "interrupt").length, 1);
+  },
+
+  async "she is never turned down for long, even under a sound that goes on"() {
+    const call = await newCall();
+    const voice = await call.sentence(1);
+    call.frames(0.02, 300); // her echo is known: 0.02
+    call.frames(0.2, 12); // a sound over her: she goes down, and it goes to the server
+    assert.ok(call.ducked());
+    call.frames(0.015, 200); // 4 s of something above the room, below her echo: no words came
+    assert.ok(!call.ducked());
+    assert.ok(!voice.stopped);
+  },
+
+  async "speech with her quiet says it did not begin over her"() {
+    const call = await newCall();
+    call.frames(VOICE, 12);
+    assert.strictEqual(call.sent.find((m) => m.type === "speech_start").over, false);
+  },
+
   async "a noise the server finds no words in leaves her answer playing"() {
     const call = await newCall();
     const voice = await call.sentence(1);

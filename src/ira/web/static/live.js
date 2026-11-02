@@ -14,7 +14,10 @@ const IraLive = (() => {
   const LOUD_SHARE = 0.6; // and must stay loud for this share of it to be you, not her echo
   const DUCK_LEVEL = 0.15; // how far she is turned down meanwhile
   const ECHO_TAIL_MS = 400; // her voice may still be in the room this long after she stopped
-  const DUCK_AT_MOST_MS = 8000; // the server always answers; if that was lost, she comes back up
+  const DUCK_AT_MOST_MS = 3000; // she stays easy to hear, whatever the server says
+  const SURE_MS = 1200; // this long louder than her echo, with her turned down, is you
+  const ECHO_FACTOR = 2.5; // while she speaks, the bar is this many times her voice at the mic
+  const ECHO_CEILING = 0.15; // but never past a level a normal voice reaches
   const PREROLL_MS = 300; // and the 300 ms before speech goes too
   const MIN_LEVEL = 0.012;
 
@@ -134,6 +137,8 @@ const IraLive = (() => {
       speaking: false,
       check: null, // a sound over Ira's voice, being watched before any of it is sent
       talkingOver: false, // you are talking over her: the server decides by your words
+      echoLevel: MIN_LEVEL, // how loud her voice reaches the mic, learned while she speaks
+      loudMs: null, // how long you stayed loud over her, once sent
       duckedAt: null,
       echoUntil: 0,
       voicedTurn: 0, // the last turn whose voice came
@@ -210,13 +215,26 @@ const IraLive = (() => {
     const ms = (samples.length / call.context.sampleRate) * 1000;
     const level = rms(samples);
     call.level = level;
-    if (call.duckedAt !== null && !call.speaking && now - call.duckedAt > DUCK_AT_MOST_MS) {
-      duck(false);
-      call.talkingOver = false;
-    }
+    if (call.duckedAt !== null && now - call.duckedAt > DUCK_AT_MOST_MS) duck(false);
     const guarded = replying(now) && !call.talkingOver;
-    const threshold = Math.max(MIN_LEVEL, call.floor * 3) * (guarded ? 1.5 : 1);
+    const base = Math.max(MIN_LEVEL, call.floor * 3);
+    const threshold = guarded ? Math.max(base, Math.min(call.echoLevel * ECHO_FACTOR, ECHO_CEILING)) : base;
     const loud = level > threshold;
+    if (guarded && !call.speaking) {
+      const weight = (level > call.echoLevel ? 0.02 : 0.01) * (ms / 20);
+      call.echoLevel += (level - call.echoLevel) * weight;
+    }
+    if (call.talkingOver && call.loudMs !== null) {
+      if (level > Math.max(base, call.echoLevel)) call.loudMs += ms;
+      if (call.loudMs >= SURE_MS) {
+        // You kept talking, and she is turned down: it is you. She stops without waiting for
+        // the first words, which can take seconds.
+        call.loudMs = null;
+        send({ type: "interrupt" });
+        cutOff();
+        if (call.duckedAt !== null) duck(false);
+      }
+    }
     if (loud) {
       call.voiced += ms;
       call.lastVoiced = now;
@@ -241,7 +259,7 @@ const IraLive = (() => {
           duck(true);
           call.check = { start: now, frames: 0, loud: 0 };
         } else {
-          send({ type: "speech_start", at: now });
+          send({ type: "speech_start", at: now, over: false });
           label("Listening…");
         }
       }
@@ -251,7 +269,8 @@ const IraLive = (() => {
     call.frameSamples += pcm.length;
     if (call.check) {
       call.check.frames += 1;
-      if (loud) call.check.loud += 1;
+      // With her down, her echo is far below the bar she needs with her at full volume.
+      if (level > base) call.check.loud += 1;
       if (now - call.check.start < CHECK_MS) return;
       const { start, frames, loud: stayed } = call.check;
       call.check = null;
@@ -265,7 +284,8 @@ const IraLive = (() => {
         return;
       }
       call.talkingOver = true;
-      send({ type: "speech_start", at: start });
+      call.loudMs = stayed * ms;
+      send({ type: "speech_start", at: start, over: true });
       label("Listening…");
     }
     if (call.frameSamples >= (RATE * FRAME_MS) / 1000) flush();
@@ -273,8 +293,11 @@ const IraLive = (() => {
       flush();
       call.speaking = false;
       call.talkingOver = false;
+      call.loudMs = null;
       call.voiced = 0;
       send({ type: "speech_end", at: call.lastVoiced });
+      // The sound is over: she comes back up now, if the server has not stopped her.
+      if (call.duckedAt !== null) duck(false);
       label("Thinking…");
     }
   }
