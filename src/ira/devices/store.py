@@ -47,8 +47,8 @@ SKILLS: dict[str, str] = {
     "files": "Files: find files by name, kind, date or what is in them, read the one you ask "
     "about (PDF, Word, text) and open it, or a folder in VS Code. Only in folders you allow, "
     "only when you ask.",
-    "screen": "Screen: read the text of the window in front of you, only when you ask. Only "
-    "the text leaves the computer, never a picture.",
+    "screen": "Screen: read the text of the window in front of you, or of an app you name, only "
+    "when you ask, and list the apps running. Only the text leaves the computer, never a picture.",
     "browser": "Browser: the tabs open in Chrome, Safari, Arc, Edge or Brave (titles and "
     "addresses only), and bringing one to the front so Ira can read it from the screen.",
     "clipboard": "Clipboard: read what you copied, when you ask. Never what a password "

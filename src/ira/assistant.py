@@ -252,6 +252,7 @@ class Assistant:
         if self.conversations.personal is None:  # not the business's own: a connection's
             self.conversations.personal = lambda name: name not in self.registry
         self.personal_tools = personal_tools
+        self.tool_missing: Callable[[int | None, str], str | None] | None = None
         self.user_settings = user_settings or UserSettings(store)
         self.tool_limit = ToolRateLimit(tool_calls_per_minute)
         # What the person let Ira learn about them and approved, for their prompt.
@@ -324,10 +325,14 @@ class Assistant:
         if here is not None:
             device = self.device_label(here)
             prompt += (
-                f"- The person is talking to you from their device {device}. Anything done on "
-                f"a device is done on {device}, with its own tools. If {device} cannot do it but "
-                "another of their devices can, say so and ask before using the other one; "
-                "always say which device you used.\n"
+                f"- The person is talking to you from their device {device}. Said without a "
+                f"device, it means {device}, with its own tools. You reach their other connected "
+                "devices from here: never tell them to talk from another device. They may name "
+                "one in any language or script (मैकबुक or मैक is the Mac, लैपटॉप the laptop, "
+                "फ़ोन or मोबाइल the phone). Looking at another device (reading, listing, "
+                "checking) simply runs when they named it or when only it can answer. Changing "
+                "something on it needs their yes, and they are asked by name. Always say which "
+                "device you used.\n"
             )
         if untrusted:
             prompt += f"- {UNTRUSTED_RULE}\n"
@@ -561,11 +566,16 @@ class Assistant:
                 description=f"{tool.description} This is the device the person is talking from.",
             )
         if tool.device_id is not None:
+            when = (
+                "Use it when they name that device or when only it can answer."
+                if tool.tier == 0
+                else "Use it when they name that device or when only it can do this: "
+                "they are asked for their yes, by name, before it runs."
+            )
             return dataclasses.replace(
                 tool,
-                description=f"{tool.description} Not the device the person is talking from "
-                f"({name}): use it only when they ask for {tool.label} by name; otherwise "
-                f"say that {name} cannot do this, and ask.",
+                description=f"{tool.description} It runs on {tool.label}, not on {name}, the "
+                f"device the person is talking from, and works from there all the same. {when}",
             )
         return tool
 
@@ -904,7 +914,10 @@ class Assistant:
             # Replay as {}: providers reject a history holding non-object arguments.
             run = _failed(INVALID_JSON, ToolCall(call.id, call.name, "{}"))
         elif not known:
-            run = _failed(f"unknown tool '{call.name}'", _safe(call))
+            # A tool of a device that left since it was seen says so: the model must not
+            # make up a reason of its own.
+            missing = self.tool_missing(user_id, call.name) if self.tool_missing else None
+            run = _failed(missing or f"unknown tool '{call.name}'", _safe(call))
         elif not self.tool_limit.allow(user_id, call.name):
             limit = self.tool_limit.limit
             run = _failed(f"refused: at most {limit} calls of {call.name} a minute", _safe(call))

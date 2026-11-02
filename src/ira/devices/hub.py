@@ -501,6 +501,20 @@ class DeviceHub:
                     out.append(self._offline(device, raw))
         return out
 
+    def tool_missing(self, user_id: int | None, name: str) -> str | None:
+        """Why a device's tool is not on offer now, if it is one of this person's."""
+        if user_id is None:
+            return None
+        for device in self.devices.for_user(user_id):
+            for raw in device.tools:
+                if raw.get("name") != name:
+                    continue
+                if not self.connected(device.id):
+                    return offline_message(device)
+                if raw.get("skill") not in device.skills:
+                    return f"{device.label} has this switched off, under Your devices."
+        return None
+
     def _offline(self, device: Device, raw: dict[str, Any]) -> PersonalTool:
         """A tool of a device that is offline now: asking it says so (its last hello's tool)."""
 

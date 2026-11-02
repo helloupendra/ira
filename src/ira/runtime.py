@@ -165,6 +165,7 @@ class Runtime:
             self.assistant.after_turn = self._learn_from
         if self.assistant.personal_tools is None:
             self.assistant.personal_tools = self.personal_tools
+            self.assistant.tool_missing = self.hub.tool_missing
         if self.guard.device_runner is None:
             self.guard.device_runner = self.hub.run_action
         if self.guard.personal_runner is None:

@@ -33,6 +33,7 @@ def call(name: str, arguments: dict[str, Any]) -> ChatResponse:
 
 
 OPEN = {"type": "object", "properties": {"name": {"type": "string"}}}
+NOTHING: dict[str, Any] = {"type": "object", "properties": {}}
 LINK = {"type": "object", "properties": {"url": {"type": "string"}}, "required": ["url"]}
 
 
@@ -47,6 +48,7 @@ def world(script: list[Any], iphone_opens_links: bool = False):
     code, _ = devices.start_pairing(owner.id, "ios", "My iPhone", ["apps", "contacts"])
     _, iphone = devices.redeem(code)
     mac_tools = {
+        "screen_read": DeviceTool("screen_read", "Read the screen.", NOTHING, "apps", 0),
         "app_open": DeviceTool("app_open", "Open an app.", OPEN, "apps", 1),
         "url_open": DeviceTool("url_open", "Open a web page.", LINK, "apps", 2),
     }
@@ -96,9 +98,8 @@ async def test_ira_is_told_which_device_the_person_talks_from():
     system = runtime.test_provider.calls[0]["messages"][0].content
     assert "talking to you from their device My iPhone" in system
     offered = {t["name"]: t for t in runtime.test_provider.calls[0]["tools"]}
-    assert (
-        "Not the device the person is talking from (My iPhone" in offered["app_open"]["description"]
-    )
+    assert "not on My iPhone" in offered["app_open"]["description"]
+    assert "they are asked for their yes" in offered["app_open"]["description"]
     assert (
         "This is the device the person is talking from" in offered["contacts_lookup"]["description"]
     )
@@ -127,3 +128,42 @@ async def test_a_tool_both_devices_have_goes_to_the_one_asked_from():
     assert ran == []
     assert next(e for e in events if e["type"] == "tool")["device"].startswith("My iPhone")
     _ = mac
+
+
+async def test_from_the_phone_a_read_on_the_mac_runs_at_once():
+    # 2 Nov 2026, from the Pixel: "you must talk from the MacBook", with the Mac connected.
+    runtime, owner, mac, iphone, ran = world([call("screen_read", {}), "42 minutes."])
+    events = await turn(runtime, owner, "मैकबुक पर टाइमर चेक करो", iphone.id)
+    assert ran == [(mac.id, "screen_read", {})]
+    assert not [e for e in events if e["type"] == "action"]
+
+
+async def test_nothing_tells_the_model_to_refuse_another_device():
+    runtime, owner, _, iphone, _ = world(["Theek hai."])
+    await turn(runtime, owner, "hello", iphone.id)
+    sent = runtime.test_provider.calls[0]
+    system = sent["messages"][0].content
+    offered = {t["name"]: t["description"] for t in sent["tools"]}
+    assert "never tell them to talk from another device" in system
+    assert "मैकबुक" in system
+    assert "cannot do this" not in offered["screen_read"]
+    assert "Use it when they name that device or when only it can answer" in offered["screen_read"]
+    assert "they are asked" not in offered["screen_read"]
+
+
+async def test_a_tool_of_a_device_gone_offline_says_so():
+    runtime, owner, mac, iphone, _ = world([call("screen_read", {}), "Offline."])
+    tools = [{"name": "screen_read", "skill": "apps", "tier": 0}]
+    runtime.hub.devices.hello(mac.id, version="1", tools=tools)
+    del runtime.hub.connections[mac.id]
+    await turn(runtime, owner, "mac par kya hai", iphone.id)
+    told = [m for m in runtime.test_provider.calls[1]["messages"] if m.role == "tool"][-1].content
+    assert "MacBook" in told and "offline" in told.lower()
+    assert "unknown tool" not in told
+
+
+async def test_a_tool_nobody_has_is_still_unknown():
+    runtime, owner, _, iphone, _ = world([call("made_up", {}), "Sorry."])
+    await turn(runtime, owner, "do it", iphone.id)
+    told = [m for m in runtime.test_provider.calls[1]["messages"] if m.role == "tool"][-1].content
+    assert "unknown tool 'made_up'" in told
