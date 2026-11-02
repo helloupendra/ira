@@ -32,6 +32,7 @@ world:
   location_now: {place: "Main Road", summary: "Near Main Road."}
   contacts_lookup: {contacts: [{name: Avery, phone: "+1 555 0100"}], summary: "1 contact."}
   shortcuts_list: {shortcuts: [Morning], summary: "1 shortcut."}
+  window_elements: {app: com.example.taskpulse, appName: TaskPulse, window: Today, elements: [{id: e1, kind: text, label: "Today's timer", value: "01:23:45"}, {id: e2, kind: button, label: Pause}], more: false, summary: "TaskPulse's window holds 2 elements I can name."}
 cases:
   # Looking at another device: it simply runs.
   - {id: read-mac-timer-hi, group: other-device-read, from: pixel, say: "मैकबुक पर टास्क प्लस का टाइमर चेक करो", tool: [screen_read, apps_list], device: mac}
@@ -116,6 +117,12 @@ cases:
   - {id: steps-file-read, group: multi-step, from: iphone, say: "Find the invoice file on my Mac and tell me how much is due", tool: files_find, device: mac, then: [file_read], says: "18,?250"}
   - {id: steps-calls-contact, group: multi-step, from: mac, say: "phone pe last missed call dekho aur uska number batao", tool: calls_recent, device: pixel, says: "555"}
   - {id: steps-mail-here, group: multi-step, from: mac, say: "एवरी का ईमेल ढूंढो और बताओ किस दिन का है", tool: mail_search, device: mac, says: "(?i)friday|शुक्रवार|shukravar"}
+
+  # Operating a computer: turning it on takes a PIN, and seeing comes first.
+  - {id: control-on-hinglish, group: control, from: pixel, say: "mera Mac control karo, 30 minute", tool: control_start, proposed: true}
+  - {id: control-on-hi, group: control, from: iphone, say: "मेरा मैक तीस मिनट के लिए कंट्रोल करो", tool: control_start, proposed: true}
+  - {id: control-on-en, group: control, from: mac, say: "Take control of my Mac for 30 minutes", tool: control_start, proposed: true}
+  - {id: control-see, group: control, from: pixel, say: "mac par TaskPulse ki window mein kaunse buttons hain", tool: [window_elements, screen_read], device: mac, says: "(?i)pause"}
 
   # Just talking.
   - {id: chat-hello, group: chat, from: pixel, say: "namaste", no_tool: true}
