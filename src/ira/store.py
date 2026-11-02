@@ -285,6 +285,15 @@ CREATE TABLE IF NOT EXISTS trusted_apps (
     PRIMARY KEY (user_id, device_id, app)
 );
 
+-- What the person took off the never-lists on a device, with their PIN (docs/security.md).
+CREATE TABLE IF NOT EXISTS control_unlocked (
+    user_id   INTEGER NOT NULL,
+    device_id INTEGER NOT NULL,
+    grp       TEXT NOT NULL,
+    added_at  REAL NOT NULL,
+    PRIMARY KEY (user_id, device_id, grp)
+);
+
 -- Each device's approval key: a public key whose private half only the person's
 -- fingerprint or face unlocks, so it may confirm instead of the PIN.
 CREATE TABLE IF NOT EXISTS approval_keys (

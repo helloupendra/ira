@@ -1893,6 +1893,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/me/approvals/unlocked": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Apps taken off the never-lists */
+        put: operations["set_unlocked"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/me/approvals/minutes": {
         parameters: {
             query?: never;
@@ -2405,6 +2422,8 @@ export interface components {
             windows: components["schemas"]["ApprovalWindowView"][];
             /** Trusted Apps */
             trusted_apps?: components["schemas"]["TrustedAppsView"][];
+            /** Unlocked */
+            unlocked?: components["schemas"]["UnlockedView"][];
         };
         /** AskRequest */
         AskRequest: {
@@ -5039,6 +5058,31 @@ export interface components {
              * @description Android packages or macOS bundle ids.
              */
             apps: string[];
+        };
+        /** UnlockedIn */
+        UnlockedIn: {
+            /** Device Id */
+            device_id: number;
+            /**
+             * Groups
+             * @description The whole list for that device: terminals, editors.
+             */
+            groups: string[];
+            /**
+             * Pin
+             * @description Needed to add one.
+             */
+            pin?: string | null;
+        };
+        /** UnlockedView */
+        UnlockedView: {
+            /** Device Id */
+            device_id: number;
+            /**
+             * Groups
+             * @description What is off the never-lists there, with the PIN.
+             */
+            groups: string[];
         };
         /** UserView */
         UserView: {
@@ -11634,6 +11678,39 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": components["schemas"]["TrustedAppsIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApprovalsView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    set_unlocked: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UnlockedIn"];
             };
         };
         responses: {

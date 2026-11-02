@@ -33,6 +33,7 @@ from ira.overrides import DEFAULT_VOICES
 from ira.search import Search
 from ira.store import Store
 from ira.tools.actions import ActionGuard
+from ira.tools.control import CLOSED, control_tools
 from ira.tools.loader import load_tool_modules
 from ira.tools.personal import PersonalTool
 from ira.tools.registry import ToolContext, ToolRegistry, default_registry
@@ -166,6 +167,7 @@ class Runtime:
         if self.assistant.personal_tools is None:
             self.assistant.personal_tools = self.personal_tools
             self.assistant.tool_missing = self.hub.tool_missing
+            self.assistant.control_stopped = self._control_stopped
         if self.guard.device_runner is None:
             self.guard.device_runner = self.hub.run_action
         if self.guard.personal_runner is None:
@@ -190,6 +192,11 @@ class Runtime:
                 zone_for=lambda user_id: self.learner.zone(user_id) if self.learner else None,
             )
         self.hub.welcome_extra = self._welcome
+
+    async def _control_stopped(self, user_id: int) -> None:
+        """The person said stop: every device of theirs takes its banner down now."""
+        if self.hub is not None:
+            await self.hub.send_to_person(user_id, CLOSED)
 
     async def _run_personal_action(self, pending: Any) -> Any:
         """A confirmed action of the person's own tool, found again by its name."""
@@ -222,6 +229,7 @@ class Runtime:
             tools += people_tools(self.learning.data, user_id)
             tools += self.businesses.tools(user_id)
             tools += self.drop_tools(user_id)
+        tools += control_tools(self, user_id)
         if self.connectors is not None:
             tools += self.connectors.tools_for(user_id)
         return tools

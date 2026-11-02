@@ -8992,6 +8992,52 @@
                 ]
             }
         },
+        "/v1/me/approvals/unlocked": {
+            "put": {
+                "tags": [
+                    "actions"
+                ],
+                "summary": "Apps taken off the never-lists",
+                "operationId": "set_unlocked",
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/UnlockedIn"
+                            }
+                        }
+                    },
+                    "required": true
+                },
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ApprovalsView"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "HTTPBearer": []
+                    }
+                ]
+            }
+        },
         "/v1/me/approvals/minutes": {
             "put": {
                 "tags": [
@@ -10297,6 +10343,13 @@
                         },
                         "type": "array",
                         "title": "Trusted Apps"
+                    },
+                    "unlocked": {
+                        "items": {
+                            "$ref": "#/components/schemas/UnlockedView"
+                        },
+                        "type": "array",
+                        "title": "Unlocked"
                     }
                 },
                 "type": "object",
@@ -16112,6 +16165,64 @@
                     "apps"
                 ],
                 "title": "TrustedAppsView"
+            },
+            "UnlockedIn": {
+                "properties": {
+                    "device_id": {
+                        "type": "integer",
+                        "title": "Device Id"
+                    },
+                    "groups": {
+                        "items": {
+                            "type": "string"
+                        },
+                        "type": "array",
+                        "maxItems": 2,
+                        "title": "Groups",
+                        "description": "The whole list for that device: terminals, editors."
+                    },
+                    "pin": {
+                        "anyOf": [
+                            {
+                                "type": "string",
+                                "maxLength": 20
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Pin",
+                        "description": "Needed to add one."
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "device_id",
+                    "groups"
+                ],
+                "title": "UnlockedIn"
+            },
+            "UnlockedView": {
+                "properties": {
+                    "device_id": {
+                        "type": "integer",
+                        "title": "Device Id"
+                    },
+                    "groups": {
+                        "items": {
+                            "type": "string"
+                        },
+                        "type": "array",
+                        "title": "Groups",
+                        "description": "What is off the never-lists there, with the PIN."
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "device_id",
+                    "groups"
+                ],
+                "title": "UnlockedView"
             },
             "UserView": {
                 "properties": {
