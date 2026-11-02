@@ -359,11 +359,19 @@ class LiveSession(
         vad.replying = guarded && !talkingOver
         val outputs = vad.process(samples, at)
         val level = vad.level
-        val loud = level > vad.effectiveThreshold
+        // With her down, her echo is far below the bar she needs with her at full volume.
+        val loud = level > vad.baseThreshold
+        val louderThanHer = level > maxOf(vad.baseThreshold, vad.echoLevel)
         main.post {
             if (ended || !ready) return@post
             silence.feed(samples)
             checkSilence(at + 20)
+            if (talkingOver && bargeIn.stillTalking(louderThanHer)) {
+                // They kept talking, and she is turned down: it is them. She stops without waiting
+                // for the first words, which can take seconds.
+                main.removeCallbacks(undo)
+                apply(machine.stop())
+            }
             if (!talkingOver && (guarded || bargeIn.checking)) {
                 // Ira is talking: a sound may be the person, or her own voice from the speaker.
                 // She is turned down while it is checked; only their words, on the server, stop her.
@@ -398,13 +406,16 @@ class LiveSession(
             when (output) {
                 is EnergyVad.Output.SpeechStart -> {
                     main.removeCallbacks(idle)
-                    apply(machine.onSpeechStart(output.at))
+                    apply(machine.onSpeechStart(output.at, talkingOver))
                 }
                 is EnergyVad.Output.Audio -> {
                     for (chunk in LiveProtocol.chunks(output.pcm)) socket?.send(chunk.toByteString())
                 }
                 is EnergyVad.Output.SpeechEnd -> {
                     talkingOver = false
+                    // The sound is over: she comes back up now, if the server has not stopped her.
+                    main.removeCallbacks(undo)
+                    player.duck(false)
                     apply(machine.onSpeechEnd(output.at))
                     quietTimer()
                 }
@@ -482,7 +493,7 @@ class LiveSession(
         /** Ira's voice may still be in the room this long after she stopped. */
         private const val ECHO_TAIL_MS = 400.0
 
-        /** The server always answers what was sent; if that was lost, she does not stay down. */
-        private const val DUCK_AT_MOST_MS = 15_000L
+        /** She stays easy to hear: turned down for a moment at most, whatever the server says. */
+        private const val DUCK_AT_MOST_MS = 3_000L
     }
 }

@@ -66,6 +66,24 @@ class VadTest {
     }
 
     @Test
+    fun `a soft voice is heard over her once her echo is known to be small`() {
+        val vad = EnergyVad()
+        vad.replying = true
+        run(vad, repeat(tone(0.002), 300))
+        assertTrue(vad.effectiveThreshold < 0.03f)
+        val out = run(vad, repeat(tone(0.05), 30))
+        assertTrue(out.any { it.second is EnergyVad.Output.SpeechStart })
+    }
+
+    @Test
+    fun `her strong echo raises the bar`() {
+        val vad = EnergyVad()
+        vad.replying = true
+        run(vad, repeat(tone(0.03), 300))
+        assertTrue(run(vad, repeat(tone(0.07), 30)).isEmpty())
+    }
+
+    @Test
     fun `a breath in the middle of a sentence does not end the turn`() {
         val out = run(EnergyVad(), repeat(silence, 20) + repeat(tone(0.2), 25) + repeat(silence, 35) + repeat(tone(0.2), 25) + repeat(silence, 60))
         assertEquals(1, out.count { it.second is EnergyVad.Output.SpeechStart })

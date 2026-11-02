@@ -29,7 +29,13 @@ class EnergyVad(val config: Config = Config()) {
         val leadInMs: Double = 300.0,
         val maxSpeechMs: Double = 60_000.0,
         val noiseFactor: Float = 3f,
+        /** While Ira speaks, the bar is this many times her voice at the microphone... */
         val replyFactor: Float = 2.5f,
+        /** ...but never past a level a normal voice reaches. */
+        val replyCeiling: Float = 0.15f,
+        /** How fast her voice's level is learned, up and down, per frame: over a second or two. */
+        val echoRise: Float = 0.02f,
+        val echoFall: Float = 0.01f,
         val replyStartMs: Double = 200.0,
         /** Quiet within the start of speech that does not break it: dips between syllables. */
         val gapMs: Double = 80.0,
@@ -63,12 +69,21 @@ class EnergyVad(val config: Config = Config()) {
     private var lastLoudEnd = 0.0
     private var speechStarted = 0.0
 
+    /** The bar with Ira quiet. The room can raise it, but never past a level normal speech reaches. */
+    val baseThreshold: Float
+        get() = maxOf(config.threshold, minOf(noiseFloor * config.noiseFactor, 0.12f))
+
+    /**
+     * How loud Ira's own voice reaches the microphone, learned while she speaks. Echo cancelling
+     * leaves little of it, and a fixed bar over that kept a voice from being heard over hers;
+     * where much is left, the bar rises with it.
+     */
+    @Volatile
+    var echoLevel: Float = config.threshold
+        private set
+
     val effectiveThreshold: Float
-        get() {
-            // The room can raise the threshold, but never past a level normal speech reaches.
-            val base = maxOf(config.threshold, minOf(noiseFloor * config.noiseFactor, 0.12f))
-            return if (replying) base * config.replyFactor else base
-        }
+        get() = if (replying) maxOf(baseThreshold, minOf(echoLevel * config.replyFactor, config.replyCeiling)) else baseThreshold
 
     /** Feed one frame of 16-bit samples that starts at [at] (ms); returns what to do now. */
     fun process(samples: ShortArray, at: Double): List<Output> {
@@ -78,6 +93,9 @@ class EnergyVad(val config: Config = Config()) {
         val end = at + samples.size * 1000.0 / config.sampleRate
         val loud = level > effectiveThreshold
         val out = ArrayList<Output>(2)
+        if (replying && !speaking) {
+            echoLevel += (level - echoLevel) * (if (level > echoLevel) config.echoRise else config.echoFall)
+        }
 
         if (!speaking) {
             if (!loud && !replying) {

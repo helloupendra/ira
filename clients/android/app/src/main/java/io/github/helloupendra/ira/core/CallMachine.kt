@@ -63,9 +63,9 @@ class CallMachine(private val assembler: AudioAssembler = AudioAssembler()) {
 
     // The voice detector.
 
-    fun onSpeechStart(at: Double): List<Effect> {
+    fun onSpeechStart(at: Double, over: Boolean = false): List<Effect> {
         phase = Phase.UserSpeaking
-        return listOf(Effect.Send(LiveProtocol.speechStart(at)))
+        return listOf(Effect.Send(LiveProtocol.speechStart(at, over)))
     }
 
     fun onSpeechEnd(at: Double): List<Effect> {

@@ -12,7 +12,7 @@ class LiveProtocolTest {
             """{"type":"start","protocol":1,"client":"ira-android/0.1.0","conversation_id":"a1b2c3"}""",
             LiveProtocol.start("ira-android/0.1.0", "a1b2c3"),
         )
-        assertEquals("""{"type":"speech_start","at":1234.6}""", LiveProtocol.speechStart(1234.56))
+        assertEquals("""{"type":"speech_start","at":1234.6,"over":false}""", LiveProtocol.speechStart(1234.56))
         assertEquals("""{"type":"speech_end","at":2345.0}""", LiveProtocol.speechEnd(2345.0))
         assertEquals("""{"type":"text","text":"kal subah 9 baje yaad dilana"}""", LiveProtocol.text("kal subah 9 baje yaad dilana"))
         assertEquals("""{"type":"interrupt"}""", LiveProtocol.interrupt())

@@ -28,7 +28,13 @@ object LiveProtocol {
             if (!conversationId.isNullOrBlank()) put("conversation_id", JsonPrimitive(conversationId))
         }.toString()
 
-    fun speechStart(at: Double): String = timed("speech_start", at)
+    /** [over]: it began while Ira's voice was playing, so it may be her echo. */
+    fun speechStart(at: Double, over: Boolean = false): String =
+        buildJsonObject {
+            put("type", JsonPrimitive("speech_start"))
+            put("at", JsonPrimitive(round1(at)))
+            put("over", JsonPrimitive(over))
+        }.toString()
 
     fun speechEnd(at: Double): String = timed("speech_end", at)
 

@@ -38,4 +38,17 @@ class BargeInTest {
         val end = listOf(EnergyVad.Output.Audio(byteArrayOf()), EnergyVad.Output.SpeechEnd(1100.0))
         assertEquals(listOf(BargeIn.Step.Release), barge.feed(end, false, 1100.0))
     }
+
+    @Test
+    fun `a voice that stays loud is sure, once`() {
+        val check = BargeIn()
+        check.feed(listOf(EnergyVad.Output.SpeechStart(1000.0)), true, 1000.0)
+        var at = 1020.0
+        while (at <= 1320.0) {
+            check.feed(emptyList(), true, at)
+            at += 20.0
+        }
+        assertEquals(0, (0 until 40).count { check.stillTalking(false) })
+        assertEquals(1, (0 until 100).count { check.stillTalking(true) })
+    }
 }
