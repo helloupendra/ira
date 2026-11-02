@@ -53,7 +53,7 @@ public final class HTTPVoiceTransport: VoiceTransport, @unchecked Sendable {
         events?(event)
     }
 
-    public func speechStart(at: Double) {
+    public func speechStart(at: Double, over: Bool) {
         interrupt()
         lock.lock()
         recording = Data()

@@ -58,6 +58,22 @@ enum Snapshot {
             wait(1)
             save(main.window, to: folder.appendingPathComponent("listening-\(dark ? "dark" : "light").png"))
         }
+        // Ira saying an answer: a short one, one that fills the window, and one too long for it.
+        model.conversation.caption = ""
+        model.conversation.mode = .speaking
+        let answers = [
+            ("short", "सनराइज़ डेंटल क्लिनिक में कल दो appointments हैं।"),
+            ("medium", String(repeating: "कल सनराइज़ डेंटल क्लिनिक में दो appointments हैं, पहली सुबह 10:30 बजे और दूसरी दोपहर 3 बजे। ", count: 4)),
+            ("long", String(repeating: "कल सनराइज़ डेंटल क्लिनिक में दो appointments हैं, पहली सुबह 10:30 बजे और दूसरी दोपहर 3 बजे। ", count: 16)),
+        ]
+        for (name, answer) in answers {
+            model.conversation.entries = sample + [Entry(role: .ira, text: answer)]
+            for dark in [false, true] {
+                main.window.appearance = NSAppearance(named: dark ? .darkAqua : .aqua)
+                wait(1)
+                save(main.window, to: folder.appendingPathComponent("speaking-\(name)-\(dark ? "dark" : "light").png"))
+            }
+        }
         // Listening to a microphone that gives nothing.
         model.conversation.caption = ""
         model.conversation.micName = AudioIO.inputName

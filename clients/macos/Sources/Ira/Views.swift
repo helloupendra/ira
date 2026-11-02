@@ -506,7 +506,8 @@ struct ListeningView: View {
                 center: .center, startRadius: 0, endRadius: 440)
             VStack(spacing: 22) {
                 Lens(
-                    size: 168, level: conversation.mode == .speaking ? conversation.speechLevel : conversation.level,
+                    size: longWords ? 96 : 168,
+                    level: conversation.mode == .speaking ? conversation.speechLevel : conversation.level,
                     heartbeat: [.listening, .hearing].contains(conversation.mode), thinking: working, rings: 2)
                 VStack(spacing: 8) {
                     Text(label)
@@ -524,7 +525,7 @@ struct ListeningView: View {
                     }
                 }
                 words
-                    .frame(maxWidth: 620)
+                    .frame(maxWidth: 680)
                 HStack(spacing: 12) {
                     Button("Cancel", action: cancel)
                         .buttonStyle(PillButtonStyle())
@@ -533,7 +534,9 @@ struct ListeningView: View {
                         .buttonStyle(PillButtonStyle(filled: true))
                 }
             }
-            .padding(24)
+            .padding(.horizontal, 24)
+            .padding(.top, 24)
+            .padding(.bottom, 48)  // clear of the line below
             VStack {
                 Spacer()
                 Text("\(hotKey) brings Ira back · Esc stops listening")
@@ -545,6 +548,16 @@ struct ListeningView: View {
         .accessibilityElement(children: .contain)
         .accessibilityLabel(label)
     }
+
+    /// What Ira is saying, when she is.
+    private var spoken: String? {
+        guard conversation.mode == .speaking, conversation.caption.isEmpty, !conversation.micSilent else { return nil }
+        guard let answer = conversation.entries.last(where: { $0.role == .ira })?.text, !answer.isEmpty else { return nil }
+        return answer
+    }
+
+    /// An answer that needs the room: the lens makes way for it.
+    private var longWords: Bool { (spoken?.count ?? 0) > 180 }
 
     /// Ira is working on an answer (and not yet speaking it).
     private var working: Bool {
@@ -570,26 +583,35 @@ struct ListeningView: View {
         } else if conversation.micSilent {
             // In place of "Speak now" or Ira's answer, so the stack never outgrows the window.
             silentMic
-        } else if conversation.mode == .speaking,
-            let answer = conversation.entries.last(where: { $0.role == .ira })?.text, !answer.isEmpty
-        {
-            Text(answer)
-                .font(Presence.body)
-                .foregroundStyle(Presence.muted)
-                .multilineTextAlignment(.center)
-                .lineLimit(5)
+        } else if let spoken {
+            // All of it: what does not fit scrolls, nothing is cut off.
+            ViewThatFits(in: .vertical) {
+                answerText(spoken)
+                ScrollView { answerText(spoken) }
+            }
         } else if working, let asked = conversation.entries.last(where: { $0.role == .you })?.text {
             // The question that was taken, while Ira works on it.
             Text("“\(asked)”")
                 .font(Presence.serif(26))
                 .foregroundStyle(Presence.muted)
                 .multilineTextAlignment(.center)
-                .lineLimit(3)
+                .lineLimit(4)
         } else {
             Text("Speak now")
                 .font(Presence.serif(26))
                 .foregroundStyle(Presence.faint)
         }
+    }
+
+    private func answerText(_ text: String) -> some View {
+        Text(text)
+            .font(Presence.answer)
+            .lineSpacing(6)
+            .foregroundStyle(Presence.ink)
+            .multilineTextAlignment(longWords ? .leading : .center)
+            .frame(maxWidth: .infinity, alignment: longWords ? .leading : .center)
+            .fixedSize(horizontal: false, vertical: true)
+            .textSelection(.enabled)
     }
 
     /// The microphone gave nothing for 3 s: say so, and where to look.

@@ -50,7 +50,8 @@ public protocol VoiceTransport: AnyObject, Sendable {
     /// Connect; `events` is called for everything Ira says back, on any thread.
     func start(conversationID: String?, events: @escaping @Sendable (TalkEvent) -> Void) async throws
     /// The voice detector heard speech start (`at`: ms on the app's clock). Also a barge-in.
-    func speechStart(at: Double)
+    /// `over`: it began while Ira's voice was playing, so it may be her echo.
+    func speechStart(at: Double, over: Bool)
     /// 20-100 ms of 16 kHz mono 16-bit PCM, only while the person speaks.
     func audio(_ pcm: Data)
     /// The person stopped; `at` is when the last spoken audio ended.
@@ -152,4 +153,8 @@ public enum WakePhrase {
         }
         return forms.contains { text.contains(" " + $0 + " ") }
     }
+}
+
+extension VoiceTransport {
+    public func speechStart(at: Double) { speechStart(at: at, over: false) }
 }

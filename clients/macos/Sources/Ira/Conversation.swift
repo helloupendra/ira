@@ -95,6 +95,7 @@ final class Conversation: ObservableObject {
     /// The last turn whose voice came, and the last that is complete.
     private var voicedTurn = 0
     private var doneThrough = 0
+    private var overIra = OverIra()
     private var lastActivity = Date()
     private var idleTimer: Timer?
     private var silence = MicSilence()
@@ -371,17 +372,34 @@ final class Conversation: ObservableObject {
         if voicedTurn > 0 { echoUntil = monotonicMs() + 400 }
         audio.duck(false)
         duckedAt = nil
+        logOverIra()
         if mode == .speaking { mode = listening ? .listening : .idle }
+    }
+
+    /// What sounds over Ira came to during an answer, for the log: numbers only.
+    private func logOverIra() {
+        guard overIra.loudest > 0 else { return }
+        let number = { (value: Float) in String(format: "%.4f", value) }
+        IraLog.shared.info(
+            "over Ira: \(overIra.faded) faded, \(overIra.sent) sent, \(overIra.ignored) no words, \(overIra.stopped) stopped by words, \(overIra.sure) by staying loud; loudest \(number(overIra.loudest)), her echo \(number(vad.echoLevel)), bar \(number(vad.baseThreshold))"
+        )
+        overIra = OverIra()
+    }
+
+    private func silenceHer() {
+        audio.stopPlayback()
+        duckedAt = nil
+        echoUntil = monotonicMs() + 400
+        interruptedTurn = max(interruptedTurn, entries.compactMap(\.turn).max() ?? 0)
+        if speechLevel != 0 { speechLevel = 0 }
+        logOverIra()
     }
 
     /// Stop Ira talking (the stop button).
     func stopSpeaking() {
         guard audio.playing else { return }
-        audio.stopPlayback()
+        silenceHer()
         talkingOver = false
-        duckedAt = nil
-        echoUntil = monotonicMs() + 400
-        interruptedTurn = max(interruptedTurn, entries.compactMap(\.turn).max() ?? 0)
         if mode == .speaking { mode = listening ? .listening : .idle }
     }
 
@@ -444,11 +462,10 @@ final class Conversation: ObservableObject {
     private func frame(_ samples: [Float], at: Double) {
         silence.feed(samples)
         checkSilence(at: at + 20)
-        // The server always answers what was sent; if that was lost, Ira does not stay down.
-        if let duckedAt, !vad.speaking, at - duckedAt > 8000 {
+        // She stays easy to hear: turned down for a moment at most, whatever the server says.
+        if let duckedAt, at - duckedAt > 3000 {
             audio.duck(false)
             self.duckedAt = nil
-            talkingOver = false
         }
         let replying = audio.playing || voicedTurn > doneThrough || at < echoUntil
         vad.replying = replying && !talkingOver
@@ -456,22 +473,34 @@ final class Conversation: ObservableObject {
         let heard = audio.echoCancelling ? samples : agc.process(samples, adapt: !audio.playing)
         let outputs = vad.process(heard, at: at)
         level = vad.level
+        if replying { overIra.loudest = max(overIra.loudest, vad.level) }
+        if talkingOver, bargeIn.stillTalking(louderThanHer: vad.level > max(vad.baseThreshold, vad.echoLevel)) {
+            // They kept talking, and she is turned down: it is them. She stops without waiting
+            // for the first words, which can take seconds.
+            overIra.sure += 1
+            transport?.interrupt()
+            silenceHer()
+            mode = .hearing
+        }
         guard !talkingOver, replying || bargeIn.checking else {
             send(outputs)
             return
         }
         // Ira is talking: a sound may be the person, or her own voice from the speakers. She is
         // turned down while it is checked; only their words, on the server, stop her.
-        for step in bargeIn.feed(outputs, loud: vad.level > vad.effectiveThreshold, at: at) {
+        // With her down, her echo is far below the bar she needs with her at full volume.
+        for step in bargeIn.feed(outputs, loud: vad.level > vad.baseThreshold, at: at) {
             switch step {
             case .duck:
                 audio.duck(true)
                 duckedAt = at
             case .release:
+                overIra.faded += 1
                 audio.duck(false)
                 duckedAt = nil
                 vad.reset()
             case .confirm(_, let held):
+                overIra.sent += 1
                 talkingOver = true
                 send(held)
             }
@@ -486,13 +515,18 @@ final class Conversation: ObservableObject {
                 lastInputWasVoice = true
                 mode = .hearing
                 lastActivity = Date()
-                transport?.speechStart(at: start)
+                transport?.speechStart(at: start, over: talkingOver)
             case .audio(let pcm):
                 transport?.audio(pcm)
             case .speechEnd(let end):
                 transport?.speechEnd(at: end)
                 talkingOver = false
-                mode = .thinking
+                // The sound is over: she comes back up now, if the server has not stopped her.
+                if duckedAt != nil {
+                    audio.duck(false)
+                    duckedAt = nil
+                }
+                mode = audio.playing ? .speaking : .thinking
                 lastActivity = Date()
                 began("Listening done. Thinking…")
             }
@@ -599,11 +633,14 @@ final class Conversation: ObservableObject {
             }
             audio.duck(false)
             duckedAt = nil
+            overIra.stopped += 1
+            logOverIra()
             finished()
         case .replaced(let turn):
             entries.removeAll { $0.turn == turn && $0.action == nil }
         case .speechIgnored:
             // A noise, or her own voice: she comes back up, and the answer on its way stands.
+            overIra.ignored += 1
             audio.duck(false)
             duckedAt = nil
             if (turnInFlight ?? 0) <= doneThrough {
@@ -779,4 +816,14 @@ final class Conversation: ObservableObject {
         default: return outcome["message"]?.stringValue ?? "Ira answered: \(status)."
         }
     }
+}
+
+/// What sounds over Ira came to during one answer.
+private struct OverIra {
+    var faded = 0
+    var sent = 0
+    var ignored = 0
+    var stopped = 0
+    var sure = 0
+    var loudest: Float = 0
 }

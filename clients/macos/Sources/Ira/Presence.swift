@@ -20,6 +20,7 @@ enum Presence {
     /// The serif, for the greeting and the words heard while listening only (New York).
     static func serif(_ size: CGFloat) -> Font { .system(size: size, weight: .regular, design: .serif) }
     static let body = Font.system(size: 15)
+    static let answer = Font.system(size: 18)
     static let secondary = Font.system(size: 13)
     static let label = Font.system(size: 11, weight: .medium)
     static let mono = Font.system(size: 11, design: .monospaced)
