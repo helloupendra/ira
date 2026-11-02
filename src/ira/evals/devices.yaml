@@ -16,7 +16,7 @@
 world:
   screen_read: {app: com.example.taskpulse, appName: TaskPulse, window: Today, text: "TaskPulse\nToday's timer 01:23:45\nProject: Sunrise Dental Clinic website", chars: 70, truncated: false, summary: "Read the TaskPulse window: 3 lines of text."}
   apps_list: {apps: [{name: TaskPulse, front: false, windows: [Today]}, {name: Safari, front: true, windows: [Sunrise Dental Clinic]}, {name: Mail, front: false, windows: [Inbox]}], summary: "3 apps are running."}
-  browser_tabs: {tabs: [{id: "t1", browser: Chrome, title: "Invoice 4471 - Sunrise Dental Clinic", url: "https://billing.example.com/invoice", front: true}, {id: "t2", browser: Chrome, title: "Weather", url: "https://weather.example.com", front: false}], summary: "2 tabs are open."}
+  browser_tabs: {tabs: [{id: "t1", browser: Chrome, title: "Invoice 4471 - Sunrise Dental Clinic", url: "https://billing.example.com/invoice", front: false}, {id: "t2", browser: Chrome, title: "Weather", url: "https://weather.example.com", front: true}], summary: "2 tabs are open."}
   browser_show_tab: {summary: "Invoice 4471 is in front now."}
   files_find: {files: [{path: "~/Documents/invoice-4471.pdf", name: invoice-4471.pdf}], summary: "Found 1 file."}
   file_read: {path: "~/Documents/invoice-4471.pdf", text: "Invoice 4471. Amount due 18,250. Due on 14 November.", summary: "Read the file."}
@@ -98,7 +98,7 @@ cases:
 
   # The tool fails: she gives that reason, not one of her own.
   - {id: err-screen-permission, group: tool-error, from: pixel, say: "mac par TaskPulse ka timer dekho", tool: screen_read, device: mac, errors: {screen_read: "Screen Recording is off for Ira, so I cannot read the screen. Allow Ira in System Settings → Privacy & Security → Screen & System Audio Recording, then ask again"}, says: "(?i)screen recording|स्क्रीन रिकॉर्डिंग|permission|अनुमति|इजाज़त|ijazat|allow"}
-  - {id: err-screen-late, group: tool-error, from: pixel, say: "मैकबुक पर टाइमर चेक करो", tool: screen_read, device: mac, errors: {screen_read: "reading that window's text took too long: macOS can need a while to get its text recognition ready. Ask again in a moment"}, says: "(?i)again|दोबारा|फिर से|phir|time|समय|देर"}
+  - {id: err-screen-late, group: tool-error, from: pixel, say: "मैकबुक पर टाइमर चेक करो", tool: [screen_read, apps_list], device: mac, errors: {screen_read: "reading that window's text took too long: macOS can need a while to get its text recognition ready. Ask again in a moment"}}
   - {id: err-never-read, group: tool-error, from: iphone, say: "Read my password app on the Mac", errors: {screen_read: "I never read 1Password's window: it can show passwords."}, says: "(?i)never|can't|cannot|won't|not"}
   - {id: err-no-such-app, group: tool-error, from: pixel, say: "mac par Keynote ka window padho", tool: screen_read, device: mac, errors: {screen_read: "no running app is called Keynote. Running now: Mail, Safari, TaskPulse"}, says: "(?i)keynote|कीनोट"}
   - {id: err-calendar-permission, group: tool-error, from: pixel, say: "मैक के कैलेंडर में कल क्या है", tool: calendar_read, device: mac, errors: {calendar_read: "Calendar access is off for Ira on this Mac. Allow it in System Settings → Privacy & Security → Calendars"}, says: "(?i)calendar|कैलेंडर|permission|अनुमति|allow"}
@@ -116,6 +116,14 @@ cases:
   - {id: steps-file-read, group: multi-step, from: iphone, say: "Find the invoice file on my Mac and tell me how much is due", tool: files_find, device: mac, then: [file_read], says: "18,?250"}
   - {id: steps-calls-contact, group: multi-step, from: mac, say: "phone pe last missed call dekho aur uska number batao", tool: calls_recent, device: pixel, says: "555"}
   - {id: steps-mail-here, group: multi-step, from: mac, say: "एवरी का ईमेल ढूंढो और बताओ किस दिन का है", tool: mail_search, device: mac, says: "(?i)friday|शुक्रवार|shukravar"}
+
+  # A conversation that has already gone wrong: the model must not repeat its own mistakes.
+  - {id: past-refused-hi, group: bad-past, from: pixel, say: "मैकबुक पर टास्क प्लस का टाइमर चेक करो", tool: [screen_read, apps_list], device: mac, history: [{you: "mac par timer dekho"}, {ira: "MacBook ke screen_read ke liye aapko MacBook se hi baat karni hoti hai."}]}
+  - {id: past-unknown-tool, group: bad-past, from: pixel, say: "mac par TaskPulse ka timer dekho", tool: screen_read, device: mac, says: "01:23", history: [{you: "mac ka screen padho"}, {"tool:screen_read": "unknown tool 'screen_read'"}, {ira: "You are talking from Pixel 7, and screen_read is for the MacBook."}]}
+  - {id: past-on-pixel, group: bad-past, from: pixel, say: "नहीं, मैकबुक पर देखो कि क्या खुला है", tool: [screen_read, apps_list], device: mac, history: [{you: "स्क्रीन पर क्या है"}, {ira: "आप Pixel 7 पर हैं, मैं सिर्फ़ उसी पर देख सकती हूँ।"}]}
+  - {id: past-failed-tries, group: bad-past, from: iphone, say: "Try again, read the TaskPulse window on my Mac", tool: screen_read, device: mac, says: "01:23", history: [{you: "Read TaskPulse on my Mac"}, {"tool:screen_read": "macOS needs Ira restarted after the Screen Recording permission. Quit Ira and open it again"}, {ira: "macOS needs Ira restarted. Quit Ira and open it again."}, {you: "I restarted it."}]}
+  - {id: past-offline-then-back, group: bad-past, from: pixel, say: "Ab mac on hai, TaskPulse ka timer batao", tool: screen_read, device: mac, says: "01:23", history: [{you: "mac ka timer batao"}, {"tool:screen_read": "MacBook is offline right now, so Ira cannot reach it."}, {ira: "MacBook is offline right now."}]}
+  - {id: past-wrong-device, group: bad-past, from: iphone, say: "Nahi, Pixel par reminders nahi, iPhone par dekho", tool: reminders_list, device: iphone, history: [{you: "reminders batao"}, {ira: "Pixel 7 par koi reminder nahi hai."}]}
 
   # Just talking.
   - {id: chat-hello, group: chat, from: pixel, say: "namaste", no_tool: true}

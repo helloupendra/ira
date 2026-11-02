@@ -480,6 +480,8 @@ def cmd_eval_devices(args: argparse.Namespace) -> int:
         limit=args.limit,
         out=args.out,
         as_json=args.json,
+        runs=args.runs,
+        model=args.model,
     )
 
 
@@ -650,6 +652,8 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--only", help="only cases whose id has this in it")
     p.add_argument("--limit", type=int, help="at most this many cases")
     p.add_argument("--out", help="also write the scorecard to this file")
+    p.add_argument("--runs", type=int, default=1, help="try each case this many times (noise)")
+    p.add_argument("--model", help="one model alone, provider:model, with no chain behind it")
     p.add_argument("--json", action="store_true", help="every result as JSON")
     p = add("live", cmd_eval_live, "real-time voice: end of speech to first word", evals)
     p.add_argument("--hangover", type=float, default=0.6, help="the app's quiet wait, seconds")

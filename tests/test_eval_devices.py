@@ -16,9 +16,11 @@ from ira.evals.devices import (
     load_cases,
     load_tools,
     load_world,
+    only_model,
     render,
     run_cases,
     score,
+    spoken_times,
 )
 from ira.language import detect
 from ira.models.base import ChatResponse, ToolCall
@@ -27,6 +29,11 @@ from ira.models.fake import ScriptedProvider
 from .conftest import make_runtime
 
 pytestmark = pytest.mark.anyio
+
+
+def call_tool(name: str) -> ChatResponse:
+    return ChatResponse(text="", tool_calls=[ToolCall("c1", name, "{}")])
+
 
 # What Ira said on 2 Nov 2026, from the Pixel, with the Mac connected.
 REFUSAL = "MacBook ke screen_read ke liye aapko MacBook se hi baat karni hoti hai."
@@ -145,9 +152,67 @@ async def test_a_good_model_scores_well_without_any_real_model():
 
 async def test_a_model_that_refuses_is_caught():
     cases = [c for c in load_cases() if c.id == "read-mac-timer-hi"]
-    runtime = make_runtime(provider=ScriptedProvider([REFUSAL]))
+    runtime = make_runtime(provider=ScriptedProvider([REFUSAL, REFUSAL]))
     report = await run_cases(runtime, cases)
     assert not report.results[0].ok
     assert "told them to talk from another device" in report.results[0].problems
     card = render(report)
     assert "FAIL" in card and "**0 of 1 passed.**" in card and REFUSAL in card
+
+
+def test_a_time_said_another_way_is_no_invention():
+    # Ten fake failures on the first real card.
+    assert invented_numbers("Avery called at 2:05 PM.", "at 2026-11-02T14:05") == []
+    assert invented_numbers("kal 6:00 baje", '"due": "2026-11-03T18:00"') == []
+    assert invented_numbers("Timer 1:23 par hai.", "Today's timer 01:23:45") == []
+    assert invented_numbers("Kal 10:00 aur 5:00 baje.", "timer 01:23:45") == ["10:00", "5:00"]
+    assert "01:23" in spoken_times("timer 1 ghanta 23 minute 45 second")
+    assert "01:23" in spoken_times("1 घंटा 23 मिनट")
+    assert "01:23" in spoken_times("1 hour, 23 minutes")
+
+
+def test_the_gate_counts_a_false_done_and_a_wrong_device():
+    case = Case("c", "g", "mac", "Open Safari", tools=["app_open"], device="mac")
+    assert any(p.startswith("said it did") for p in score(case, Turn(reply="Done! I opened it.")))
+    stray = Turn(reply="Ho raha hai.", ran=[("app_open", "mac"), ("timer_set", "pixel")])
+    assert any(p.startswith("wrong device: timer_set") for p in score(case, stray))
+    off = Case("o", "g", "pixel", "mac par timer", offline=["mac"])
+    assert any(
+        p.startswith("wrong device")
+        for p in score(off, Turn(reply="Mac offline hai.", ran=[("timer_set", "pixel")]))
+    )
+    assert score(off, Turn(reply="Mac offline hai.")) == []
+
+
+async def test_several_runs_count_each_try():
+    cases = [c for c in load_cases() if c.id == "read-mac-timer-hi"]
+    good = [call_tool("screen_read"), "Timer 01:23:45 hai."]
+    bad = ["Pixel se hi dekh sakti hoon.", "Nahi ho sakta."]
+    runtime = make_runtime(provider=ScriptedProvider([*good, *bad, *good]))
+    report = await run_cases(runtime, cases, runs=3)
+    result = report.results[0]
+    assert (result.passed, result.runs, result.ok) == (2, 3, False)
+    assert "2/3" in render(report) and "2 of 3 tries passed" in render(report)
+
+
+async def test_a_conversation_that_went_wrong_is_replayed_to_the_model():
+    cases = [c for c in load_cases() if c.id == "past-unknown-tool"]
+    provider = ScriptedProvider([call_tool("screen_read"), "Timer 01:23:45 hai."])
+    report = await run_cases(make_runtime(provider=provider), cases)
+    first = provider.calls[0]["messages"]
+    assert any("unknown tool" in (m.content or "") for m in first)
+    assert report.results[0].ok, report.results[0].problems
+
+
+def test_one_model_alone_has_no_chain_behind_it():
+    runtime = make_runtime(provider=ScriptedProvider())
+    only_model(runtime, "fake:other")
+    assert set(map(tuple, runtime.gateway.tiers.values())) == {("fake:other",)}
+    with pytest.raises(ValueError, match="provider"):
+        only_model(runtime, "nobody:m")
+    with pytest.raises(ValueError, match="provider"):
+        only_model(runtime, "no-colon")
+
+
+def test_the_bad_past_cases_are_there():
+    assert len([c for c in load_cases() if c.group == "bad-past"]) >= 6

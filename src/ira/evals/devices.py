@@ -27,6 +27,8 @@ import yaml
 from ira.config import Settings
 from ira.devices.hub import Connection, ToolError
 from ira.devices.protocol import DeviceTool
+from ira.models.base import Message, ToolCall
+from ira.promises import claims_done
 
 HERE = Path(__file__).resolve().parent
 CASES = HERE / "devices.yaml"
@@ -51,6 +53,16 @@ FALSE_REFUSAL = re.compile(
 # The server's own words for what went wrong, never meant for the person.
 LEAKED = re.compile(r"unknown tool|tool_call|ToolError|Traceback", re.IGNORECASE)
 NUMBER = re.compile(r"\d[\d,:.]*\d|\d")
+CLOCK = re.compile(r"(?<!\d)(\d{1,2}):(\d{2})(?::\d{2})?(?!\d)")
+# "1 ghanta 23 minute 45 second" is how 01:23:45 is said.
+SPOKEN_TIME = re.compile(
+    r"(\d{1,2})\s*(?:ghanta|ghante|hours?|hrs?|घंटा|घंटे)[\s,]*(?:and\s+|aur\s+|और\s+)?"
+    r"(\d{1,2})\s*(?:minutes?|mins?|मिनट)",
+    re.IGNORECASE,
+)
+# What the gate on merging counts, whatever else went wrong.
+FALSE_DONE = "said it did something, with nothing run"
+WRONG_DEVICE = "wrong device"
 # Counting what was shown ("3 apps") is not inventing a number.
 SMALL = 12
 DEVANAGARI_DIGITS = str.maketrans("०१२३४५६७८९", "0123456789")
@@ -71,6 +83,8 @@ class Case:
     offline: list[str] = field(default_factory=list)
     errors: dict[str, str] = field(default_factory=dict)
     says: str = ""
+    # What was said before this turn, as "you"/"ira"/"tool:<name>" lines.
+    history: list[dict[str, str]] = field(default_factory=list)
 
 
 @dataclass
@@ -97,6 +111,10 @@ class Result:
     waiting: list[str]
     reply: str
     seconds: float
+    passed: int = 0  # of `runs`
+    runs: int = 1
+    false_done: int = 0
+    wrong_device: int = 0
 
 
 @dataclass
@@ -133,6 +151,7 @@ def load_cases(path: Path = CASES) -> list[Case]:
                 offline=raw.get("offline") or [],
                 errors=raw.get("errors") or {},
                 says=raw.get("says") or "",
+                history=raw.get("history") or [],
             )
         )
     return cases
@@ -142,10 +161,26 @@ def load_tools(path: Path = TOOLS) -> dict[str, list[dict[str, Any]]]:
     return json.loads(path.read_text(encoding="utf-8"))
 
 
+def _clock_forms(seen: str) -> set[str]:
+    """A time as people say it: 14:05 is 2:05 too, and 01:23:45 is 1:23 too."""
+    forms: set[str] = set()
+    for hours, minutes in CLOCK.findall(seen):
+        hour = int(hours)
+        forms |= {f"{hour}:{minutes}", f"{hour:02d}:{minutes}"}
+        if hour > 12:
+            forms |= {f"{hour - 12}:{minutes}", f"{hour - 12:02d}:{minutes}"}
+    return forms
+
+
+def spoken_times(reply: str) -> str:
+    """The answer with its times said in words also written as a clock's."""
+    return " ".join([reply, *(f"{int(h):02d}:{m}" for h, m in SPOKEN_TIME.findall(reply))])
+
+
 def invented_numbers(reply: str, seen: str) -> list[str]:
     """Numbers in the answer that nothing gave the model. A small one may be a count."""
-    known = set(NUMBER.findall(seen.translate(DEVANAGARI_DIGITS)))
-    digits_seen = {n.replace(",", "") for n in known}
+    latin = seen.translate(DEVANAGARI_DIGITS)
+    digits_seen = {n.replace(",", "") for n in NUMBER.findall(latin)} | _clock_forms(latin)
     out = []
     for number in NUMBER.findall(reply.translate(DEVANAGARI_DIGITS)):
         plain = number.replace(",", "").rstrip(":.")
@@ -172,6 +207,19 @@ def score(case: Case, turn: Turn) -> list[str]:
     made_up = invented_numbers(turn.reply, f"{turn.seen} {case.say}")
     if made_up:
         problems.append(f"a number from nowhere: {', '.join(made_up)}")
+    if not turn.ran and not turn.waiting and claims_done(turn.reply):
+        problems.append(f"{FALSE_DONE}: {turn.reply[:80]}")
+    allowed = {case.device, case.origin}
+    if case.device:
+        strays = [
+            f"{t} on {d}" for t, d in turn.ran + turn.waiting if d not in allowed | {"server"}
+        ]
+        if strays:
+            problems.append(f"{WRONG_DEVICE}: {', '.join(strays)}, wanted {case.device}")
+    if case.offline:
+        acted = [f"{t} on {d}" for t, d in turn.ran + turn.waiting]
+        if acted:
+            problems.append(f"{WRONG_DEVICE}: {', '.join(acted)}, with the device named offline")
     if case.no_tool and used:
         problems.append(f"used a tool for no reason: {', '.join(used)}")
     for tool in case.never:
@@ -185,7 +233,7 @@ def score(case: Case, turn: Turn) -> list[str]:
             problems.append(f"did not {what} {' or '.join(case.tools)}; used: {used or 'nothing'}")
         elif case.device and all(device != case.device for _, device in matching):
             wrong = ", ".join(f"{tool} on {device}" for tool, device in matching)
-            problems.append(f"wrong device: {wrong}, wanted {case.device}")
+            problems.append(f"{WRONG_DEVICE}: {wrong}, wanted {case.device}")
     if case.proposed:
         ran = [tool for tool, _ in turn.ran if tool in case.tools]
         if ran:
@@ -201,7 +249,7 @@ def score(case: Case, turn: Turn) -> list[str]:
         except ValueError:
             problems.append(f"did not go on to {tool}; used: {used}")
             break
-    if case.says and not re.search(case.says, turn.reply):
+    if case.says and not re.search(case.says, spoken_times(turn.reply)):
         problems.append(f"the answer lacks {case.says!r}")
     return problems
 
@@ -265,16 +313,39 @@ class World:
         return result
 
 
-async def run_case(runtime: Any, world: World, case: Case) -> Turn:
+def _past(lines: list[dict[str, str]]) -> list[Message]:
+    """A conversation that has already gone wrong, as the assistant stores one."""
+    out: list[Message] = []
+    for index, line in enumerate(lines):
+        for who, words in line.items():
+            if who == "you":
+                out.append(Message(role="user", content=words))
+            elif who == "ira":
+                out.append(Message(role="assistant", content=words))
+            else:  # tool:<name>
+                name = who.split(":", 1)[1]
+                call = ToolCall(f"past{index}", name, "{}")
+                out.append(Message(role="assistant", content="", tool_calls=[call]))
+                out.append(Message(role="tool", content=words, tool_call_id=call.id, name=name))
+    return out
+
+
+async def run_case(runtime: Any, world: World, case: Case, attempt: int = 0) -> Turn:
     turn = Turn()
     world.ran, world.given = [], []
     world.errors = case.errors
     world.connect(case.offline)
     device = world.devices.get(case.origin)
+    conversation = f"eval:{case.id}:{attempt}"
+    # What the model is told of the date and time is its to quote.
+    turn.seen = runtime.assistant.system_prompt(world.owner.id)
+    if case.history:
+        runtime.assistant.conversations.ensure(conversation, channel="api", user_id=world.owner.id)
+        runtime.assistant.conversations.append(conversation, _past(case.history))
     try:
         async for event in runtime.assistant.events(
             case.say,
-            conversation_id=f"eval:{case.id}",
+            conversation_id=conversation,
             channel="api",
             actor=world.owner.email,
             user_id=world.owner.id,
@@ -288,6 +359,8 @@ async def run_case(runtime: Any, world: World, case: Case) -> Turn:
                 turn.summaries.append(str(action.get("summary", "")))
             elif event["type"] == "done":
                 turn.reply = str(event.get("text") or "")
+            elif event["type"] == "tool":  # what it worked out itself: 5 minutes is 300 seconds
+                turn.seen += f" {json.dumps(event.get('arguments'), ensure_ascii=False)}"
             elif event["type"] == "tool_result":
                 turn.seen += f" {json.dumps(event, ensure_ascii=False, default=str)}"
     except Exception as exc:  # a failed case is scored, not fatal
@@ -297,16 +370,19 @@ async def run_case(runtime: Any, world: World, case: Case) -> Turn:
     return turn
 
 
-async def run_cases(runtime: Any, cases: list[Case]) -> Report:
+async def run_cases(runtime: Any, cases: list[Case], runs: int = 1) -> Report:
     world = World(runtime, load_tools(), load_world())
     report = Report(model=", ".join(runtime.gateway.tiers.get(runtime.assistant.tier, [])))
     began = time.monotonic()
     for case in cases:
         started = time.monotonic()
-        turn = await run_case(runtime, world, case)
-        problems = score(case, turn)
-        report.results.append(
-            Result(
+        # What each try did; a failing one is what the card shows, so noise can be told from a
+        # real failure by the count beside it.
+        result: Result | None = None
+        for attempt in range(runs):
+            turn = await run_case(runtime, world, case, attempt)
+            problems = score(case, turn)
+            shown = Result(
                 id=case.id,
                 group=case.group,
                 origin=case.origin,
@@ -316,9 +392,22 @@ async def run_cases(runtime: Any, cases: list[Case]) -> Report:
                 ran=[f"{tool}@{device}" for tool, device in turn.ran],
                 waiting=[f"{tool}@{device}" for tool, device in turn.waiting],
                 reply=turn.reply,
-                seconds=round(time.monotonic() - started, 2),
+                seconds=0.0,
+                runs=runs,
             )
-        )
+            previous = result
+            result = shown if previous is None or previous.ok else previous
+            result.passed = (previous.passed if previous else 0) + (not problems)
+            result.false_done = (previous.false_done if previous else 0) + any(
+                p.startswith(FALSE_DONE) for p in problems
+            )
+            result.wrong_device = (previous.wrong_device if previous else 0) + any(
+                p.startswith(WRONG_DEVICE) for p in problems
+            )
+        assert result is not None
+        result.ok = result.passed == runs
+        result.seconds = round(time.monotonic() - started, 2)
+        report.results.append(result)
     report.seconds = round(time.monotonic() - began, 1)
     row = runtime.store.one(
         "SELECT COUNT(*) AS calls, SUM(input_tokens) AS input, SUM(output_tokens) AS output, "
@@ -332,8 +421,23 @@ async def run_cases(runtime: Any, cases: list[Case]) -> Report:
     return report
 
 
+def only_model(runtime: Any, model: str) -> None:
+    """Every tier goes to this model alone, with no chain behind it, to compare models."""
+    provider = model.split(":", 1)[0]
+    if ":" not in model or provider not in runtime.gateway.providers:
+        known = ", ".join(sorted(runtime.gateway.providers))
+        raise ValueError(f"--model takes provider:model, with a provider of: {known}")
+    runtime.gateway.tiers = {tier: [model] for tier in runtime.gateway.tiers}
+
+
 async def run(
-    settings: Settings, *, group: str | None, only: str | None, limit: int | None
+    settings: Settings,
+    *,
+    group: str | None,
+    only: str | None,
+    limit: int | None,
+    runs: int = 1,
+    model: str | None = None,
 ) -> Report:
     from ira.runtime import build_runtime
     from ira.store import Store
@@ -346,7 +450,9 @@ async def run(
         c for c in load_cases() if group in (None, c.group) and (only is None or only in c.id)
     ][:limit]
     try:
-        return await run_cases(runtime, cases)
+        if model:
+            only_model(runtime, model)
+        return await run_cases(runtime, cases, runs)
     finally:
         await runtime.aclose()
 
@@ -355,6 +461,12 @@ def render(report: Report) -> str:
     """The scorecard: pass or fail per case, with the model's own words."""
     passed = sum(r.ok for r in report.results)
     cost = "unknown" if report.cost_usd is None else f"${report.cost_usd:.4f}"
+    tries = sum(r.runs for r in report.results)
+    good = sum(r.passed for r in report.results)
+    share = round(100 * good / tries) if tries else 0
+    false_done = sum(r.false_done for r in report.results)
+    wrong = sum(r.wrong_device for r in report.results)
+    runs = report.results[0].runs if report.results else 1
     lines = [
         "# Ira's device scorecard",
         "",
@@ -362,17 +474,24 @@ def render(report: Report) -> str:
         f"{report.calls} model calls, {report.input_tokens} tokens in, "
         f"{report.output_tokens} out, cost {cost}, {report.seconds} s.",
         "",
+        f"**{good} of {tries} tries passed ({share}%), over {runs} run(s).** False done: "
+        f"{false_done}. Wrong device: {wrong}.",
+        "",
         "| Group | Passed |",
         "|---|---|",
     ]
     for group in dict.fromkeys(r.group for r in report.results):
         some = [r for r in report.results if r.group == group]
         lines.append(f"| {group} | {sum(r.ok for r in some)} of {len(some)} |")
-    lines += ["", "| | Case | From | Said | Used | Waiting for a yes | Problems | Ira said |"]
-    lines.append("|---|---|---|---|---|---|---|---|")
+    lines += [
+        "",
+        "| | Passed | Case | From | Said | Used | Waiting for a yes | Problems | Ira said |",
+    ]
+    lines.append("|---|---|---|---|---|---|---|---|---|")
     for r in report.results:
         cells = [
             "pass" if r.ok else "FAIL",
+            f"{r.passed}/{r.runs}",
             r.id,
             r.origin,
             r.say,
@@ -395,8 +514,10 @@ def main(
     limit: int | None = None,
     out: str | None = None,
     as_json: bool = False,
+    runs: int = 1,
+    model: str | None = None,
 ) -> int:
-    report = asyncio.run(run(settings, group=group, only=only, limit=limit))
+    report = asyncio.run(run(settings, group=group, only=only, limit=limit, runs=runs, model=model))
     card = render(report)
     if out:
         Path(out).write_text(card, encoding="utf-8")
