@@ -49,7 +49,8 @@ _WHICH = re.compile(
 )
 # Asking for a yes in words: only the app's card can take it.
 _YES_IN_WORDS = re.compile(
-    r"haan bol|haan kah|han bol|say yes|reply yes|please confirm|kya bhej|bhej dun|bhej doon|"
+    r"haan bol|haan kah|haan keh|han bol|han keh|yes/no|say yes|reply yes|please confirm|kya bhej|"
+    r"bhej dun|bhej doon|"
     r"bhejun\b|shall i (?:send|open|set|call|do)|should i (?:send|open|set|call|do)|"
     r"do you want me to|want me to (?:send|open|set|call)"
     r"|हाँ बोल|हां बोल|हाँ कह|हां कह|कन्फर्म कर|क्या भेज",
@@ -76,6 +77,7 @@ _CHATTER = re.compile(
     r"धन्यवाद|शुक्रिया|नमस्ते|नमस्कार|ठीक है|अच्छा|हाँ|हां|नहीं)[\s.!।]*",
     re.IGNORECASE,
 )
+_SCREEN = re.compile(r"(?<![a-z])(?:screen|window)(?![a-z])|स्क्रीन|विंडो", re.IGNORECASE)
 _SENTENCE = re.compile(r"[^.!?।\n]*[.!?।\n]+|[^.!?।\n]+$")
 _SENTENCE_END = re.compile(r"[.!?।\n]")
 # More than one thing asked in a sentence.
@@ -121,6 +123,10 @@ def asks_which_device(text: str) -> bool:
 
 def asks_yes_in_words(text: str) -> bool:
     return bool(_YES_IN_WORDS.search(text))
+
+
+def asks_about_the_screen(text: str) -> bool:
+    return bool(_SCREEN.search(text))
 
 
 def asks_more_than_one_thing(text: str) -> bool:

@@ -58,6 +58,7 @@ from ira.models.gateway import Gateway, GatewayError
 from ira.models.leaked import MarkupGate, before_markup, recover
 from ira.promises import (
     PromiseGate,
+    asks_about_the_screen,
     asks_more_than_one_thing,
     asks_which_device,
     asks_yes_in_words,
@@ -168,6 +169,10 @@ GOAL_RULE = (
     "Look again at what the person asked. If any part of it is not done yet, call the next tool "
     "now, using what the last tool returned. Only when all of it is done, or you truly cannot go "
     "on, call finish_turn, with what you found and what is left."
+)
+LOOK_RULE = (
+    "They asked about their screen, and you have not looked, so you cannot know what is on it. "
+    "Call screen_read now. Never describe a screen you have not read."
 )
 YES_RULE = (
     "Do not ask for a yes in words: only the app can take it. Call the tool with exactly what you "
@@ -686,11 +691,13 @@ class Assistant:
         user_id: int | None,
         conversation_id: str | None = None,
         named: set[int] | None = None,
+        stay_here: bool = False,
     ) -> dict[str, PersonalTool]:
         """This person's own tools for the turn; a registry tool's name always wins. Held from
         a device, its own tools say so, and one several devices offer goes to it by default.
         What the turn must not reach is not on offer at all: another device's tools when the
-        person named one, and from a device, what changes something on one they did not name."""
+        person named one, and from a device, what changes something on one they did not name.
+        ``stay_here``: nothing they said names a device, so one several offer stays on this one."""
         if self.personal_tools is None or user_id is None:
             return {}
         here = self._from.get(conversation_id) if conversation_id is not None else None
@@ -702,7 +709,8 @@ class Assistant:
         for extra in self.personal_tools(user_id):
             if extra.name in self.registry or extra.name in offered:
                 continue
-            seen = extra if here is None else self._from_here(extra, here)
+            stay = stay_here and not approved  # control of a device counts as naming it
+            seen = extra if here is None else self._from_here(extra, here, stay)
             why = None if extra.source != "device" else _not_on_offer(seen, named, here, approved)
             if why is not None:
                 hidden[extra.name] = why
@@ -712,7 +720,7 @@ class Assistant:
             self._hidden[conversation_id] = hidden
         return offered
 
-    def _from_here(self, tool: PersonalTool, here: int) -> PersonalTool:
+    def _from_here(self, tool: PersonalTool, here: int, stay: bool = False) -> PersonalTool:
         """A device's tool as seen from the device `here`, which the person talks from."""
         if tool.source != "device":
             return tool
@@ -721,7 +729,7 @@ class Assistant:
             routed = tool.route
 
             def route(arguments: dict[str, Any]) -> tuple[int, dict[str, Any]]:
-                if not arguments.get("device"):  # unnamed: the device the person talks from
+                if stay or not arguments.get("device"):  # unnamed: the device they talk from
                     return here, {k: v for k, v in arguments.items() if k != "device"}
                 return routed(arguments)
 
@@ -823,7 +831,11 @@ class Assistant:
             else []
         )
         named = named_devices(asked, roster) if roster else None
-        personal = self._offered(user_id, conversation_id, named)
+        # "aur parson ka?" after "mac pe dekho" is still about the Mac.
+        before = named_devices(_last_user_text(history[:start]), roster) if roster else None
+        personal = self._offered(
+            user_id, conversation_id, named, stay_here=named is None and before is None
+        )
         tools = self.registry.schemas() + [t.schema() for t in personal.values()]
         untrusted = bool(personal) or any(
             t.untrusted for t in self.registry if self.registry.is_enabled(t.name)
@@ -858,6 +870,15 @@ class Assistant:
         waiting = False
         asked_for: set[str] = set()
         named_up = named is not None and any(d.connected and d.id in named for d in roster)
+        look = personal.get("screen_read")
+        # Asked about the screen here: words before a look can only be made up.
+        must_look = (
+            look is not None
+            and here is not None
+            and named is None
+            and asks_about_the_screen(asked)
+            and (look.device_id == here or here in look.devices.values())
+        )
         tier = self.voice_tier if spoken and self.voice_tier else self.tier
         patience = self.voice_first_token_seconds if spoken else self.first_token_seconds
         model: str | None = None
@@ -898,6 +919,7 @@ class Assistant:
             # known. With a check still to come on the whole answer, nothing at all does.
             hold_all = on_devices and (
                 (named_up and not used and "named" not in asked_for)
+                or (must_look and not used and "look" not in asked_for)
                 or (
                     used
                     and "goal" not in asked_for
@@ -1024,7 +1046,7 @@ class Assistant:
                     off = named is not None and not named_up and _letters(kept) >= 2
                     why = None if off or (finished and not empty) else _ask_again(
                         words, empty, asked, used, here, named, named_up, asked_for, proposable,
-                        self.device_label, controlling,
+                        self.device_label, controlling, must_look,
                     )  # fmt: skip
                     if why is not None:
                         log.warning("%s: asked to go on (%s)", model, why[0])
@@ -1858,6 +1880,7 @@ def _ask_again(
     proposable: bool,
     label: Callable[[int], str],
     controlling: bool = False,
+    must_look: bool = False,
 ) -> tuple[str, str] | None:
     """One more chance for a turn that ended short of the goal: which, and the rule that says
     so. Each is asked once, so a turn always ends."""
@@ -1870,6 +1893,8 @@ def _ask_again(
         return "yes", YES_RULE
     if named_up and not used and "named" not in asked_for and not names_a_never_read_app(asked):
         return "named", NAMED_RULE
+    if must_look and not used and "look" not in asked_for and not says_cannot(words):
+        return "look", LOOK_RULE
     # While the person lets her operate a device, any stop is checked against the goal.
     if used and "goal" not in asked_for and (controlling or asks_more_than_one_thing(asked)):
         return "goal", GOAL_RULE
