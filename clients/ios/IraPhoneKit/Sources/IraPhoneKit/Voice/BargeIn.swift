@@ -5,15 +5,19 @@ import Foundation
 /// flat). Stopping her for her own echo cut her answers short, and sent her own words back
 /// to her as the person's. So it is checked first: her voice is turned down at once, and if
 /// the sound stays loud for `checkMs` with her quieter, it may be the person, and it goes to
-/// the server, whose speech-to-text decides by the words (`interrupted` stops her,
-/// `speech_ignored` brings her back up). If it fades with her voice, it was her echo, and
-/// nothing is sent.
+/// the server, whose speech-to-text decides by the words (`interrupted` stops her). If it fades
+/// with her voice, it was her echo, and nothing is sent. She is down only while the sound lasts
+/// (never long: she must stay easy to hear), and if it stays loud, it is a person whatever the
+/// speech-to-text has said so far: `stillTalking`.
 public struct BargeIn: Sendable {
     public struct Config: Sendable, Equatable {
         /// How long the sound is watched with Ira turned down.
         public var checkMs: Double = 300
         /// The share of those frames that must stay loud for it to be the person.
         public var loudShare: Double = 0.6
+        /// How long a sound louder than her echo at full volume, with her turned down, is the person.
+        public var sureMs: Double = 1200
+        public var frameMs: Double = 20
         public init() {}
     }
 
@@ -32,6 +36,7 @@ public struct BargeIn: Sendable {
     private var frames = 0
     private var loud = 0
     private var held: [EnergyVAD.Output] = []
+    private var loudMs: Double?
 
     public init(config: Config = Config()) {
         self.config = config
@@ -64,8 +69,19 @@ public struct BargeIn: Sendable {
         guard at - since >= config.checkMs else { return [] }
         let person = Double(loud) >= config.loudShare * Double(max(frames, 1))
         let kept = held
+        let heard = Double(loud) * config.frameMs
         reset()
+        if person { loudMs = heard }
         return person ? [.confirm(start: begun, held: kept)] : [.release]
+    }
+
+    /// Each frame while the person talks over Ira, and whether it is louder than her echo at full
+    /// volume. True once, when that has lasted: her voice, turned down, cannot be this loud.
+    public mutating func stillTalking(louderThanHer: Bool) -> Bool {
+        guard let sofar = loudMs else { return false }
+        let now = sofar + (louderThanHer ? config.frameMs : 0)
+        loudMs = now >= config.sureMs ? nil : now
+        return now >= config.sureMs
     }
 
     public mutating func reset() {
@@ -73,6 +89,7 @@ public struct BargeIn: Sendable {
         frames = 0
         loud = 0
         held = []
+        loudMs = nil
     }
 }
 

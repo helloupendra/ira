@@ -306,11 +306,8 @@ final class TalkController {
     private func checkMic() {
         guard inCall else { return }
         let now = monotonicMs()
-        // The server always answers what was sent; if that was lost, Ira does not stay down.
-        if let duckedAt, !vad.speaking, now - duckedAt > 8000 {
-            undo()
-            talkingOver = false
-        }
+        // She stays easy to hear: turned down for a moment at most, whatever the server says.
+        if let duckedAt, now - duckedAt > 3000 { undo() }
         let silent = micWatch.check(now: now)
         if silent != micSilent {
             micSilent = silent
@@ -402,13 +399,21 @@ final class TalkController {
         vad.replying = replying && !talkingOver
         let outputs = vad.process(samples, at: at)
         level = vad.level
+        if talkingOver, bargeIn.stillTalking(louderThanHer: vad.level > max(vad.baseThreshold, vad.echoLevel)) {
+            // They kept talking, and she is turned down: it is them. She stops without waiting
+            // for the first words, which can take seconds.
+            live?.interrupt()
+            stopSpeaking()
+            talkingOver = true
+        }
         guard !talkingOver, replying || bargeIn.checking else {
             send(outputs)
             return
         }
         // Ira is talking: a sound may be the person, or her own voice from the speaker. She is
         // turned down while it is checked; only their words, on the server, stop her.
-        for step in bargeIn.feed(outputs, loud: vad.level > vad.effectiveThreshold, at: at) {
+        // With her down, her echo is far below the bar she needs with her at full volume.
+        for step in bargeIn.feed(outputs, loud: vad.level > vad.baseThreshold, at: at) {
             switch step {
             case .duck:
                 audio.duck(true)
@@ -432,12 +437,14 @@ final class TalkController {
             case .speechStart(let start):
                 callState = .listening(hearing: true)
                 lastActivity = Date()
-                live?.speechStart(at: start)
+                live?.speechStart(at: start, over: talkingOver)
             case .audio(let pcm):
                 live?.audio(pcm)
             case .speechEnd(let end):
                 live?.speechEnd(at: end)
                 talkingOver = false
+                // The sound is over: she comes back up now, if the server has not stopped her.
+                if duckedAt != nil { undo() }
                 callState = .listening(hearing: false)
                 lastActivity = Date()
                 began(StepWords.thinking)

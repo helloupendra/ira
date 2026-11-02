@@ -27,7 +27,14 @@ public struct EnergyVAD: Sendable {
         public var leadInMs: Double = 300
         public var maxSpeechMs: Double = 60_000
         public var noiseFactor: Float = 3
+        /// While Ira speaks, the bar is this many times her voice at the microphone...
         public var replyFactor: Float = 2.5
+        /// ...but never past a level a normal voice reaches.
+        public var replyCeiling: Float = 0.15
+        /// How fast her voice's level is learned, up and down, per frame: over a second or two,
+        /// so a voice over hers does not raise its own bar.
+        public var echoRise: Float = 0.02
+        public var echoFall: Float = 0.01
         public var replyStartMs: Double = 200
         /// Quiet within the start of speech that does not break it: dips between syllables.
         public var gapMs: Double = 80
@@ -48,6 +55,10 @@ public struct EnergyVAD: Sendable {
     public private(set) var speaking = false
     public private(set) var noiseFloor: Float = 0
     public private(set) var level: Float = 0
+    /// How loud Ira's own voice reaches the microphone, learned while she speaks. Echo
+    /// cancelling leaves little of it, and a fixed bar over that kept a voice from being heard
+    /// over hers; where much is left, the bar rises with it.
+    public private(set) var echoLevel: Float
 
     private var recent: [(at: Double, pcm: Data, loud: Bool)] = []
     private var loudRun = 0
@@ -58,12 +69,17 @@ public struct EnergyVAD: Sendable {
 
     public init(config: Config = Config()) {
         self.config = config
+        echoLevel = config.threshold
+    }
+
+    /// The bar with Ira quiet. The room can raise it, but never past a level normal speech reaches.
+    public var baseThreshold: Float {
+        max(config.threshold, min(noiseFloor * config.noiseFactor, 0.12))
     }
 
     public var effectiveThreshold: Float {
-        // The room can raise the threshold, but never past a level normal speech reaches.
-        let base = max(config.threshold, min(noiseFloor * config.noiseFactor, 0.12))
-        return replying ? base * config.replyFactor : base
+        guard replying else { return baseThreshold }
+        return max(baseThreshold, min(echoLevel * config.replyFactor, config.replyCeiling))
     }
 
     /// The level of a frame: its root mean square, 0 to 1.
@@ -82,6 +98,9 @@ public struct EnergyVAD: Sendable {
         let end = at + Double(samples.count) / config.sampleRate * 1000
         let loud = level > effectiveThreshold
         var out: [Output] = []
+        if replying && !speaking {
+            echoLevel += (level - echoLevel) * (level > echoLevel ? config.echoRise : config.echoFall)
+        }
 
         if !speaking {
             if !loud && !replying {

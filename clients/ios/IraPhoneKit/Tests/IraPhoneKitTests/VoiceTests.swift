@@ -92,6 +92,42 @@ struct VADTests {
         #expect(Synth.run(&vad, frames).isEmpty)
     }
 
+    /// With echo cancelling, little of Ira's voice reaches the microphone: a normal voice is
+    /// heard over her, not held to a fixed bar.
+    @Test func aSoftVoiceIsHeardOverHerOnceHerEchoIsKnownToBeSmall() {
+        var vad = EnergyVAD()
+        vad.replying = true
+        _ = Synth.run(&vad, Array(repeating: Synth.tone(0.002), count: 300))
+        #expect(vad.effectiveThreshold < 0.03)
+        let out = Synth.run(&vad, Array(repeating: Synth.tone(0.05), count: 30))
+        #expect(out.contains { if case .speechStart = $0.1 { return true } else { return false } })
+    }
+
+    /// Where much of her voice reaches it, the bar rises, so she is not turned down for herself.
+    @Test func herStrongEchoRaisesTheBar() {
+        var vad = EnergyVAD()
+        vad.replying = true
+        _ = Synth.run(&vad, Array(repeating: Synth.tone(0.03), count: 300))
+        let out = Synth.run(&vad, Array(repeating: Synth.tone(0.07), count: 30))
+        #expect(out.isEmpty)
+    }
+
+    /// A sound that stays louder than her echo, with her turned down, is the person: once.
+    @Test func aVoiceThatStaysLoudIsSureOnce() {
+        var check = BargeIn()
+        _ = check.feed([.speechStart(at: 1000), .audio(Data([1]))], loud: true, at: 1000)
+        var steps: [BargeIn.Step] = []
+        for at in stride(from: 1020.0, through: 1320, by: 20) {
+            steps += check.feed([.audio(Data([2]))], loud: true, at: at)
+        }
+        #expect(steps.count == 1)
+        var sure = 0
+        for _ in 0..<40 where check.stillTalking(louderThanHer: false) { sure += 1 }
+        #expect(sure == 0)  // quieter than her echo: no
+        for _ in 0..<100 where check.stillTalking(louderThanHer: true) { sure += 1 }
+        #expect(sure == 1)
+    }
+
     @Test func aCoughIsNotSpeech() {
         var vad = EnergyVAD()
         let frames = Array(repeating: Synth.silence(), count: 10) + Array(repeating: Synth.tone(0.5), count: 6)

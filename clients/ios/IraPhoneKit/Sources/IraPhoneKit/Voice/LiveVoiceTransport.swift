@@ -80,7 +80,9 @@ public enum LiveProtocol {
         return .object(message)
     }
 
-    public static func speechStart(at: Double) -> JSONValue { ["type": "speech_start", "at": .number(rounded(at))] }
+    public static func speechStart(at: Double, over: Bool = false) -> JSONValue {
+        ["type": "speech_start", "at": .number(rounded(at)), "over": .bool(over)]
+    }
     public static func speechEnd(at: Double) -> JSONValue { ["type": "speech_end", "at": .number(rounded(at))] }
     public static func text(_ text: String) -> JSONValue { ["type": "text", "text": .string(text)] }
     public static let interrupt: JSONValue = ["type": "interrupt"]
@@ -251,7 +253,7 @@ public final class LiveVoiceTransport: VoiceTransport, @unchecked Sendable {
         outbox?.yield(message)
     }
 
-    public func speechStart(at: Double) { send(LiveProtocol.speechStart(at: at)) }
+    public func speechStart(at: Double, over: Bool) { send(LiveProtocol.speechStart(at: at, over: over)) }
 
     public func audio(_ pcm: Data) {
         var offset = 0

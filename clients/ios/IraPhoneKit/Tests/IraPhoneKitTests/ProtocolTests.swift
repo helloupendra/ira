@@ -243,7 +243,7 @@ struct LiveVoiceTests {
         live.audio(Data(repeating: 1, count: 640 * 6))
         live.speechEnd(at: 2345.6)
         #expect(await channel.waitFor { $0.contains(["type": "speech_end", "at": 2345.6]) })
-        #expect(channel.sentJSON.contains(["type": "speech_start", "at": 1234.6]))
+        #expect(channel.sentJSON.contains(["type": "speech_start", "at": 1234.6, "over": false]))
         #expect(channel.sentData.map(\.count) == [3200, 640])
 
         // Ira answers.
