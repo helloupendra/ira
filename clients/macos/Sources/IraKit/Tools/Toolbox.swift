@@ -28,6 +28,7 @@ public struct Activity: Equatable, Identifiable, Sendable {
         case "file_read": return "Read a file"
         case "file_open": return "Opened a file"
         case "screen_read": return "Read your screen"
+        case "apps_list": return "Listed the running apps"
         case "browser_tabs": return "Listed your browser tabs"
         case "browser_show_tab": return "Switched to a tab"
         case "contacts_lookup": return "Looked up a contact"
@@ -130,7 +131,8 @@ public final class Toolbox: ToolRunner, @unchecked Sendable {
     /// so a stuck tool answers with a reason instead of leaving Ira waiting.
     public static func deadline(for name: String) -> Double {
         switch name {
-        case "screen_read": return 15
+        // The picture has 10 s of it; the text, read on this Mac, the rest.
+        case "screen_read": return 22
         case "files_find": return 12
         // Reading the AI sessions' transcripts: the first time, from big files.
         case "ai_sessions", "ai_session_detail": return 20
@@ -153,7 +155,7 @@ public final class Toolbox: ToolRunner, @unchecked Sendable {
     /// What to say when a tool ran out of time: a permission prompt only where one can be.
     static func lateMessage(_ name: String, screenPermitted: Bool) -> String {
         if name == "screen_read" && screenPermitted {
-            return ScreenText.restartNeeded
+            return ScreenText.readingLate
         }
         if name == "ai_sessions" || name == "ai_session_detail" {
             return "reading the AI sessions took too long; ask again in a moment"
@@ -178,7 +180,6 @@ public final class Toolbox: ToolRunner, @unchecked Sendable {
         } catch is TimedOut {
             record(Activity(at: started, tool: name, target: target, ok: false))
             let permitted = name == "screen_read" && ScreenText.permitted
-            if permitted { onRestartNeeded() }
             throw ToolFailure(Toolbox.lateMessage(name, screenPermitted: permitted))
         } catch let failure as ToolFailure {
             record(Activity(at: started, tool: name, target: target, ok: false))
@@ -209,6 +210,7 @@ public final class Toolbox: ToolRunner, @unchecked Sendable {
             case "screen_read":
                 let read = try await readScreen(args.objectValue!)
                 return (read.content, read.target)
+            case "apps_list": content = await listApps()
             case "browser_tabs": content = try await BrowserTools.listTabs(args)
             case "browser_show_tab": content = try await BrowserTools.showTab(args)
             case "contacts_lookup":
@@ -268,6 +270,7 @@ public final class Toolbox: ToolRunner, @unchecked Sendable {
         }
         switch name {
         case "files_find": return describeSearch(args.objectValue ?? [:])
+        case "screen_read": return text("app") ?? ""
         case "file_read", "file_open": return shown(args["path"]?.stringValue.map { String($0.prefix(1000)) })
         case "browser_tabs": return text("browser") ?? "all browsers"
         case "browser_show_tab": return text("match") ?? text("id") ?? ""
@@ -527,16 +530,35 @@ public final class Toolbox: ToolRunner, @unchecked Sendable {
     // screen_read
 
     func readScreen(_ args: [String: JSONValue]) async throws -> (content: JSONValue, target: String) {
-        try Toolbox.check(args, allowed: [])
+        try Toolbox.check(args, allowed: ["app"])
         guard ScreenText.permitted else { throw ToolFailure(ScreenText.notPermittedNow) }
         // Allowed after Ira started: macOS applies it only to a fresh start, and a
         // capture now would hang. Say so at once instead.
         if !ScreenText.permittedAtLaunch { throw ToolFailure(ScreenText.restartNeeded) }
-        guard let front = await frontApp() else { throw ToolFailure("no app is in front") }
+        let wanted = args["app"]?.stringValue?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let front: (pid: pid_t, name: String)
+        if let wanted, !wanted.isEmpty {
+            let found: (pid: pid_t, name: String)? = await MainActor.run {
+                let apps = ScreenText.runningApps()
+                guard let best = AppTools.bestApp(wanted, among: apps.compactMap(\.localizedName)),
+                    let app = apps.first(where: { $0.localizedName == best })
+                else { return nil }
+                return (app.processIdentifier, best)
+            }
+            guard let found else {
+                let names = await MainActor.run { ScreenText.runningApps().compactMap(\.localizedName).sorted() }
+                throw ToolFailure("no running app is called \(wanted). Running now: \(names.joined(separator: ", "))")
+            }
+            front = found
+        } else {
+            guard let inFront = await frontApp() else { throw ToolFailure("no app is in front") }
+            front = (inFront.pid, inFront.name)
+        }
+        let named = wanted?.isEmpty == false
         let bundleID = await MainActor.run { NSRunningApplication(processIdentifier: front.pid)?.bundleIdentifier }
-        if let refusal = ScreenText.refusal(bundleID: bundleID, name: front.name) { throw ToolFailure(refusal) }
-        guard let window = ScreenText.frontWindow(of: front.pid) else {
-            throw ToolFailure("\(front.name) has no window open in front")
+        if let refusal = ScreenText.refusal(bundleID: bundleID, name: front.name, named: named) { throw ToolFailure(refusal) }
+        guard let window = ScreenText.frontWindow(of: front.pid) ?? (named ? ScreenText.frontWindow(of: front.pid, anywhere: true) : nil) else {
+            throw ToolFailure(named ? "\(front.name) has no window open" : "\(front.name) has no window open in front")
         }
         let app = window.app.isEmpty ? front.name : window.app
         let target = window.title.isEmpty ? app : "\(app) — \(window.title)"
@@ -565,5 +587,22 @@ public final class Toolbox: ToolRunner, @unchecked Sendable {
                     : "Read the \(target) window: \(lines) line\(lines == 1 ? "" : "s") of text."),
         ]
         return (content, target)
+    }
+
+    /// The running apps, for finding the name of the one the person means.
+    func listApps() async -> JSONValue {
+        let apps: [JSONValue] = await MainActor.run {
+            let front = NSWorkspace.shared.frontmostApplication?.processIdentifier
+            return ScreenText.runningApps().sorted { ($0.localizedName ?? "") < ($1.localizedName ?? "") }.map { app in
+                let titles = ScreenText.windows(of: app.processIdentifier).map(\.title).filter { !$0.isEmpty }
+                return [
+                    "name": .string(app.localizedName ?? ""),
+                    "front": .bool(app.processIdentifier == front),
+                    // Never what a password manager has open.
+                    "windows": .array(ScreenText.neverRead[app.bundleIdentifier ?? ""] == nil ? titles.prefix(5).map { .string($0) } : []),
+                ]
+            }
+        }
+        return ["apps": .array(apps), "summary": .string("\(apps.count) apps are running.")]
     }
 }

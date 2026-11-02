@@ -45,7 +45,7 @@ struct CatalogTests {
             table[tool["name"]!.stringValue!] = "\(tool["skill"]!.stringValue!) \(tool["tier"]!.intValue!)"
         }
         #expect(table == [
-            "files_find": "files 0", "file_read": "files 0", "file_open": "files 1", "screen_read": "screen 0",
+            "files_find": "files 0", "file_read": "files 0", "file_open": "files 1", "screen_read": "screen 0", "apps_list": "screen 0",
             "browser_tabs": "browser 0", "browser_show_tab": "browser 1",
             "contacts_lookup": "contacts 0",
             "calendar_read": "calendar 0", "calendar_add": "calendar 2",
@@ -1289,5 +1289,39 @@ struct ControlTests {
                 Issue.record("\(name): \(error)")
             }
         }
+    }
+}
+
+@Suite("Reading a named app's window")
+struct NamedWindowTests {
+    @Test func aMisheardNameStillFindsTheApp() {
+        let running = ["Safari", "TaskPulse", "Mail", "Slack"]
+        #expect(AppTools.bestApp("TaskPulse", among: running) == "TaskPulse")
+        #expect(AppTools.bestApp("task pulse", among: running) == "TaskPulse")
+        #expect(AppTools.bestApp("Task Plus", among: running) == "TaskPulse")
+        #expect(AppTools.bestApp("टास्क प्लस", among: running) == "TaskPulse")
+        #expect(AppTools.bestApp("सफारी", among: running) == "Safari")
+        #expect(AppTools.bestApp("Keynote", among: running) == nil)
+        #expect(AppTools.bestApp("a", among: ["Zoom"]) == nil)
+    }
+
+    @Test func thePasswordAppsStayUnreadWhenNamed() {
+        let refusal = ScreenText.refusal(bundleID: "com.apple.Passwords", name: "Passwords", named: true)
+        #expect(refusal?.contains("never read") == true)
+        #expect(refusal?.contains("to the front") == false)
+        #expect(ScreenText.refusal(bundleID: "com.example.taskpulse", name: "TaskPulse", named: true) == nil)
+    }
+
+    @Test func screenReadTakesAnAppAndAppsAreListed() throws {
+        let tools = ToolCatalog.files
+        let read = try #require(tools.first { $0["name"]?.stringValue == "screen_read" })
+        #expect(read["parameters"]?["properties"]?["app"] != nil)
+        #expect(tools.contains { $0["name"]?.stringValue == "apps_list" && $0["tier"]?.intValue == 0 })
+    }
+
+    @Test func runningLateIsNotCalledARestart() {
+        #expect(Toolbox.lateMessage("screen_read", screenPermitted: true) == ScreenText.readingLate)
+        #expect(!ScreenText.readingLate.contains("restart"))
+        #expect(Toolbox.deadline(for: "screen_read") < 25)  // the server's limit
     }
 }

@@ -640,8 +640,8 @@ struct ScreenTextTests {
         for tool in ToolCatalog.all(tasksConfigured: true).compactMap({ $0["name"]?.stringValue }) {
             #expect(Toolbox.deadline(for: tool) < 25, "\(tool)")
         }
-        #expect(Toolbox.deadline(for: "screen_read") == 15)
-        #expect(Toolbox.lateMessage("screen_read", screenPermitted: true) == ScreenText.restartNeeded)
+        #expect(Toolbox.deadline(for: "screen_read") == 22)
+        #expect(Toolbox.lateMessage("screen_read", screenPermitted: true) == ScreenText.readingLate)
         #expect(Toolbox.lateMessage("files_find", screenPermitted: false).contains("permission prompt"))
         // Reading the AI sessions cannot show a permission prompt: never say it might.
         #expect(Toolbox.deadline(for: "ai_sessions") == 20)

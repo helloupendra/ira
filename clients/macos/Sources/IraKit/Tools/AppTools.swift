@@ -16,7 +16,8 @@ public enum AppTools {
     ]
 
     /// The best match for an app's name among `names` (without ".app"): exact,
-    /// then the start of a name, then anywhere in it; nil if none or unclear.
+    /// then the start of a name, then anywhere in it, spaces aside, then by how it sounds
+    /// (speech-to-text wrote "TaskPulse" as "टास्क प्लस"); nil if none or unclear.
     public static func bestApp(_ wanted: String, among names: [String]) -> String? {
         let key = wanted.lowercased().replacingOccurrences(of: ".app", with: "").trimmingCharacters(in: .whitespaces)
         guard !key.isEmpty else { return nil }
@@ -24,7 +25,39 @@ public enum AppTools {
         let prefixed = names.filter { $0.lowercased().hasPrefix(key) }.sorted { $0.count < $1.count }
         if let first = prefixed.first { return first }
         let containing = names.filter { $0.lowercased().contains(key) }.sorted { $0.count < $1.count }
-        return containing.first
+        if let first = containing.first { return first }
+        let joined = key.replacingOccurrences(of: " ", with: "")
+        let unspaced = names.filter { $0.lowercased().replacingOccurrences(of: " ", with: "").contains(joined) }
+        if let first = unspaced.sorted(by: { $0.count < $1.count }).first { return first }
+        let sound = sounds(wanted)
+        guard sound.count >= 3 else { return nil }
+        if let same = names.first(where: { sounds($0) == sound }) { return same }
+        let close = names.filter { sounds($0).hasPrefix(sound) }.sorted { $0.count < $1.count }
+        return close.first
+    }
+
+    private static let devanagari: [Character: String] = [
+        "क": "k", "ख": "k", "ग": "g", "घ": "g", "ङ": "n", "च": "c", "छ": "c", "ज": "j", "झ": "j", "ञ": "n",
+        "ट": "t", "ठ": "t", "ड": "d", "ढ": "d", "ण": "n", "त": "t", "थ": "t", "द": "d", "ध": "d", "न": "n",
+        "प": "p", "फ": "f", "ब": "b", "भ": "b", "म": "m", "य": "y", "र": "r", "ल": "l", "व": "v", "श": "s",
+        "ष": "s", "स": "s", "ह": "h", "ं": "n", "ँ": "n", "ड़": "d", "ढ़": "d", "ज़": "j", "फ़": "f",
+    ]
+    private static let spellings = [
+        ("chh", "\u{0}"), ("ch", "\u{0}"), ("ce", "se"), ("ci", "si"), ("cy", "sy"), ("c", "k"), ("\u{0}", "c"),
+        ("kh", "k"), ("gh", "g"), ("jh", "j"), ("th", "t"), ("dh", "d"), ("ph", "f"), ("bh", "b"), ("sh", "s"),
+        ("w", "v"), ("z", "j"), ("q", "k"), ("x", "ks"),
+    ]
+
+    /// A name's consonants, the same in Latin and in Devanagari letters.
+    public static func sounds(_ name: String) -> String {
+        let lower = name.lowercased()
+        var latin = String(lower.filter { $0.isASCII && ($0.isLetter || $0.isNumber) })
+        for (spelling, sound) in spellings { latin = latin.replacingOccurrences(of: spelling, with: sound) }
+        // Unicode scalars: a nukta or a vowel sign is its own, and a sign has no sound here.
+        let hindi = lower.unicodeScalars.map { devanagari[Character($0)] ?? "" }.joined()
+        var out = ""
+        for letter in (latin + hindi) where !"aeiou".contains(letter) && out.last != letter { out.append(letter) }
+        return out
     }
 
     static func installedApps(home: URL) -> [String: URL] {

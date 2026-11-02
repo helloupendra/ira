@@ -56,7 +56,12 @@ public enum ToolCatalog {
                 "prompt": text("With app vscode: a request to fill in for the editor's assistant."),
              ], required: ["path"]),
         tool("screen_read", skill: "screen", tier: 0,
-             "Read the text of the window in front on this Mac, in any app, only when the person asks what is on their screen. Returns the app's name, the window's title and the text, read on the Mac; no picture is sent."),
+             "Read the text of a window on this Mac, only when the person asks what it shows: the window in front, or with app, that app's window even behind others, without bringing it to the front. Returns the app's name, the window's title and the text, read on the Mac; no picture is sent.",
+             properties: [
+                "app": text("The app to read, as the person named it; the name may be misheard (\"Task Plus\" for TaskPulse), so it is matched loosely. Leave out for the window in front."),
+             ]),
+        tool("apps_list", skill: "screen", tier: 0,
+             "List the apps running on this Mac: each one's name, whether it is in front, and its windows' titles. Use it to find the name for screen_read's app."),
     ]
 
     // MARK: Browsers

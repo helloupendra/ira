@@ -67,7 +67,7 @@ public enum Approvals {
 
     /// The tools an approval covers (the server decides; this only says when to look).
     public static func covers(_ tool: String) -> Bool {
-        tool.hasPrefix("mac_") || ["screen_read", "app_open", "url_open"].contains(tool)
+        tool.hasPrefix("mac_") || ["screen_read", "apps_list", "app_open", "url_open"].contains(tool)
     }
 }
 

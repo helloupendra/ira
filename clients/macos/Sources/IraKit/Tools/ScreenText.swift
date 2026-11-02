@@ -84,6 +84,21 @@ public enum ScreenText {
         // A rebuilt Ira is a new app to macOS's Screen Recording list: ask once per
         // build, so macOS lists this one (the old entry no longer counts).
         if grant.requestOnce(permitted: permittedAtLaunch) { requestPermission() }
+        if permittedAtLaunch { warmUp() }
+    }
+
+    /// macOS can take many seconds to get its text recognition ready the first time after a
+    /// start or an install: done here, the first question does not run out of time on it.
+    static func warmUp() {
+        Task.detached(priority: .utility) {
+            let space = CGColorSpaceCreateDeviceGray()
+            guard let context = CGContext(
+                data: nil, width: 64, height: 64, bitsPerComponent: 8, bytesPerRow: 0, space: space,
+                bitmapInfo: CGImageAlphaInfo.none.rawValue),
+                let image = context.makeImage()
+            else { return }
+            _ = try? recognize(image)
+        }
     }
 
     /// Apps whose windows Ira never reads: System Settings (whose privacy pages
@@ -110,16 +125,17 @@ public enum ScreenText {
         "com.apple.systemuiserver", "com.apple.WindowManager",
     ]
 
-    /// Why the front app's window is not read, or nil.
-    public static func refusal(bundleID: String?, name: String) -> String? {
+    /// Why an app's window is not read, or nil: the one in front, or one the person `named`.
+    public static func refusal(bundleID: String?, name: String, named: Bool = false) -> String? {
+        let instead = named ? "" : " Bring the window you mean to the front and ask again"
         if let bundleID, systemUI.contains(bundleID) {
-            return "a macOS prompt is in front (\(name)). Answer it, then ask again"
+            return named ? "\(name) is a part of macOS, with no window of its own to read" : "a macOS prompt is in front (\(name)). Answer it, then ask again"
         }
         guard let bundleID, let known = neverRead[bundleID] else { return nil }
         if bundleID == "com.apple.systempreferences" {
-            return "I can't read System Settings' window: macOS keeps it private. Bring the window you mean to the front and ask again"
+            return "I can't read System Settings' window: macOS keeps it private.\(instead)"
         }
-        return "I never read \(known)'s window: it can show passwords. Bring the window you mean to the front and ask again"
+        return "I never read \(known)'s window: it can show passwords.\(instead)"
     }
 
     /// Ask macOS to add Ira to the Screen Recording list (it shows its own dialog once).
@@ -128,6 +144,10 @@ public enum ScreenText {
 
     public static let restartNeeded =
         "macOS needs Ira restarted after the Screen Recording permission. Quit Ira and open it again"
+
+    /// The picture came, and reading its text ran out of time. A restart does not help.
+    public static let readingLate =
+        "reading that window's text took too long: macOS can need a while to get its text recognition ready. Ask again in a moment"
 
     /// Ira is about to capture the screen, and macOS may ask the person first
     /// (monthly on macOS 15 and later): the app keeps its window out of the way.
@@ -146,10 +166,16 @@ public enum ScreenText {
     }
 
     /// The front window of `pid`: the first normal window in macOS's front-to-back order.
-    public static func frontWindow(of pid: pid_t) -> Window? {
-        guard let list = CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID)
-            as? [[String: Any]]
-        else { return nil }
+    /// `anywhere`: on another desktop or minimised too, for an app the person named.
+    public static func frontWindow(of pid: pid_t, anywhere: Bool = false) -> Window? {
+        windows(of: pid, anywhere: anywhere).first
+    }
+
+    /// The normal windows of `pid`, front to back.
+    public static func windows(of pid: pid_t, anywhere: Bool = false) -> [Window] {
+        var found: [Window] = []
+        let options: CGWindowListOption = anywhere ? [.optionAll, .excludeDesktopElements] : [.optionOnScreenOnly, .excludeDesktopElements]
+        guard let list = CGWindowListCopyWindowInfo(options, kCGNullWindowID) as? [[String: Any]] else { return [] }
         for info in list {
             guard (info[kCGWindowOwnerPID as String] as? Int).map(pid_t.init) == pid,
                 (info[kCGWindowLayer as String] as? Int) == 0,
@@ -161,13 +187,23 @@ public enum ScreenText {
             {
                 continue
             }
-            return Window(
+            found.append(Window(
                 id: CGWindowID(id),
                 app: info[kCGWindowOwnerName as String] as? String ?? "",
                 title: info[kCGWindowName as String] as? String ?? "",
-                pid: pid)
+                pid: pid))
         }
-        return nil
+        return found
+    }
+
+    /// The apps with a place on screen: Electron and menu-bar apps count too, when they have a window.
+    @MainActor
+    public static func runningApps() -> [NSRunningApplication] {
+        NSWorkspace.shared.runningApplications.filter { app in
+            app.localizedName != nil
+                && (app.activationPolicy == .regular
+                    || (app.activationPolicy == .accessory && !windows(of: app.processIdentifier).isEmpty))
+        }
     }
 
     /// A picture of one window, at the screen's own resolution.
@@ -176,11 +212,12 @@ public enum ScreenText {
         defer { NotificationCenter.default.post(name: captured, object: nil) }
         let content: SCShareableContent
         do {
-            content = try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: true)
+            content = try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: false)
         } catch {
-            // Allowed in System Settings, yet refused here: the permission came while
-            // Ira was running, and macOS applies it only to a fresh start.
-            if permitted { throw ToolFailure(restartNeeded) }
+            // Allowed in System Settings, yet refused here: if the permission came while
+            // Ira was running, macOS applies it only to a fresh start.
+            if permitted && !permittedAtLaunch { throw ToolFailure(restartNeeded) }
+            if permitted { throw ToolFailure("macOS would not hand over the screen just now. Ask again in a moment") }
             throw ToolFailure(notPermittedNow)
         }
         guard let target = content.windows.first(where: { $0.windowID == window.id }) else {
