@@ -29,6 +29,9 @@ public struct Activity: Equatable, Identifiable, Sendable {
         case "file_open": return "Opened a file"
         case "screen_read": return "Read your screen"
         case "apps_list": return "Listed the running apps"
+        case "window_elements": return "Looked at a window"
+        case "mac_window": return "Moved a window"
+        case "mac_drag": return "Dragged"
         case "browser_tabs": return "Listed your browser tabs"
         case "browser_show_tab": return "Switched to a tab"
         case "contacts_lookup": return "Looked up a contact"
@@ -136,7 +139,7 @@ public final class Toolbox: ToolRunner, @unchecked Sendable {
         case "files_find": return 12
         // Reading the AI sessions' transcripts: the first time, from big files.
         case "ai_sessions", "ai_session_detail": return 20
-        case "mac_type", "mac_keys", "mac_click", "mac_scroll", "mac_menu": return 20
+        case "mac_type", "mac_keys", "mac_click", "mac_scroll", "mac_menu", "mac_drag", "mac_window", "window_elements": return 20
         case "mail_search", "mail_draft", "notes_search", "notes_add", "messages_send",
             "shortcuts_run", "code_task_start", "code_task_push", "code_task_resume", "code_task_say", "browser_tabs", "browser_show_tab":
             return 22
@@ -149,7 +152,7 @@ public final class Toolbox: ToolRunner, @unchecked Sendable {
         "files_find", "file_read", "file_open", "screen_read", "browser_tabs", "browser_show_tab", "contacts_lookup",
         "calendar_read", "calendar_add", "reminders_list", "reminders_set", "mail_search", "mail_draft", "messages_send",
         "notes_search", "notes_add", "app_open", "shortcuts_list", "shortcuts_run",
-        "mac_type", "mac_keys", "mac_click", "mac_scroll", "mac_menu", "code_task_start", "code_task_push",
+        "mac_type", "mac_keys", "mac_click", "mac_scroll", "mac_menu", "mac_drag", "mac_window", "window_elements", "code_task_start", "code_task_push",
     ]
 
     /// What to say when a tool ran out of time: a permission prompt only where one can be.
@@ -211,6 +214,11 @@ public final class Toolbox: ToolRunner, @unchecked Sendable {
                 let read = try await readScreen(args.objectValue!)
                 return (read.content, read.target)
             case "apps_list": content = await listApps()
+            case "window_elements":
+                let read = try await readElements(args.objectValue!)
+                return (read.content, read.target)
+            case "mac_window": content = try await control.window(args)
+            case "mac_drag": content = try await control.drag(args)
             case "browser_tabs": content = try await BrowserTools.listTabs(args)
             case "browser_show_tab": content = try await BrowserTools.showTab(args)
             case "contacts_lookup":
@@ -587,6 +595,60 @@ public final class Toolbox: ToolRunner, @unchecked Sendable {
                     : "Read the \(target) window: \(lines) line\(lines == 1 ? "" : "s") of text."),
         ]
         return (content, target)
+    }
+
+    /// What an app's window holds, by Accessibility, without bringing it forward; its text from
+    /// the picture when Accessibility shows too little (a game, a canvas).
+    func readElements(_ args: [String: JSONValue]) async throws -> (content: JSONValue, target: String) {
+        try Toolbox.check(args, allowed: ["app"])
+        guard MacControl.trusted else { throw ToolFailure(MacControl.notTrusted) }
+        let wanted = args["app"]?.stringValue?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let found: (pid: pid_t, name: String)?
+        if wanted.isEmpty {
+            found = await frontApp().map { ($0.pid, $0.name) }
+        } else {
+            found = await MainActor.run {
+                let apps = ScreenText.runningApps()
+                guard let best = AppTools.bestApp(wanted, among: apps.compactMap(\.localizedName)),
+                    let app = apps.first(where: { $0.localizedName == best })
+                else { return nil }
+                return (app.processIdentifier, best)
+            }
+        }
+        guard let found else {
+            let names = await MainActor.run { ScreenText.runningApps().compactMap(\.localizedName).sorted() }
+            throw ToolFailure(wanted.isEmpty ? "no app is in front" : "no running app is called \(wanted). Running now: \(names.joined(separator: ", "))")
+        }
+        let bundleID = await MainActor.run { NSRunningApplication(processIdentifier: found.pid)?.bundleIdentifier }
+        if let refusal = ScreenText.refusal(bundleID: bundleID, name: found.name, named: true) { throw ToolFailure(refusal) }
+        let app = AXNode(AXUIElementCreateApplication(found.pid))
+        AXUIElementSetMessagingTimeout(app.element, 1.5)
+        // Chrome and Electron apps show their pages to Accessibility only when asked.
+        let asked = app.set("AXManualAccessibility", kCFBooleanTrue)
+        guard let window = app.focusedWindow ?? app.windows.first else { throw ToolFailure("\(found.name) has no window open") }
+        var seen = WindowElements.list(window)
+        if seen.elements.count < 3 && asked {
+            try await Task.sleep(nanoseconds: 500_000_000)
+            seen = WindowElements.list(window)
+        }
+        WindowElements.Seen.shared.keep(seen.nodes, pid: found.pid)
+        let title = window.string(kAXTitleAttribute) ?? ""
+        let target = title.isEmpty ? found.name : "\(found.name) — \(title)"
+        var content: [String: JSONValue] = [
+            "app": .string(bundleID ?? ""), "appName": .string(found.name), "window": .string(title),
+            "elements": .array(seen.elements.map(WindowElements.json)), "more": .bool(seen.more),
+            "summary": .string("\(found.name)'s window holds \(seen.elements.count) elements I can name."),
+        ]
+        if seen.elements.count < 3, ScreenText.permitted, ScreenText.permittedAtLaunch,
+            let picture = ScreenText.frontWindow(of: found.pid) ?? ScreenText.frontWindow(of: found.pid, anywhere: true),
+            let image = try? await withTimeout(8, { try await ScreenText.capture(picture) })
+        {
+            let text = try await Task.detached(priority: .userInitiated) { try ScreenText.recognize(image) }.value
+            content["text"] = .string(FileText.cut(text, kind: "screen", maxChars: Toolbox.maxText).text)
+            content["summary"] = .string("\(found.name)'s window names few elements, so this is its text, read from the picture. Click words with mac_click's label.")
+        }
+        log.info("window_elements \(seen.elements.count) in \(found.name)")
+        return (.object(content), target)
     }
 
     /// The running apps, for finding the name of the one the person means.

@@ -21,6 +21,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var wakeWatch: Any?
     private var workWatch: Any?
     private var approvalWatch: Any?
+    private var controlBanner: ControlBanner?
     private var markTimer: Timer?
     private var markFrame = 0
     private var observers: [NSObjectProtocol] = []
@@ -68,6 +69,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             DispatchQueue.main.async { self?.updateMark() }
         }
         // Orange while an approval lets Ira control this Mac without asking.
+        controlBanner = ControlBanner(approvals: model.approvals)
         approvalWatch = model.approvals.$now.sink { [weak self] _ in
             DispatchQueue.main.async { self?.updateApprovalMark() }
         }
