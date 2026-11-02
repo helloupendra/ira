@@ -104,7 +104,7 @@ struct LocalServerCheck {
 
         // A spoken turn, the voice detector's way: a second of a tone, then the hangover.
         var vad = EnergyVAD()
-        let frames: [[Float]] = Array(repeating: Synth.tone(0.3), count: 50) + Array(repeating: Synth.silence(), count: 35)
+        let frames: [[Float]] = Array(repeating: Synth.tone(0.3), count: 50) + Array(repeating: Synth.silence(), count: 50)
         var at: Double = 10_000
         for frame in frames {
             for output in vad.process(frame, at: at) {
