@@ -85,6 +85,16 @@ final class Conversation: ObservableObject {
     /// A typed turn waiting for its turn number, so a "heard" for it is not shown twice.
     private var typed: (id: UUID, text: String)?
     private var interruptedTurn = 0
+    private var bargeIn = BargeIn()
+    /// The person is talking over Ira: their speech goes to the server, which decides by the
+    /// words; she stays turned down until it answers.
+    private var talkingOver = false
+    private var duckedAt: Double?
+    /// Ira's voice may still be in the room this long after she stopped.
+    private var echoUntil: Double = 0
+    /// The last turn whose voice came, and the last that is complete.
+    private var voicedTurn = 0
+    private var doneThrough = 0
     private var lastActivity = Date()
     private var idleTimer: Timer?
     private var silence = MicSilence()
@@ -115,9 +125,10 @@ final class Conversation: ObservableObject {
         audio.onIdle = { [weak self] in
             guard let self else { return }
             if self.speechLevel != 0 { self.speechLevel = 0 }
-            self.vad.replying = false
-            if self.mode == .speaking { self.mode = self.listening ? .listening : .idle }
             self.lastActivity = Date()
+            // Between two sentences she is still speaking: the next is on its way.
+            guard self.voicedTurn <= self.doneThrough else { return }
+            self.quiet()
         }
     }
 
@@ -183,6 +194,12 @@ final class Conversation: ObservableObject {
     private func use(_ transport: VoiceTransport) -> VoiceTransport {
         self.transport = transport
         transportKind = transport.kind
+        // A new connection counts its turns from 1 again: what was said on the last one must
+        // not silence her new answers, nor be taken for them.
+        interruptedTurn = 0
+        voicedTurn = 0
+        doneThrough = 0
+        for index in entries.indices { entries[index].turn = nil }
         notice = nil
         return transport
     }
@@ -334,6 +351,10 @@ final class Conversation: ObservableObject {
         if vad.speaking { transport?.speechEnd(at: monotonicMs()) }
         audio.stopListening()
         vad.reset()
+        bargeIn.reset()
+        talkingOver = false
+        audio.duck(false)
+        duckedAt = nil
         listening = false
         level = 0
         caption = ""
@@ -345,11 +366,21 @@ final class Conversation: ObservableObject {
         onListeningEnded?()
     }
 
-    /// Stop Ira talking (the stop button, or the person started to speak).
+    /// Ira has finished: nothing more of hers is playing or coming.
+    private func quiet() {
+        if voicedTurn > 0 { echoUntil = monotonicMs() + 400 }
+        audio.duck(false)
+        duckedAt = nil
+        if mode == .speaking { mode = listening ? .listening : .idle }
+    }
+
+    /// Stop Ira talking (the stop button).
     func stopSpeaking() {
         guard audio.playing else { return }
         audio.stopPlayback()
-        vad.replying = false
+        talkingOver = false
+        duckedAt = nil
+        echoUntil = monotonicMs() + 400
         interruptedTurn = max(interruptedTurn, entries.compactMap(\.turn).max() ?? 0)
         if mode == .speaking { mode = listening ? .listening : .idle }
     }
@@ -413,16 +444,45 @@ final class Conversation: ObservableObject {
     private func frame(_ samples: [Float], at: Double) {
         silence.feed(samples)
         checkSilence(at: at + 20)
-        vad.replying = audio.playing
+        // The server always answers what was sent; if that was lost, Ira does not stay down.
+        if let duckedAt, !vad.speaking, at - duckedAt > 8000 {
+            audio.duck(false)
+            self.duckedAt = nil
+            talkingOver = false
+        }
+        let replying = audio.playing || voicedTurn > doneThrough || at < echoUntil
+        vad.replying = replying && !talkingOver
         // Without voice processing, the software gain: it holds while Ira speaks.
         let heard = audio.echoCancelling ? samples : agc.process(samples, adapt: !audio.playing)
-        for output in vad.process(heard, at: at) {
+        let outputs = vad.process(heard, at: at)
+        level = vad.level
+        guard !talkingOver, replying || bargeIn.checking else {
+            send(outputs)
+            return
+        }
+        // Ira is talking: a sound may be the person, or her own voice from the speakers. She is
+        // turned down while it is checked; only their words, on the server, stop her.
+        for step in bargeIn.feed(outputs, loud: vad.level > vad.effectiveThreshold, at: at) {
+            switch step {
+            case .duck:
+                audio.duck(true)
+                duckedAt = at
+            case .release:
+                audio.duck(false)
+                duckedAt = nil
+                vad.reset()
+            case .confirm(_, let held):
+                talkingOver = true
+                send(held)
+            }
+        }
+    }
+
+    /// The voice detector's outputs, on to the server.
+    private func send(_ outputs: [EnergyVAD.Output]) {
+        for output in outputs {
             switch output {
             case .speechStart(let start):
-                if audio.playing {
-                    // Barge-in: stop at once, without waiting for the server.
-                    stopSpeaking()
-                }
                 lastInputWasVoice = true
                 mode = .hearing
                 lastActivity = Date()
@@ -431,12 +491,12 @@ final class Conversation: ObservableObject {
                 transport?.audio(pcm)
             case .speechEnd(let end):
                 transport?.speechEnd(at: end)
+                talkingOver = false
                 mode = .thinking
                 lastActivity = Date()
                 began("Listening done. Thinking…")
             }
         }
-        level = vad.level
     }
 
     // MARK: Ira's answers
@@ -495,11 +555,11 @@ final class Conversation: ObservableObject {
             // Still THINKING while the answer is written: SPEAKING when her voice starts.
         case .audio(let turn, _, _, let data):
             guard turn > interruptedTurn, lastInputWasVoice || settings.speakReplies else { return }
-            vad.replying = true
+            voicedTurn = max(voicedTurn, turn)
             audio.play(mp3: data, turn: turn)
         case .say(let turn, _, let text):
             guard turn > interruptedTurn, lastInputWasVoice || settings.speakReplies else { return }
-            vad.replying = true
+            voicedTurn = max(voicedTurn, turn)
             audio.say(text, turn: turn)
         case .action(let turn, let action):
             receipts.ended(turn: turn)
@@ -522,12 +582,35 @@ final class Conversation: ObservableObject {
             let answer = text.isEmpty ? (entryIndex(turn: turn).map { entries[$0].text } ?? "") : text
             onAnswer?(answer)
             caption = ""
+            doneThrough = max(doneThrough, turn)
             // Her voice may still be on its way: SPEAKING starts with it, else the turn is over.
             if mode == .thinking && !audio.playing { mode = listening ? .listening : .idle }
+            if !audio.playing, voicedTurn <= doneThrough { quiet() }
             lastActivity = Date()
         case .interrupted(let turn):
             interruptedTurn = max(interruptedTurn, turn)
+            doneThrough = max(doneThrough, turn)
+            // Their words were heard: she stops now, even an answer that was fully sent.
+            if audio.playing, voicedTurn <= turn {
+                audio.stopPlayback()
+                echoUntil = monotonicMs() + 400
+                if speechLevel != 0 { speechLevel = 0 }
+                if mode == .speaking { mode = vad.speaking ? .hearing : (listening ? .listening : .idle) }
+            }
+            audio.duck(false)
+            duckedAt = nil
             finished()
+        case .replaced(let turn):
+            entries.removeAll { $0.turn == turn && $0.action == nil }
+        case .speechIgnored:
+            // A noise, or her own voice: she comes back up, and the answer on its way stands.
+            audio.duck(false)
+            duckedAt = nil
+            if (turnInFlight ?? 0) <= doneThrough {
+                finished()
+                if mode == .thinking { mode = listening ? .listening : .idle }
+            }
+            if audio.playing { mode = .speaking }
         case .error(let message, let fatal):
             notice = Conversation.plain(message)
             finished()
@@ -536,6 +619,9 @@ final class Conversation: ObservableObject {
         case .closed(let reason):
             transport = nil
             transportKind = nil
+            // Nothing more comes on this connection.
+            doneThrough = voicedTurn
+            if !audio.playing { quiet() }
             if busy {
                 finished()
                 notice = "The connection to your Ira dropped before the answer came. Press Try again."

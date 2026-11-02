@@ -24,15 +24,15 @@ public struct EnergyVAD: Sendable {
         public var sampleRate: Double = 16_000
         public var frameMs: Double = 20
         public var threshold: Float = 0.02
-        public var startMs: Double = 60
-        public var hangoverMs: Double = 600
+        public var startMs: Double = 160
+        public var hangoverMs: Double = 900
         public var leadInMs: Double = 300
         public var maxSpeechMs: Double = 60_000
         public var noiseFactor: Float = 3
         public var replyFactor: Float = 2.5
-        public var replyStartMs: Double = 160
+        public var replyStartMs: Double = 200
         /// Quiet within the start of speech that does not break it: dips between syllables.
-        public var gapMs: Double = 0
+        public var gapMs: Double = 80
         /// Nothing counts as speech while Ira speaks, nor for `echoTailMs` after.
         public var halfDuplex = false
         public var echoTailMs: Double = 400

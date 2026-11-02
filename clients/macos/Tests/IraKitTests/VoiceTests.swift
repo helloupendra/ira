@@ -45,22 +45,72 @@ struct VADTests {
         var vad = EnergyVAD()
         // 1 s quiet, 400 ms speech, 1 s quiet.
         let frames = Array(repeating: Synth.silence(), count: 50) + Array(repeating: Synth.tone(0.2), count: 20)
-            + Array(repeating: Synth.silence(), count: 50)
+            + Array(repeating: Synth.silence(), count: 60)
         let out = Synth.run(&vad, frames)
         let starts = out.compactMap { if case .speechStart(let at) = $0.1 { return at } else { return nil } }
         let ends = out.compactMap { if case .speechEnd(let at) = $0.1 { return at } else { return nil } }
         #expect(starts == [1000])  // stamped where speech began, not when it was confirmed
         #expect(ends == [1400])  // the end of the last loud frame
-        // It was confirmed after 60 ms (three frames), and the 300 ms before it came along.
+        // It was confirmed after 160 ms (eight frames), and the 300 ms before it came along.
         let firstAudio = out.firstIndex { if case .audio = $0.1 { return true } else { return false } }
-        #expect(out[firstAudio!].0 == 1040)
-        let leadIn = out.filter { $0.0 == 1040 }.filter { if case .audio = $0.1 { return true } else { return false } }
-        #expect(leadIn.count == 15 + 3)  // 300 ms of lead-in and the three loud frames
-        // The end came 600 ms after the last loud frame.
+        #expect(out[firstAudio!].0 == 1140)
+        let leadIn = out.filter { $0.0 == 1140 }.filter { if case .audio = $0.1 { return true } else { return false } }
+        #expect(leadIn.count == 15 + 8)  // 300 ms of lead-in and the eight loud frames
+        // The end came 900 ms after the last loud frame.
         let endFrame = out.first { if case .speechEnd = $0.1 { return true } else { return false } }
-        #expect(endFrame?.0 == 1980)
+        #expect(endFrame?.0 == 2280)
         // Audio is 16-bit: 640 bytes a frame.
         if case .audio(let data) = out[firstAudio!].1 { #expect(data.count == 640) }
+    }
+
+    /// A quiet voice dips between its syllables: those dips do not break the start of speech.
+    @Test func aDipBetweenSyllablesKeepsTheStart() {
+        var vad = EnergyVAD()
+        let syllable = Array(repeating: Synth.tone(0.2), count: 5)  // 100 ms
+        let frames = Array(repeating: Synth.silence(), count: 20) + syllable
+            + Array(repeating: Synth.silence(), count: 2) + syllable + Array(repeating: Synth.silence(), count: 2)
+        let starts = Synth.run(&vad, frames).filter { if case .speechStart = $0.1 { return true } else { return false } }
+        #expect(starts.count == 1)
+    }
+
+    /// Two knocks have a longer quiet between them: neither is speech.
+    @Test func twoKnocksAreNotSpeech() {
+        var vad = EnergyVAD()
+        let knock = Array(repeating: Synth.tone(0.3), count: 6)  // 120 ms
+        let frames = Array(repeating: Synth.silence(), count: 20) + knock
+            + Array(repeating: Synth.silence(), count: 10) + knock + Array(repeating: Synth.silence(), count: 40)
+        #expect(Synth.run(&vad, frames).isEmpty)
+    }
+
+    @Test func aCoughIsNotSpeech() {
+        var vad = EnergyVAD()
+        let frames = Array(repeating: Synth.silence(), count: 10) + Array(repeating: Synth.tone(0.5), count: 6)
+            + Array(repeating: Synth.silence(), count: 40)
+        #expect(Synth.run(&vad, frames).isEmpty)
+    }
+
+    /// A sound while Ira speaks is checked with her turned down: her echo fades, the person does not.
+    @Test func herEchoFadesThePersonDoesNot() {
+        let started: [EnergyVAD.Output] = [.speechStart(at: 1000), .audio(Data([1, 2]))]
+        var echo = BargeIn()
+        let duck = echo.feed(started, loud: true, at: 1000)
+        #expect(duck == [.duck])
+        var steps: [BargeIn.Step] = []
+        for (index, at) in stride(from: 1020.0, through: 1320, by: 20).enumerated() {
+            steps += echo.feed([.audio(Data([3]))], loud: index % 4 == 0, at: at)
+        }
+        #expect(steps == [.release])
+        var person = BargeIn()
+        _ = person.feed(started, loud: true, at: 1000)
+        steps = []
+        for at in stride(from: 1020.0, through: 1320, by: 20) {
+            steps += person.feed([.audio(Data([4]))], loud: true, at: at)
+        }
+        guard case .confirm(let start, let held)? = steps.first else {
+            Issue.record("no barge-in: \(steps)")
+            return
+        }
+        #expect(start == 1000 && held.first == .speechStart(at: 1000))
     }
 
     @Test func aClickIsNotSpeech() {
@@ -128,7 +178,7 @@ struct VADTests {
         var patient = EnergyVAD(config: .withoutEchoCancellation)
         #expect(VADTests.turns(Synth.run(&patient, speech)).count == 1)
         var usual = EnergyVAD()
-        #expect(VADTests.turns(Synth.run(&usual, speech)).count == 2)  // with echo cancellation, as before
+        #expect(VADTests.turns(Synth.run(&usual, speech)).count == 1)  // and with echo cancellation
     }
 
     @Test func dipsBetweenSyllablesCountTowardTheStart() {
@@ -402,6 +452,13 @@ struct LiveVoiceTests {
         #expect(events.all.contains(.audio(turn: 1, seq: 0, text: "Theek hai.", data: Data([0xFF, 0xFB, 0x90]))))
         #expect(events.all.contains { if case .action(1, let action) = $0 { return action["id"] == "act_1" } else { return false } })
         #expect(await channel.waitFor { $0.contains(["type": "pong"]) })
+
+        // Turn 1 was the first half of a sentence; then a noise with no words in it.
+        channel.push(["type": "heard", "turn": 2, "text": "kal subah aur shaam", "language": "hi-IN", "replaces": 1])
+        channel.push(["type": "speech_ignored"])
+        #expect(await events.waitFor { $0.contains(.speechIgnored) })
+        let told = events.all
+        #expect(try #require(told.firstIndex(of: .replaced(turn: 1))) < #require(told.firstIndex(of: .heard(turn: 2, text: "kal subah aur shaam"))))
 
         live.played(turn: 1, at: 3012.04)
         live.text("aur kuch?")

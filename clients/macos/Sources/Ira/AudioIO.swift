@@ -237,10 +237,16 @@ final class AudioIO: NSObject {
         next()
     }
 
+    /// Ira's voice turned down (while a sound is checked: the person, or her echo?) or up.
+    func duck(_ on: Bool) {
+        player.volume = on ? 0.15 : 1
+    }
+
     /// Stop talking at once and forget what was queued (barge-in or stop).
     func stopPlayback() {
         generation += 1
         queue.removeAll()
+        player.volume = 1
         player.stop()
         if synthesizer.isSpeaking { synthesizer.stopSpeaking(at: .immediate) }
         busy = false
