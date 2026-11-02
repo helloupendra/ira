@@ -27,6 +27,33 @@ public enum DeviceState: Equatable, Sendable {
     case stopped
 }
 
+/// The connection in a word or two, for a header: the whole story goes in a tooltip.
+public struct ConnectionStatus: Equatable, Sendable {
+    public enum Tone: Equatable, Sendable { case good, waiting, bad }
+    public let words: String
+    public let tone: Tone
+
+    public init(_ state: DeviceState, paired: Bool) {
+        guard paired else {
+            self.init(words: "Not paired", tone: .bad)
+            return
+        }
+        switch state {
+        case .connected: self.init(words: "Connected", tone: .good)
+        case .connecting: self.init(words: "Connecting…", tone: .waiting)
+        case .waiting: self.init(words: "Reconnecting…", tone: .waiting)
+        case .refused: self.init(words: "Not paired", tone: .bad)
+        case .keyUnavailable: self.init(words: "Key not readable", tone: .bad)
+        case .stopped: self.init(words: "Offline", tone: .bad)
+        }
+    }
+
+    private init(words: String, tone: Tone) {
+        self.words = words
+        self.tone = tone
+    }
+}
+
 /// Holds this Mac's device WebSocket and answers the server's calls.
 ///
 /// The same behaviour as the retired Python companion's daemon:

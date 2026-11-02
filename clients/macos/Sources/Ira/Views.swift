@@ -247,23 +247,20 @@ struct ChatView: View {
             }
         }
         .animation(.easeOut(duration: 0.18), value: conversation.listening)
-        .navigationTitle(model.assistant)
-        .navigationSubtitle(statusText)
+        .navigationTitle("")  // the pane draws its own, with its status
         .toolbar {
-            if drop.unseen > 0 {
-                ToolbarItem {
-                    Button("Drop · \(drop.unseen) new") { openPane(.drop) }
-                        .buttonStyle(PillButtonStyle())
-                        .help("Something new arrived in your Drop")
-                }
-            }
-            ToolbarItem {
-                Button("New") {
+            ToolbarItem(placement: .navigation) { titleBlock }
+            ToolbarItem(placement: .primaryAction) {
+                Button {
                     conversation.clear()
                     focused = true
+                } label: {
+                    Label("New chat", systemImage: "square.and.pencil")
+                        .labelStyle(.titleAndIcon)
                 }
                 .buttonStyle(PillButtonStyle())
-                .help("New conversation")
+                .fixedSize()
+                .help("Start a new conversation")
                 .disabled(conversation.busy)
             }
         }
@@ -349,13 +346,41 @@ struct ChatView: View {
 
     // MARK: The conversation
 
+    /// Ira's name and, in a word or two, what she is doing or how the connection is. The whole
+    /// story, skills included, is in the tooltip.
+    private var titleBlock: some View {
+        VStack(alignment: .leading, spacing: 1) {
+            Text(model.assistant)
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(Presence.ink)
+            HStack(spacing: 5) {
+                Circle().fill(statusColor).frame(width: 7, height: 7)
+                Text(statusText)
+                    .font(.system(size: 11))
+                    .foregroundStyle(Presence.muted)
+            }
+        }
+        .fixedSize()
+        .padding(.horizontal, 6)
+        .help(AppDelegate.describe(model.deviceState, paired: model.paired))
+    }
+
     private var statusText: String {
         switch conversation.mode {
         case .listening: return "Listening"
         case .hearing: return "Hearing you"
         case .thinking: return "Thinking"
         case .speaking: return "Speaking"
-        case .idle: return AppDelegate.describe(model.deviceState, paired: model.paired)
+        case .idle: return ConnectionStatus(model.deviceState, paired: model.paired).words
+        }
+    }
+
+    private var statusColor: Color {
+        guard conversation.mode == .idle else { return Presence.green }
+        switch ConnectionStatus(model.deviceState, paired: model.paired).tone {
+        case .good: return Presence.green
+        case .waiting: return Presence.warn
+        case .bad: return Presence.down
         }
     }
 

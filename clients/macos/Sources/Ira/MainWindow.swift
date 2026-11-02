@@ -76,22 +76,26 @@ struct AppWindowView: View {
                     .frame(maxWidth: .infinity)
             case .chat:
                 NavigationSplitView {
-                    Sidebar(conversation: conversation, state: state)
+                    Sidebar(conversation: conversation, drop: model.drop, state: state)
                         .navigationSplitViewColumnWidth(min: 190, ideal: 220, max: 300)
                         .scrollContentBackground(.hidden)
                         .background(Presence.bg)
                 } detail: {
-                    switch state.pane {
-                    case .chat: ChatView(model: model, conversation: conversation, openPane: { state.selection = .pane($0) })
-                    case .drop: DropPane(drop: model.drop)
-                    case .thisMac: ThisMacPane(model: model, conversation: conversation)
-                    case .settings:
-                        SettingsView(model: model, conversation: conversation, hotKeyChanged: hotKeyChanged)
-                            .navigationTitle("Settings")
+                    Group {
+                        switch state.pane {
+                        case .chat: ChatView(model: model, conversation: conversation, openPane: { state.selection = .pane($0) })
+                        case .drop: DropPane(drop: model.drop)
+                        case .thisMac: ThisMacPane(model: model, conversation: conversation)
+                        case .settings:
+                            SettingsView(model: model, conversation: conversation, hotKeyChanged: hotKeyChanged)
+                                .navigationTitle("Settings")
+                        }
                     }
+                    .clipped()
+                    .overlay(alignment: .top) { Rectangle().fill(Presence.line).frame(height: 1) }
+                    .background(Presence.bg.ignoresSafeArea())
                 }
-                .toolbarBackground(Presence.bg, for: .windowToolbar)
-                .toolbarBackground(.visible, for: .windowToolbar)
+                .toolbarBackground(.hidden, for: .windowToolbar)
                 .tint(Presence.green)
             }
         }
@@ -102,13 +106,16 @@ struct AppWindowView: View {
 
 struct Sidebar: View {
     @ObservedObject var conversation: Conversation
+    @ObservedObject var drop: DropBox
     @ObservedObject var state: WindowState
 
     var body: some View {
         List(selection: $state.selection) {
             Section {
                 ForEach(Pane.allCases) { pane in
-                    Label(pane.title, systemImage: pane.icon).tag(SidebarItem.pane(pane))
+                    Label(pane.title, systemImage: pane.icon)
+                        .badge(pane == .drop ? drop.unseen : 0)
+                        .tag(SidebarItem.pane(pane))
                 }
             }
             Section {
@@ -165,9 +172,10 @@ final class MainWindowController: NSObject, NSWindowDelegate {
         super.init()
         window.title = "Ira"
         window.backgroundColor = NSColor(Presence.bg)
-        // An opaque header in Presence's background (the toolbar's): messages scroll under it,
-        // never through it.
-        window.titlebarAppearsTransparent = false
+        // No band of its own: the header sits on the window's background, and each pane is cut
+        // off below it (`clipped`), so messages never scroll through it.
+        window.titlebarAppearsTransparent = true
+        window.toolbarStyle = .unified  // one height on every pane, so the sidebar never jumps
         window.isReleasedWhenClosed = false
         window.minSize = NSSize(width: 760, height: 520)
         window.collectionBehavior = [.moveToActiveSpace, .fullScreenAuxiliary]

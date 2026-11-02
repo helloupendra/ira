@@ -416,3 +416,20 @@ enum SlowTool {
         }
     }
 }
+
+@Suite("The connection in a word or two")
+struct ConnectionStatusTests {
+    @Test func aLongListOfSkillsNeverReachesTheHeader() {
+        let connected = ConnectionStatus(.connected(deviceID: 1, skills: ["files", "screen", "browser"]), paired: true)
+        #expect(connected.words == "Connected" && connected.tone == .good)
+    }
+
+    @Test func eachStateSaysItShortly() {
+        #expect(ConnectionStatus(.connecting, paired: true).tone == .waiting)
+        #expect(ConnectionStatus(.waiting(seconds: 5, reason: "x"), paired: true).words == "Reconnecting…")
+        #expect(ConnectionStatus(.stopped, paired: true).words == "Offline")
+        #expect(ConnectionStatus(.stopped, paired: true).tone == .bad)
+        #expect(ConnectionStatus(.refused, paired: true).words == "Not paired")
+        #expect(ConnectionStatus(.connected(deviceID: 1, skills: []), paired: false).words == "Not paired")
+    }
+}

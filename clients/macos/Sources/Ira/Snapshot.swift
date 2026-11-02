@@ -50,6 +50,12 @@ enum Snapshot {
             wait(1)
             save(main.window, to: folder.appendingPathComponent("chat-long-\(dark ? "dark" : "light").png"))
         }
+        // At the narrowest the window goes: nothing in the header truncates or overlaps.
+        let wide = main.window.frame
+        main.window.setContentSize(main.window.minSize)
+        wait(1)
+        save(main.window, to: folder.appendingPathComponent("chat-narrow-dark.png"))
+        main.window.setFrame(wide, display: false)
         model.conversation.entries = sample
         model.conversation.listening = true
         model.conversation.caption = "Remind me at six to send the invoice to Sunrise Dental Clinic"
