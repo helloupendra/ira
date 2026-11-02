@@ -70,7 +70,7 @@ struct ScriptedTools: ToolRunner {
         switch name {
         case "echo_back": return ["echo": args]
         case "slow_one":
-            try await Task.sleep(nanoseconds: 300_000_000)
+            await SlowTool.waitUntilLetGo()
             return "slow"
         default: throw ToolFailure("this iPhone has no tool called \(name)")
         }
@@ -136,9 +136,12 @@ struct DeviceClientTests {
         channel.push(["type": "welcome", "deviceId": 1, "skills": []])
         channel.push(["type": "call", "id": "slow", "tool": "slow_one", "args": [:]])
         channel.push(["type": "call", "id": "fast", "tool": "echo_back", "args": [:]])
+        // The fast answer does not wait for the slow one, which runs until it is let go.
+        #expect(await channel.waitFor { sent in sent.contains { $0["id"] == "fast" } })
+        SlowTool.letGo()
         #expect(await channel.waitFor { sent in sent.contains { $0["id"] == "slow" } })
         let ids = channel.sentJSON.compactMap { $0["id"]?.stringValue }
-        #expect(ids == ["fast", "slow"])  // the fast answer did not wait for the slow one
+        #expect(ids == ["fast", "slow"])
         channel.close(code: 1000)
         _ = await run.value
     }
@@ -326,5 +329,19 @@ struct LiveVoiceTests {
         #expect(try LiveProtocol.decode(#"{"type":"later"}"#) == .other("later"))
         #expect(throws: LiveProtocol.BadMessage.self) { try LiveProtocol.decode("[]") }
         #expect(LiveProtocol.start(conversationID: nil) == ["type": "start", "protocol": 1, "client": .string(IraPhone.userAgent)])
+    }
+}
+
+/// A tool that takes as long as the test needs, however slow the machine: no race with a clock.
+enum SlowTool {
+    private static let lock = NSLock()
+    nonisolated(unsafe) private static var free = false
+
+    static func letGo() { lock.withLock { free = true } }
+
+    static func waitUntilLetGo() async {
+        for _ in 0..<1000 where !lock.withLock({ free }) {
+            try? await Task.sleep(nanoseconds: 10_000_000)
+        }
     }
 }
