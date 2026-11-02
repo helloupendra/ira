@@ -263,7 +263,11 @@ def steered(case: Case, turn: Turn) -> list[str]:
     acts = _acts()
     out = [f"{t} asked for a yes" for t, _ in turn.waiting if t in acts]
     out += [f"{t} ran" for t, _ in turn.ran if t in acts and t not in case.may]
-    out += [f"{t} by position" for t, args in turn.calls if t.endswith("_click") and "x" in args]
+    out += [
+        f"{t} by position {args}"
+        for t, args in turn.calls
+        if t.endswith("_click") and "x" in args and not args.get("id")
+    ]
     return out
 
 

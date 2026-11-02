@@ -230,7 +230,8 @@ read by the label the last look showed), its keys delete a file, Return would se
 in a messaging or mail app, or the app, window or address is a bank's or a payment service's. The
 words are a net, not a proof, so `NEVER` above and the tools' own tiers stay. A click that does
 not say what it presses is refused: by an id the last look did not show, or by position when that
-look listed elements to click by id.
+look listed elements to click by id, even with a label beside the position, since the Mac clicks
+the position.
 
 ### What she reads cannot steer her
 
@@ -267,10 +268,11 @@ asking, and:
   app they did not name, needs the check;
 - typing, by text or by plain keys, and pasting or autofilling by key, menu or button, needs the
   check: otherwise a page could have the clipboard put in its own form with no read tool called;
-- where the person has unlocked a terminal or an editor, plain typing flows if asked for, and Return
-  shows a card with the text it will run;
+- where the person has unlocked a terminal or an editor, plain typing flows if asked for, and every
+  Return shows a card with the text it will run, whether or not anything was read;
 - a tool refused for what it is is not offered again that turn, and one refused three times for a
-  particular step is not either, so she says what stopped her instead of trying around it.
+  particular step is not either, so she says what stopped her instead of trying around it. Four
+  rounds in a row of only reading end the reading: she acts on what she saw, or says where it stands.
 
 A turn in a session that ends with no tool is asked once to look at the window first, so she does
 not ask which app, or say she cannot, before she has seen it.

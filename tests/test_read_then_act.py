@@ -16,6 +16,7 @@ from ira.devices.protocol import DeviceTool
 from ira.models.base import ChatResponse, ToolCall
 from ira.models.fake import ScriptedProvider
 from ira.models.gateway import Gateway
+from ira.promises import asks_yes_in_words
 
 from .conftest import make_runtime
 
@@ -643,3 +644,167 @@ async def test_in_a_session_a_plain_question_can_still_just_be_answered():
     world.session()
     events = await world.turn("do aur do kitna")
     assert world.ran == [] and events[-1]["text"] == "Chaar."
+
+
+# What the gate card found.
+
+
+@pytest.mark.parametrize(
+    "arguments",
+    [
+        {"x": 100, "y": 200},
+        {"label": "Details", "x": 100, "y": 200},  # the Mac clicks the position
+        {"id": "e1", "x": 100, "y": 200},
+        {"label": "Details", "y": 200},
+    ],
+)
+async def test_a_position_is_refused_whatever_is_beside_it(arguments: dict[str, Any]):
+    world = World([LOOK_FIRST, step("mac_click", **arguments)])
+    world.session()
+    assert refused(await world.turn("Details dabao")) == ["mac_click"]
+    assert world.ran == ["window_elements"]
+    assert blind_click("mac_click", arguments, {"elements": {"e1": "Details"}})
+
+
+async def test_a_label_alone_still_clicks():
+    world = World([LOOK_FIRST, step("mac_click", label="Details")])
+    world.session()
+    await world.turn("Details dabao")
+    assert world.ran == ["window_elements", "mac_click"]
+
+
+async def test_unlocked_every_return_shows_what_will_run_with_nothing_read():
+    world = World([step("app_open", app="Terminal"), step("mac_type", text="ls", pressReturn=True)])
+    world.session(["terminals"])
+    card = cards(await world.turn("Terminal mein ls chala do"))[0]
+    assert world.ran == ["app_open"] and "It will run: ls" in card["summary"] and card["tier"] == 2
+
+
+async def test_unlocked_keys_with_nothing_read_show_what_will_run_too():
+    world = World([step("mac_type", text="ls", app="Terminal"), step("mac_keys", keys="return")])
+    world.session(["terminals"])
+    card = cards(await world.turn("Terminal mein ls chala do"))[0]
+    assert world.ran == ["mac_type"] and "It will run: ls" in card["summary"]
+
+
+async def test_unlocked_return_in_another_app_is_only_a_return():
+    notes = {"app": "com.example.notes", "appName": "Notes", "window": "Note", "elements": []}
+    world = World([LOOK_FIRST, step("mac_keys", keys="return")], look=notes)
+    world.session(["terminals"])
+    events = await world.turn("Details dabao")
+    assert world.ran == ["window_elements", "mac_keys"] and not cards(events)
+
+
+async def test_a_look_at_an_app_nobody_named_points_to_the_one_in_front():
+    world = World(
+        [
+            step("browser_tabs"),
+            step("window_elements", app="Chrome"),
+            LOOK_FIRST,
+            step("mac_click", id="e2"),
+        ],
+        {"pay_or_buy"},
+    )
+    world.session()
+    events = await world.turn("Pay now dabao")
+    looked = next(
+        e for e in events if e["type"] == "tool_result" and "naming no app" in e["result"]
+    )
+    assert looked["ok"] is False
+    card = cards(events)[0]
+    assert card["tier"] == 3 and "Pay now" in card["summary"]
+
+
+async def test_reading_round_after_round_in_a_session_ends():
+    world = World([LOOK_FIRST] * 8 + ["Yahan ruki."])
+    world.session()
+    events = await world.turn("Details dabao")
+    assert world.ran == ["window_elements"] * 4
+    assert events[-1]["text"] == "Yahan ruki."
+    results = [
+        e for e in events if e["type"] == "tool_result" and "already been tried" in e["result"]
+    ]
+    assert results and all(r["ok"] is False for r in results)
+
+
+async def test_an_act_starts_the_reading_count_again():
+    world = World(
+        [
+            LOOK_FIRST,
+            LOOK_FIRST,
+            LOOK_FIRST,
+            step("mac_click", id="e1"),
+            LOOK_FIRST,
+            LOOK_FIRST,
+            "Ok.",
+        ]
+    )
+    world.session()
+    await world.turn("Details dabao")
+    assert world.ran.count("window_elements") == 5 and world.ran.count("mac_click") == 1
+
+
+async def test_a_means_is_not_what_is_left_to_do_in_a_session():
+    world = World([step("app_open", app="Terminal"), LOOK_FIRST, "Khol diya."], {"mac_click"})
+    world.session()
+    await world.turn("Terminal kholo")
+    assert "required" not in world.provider.forced[1:]
+
+
+async def test_a_yes_asked_in_words_offers_only_what_was_asked_nothing_to_read():
+    world = World(
+        ["Bhejun? Haan bolke confirm karo.", step("messages_send", text="x")], {"messages_send"}
+    )
+    await world.turn("mac se Avery ko message bhejo")
+    offered = {t["name"] for t in world.provider.calls[1]["tools"]}
+    assert offered == {"messages_send", "finish_turn"}
+
+
+@pytest.mark.parametrize(
+    "words",
+    [
+        'Kya main bhejun? "Haan" bolke confirm karo.',
+        "Kya main us invoice tab ko front pe laaoon aur Pay Now button click karoon?",
+        "क्या मैं यह मैसेज भेजूँ?",
+        '"हां" बोलिए।',
+    ],
+)
+def test_a_yes_asked_in_more_words(words: str):
+    assert asks_yes_in_words(words)
+
+
+@pytest.mark.parametrize(
+    "words",
+    [
+        "Kya main aur kuch kar sakta hoon?",
+        "Main aapki kaise madad kar sakti hoon?",
+        "Haan, ho gaya.",
+    ],
+)
+def test_an_offer_is_no_yes_asked(words: str):
+    assert not asks_yes_in_words(words)
+
+
+def test_a_drag_that_ends_where_it_starts_is_read_as_the_click_it_is():
+    looked = {"elements": {"e1": "Details", "e2": "Pay now"}}
+    assert risky_step("mac_drag", {"from": "e2", "to": "e2"}, looked)
+    assert not risky_step("mac_drag", {"from": "e1", "to": "e1"}, looked)
+    assert blind_click("mac_drag", {"from": "e9", "to": "e1"}, looked)
+    assert not blind_click("mac_drag", {"from": "e1", "to": "e2"}, looked)
+
+
+@pytest.mark.parametrize(
+    ("arguments", "tool"),
+    [({"keys": "return"}, "mac_keys"), ({"text": "x", "pressReturn": True}, "mac_type")],
+)
+def test_return_on_a_window_with_a_risky_button_may_press_it(arguments: dict[str, Any], tool: str):
+    assert risky_step(tool, arguments, {"elements": {"e1": "Pay now"}})
+    assert risky_step(tool, arguments, {"elements": {"e1": "Submit"}})
+    assert not risky_step(tool, arguments, {"elements": {"e1": "Details"}})
+
+
+async def test_return_a_page_wants_on_its_pay_button_is_refused():
+    world = World([LOOK_FIRST, step("mac_keys", keys="return")])
+    world.session()
+    assert refused(await world.turn("Details dabao")) == ["mac_keys"]
+    assert world.ran == ["window_elements"]

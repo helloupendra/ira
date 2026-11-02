@@ -49,11 +49,14 @@ _WHICH = re.compile(
 )
 # Asking for a yes in words: only the app's card can take it.
 _YES_IN_WORDS = re.compile(
-    r"haan bol|haan kah|haan keh|han bol|han keh|yes/no|say yes|reply yes|please confirm|kya bhej|"
+    r"ha+n[\"'”]?\s*(?:bol|kah|keh)|yes/no|say yes|reply yes|please confirm|kya bhej|"
     r"bhej dun|bhej doon|"
+    r"kya mai?n?\b[^?।]*(?:karoon|karun|kar doon|kar dun|bhejun|bhejoon|laaoon|laun|kholun|"
+    r"kholoon|dabaun|dabaoon)\b|"
     r"bhejun\b|shall i (?:send|open|set|call|do)|should i (?:send|open|set|call|do)|"
     r"do you want me to|want me to (?:send|open|set|call)"
-    r"|हाँ बोल|हां बोल|हाँ कह|हां कह|कन्फर्म कर|क्या भेज",
+    r"|हाँ[\"'”]?\s*(?:बोल|कह)|हां[\"'”]?\s*(?:बोल|कह)|कन्फर्म कर|क्या भेज"
+    r"|क्या मैं[^?।]*(?:करूँ|करूं|भेजूँ|भेजूं|खोलूँ|खोलूं|लाऊँ|लाऊं|दबाऊँ|दबाऊं)",
     re.IGNORECASE,
 )
 # Saying it cannot, or that the device is off: an answer, and what led to it in the sentence is too.

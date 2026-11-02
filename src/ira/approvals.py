@@ -175,9 +175,11 @@ def open_refusal(
 
 
 def _step_words(arguments: dict[str, Any], looked: dict[str, Any]) -> str:
-    """What a step says it is: its label or menu path, and for a click by id the label last seen."""
-    shown = (looked.get("elements") or {}).get(str(arguments.get("id") or ""))
-    return " ".join(str(arguments.get(key) or "") for key in ("label", "path")) + f" {shown or ''}"
+    """What a step says it is: its label or menu path, and for a click or drag by id the label last
+    seen (a drag that ends where it starts is a click)."""
+    elements = looked.get("elements") or {}
+    shown = [elements.get(str(arguments.get(key) or ""), "") for key in ("id", "from", "to")]
+    return " ".join([*(str(arguments.get(key) or "") for key in ("label", "path")), *shown])
 
 
 def _risk(
@@ -200,6 +202,13 @@ def _risk(
         f"{place} {arguments.get('app') or ''}"
     ):
         return "send", f"Return sends it in {place.strip()[:60]}"
+    if pressing_return(tool, arguments):  # it presses whatever button is the default
+        for label in (looked.get("elements") or {}).values():
+            for kind, words in (
+                ("money", RISKY_MONEY), ("delete", RISKY_DELETE), ("send", RISKY_SEND),
+            ):  # fmt: skip
+                if words.search(label):
+                    return kind, f"Return may press {label[:60]}"
     return None
 
 
@@ -235,13 +244,16 @@ def pasting(tool: str, arguments: dict[str, Any], looked: dict[str, Any] | None)
 def blind_click(tool: str, arguments: dict[str, Any], looked: dict[str, Any] | None) -> bool:
     """A click that does not say what it presses, so nothing can tell whether it pays: by position
     when the last look listed elements to click by id (with none listed, a canvas, it may), or by an
-    id that look did not show."""
+    id that look did not show. A label beside a position says nothing: the Mac clicks the position,
+    so the label would only get it past the risky words."""
+    elements = (looked or {}).get("elements") or {}
+    if tool.endswith("_drag"):
+        return any(str(arguments.get(key) or "") not in elements for key in ("from", "to"))
     if not tool.endswith("_click"):
         return False
-    elements = (looked or {}).get("elements") or {}
-    if arguments.get("id"):
-        return str(arguments["id"]) not in elements
-    return not arguments.get("label") and "x" in arguments and bool(elements)
+    if "x" in arguments or "y" in arguments:
+        return bool(elements)
+    return bool(arguments.get("id")) and str(arguments["id"]) not in elements
 
 
 def named_in(words: str, place: str) -> bool:
