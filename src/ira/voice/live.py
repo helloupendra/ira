@@ -8,6 +8,13 @@ each sentence of the answer is spoken as soon as it is complete. Speech
 while Ira talks is a barge-in: the app stops playing at once, and here no
 more audio goes out for that turn. The model's answer still finishes and is
 kept, so the conversation stays whole; the next turn waits for it.
+
+What stops Ira is the person's words, never a sound. The app turns her down when
+it hears something, and only words the speech-to-text gives, that are not her own
+voice coming back, stop her. A cough, a click or her echo end in `speech_ignored`,
+and her answer goes on untouched. Words that come right after a turn ended, before
+she has used a tool or said anything, are the same sentence after a pause: that
+answer is dropped and the two are answered as one.
 """
 
 from __future__ import annotations
@@ -23,6 +30,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from ira.models.base import ProviderError
+from ira.voice.echo import looks_like_echo, maybe_echo
 from ira.voice.shorten import strip_markdown
 
 log = logging.getLogger("ira.voice.live")
@@ -33,7 +41,32 @@ SILENT_SECONDS = 90.0  # nothing from the app for this long: the call is over
 FINISH_SECONDS = 4.0  # wait this long for the last words after speech_end
 MAX_AUDIO_BYTES = 32_000 * 60  # one utterance: a minute of 16 kHz PCM16
 REST_ON_SCREEN = "The rest is on your screen."
-SETTLED_SECONDS = 0.3  # a transcript unchanged this long at speech_end is final enough
+# A transcript unchanged this long at speech_end is final enough. Shorter, a word still on its
+# way was lost: answers came to sentences cut in the middle of a word.
+SETTLED_SECONDS = 0.8
+ECHO_MEMORY_SECONDS = 25.0  # what Ira said this lately may come back through the microphone
+# An utterance this long with no words was someone trying (about 2 s, with the lead-in and the
+# quiet after it); anything shorter was a noise.
+TRIED_BYTES = 32_000 * 2
+# A word or two that is no answer by itself ("सेक", "अभी") is the start of something: Ira waits
+# this long for the rest, instead of answering each piece.
+HOLD_SECONDS = 1.2
+HOLD_WORDS = 2
+SHORT_REPLIES = frozenset(
+    {"haan", "han", "ha", "ji", "jee", "nahi", "nahin", "na", "no", "yes", "yeah", "ok", "okay",
+     "theek", "thik", "hai", "bas", "ruko", "stop", "cancel", "sahi", "done", "chalo", "thanks",
+     "shukriya", "हाँ", "हां", "जी", "नहीं", "ना", "ठीक", "है", "ओके", "बस", "रुको", "सही", "चलो",
+     "धन्यवाद", "शुक्रिया"}
+)  # fmt: skip
+_WORDS = re.compile(r"[\w\u0900-\u097f]+")
+
+
+def is_fragment(text: str) -> bool:
+    """A word or two that is not a complete reply by itself."""
+    words = [word.lower() for word in _WORDS.findall(text)]
+    return len(words) <= HOLD_WORDS and not all(word in SHORT_REPLIES for word in words)
+
+
 # Said when Ira must use a tool before it can answer, so the person hears it at once.
 ONE_MOMENT = {"en": "One moment.", "hi": "Ek second.", "hinglish": "Ek second."}
 # A proposed action is read back with its exact target, then the question.
@@ -101,6 +134,9 @@ class Turn:
     spoken_chars: int = 0
     seq: int = 0
     read_back: bool = False  # an action was read back: the model's own question is not spoken
+    spoken_turn: bool = False  # the person said it (typed text is never a sentence's first half)
+    used_tool: bool = False  # a tool ran for it: what it did stays, so it is never dropped
+    written: bool = False  # the model finished it: it is in the conversation
 
 
 def languages_for(languages: list[str]) -> list[str]:
@@ -142,6 +178,12 @@ class LiveCall:
         self.audio_bytes = 0
         self.current: Turn | None = None
         self.answer: asyncio.Task[None] | None = None
+        self.talking: Turn | None = None  # the last turn whose voice went out
+        self.spoken: list[tuple[float, str]] = []  # what Ira said lately, for her echo
+        self.words_heard = False  # in this utterance: Ira was already stopped for it
+        # The first half of a sentence waiting for the next utterance, and the turn it was.
+        self.carried: tuple[str, int | None] | None = None
+        self.hold: asyncio.Task[None] | None = None
         self.model_lock = asyncio.Lock()
         self.send_lock = asyncio.Lock()
         self.started_turns: dict[int, Turn] = {}
@@ -212,7 +254,9 @@ class LiveCall:
         elif kind == "text":
             text = " ".join(str(message.get("text") or "").split())[:4000]
             if text:
-                await self.begin_turn(text, None, None)
+                self._stop_holding()
+                carried, self.carried = self.carried, None
+                await self.begin_turn(f"{carried[0]} {text}" if carried else text, None, None)
         elif kind == "interrupt":
             await self.interrupt()
         elif kind == "played":
@@ -230,17 +274,93 @@ class LiveCall:
             self.transcription.feed(chunk)
 
     async def speech_start(self) -> None:
-        await self.interrupt()  # speech while Ira talks: barge-in
+        """Something was heard. Not an interruption yet: only words are (`_words_heard`)."""
+        self._stop_holding()  # a fragment waiting for its rest: this may be it
         if self.transcription is not None:
             return
         self.audio_bytes = 0
+        self.words_heard = False
         stt = self.runtime.stt
 
         def partial(text: str, language: str | None) -> None:
-            message = {"type": "partial", "text": text, "language": language}
-            asyncio.ensure_future(self.send(message))
+            asyncio.ensure_future(self._partial(text, language))
 
         self.transcription = stt.live(self.languages(), partial)
+
+    async def _partial(self, text: str, language: str | None) -> None:
+        if not text.strip() or maybe_echo(text, self._spoken_lately()):
+            return  # perhaps her own voice: more words will tell
+        await self._words_heard()
+        await self.send({"type": "partial", "text": text, "language": language})
+
+    def _spoken_lately(self) -> list[str]:
+        since = self.clock() - ECHO_MEMORY_SECONDS
+        self.spoken = [(at, line) for at, line in self.spoken if at >= since]
+        return [line for _, line in self.spoken]
+
+    async def _words_heard(self) -> None:
+        """The person is talking: Ira stops. An answer not begun, still being written with no
+        tool used and none of it said, is dropped: this is the same sentence, after a pause."""
+        if self.words_heard:
+            return
+        self.words_heard = True
+        turn = self.current
+        running = turn is not None and self.answer is not None and not self.answer.done()
+        if not running or turn is None or self.answer is None:
+            await self.interrupt()
+            return
+        if not turn.spoken_turn or turn.used_tool or turn.written or turn.seq > 0:
+            await self.interrupt()
+            return
+        waiting = f" {self.carried[0]}" if self.carried else ""
+        self.carried = (f"{turn.text}{waiting}", turn.number)
+        answer = self.answer
+        turn.interrupted = True
+        await self.send({"type": "interrupted", "turn": turn.number})
+        answer.cancel()
+        with contextlib.suppress(Exception, asyncio.CancelledError):
+            await answer
+        if self.current is turn:
+            self.current = None
+        await self.send(
+            {
+                "type": "done",
+                "turn": turn.number,
+                "text": "",
+                "message_id": None,
+                "interrupted": True,
+                "timings": turn.timings,
+            }
+        )
+
+    async def _no_turn(self, at: float | None, language: str | None, started: float) -> None:
+        """No words of the person's in that utterance. Ira goes on; if a first half was
+        waiting for this one, it is answered after all."""
+        carried, self.carried = self.carried, None
+        if carried is not None:
+            await self.begin_turn(
+                carried[0], at, language, started=started, replaces=carried[1], spoken=True
+            )
+            return
+        await self.send({"type": "speech_ignored"})
+
+    def _stop_holding(self) -> None:
+        if self.hold is not None:
+            self.hold.cancel()
+            self.hold = None
+
+    async def _after_hold(
+        self, at: float | None, language: str | None, started: float, stt_ms: int
+    ) -> None:
+        """No more came: the fragment is the turn after all."""
+        await asyncio.sleep(HOLD_SECONDS)
+        self.hold = None
+        carried, self.carried = self.carried, None
+        if carried is not None:
+            await self.begin_turn(
+                carried[0], at, language, started=started, stt_ms=stt_ms, replaces=carried[1],
+                spoken=True,
+            )  # fmt: skip
 
     async def speech_end(self, at: float | None) -> None:
         transcription, self.transcription = self.transcription, None
@@ -264,14 +384,42 @@ class LiveCall:
             await self.send(
                 {"type": "error", "message": "I couldn't hear that. Try again?", "fatal": False}
             )
+            await self._no_turn(at, None, started)
             return
         if not text.strip():
-            await self.send(
-                {"type": "error", "message": "I didn't catch that. Say it again?", "fatal": False}
-            )
+            # Only someone who tried, with Ira quiet, hears about it: not a noise, not her echo.
+            if (
+                self.audio_bytes >= TRIED_BYTES
+                and self.current is None
+                and self.carried is None
+                and not self._spoken_lately()
+            ):
+                await self.send(
+                    {
+                        "type": "error",
+                        "message": "I didn't catch that. Say it again?",
+                        "fatal": False,
+                    }
+                )
+            await self._no_turn(at, language, started)
             return
+        if looks_like_echo(text, self._spoken_lately()):
+            log.info("heard Ira's own voice; not a turn")
+            await self._no_turn(at, language, started)
+            return
+        await self._words_heard()
+        carried, self.carried = self.carried, None
+        replaces = None
+        if carried is not None:
+            text, replaces = f"{carried[0]} {text}", carried[1]
         stt_ms = round((self.clock() - started) * 1000)
-        await self.begin_turn(text, at, language, started=started, stt_ms=stt_ms)
+        if is_fragment(text):
+            self.carried = (text, replaces)
+            self.hold = asyncio.ensure_future(self._after_hold(at, language, started, stt_ms))
+            return
+        await self.begin_turn(
+            text, at, language, started=started, stt_ms=stt_ms, replaces=replaces, spoken=True
+        )
 
     async def begin_turn(
         self,
@@ -281,16 +429,22 @@ class LiveCall:
         *,
         started: float | None = None,
         stt_ms: int | None = None,
+        replaces: int | None = None,
+        spoken: bool = False,
     ) -> None:
         self.turns += 1
         self.last_text = text
         turn = Turn(self.turns, text, at, started if started is not None else self.clock())
+        turn.spoken_turn = spoken
         if stt_ms is not None:
             turn.timings["stt_ms"] = stt_ms
         self.started_turns[turn.number] = turn
         if len(self.started_turns) > 50:
             self.started_turns.pop(min(self.started_turns))
-        await self.send({"type": "heard", "turn": turn.number, "text": text, "language": language})
+        heard = {"type": "heard", "turn": turn.number, "text": text, "language": language}
+        if replaces is not None:
+            heard["replaces"] = replaces  # the first half of this sentence: its line is this now
+        await self.send(heard)
         self.current = turn
         self.answer = asyncio.ensure_future(self.run_turn(turn))
 
@@ -309,11 +463,13 @@ class LiveCall:
         self.answer = asyncio.ensure_future(self.run_turn(turn, follow_up=True))
 
     async def interrupt(self) -> None:
-        turn = self.current
-        if turn is None or turn.interrupted:
-            return
-        turn.interrupted = True
-        await self.send({"type": "interrupted", "turn": turn.number})
+        # The answer being written, and the last one that went out: the app may still be
+        # playing that one long after it was written.
+        for turn in (self.current, self.talking):
+            if turn is None or turn.interrupted:
+                continue
+            turn.interrupted = True
+            await self.send({"type": "interrupted", "turn": turn.number})
 
     def played(self, message: dict[str, Any]) -> None:
         turn = self.started_turns.get(int(_number(message.get("turn")) or 0))
@@ -378,6 +534,7 @@ class LiveCall:
                         for sentence in sentences.feed(event["text"]):
                             self._queue(turn, speech, sentence)
                     elif kind == "tool":
+                        turn.used_tool = True
                         # The app shows the step ("Reading your Chrome tabs…"), and what was
                         # written before it was a lead-in, not the answer.
                         await self.send(
@@ -413,6 +570,7 @@ class LiveCall:
                             {"type": "error", "message": event.get("message"), "fatal": False}
                         )
                     elif kind == "done":
+                        turn.written = True
                         final = event.get("text") or ""
                         message_id = event.get("message_id")
             for sentence in sentences.flush():
@@ -434,7 +592,9 @@ class LiveCall:
             )
         finally:
             speech.put_nowait(None)
-            with contextlib.suppress(Exception):
+            if turn.interrupted:
+                speaker.cancel()  # nothing more of it will be said: no need to wait for a voice
+            with contextlib.suppress(Exception, asyncio.CancelledError):
                 await speaker
         await self.send(
             {
@@ -488,7 +648,7 @@ class LiveCall:
                 continue
             synthesis_started = self.clock()
             try:
-                audio = await tts.speak(sentence)
+                audio = await self._voice(tts, sentence)
             except Exception as exc:  # a failed sentence is skipped, not the call
                 log.warning("speech synthesis failed: %s", type(exc).__name__)
                 continue
@@ -506,9 +666,21 @@ class LiveCall:
                 "bytes": len(audio),
             }
             turn.seq += 1
+            self.talking = turn
+            self.spoken.append((self.clock(), sentence))
             await self.send_audio(header, audio)
 
+    async def _voice(self, tts: Any, sentence: str) -> bytes:
+        """A sentence's speech, tried again once: a hiccup must not leave a hole in the answer."""
+        try:
+            return await tts.speak(sentence)
+        except Exception as exc:
+            log.info("speech synthesis failed once: %s", type(exc).__name__)
+            await asyncio.sleep(0.2)
+            return await tts.speak(sentence)
+
     async def close(self) -> None:
+        self._stop_holding()
         if hasattr(self.runtime, "call_closed") and self.conversation_id:
             self.runtime.call_closed(self.conversation_key(self.conversation_id), self)
         if self.transcription is not None:

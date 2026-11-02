@@ -116,13 +116,13 @@ def test_speaking_while_ira_talks_stops_its_audio():
         ws.send_json({"type": "speech_end", "at": 10.0})
         first = until(ws, "audio")
         assert first[-1]["turn"] == 1
-        ws.send_json({"type": "speech_start", "at": 20.0})  # barge-in
+        ws.send_json({"type": "speech_start", "at": 20.0})
+        ws.send_bytes(AUDIO)  # barge-in: the words that come back stop her, not the sound
         seen = until(ws, "done")
         assert {"type": "interrupted", "turn": 1} in seen
         after = seen[seen.index({"type": "interrupted", "turn": 1}) :]
         assert not [m for m in after if m["type"] == "audio"]
         assert seen[-1]["interrupted"] is True
-        ws.send_bytes(AUDIO)
         ws.send_json({"type": "speech_end", "at": 30.0})
         second = until(ws, "done")
         assert second[-1]["turn"] == 2 and second[-1]["text"] == "Okay."

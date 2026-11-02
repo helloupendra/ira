@@ -28,10 +28,16 @@ you speak ──► the app's voice detector ──► audio, only while you spe
   short lead-in. Silence is never sent, so nothing is transcribed (or paid
   for) while nobody talks.
 - **End of turn**: the app says when you stopped (`speech_end`, after
-  about 0.6 s of quiet). Ira takes the final transcript and answers.
-- **Barge-in**: when you start speaking while Ira talks, the app stops
-  playing at once, without waiting for the server, and says so
-  (`speech_start`). The server stops speaking that answer.
+  about 0.9 s of quiet). Ira takes the final transcript and answers.
+- **A pause is not the end**: words that come while the answer is still being
+  written, before a tool ran or anything was said, are the same sentence: that
+  answer is dropped and the two are answered as one (`heard` with `replaces`).
+  A word or two that is no reply by itself waits 1.2 s for the rest.
+- **Barge-in is by words**: when the app hears something while Ira talks, it
+  turns her down and sends the speech (`speech_start`). Only words stop her:
+  the server sends `interrupted`, and the app stops playing. A cough, a click or
+  her own voice coming back (the same words she just said, in either script)
+  end in `speech_ignored`: she comes back up and the answer goes on.
 - **Sentence by sentence**: Ira's answer streams from the model; each
   sentence is spoken as soon as it is complete, so the first words play
   while the rest is still being written.
@@ -75,8 +81,8 @@ Messages are JSON text frames, except audio, which goes in binary frames.
 | --- | --- |
 | `{"type": "start", "protocol": 1, "client": "ira-pwa/0.2", "conversation_id": "..."}` | first, once. `conversation_id` is optional: the same one continues a conversation; without it, a new one starts |
 | binary audio | while you speak |
-| `{"type": "speech_start", "at": 1234.5}` | the voice detector heard speech start. While Ira is speaking, this is also a barge-in. `at`: the app's own clock, in milliseconds (`performance.now()` or monotonic), the same clock for every message |
-| `{"type": "speech_end", "at": 2345.6}` | you stopped: after the app's hangover (about 600 ms of quiet). `at` is when the last spoken audio ended, not when the hangover ran out |
+| `{"type": "speech_start", "at": 1234.5}` | the voice detector heard speech start. It does not interrupt Ira by itself: words do. `at`: the app's own clock, in milliseconds (`performance.now()` or monotonic), the same clock for every message |
+| `{"type": "speech_end", "at": 2345.6}` | you stopped: after the app's hangover (about 900 ms of quiet). `at` is when the last spoken audio ended, not when the hangover ran out |
 | `{"type": "text", "text": "..."}` | a typed turn, in the same conversation |
 | `{"type": "interrupt"}` | stop talking and stop this answer (a stop button) |
 | `{"type": "played", "turn": 3, "at": 3012.0}` | the first audio of turn 3 started playing. The latency of that turn is this `at` minus the `speech_end` `at` |
@@ -89,14 +95,15 @@ Messages are JSON text frames, except audio, which goes in binary frames.
 | --- | --- |
 | `{"type": "ready", "protocol": 1, "conversation_id": "...", "assistant": "Ira", "languages": ["en-IN", "hi-IN"], "tts": "polly"}` | after `start`: send audio when you like |
 | `{"type": "partial", "text": "kal subah", "language": "hi-IN"}` | live captions while you speak; each replaces the last |
-| `{"type": "heard", "turn": 3, "text": "kal subah 9 baje yaad dilana", "language": "hi-IN"}` | the final text of your turn; Ira starts answering |
+| `{"type": "heard", "turn": 3, "text": "kal subah 9 baje yaad dilana", "language": "hi-IN"}` | the final text of your turn; Ira starts answering. With `"replaces": 2`, it holds turn 2's words too: that turn's line and answer go |
 | `{"type": "delta", "turn": 3, "text": "..."}` | the answer's text as it is written, as in `/v1/ask/stream` |
 | `{"type": "tool", "turn": 3, "name": "calendar_read"}` | Ira is using a tool: show the step. Text written before it was a lead-in, not the answer (`done` has the answer) |
 | `{"type": "tool_result", "turn": 3, "name": "calendar_read", "ok": true}` | that tool finished |
 | `{"type": "audio", "turn": 3, "seq": 0, "text": "Theek hai.", "format": "mp3", "bytes": 5321}` | the next binary frame is this sentence's audio. Play them in `seq` order |
 | `{"type": "action", "turn": 3, "action": {...}}` | a proposed action, as in `/v1/ask`. Tier 2: say yes or no. Tier 3: show the card; the PIN is typed |
 | `{"type": "done", "turn": 3, "text": "...", "message_id": 812, "timings": {"stt_ms": 240, "model_first_ms": 610, "tts_first_ms": 130}}` | the answer is complete. `timings`: from `speech_end` arriving to the final transcript, to the model's first words, and the first sentence's speech synthesis |
-| `{"type": "interrupted", "turn": 3}` | after a barge-in or `interrupt`: no more audio for turn 3 |
+| `{"type": "interrupted", "turn": 3}` | your words were heard, or `interrupt`: stop playing turn 3, even if it was fully sent; no more audio for it |
+| `{"type": "speech_ignored"}` | what you sent held no words of yours (a noise, Ira's own voice): turn her back up; her answer goes on |
 | `{"type": "ping"}` | every 20 seconds; answer with `pong` |
 | `{"type": "error", "message": "...", "fatal": false}` | a turn failed (and the call goes on), or with `fatal: true` the connection closes |
 
