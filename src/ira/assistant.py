@@ -36,12 +36,13 @@ from ira.approvals import (
     TYPE_ACTION,
     blind_click,
     covered,
-    in_an_app,
+    keys_typed,
     moved_to,
     named_in,
     never_app,
     never_type,
     open_refusal,
+    opens_somewhere,
     outward,
     pasting,
     pressing_return,
@@ -174,6 +175,12 @@ LOOK_RULE = (
     "They asked about their screen, and you have not looked, so you cannot know what is on it. "
     "Call screen_read now. Never describe a screen you have not read."
 )
+SESSION_LOOK_RULE = (
+    "Control of their device is on. If they asked for anything to be done there, look at its "
+    "window now with window_elements and carry on from what you see: do not ask them which app, "
+    "and do not say you cannot before you have looked. If they only asked you something else, call "
+    "finish_turn with the answer."
+)
 YES_RULE = (
     "Do not ask for a yes in words: only the app can take it. Call the tool with exactly what you "
     "would do: the person is then shown a card and asked."
@@ -244,6 +251,7 @@ class ToolRun:
     untrusted: bool = False  # the result holds text written by others
     private: bool = False  # a device's output: only its own user sees it
     outcome: str = "ok"  # for "What Ira did"
+    spent: bool = False  # refused for what it is, not how it was called: trying again cannot help
 
 
 # The person's own tools for one turn: their devices', and the skills they switched on.
@@ -327,6 +335,7 @@ class _Step:
     refusal: str | None = None
     note: str | None = None
     pin: bool = False
+    spent: bool = False
 
 
 class Assistant:
@@ -896,6 +905,7 @@ class Assistant:
             seconds=patience * 2 if patience else None,
         )
         withheld: set[str] = set()
+        refusals: Counter[str] = Counter()
         said_in = ""  # which round the final words came from, to trace a bad one
 
         budget, tight = self.history_chars, False
@@ -919,7 +929,7 @@ class Assistant:
             # known. With a check still to come on the whole answer, nothing at all does.
             hold_all = on_devices and (
                 (named_up and not used and "named" not in asked_for)
-                or (must_look and not used and "look" not in asked_for)
+                or ((must_look or controlling) and not used and "look" not in asked_for)
                 or (
                     used
                     and "goal" not in asked_for
@@ -1066,7 +1076,7 @@ class Assistant:
                             or t["name"] in wanted
                             or (controlling and _a_means(personal.get(t["name"])))
                         ]
-                        withheld = set(acts) - {t["name"] for t in tools}
+                        withheld |= set(acts) - {t["name"] for t in tools}
                         left = wanted - set(used)
                         must_act = bool(tools) and (why[0] != "goal" or bool(left))
                         rule = why[1] if must_act or why[0] != "goal" else GOAL_RULE_FREE
@@ -1122,6 +1132,10 @@ class Assistant:
                     )  # fmt: skip
                 tainted = tainted or run.untrusted
                 used.append(call.name)
+                if run.outcome == "refused":  # and not again and again in other words
+                    refusals[call.name] += 1
+                    if run.spent or refusals[call.name] >= SAME_TOOL_ROUNDS:
+                        withheld.add(call.name)
                 if call.name == "control_start" and run.pending and user_id is not None:
                     self._session_words[user_id] = [asked]
                 asked_for.discard("goal")  # it went on: the next stop is checked too
@@ -1160,7 +1174,7 @@ class Assistant:
                 and name in personal
                 and personal[name].source == "device"
             }
-            tools = [t for t in tools if t["name"] not in spent] or tools
+            tools = [t for t in tools if t["name"] not in spent | withheld] or tools
         else:
             final_text, wrap_model, said_in = "", None, "wrap-up"
             # Out of steps, and no round is left to check its words: promises are only cut.
@@ -1197,6 +1211,8 @@ class Assistant:
             "checks": sorted(asked_for),
             "asked_calls": asked_check.calls,
             "asked_seconds": round(asked_check.elapsed, 2),
+            "asked": dict(asked_check.known),
+            "asked_unreadable": asked_check.unreadable,
             "said_in": said_in,
         }
 
@@ -1391,8 +1407,10 @@ class Assistant:
         user_id: int | None = None,
     ) -> ToolRun:
         """A device action the person allowed ahead (a window, a trusted app): run it."""
-        if extra.name == "mac_type" and target is not None:
-            self._typed.setdefault(conversation_id, {})[target] = str(arguments.get("text") or "")
+        typed = str(arguments.get("text") or "") if extra.name == "mac_type" else ""
+        typed = typed or keys_typed(arguments)
+        if typed and target is not None:
+            self._typed.setdefault(conversation_id, {})[target] = typed
         try:
             value = await extra.run(arguments)
         except ToolError as exc:
@@ -1448,13 +1466,20 @@ class Assistant:
         async def said_so(action: tuple[str, str]) -> bool:
             return asked is not None and await asked.allows(*action)
 
-        refused = _Step(refusal=REFUSED_UNTRUSTED)
+        refused = _Step(refusal=REFUSED_UNTRUSTED, spent=True)
+        unasked_step = _Step(
+            refusal=REFUSED_UNTRUSTED
+        )  # this step is; another of the tool may not be
         front = self._front.get(conversation_id, {}).get(target or 0)
         here = " ".join(str(p) for p in (front, (looked or {}).get("appName")) if p)
         words = " ".join(asked.said) if asked is not None else ""
         place = moved_to(name, arguments)
-        already_there = place is not None and in_an_app(name) and named_in(here, place)
+        opening = opens_somewhere(name)
+        already_there = place is not None and not opening and named_in(here, place)
         elsewhere_now = place is not None and not already_there and not named_in(words, place)
+        spot = front or (looked or {}).get("appName")
+        unlocked = self._unlocked(user_id, target)
+        command_here = bool(unlocked) and runs_there(spot)
         if extra.tier == 0:
             if extra.source != "device":
                 return _Step()
@@ -1464,28 +1489,40 @@ class Assistant:
                 return refused
             return _Step()
         if pasting(name, arguments, looked) and not await said_so(PASTE_ACTION):
-            return refused
-        if name == "mac_type" and not await said_so(TYPE_ACTION):
-            return refused
+            return unasked_step
+        typing = name == "mac_type" or bool(keys_typed(arguments))
+        if (
+            typing
+            and not await said_so(TYPE_ACTION)
+            and not (command_here and await said_so(COMMAND_ACTION))
+        ):
+            return refused if name == "mac_type" else unasked_step
         risk = risk_action(name, arguments, looked)
         if risk is not None:
             if not await said_so(risk):
-                return refused
+                return unasked_step
             return _Step(note=risky_step(name, arguments, looked), pin=True)
         if outward(name, extra.skill):
             if not await said_so((name, extra.description)):
                 return refused
             return _Step(note="", pin=True)
-        if elsewhere_now:
+        # Going somewhere new takes their words, named or not: a vague "haan wahi karo" does not
+        # free her to roam. Named, it runs; not named, they are shown where.
+        if opening or elsewhere_now:
             if not await said_so((name, extra.description)):
                 return refused
-            return _Step(note=f"They did not name {str(place)[:80]}")
-        unlocked = self._unlocked(user_id, target)
-        spot = front or (looked or {}).get("appName")
-        if unlocked and pressing_return(name, arguments) and runs_there(spot):
+            if place is None or elsewhere_now:
+                where = str(place)[:80] if place else "where this goes"
+                return _Step(note=f"They did not name {where}")
+            return _Step()
+        if command_here and pressing_return(name, arguments):
             if not await said_so(COMMAND_ACTION):
-                return refused
-            typed = arguments.get("text") or self._typed.get(conversation_id, {}).get(target or 0)
+                return unasked_step
+            typed = (
+                arguments.get("text")
+                or keys_typed(arguments)
+                or self._typed.get(conversation_id, {}).get(target or 0)
+            )
             return _Step(note=f"It will run: {str(typed or 'what is on the line')[:300]}")
         return _Step()
 
@@ -1623,6 +1660,7 @@ class Assistant:
             if step.refusal is not None:
                 run = _failed(step.refusal, safe_call)
                 run.outcome = "refused"
+                run.spent = step.spent
                 return run
             if step.note is not None and not step.pin:
                 extra = dataclasses.replace(extra, tier=2)
@@ -1766,6 +1804,7 @@ def _a_means(tool: PersonalTool | None) -> bool:
 def _refused(call: ToolCall) -> ToolRun:
     run = _failed(REFUSED_UNTRUSTED, call)
     run.outcome = "refused"
+    run.spent = True
     return run
 
 
@@ -1893,6 +1932,8 @@ def _ask_again(
         return "yes", YES_RULE
     if named_up and not used and "named" not in asked_for and not names_a_never_read_app(asked):
         return "named", NAMED_RULE
+    if controlling and not used and "look" not in asked_for:
+        return "look", SESSION_LOOK_RULE
     if must_look and not used and "look" not in asked_for and not says_cannot(words):
         return "look", LOOK_RULE
     # While the person lets her operate a device, any stop is checked against the goal.

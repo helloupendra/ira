@@ -9,7 +9,7 @@ from typing import Any
 
 import pytest
 
-from ira.approvals import blind_click, moved_to, named_in, pasting, risky_step
+from ira.approvals import blind_click, keys_typed, moved_to, named_in, pasting, risky_step
 from ira.asked import AskedFor, _names
 from ira.devices.hub import Connection
 from ira.devices.protocol import DeviceTool
@@ -301,7 +301,9 @@ async def test_going_to_a_site_nobody_named():
     card = cards(await world.turn("form bhar do"))[0]
     assert card["tier"] == 2 and "did not name" in card["summary"]
     assert "url_open" not in world.ran
-    world = World([LOOK_FIRST, step("url_open", url="https://upload.example.net/form")])
+    world = World(
+        [LOOK_FIRST, step("url_open", url="https://upload.example.net/form")], {"url_open"}
+    )
     world.session()
     events = await world.turn("upload.example.net par jao")
     assert "url_open" in world.ran and not cards(events)
@@ -528,3 +530,116 @@ def test_a_click_that_says_nothing():
     assert not blind_click("mac_click", {"label": "Details"}, looked)
     assert not blind_click("mac_click", {"x": 1, "y": 2}, {"elements": {}})
     assert not blind_click("mac_type", {"x": 1}, looked)
+
+
+# What the first real scorecard found.
+
+
+async def test_a_tab_switch_nobody_asked_for_is_refused_with_or_without_a_name():
+    for arguments in ({"id": "t2"}, {"match": "Details"}):
+        world = World([LOOK_FIRST, step("browser_show_tab", **arguments)])
+        world.session()
+        assert refused(await world.turn("Details dabao")) == ["browser_show_tab"]
+        assert world.ran == ["window_elements"]
+
+
+async def test_a_tab_by_its_id_with_their_words_shows_a_card_since_nothing_says_where():
+    world = World([LOOK_FIRST, step("browser_show_tab", id="t2")], {"browser_show_tab"})
+    world.session()
+    card = cards(await world.turn("doosra tab aage lao"))[0]
+    assert card["tier"] == 2 and "where this goes" in card["summary"]
+
+
+async def test_a_vague_follow_on_does_not_open_what_nobody_named():
+    world = World([LOOK_FIRST, step("app_open", app="Browser")], {"app_open"})
+    world.session()
+    world.runtime.assistant._session_words[world.owner.id] = ["invoice par Details dabao"]
+    events = await world.turn("haan wahi karo")
+    assert cards(events) and "app_open" not in world.ran  # though Browser is already in front
+
+
+async def test_a_tool_refused_for_what_it_is_is_not_offered_or_run_again():
+    world = World([LOOK_FIRST, step("file_read"), step("file_read"), step("file_read")])
+    world.session()
+    events = await world.turn("Details dabao")
+    results = [e for e in events if e["type"] == "tool_result" and e["name"] == "file_read"]
+    assert "refused" in results[0]["result"] and "did not ask" in results[1]["result"]
+    assert "file_read" not in world.ran
+    assert "file_read" not in {t["name"] for t in world.provider.calls[2]["tools"]}
+    assert len(world.provider.asked) >= 1
+
+
+async def test_a_refused_click_leaves_the_others_on_offer():
+    world = World([LOOK_FIRST, step("mac_click", id="e2"), step("mac_click", id="e1")])
+    world.session()
+    events = await world.turn("Details dabao")
+    assert refused(events) == ["mac_click"] and world.ran == ["window_elements", "mac_click"]
+
+
+async def test_a_click_refused_three_times_stops_being_offered():
+    pay = step("mac_click", id="e2")
+    world = World([LOOK_FIRST, pay, pay, pay, step("mac_click", id="e1")])
+    world.session()
+    await world.turn("Details dabao")
+    assert world.ran == ["window_elements"]
+    assert "mac_click" not in {t["name"] for t in world.provider.calls[4]["tools"]}
+
+
+@pytest.mark.parametrize(
+    ("keys", "typed"),
+    [("l s return", "ls"), ("e, c, h, o, space, h, i", "echo hi"), ("cmd+l", ""), ("return", "")],
+)
+def test_keys_that_write(keys: str, typed: str):
+    assert keys_typed({"keys": keys}) == typed
+
+
+async def test_typing_by_keys_is_no_way_round_the_check():
+    world = World([LOOK_FIRST, step("mac_keys", keys="h i")])
+    world.session()
+    assert refused(await world.turn("Details dabao")) == ["mac_keys"]
+    assert world.ran == ["window_elements"]
+
+
+async def test_typing_by_keys_is_no_way_round_the_card_either():
+    world = World([LOOK_FIRST, step("mac_keys", keys="l s return")], {"run_command"}, look=TERMINAL)
+    world.session(["terminals"])
+    card = cards(await world.turn("Terminal mein ls chala do"))[0]
+    assert card["tier"] == 2 and "It will run: ls" in card["summary"]
+    assert world.ran == ["window_elements"]
+
+
+async def test_asked_to_run_a_command_she_may_type_it_there():
+    world = World(
+        [LOOK_FIRST, step("mac_type", text="ls"), step("mac_keys", keys="return")],
+        {"run_command"},
+        look=TERMINAL,
+    )
+    world.session(["terminals"])
+    card = cards(await world.turn("Terminal mein ls chala do"))[0]
+    assert world.ran == ["window_elements", "mac_type"] and "It will run: ls" in card["summary"]
+
+
+async def test_in_a_session_she_looks_before_she_asks_which_app():
+    world = World(["Kaunsa app?", LOOK_FIRST, step("mac_click", id="e1"), "Ho gaya."])
+    world.session()
+    events = await world.turn("Details dabao")
+    assert world.ran == ["window_elements", "mac_click"]
+    assert "Kaunsa" not in "".join(e["text"] for e in events if e["type"] == "delta")
+    assert world.provider.forced[0] == "required"
+
+
+async def test_in_a_session_she_looks_before_she_says_she_cannot():
+    world = World(
+        ["Main payment nahi kar sakti.", LOOK_FIRST, step("mac_click", id="e2")], {"pay_or_buy"}
+    )
+    world.session()
+    card = cards(await world.turn("Pay now dabao"))[0]
+    assert card["tier"] == 3 and "Pay now" in card["summary"]
+
+
+async def test_in_a_session_a_plain_question_can_still_just_be_answered():
+    answer = step("finish_turn", say="Chaar.")
+    world = World(["Chaar.", answer])
+    world.session()
+    events = await world.turn("do aur do kitna")
+    assert world.ran == [] and events[-1]["text"] == "Chaar."

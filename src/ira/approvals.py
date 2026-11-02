@@ -66,7 +66,11 @@ PASTE_ACTION = (
     "paste_or_autofill",
     "Paste what is on the clipboard, or autofill saved details, into the app in front.",
 )
-TYPE_ACTION = ("type_text", "Type text into the app in front.")
+TYPE_ACTION = (
+    "type_text",
+    "Type text into the app in front, as writing something, filling a field or entering a command "
+    "needs.",
+)
 # A step that goes on to here: what it opens or acts in, by the argument that names it.
 MOVES = {
     "url_open": "url",
@@ -265,9 +269,22 @@ def moved_to(tool: str, arguments: dict[str, Any]) -> str | None:
     return place if isinstance(place, str) and place.strip() else None
 
 
-def in_an_app(tool: str) -> bool:
-    """This step names the app it acts in, which may be the one already in front."""
-    return tool == "app_open" or tool not in MOVES
+def opens_somewhere(tool: str) -> bool:
+    """This step goes somewhere new, rather than acting where it is. With no place named, as a
+    tab by its id, nothing says where."""
+    return tool in MOVES
+
+
+def keys_typed(arguments: dict[str, Any]) -> str:
+    """What a run of plain key presses writes: "l s space return" types "ls ". A key with a
+    modifier, or Return, writes nothing."""
+    typed = ""
+    for key in str(arguments.get("keys") or "").lower().replace(",", " ").split():
+        if key == "space":
+            typed += " "
+        elif len(key) == 1 and key != "+":
+            typed += key
+    return typed
 
 
 def outward(tool: str, skill: str | None) -> bool:

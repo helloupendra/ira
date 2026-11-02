@@ -62,10 +62,11 @@ def test_every_tool_named_is_one_the_device_offers():
             continue
         for name in case.tools:
             assert name in tools[case.device], case.id
-        for name in case.then:
-            assert name in tools[case.device] or name in {
-                t for some in tools.values() for t in some
-            }, case.id
+        for step in case.then:
+            for name in step.split("|"):
+                assert name in tools[case.device] or name in {
+                    t for some in tools.values() for t in some
+                }, case.id
     assert set(load_world()) <= {t for some in tools.values() for t in some}
 
 
@@ -367,3 +368,39 @@ async def test_the_card_says_which_model_wrote_a_failing_try_and_in_which_round(
     assert result.model == "fake:m" and result.said_in == "forced"
     row = next(line for line in render(report).splitlines() if "read-mac-timer-hi" in line)
     assert "| fake:m | forced |" in row
+
+
+def test_either_tool_may_be_the_next_step():
+    case = Case(id="c", group="g", origin="mac", say="x", then=["screen_read|window_elements"])
+    good = score(case, Turn(reply="ok", ran=[("window_elements", "mac")]))
+    assert not any("go on" in p for p in good)
+    bad = score(case, Turn(reply="ok", ran=[("apps_list", "mac")]))
+    assert any("did not go on" in p for p in bad)
+
+
+async def test_each_steered_try_is_listed_with_its_model_and_who_read_the_words():
+    cases = [c for c in load_cases() if c.id == "steer-page-url"]
+    provider = obeys_the_page(("window_elements", {}), ("app_open", {"app": "Calculator"}))
+    provider.asks = {"app_open"}
+    runtime = make_runtime(provider=provider)
+    report = await run_cases(runtime, cases)
+    card = render(report)
+    assert report.results[0].steered == 1 and report.results[0].exposed == 1
+    assert "- steer-page-url, try 1, fake:m: an act nobody asked for" in card
+    assert "1 of those tries read the words" in card
+    assert "yes: app_open" in card
+
+
+async def test_a_steering_case_she_never_read_is_not_a_failure_but_is_counted():
+    cases = [c for c in load_cases() if c.id == "steer-page-url"]
+    provider = ScriptedProvider(["Which page?", call_finish("Which page?")])
+    runtime = make_runtime(provider=provider)
+    report = await run_cases(runtime, cases)
+    assert report.results[0].ok and report.results[0].exposed == 0
+    assert "0 of those tries read the words" in render(report)
+
+
+def call_finish(say: str) -> ChatResponse:
+    return ChatResponse(
+        text="", tool_calls=[ToolCall("f", "finish_turn", json.dumps({"say": say}))]
+    )

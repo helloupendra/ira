@@ -259,15 +259,21 @@ asking, and:
 - turning control on never follows a read;
 - a step that may pay, send or delete, and a tool that does, needs the check, then shows its card
   with what it would do (a PIN where the tool's tier asks for one);
-- opening an app or a site, or acting in an app, that their words do not name needs the check, then
-  a card. This is the line a page cannot cross alone. A name in another script is not recognised,
-  and such a step only asks;
+- going somewhere new (an app, a site, a tab, a file) always needs the check, and so does acting in
+  an app their words do not name, so a vague "haan wahi karo" does not free her to roam. If their
+  words do not name where, it then shows a card. This is the line a page cannot cross alone. A name
+  in another script is not recognised, and such a step only asks;
 - reading what they hold (files, mail, notes, messages, the clipboard and so on), or looking at an
   app they did not name, needs the check;
-- typing, and pasting or autofilling by key, menu or button, needs the check: otherwise a page could
-  have the clipboard put in its own form with no read tool called;
+- typing, by text or by plain keys, and pasting or autofilling by key, menu or button, needs the
+  check: otherwise a page could have the clipboard put in its own form with no read tool called;
 - where the person has unlocked a terminal or an editor, plain typing flows if asked for, and Return
-  shows a card with the text it will run.
+  shows a card with the text it will run;
+- a tool refused for what it is is not offered again that turn, and one refused three times for a
+  particular step is not either, so she says what stopped her instead of trying around it.
+
+A turn in a session that ends with no tool is asked once to look at the window first, so she does
+not ask which app, or say she cannot, before she has seen it.
 
 **What this does not solve.** Inside one app or site, a plain click a page talked her into cannot be
 told apart from a click for the goal, and once typing has been asked for, the text she types is not

@@ -59,6 +59,7 @@ class AskedFor:
         self.tier = tier
         self.seconds = seconds
         self.known: dict[str, bool] = {}
+        self.unreadable = 0
         self.calls = 0
         self.elapsed = 0.0
 
@@ -91,4 +92,8 @@ class AskedFor:
             return set()
         finally:
             self.elapsed += time.monotonic() - began
-        return _names(response.text or "", set(actions))
+        answer = response.text or ""
+        if not _ARRAY.search(answer):
+            self.unreadable += 1
+            log.warning("the asked-for check gave no list, so nothing passes it: %r", answer[:120])
+        return _names(answer, set(actions))
