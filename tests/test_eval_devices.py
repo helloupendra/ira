@@ -242,3 +242,14 @@ async def test_holds_can_be_switched_off_to_measure_them():
     report = await run_cases(runtime, cases)
     assert report.results[0].checks == 0
     assert report.calls == 1
+
+
+def test_a_canned_line_on_chat_is_our_bug_and_counted():
+    chat = Case("c", "chat", "mac", "thank you", no_tool=True)
+    assert any(
+        p.startswith("a canned line")
+        for p in score(chat, Turn(reply="I haven't done anything yet. Could you ask again?"))
+    )
+    device = Case("d", "own-device", "mac", "Open Safari", tools=["app_open"], device="mac")
+    words = score(device, Turn(reply="I haven't done anything yet. Could you ask again?"))
+    assert not any(p.startswith("a canned line") or p.startswith("said it did") for p in words)

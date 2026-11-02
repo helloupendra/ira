@@ -394,3 +394,66 @@ async def test_the_gates_eat_nothing_of_a_plain_answer(cut: int):
         out += promise.feed(markup.feed(think.feed(text[i : i + cut])))
     out += promise.feed(markup.feed(think.flush()) + markup.flush()) + promise.flush()
     assert out + promise.take() == text
+
+
+@pytest.mark.parametrize(
+    "reply", ["You're welcome! Let me know if you need anything.", "Done, I'll be here."]
+)
+async def test_a_thanks_is_only_talk_whatever_the_model_says(reply: str):
+    runtime, owner, ids, _ = world([reply])
+    events = await turn(runtime, owner, "thank you", ids["mac"])
+    assert events[-1]["text"] == reply
+    assert len(runtime.test_provider.calls) == 1
+
+
+async def test_a_courtesy_is_no_promise():
+    assert not promises("Let me know if you need anything else.")
+    assert not promises("I'll be here if you need me.")
+    assert promises("Let me check that.") and promises("I'll check that.")
+    assert not claims_done("I haven't done anything yet.")
+
+
+async def test_saying_it_cannot_is_an_answer():
+    words = "I can't read that window, and I will not try."
+    runtime, owner, ids, _ = world([words])
+    events = await turn(runtime, owner, "read my passwords", ids["mac"])
+    assert events[-1]["text"] == words
+
+
+async def test_words_that_are_not_promises_stay_when_the_rest_are_taken_out():
+    words = "Paris is the capital. Let me check more."
+    runtime, owner, ids, _ = world([words, words])
+    events = await turn(runtime, owner, "capital of France", ids["mac"])
+    assert events[-1]["text"] == "Paris is the capital."
+
+
+async def test_a_forced_round_with_nothing_to_say_is_not_said_again_as_a_stock_line():
+    runtime, owner, ids, _ = world(["Paris hai. Main dekhti hoon.", call("finish_turn", {})])
+    events = await turn(runtime, owner, "capital of France", ids["mac"])
+    assert events[-1]["text"] == "Paris hai."
+
+
+async def test_a_tool_on_several_devices_goes_only_to_the_one_named():
+    # 2 Nov 2026: asked for the Mac's calendar, it was read on the Mac, the Pixel and the iPhone.
+    runtime, owner, ids, ran = world([])
+    shared = DeviceTool("calendar_read", "Read the calendar.", NOTHING, "screen", 0)
+    mac = runtime.hub.connections[ids["mac"].id]
+    mac.tools = {**mac.tools, "calendar_read": shared}
+    pixel_id = ids["pixel"].id
+    runtime.test_provider.script = [
+        call("calendar_read", {"device": "Pixel 7"}),
+        call("calendar_read", {}),
+        "Yeh hai.",
+    ]
+    await turn(runtime, owner, "mac ke calendar mein kya hai", ids["pixel"])
+    assert (pixel_id, "calendar_read") not in ran
+    assert ran == [(ids["mac"].id, "calendar_read")]
+
+
+async def test_a_tool_on_several_devices_unnamed_runs_where_they_are():
+    runtime, owner, ids, ran = world([call("calendar_read", {}), "Yeh hai."])
+    shared = DeviceTool("calendar_read", "Read the calendar.", NOTHING, "screen", 0)
+    mac = runtime.hub.connections[ids["mac"].id]
+    mac.tools = {**mac.tools, "calendar_read": shared}
+    await turn(runtime, owner, "kal ke calendar mein kya hai", ids["pixel"])
+    assert ran == [(ids["pixel"].id, "calendar_read")]

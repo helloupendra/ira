@@ -41,7 +41,9 @@ from ira.promises import (
     asks_which_device,
     asks_yes_in_words,
     claims_done,
+    is_chatter,
     promises,
+    says_cannot,
     without_promises,
 )
 from ira.security import looks_like_pin
@@ -632,8 +634,8 @@ class Assistant:
 
             parameters = dict(tool.parameters)
             parameters["required"] = [r for r in parameters.get("required", []) if r != "device"]
-            return dataclasses.replace(
-                tool, parameters=parameters, route=route,
+            return _rerouted(
+                tool, route, parameters=parameters,
                 description=f"{tool.description} Without device, it runs on {name}, the device "
                 "the person is talking from; name another only when they ask for it.",
             )  # fmt: skip
@@ -740,11 +742,13 @@ class Assistant:
             self.check_promises
             and text is not None
             and not confirmed
+            and not is_chatter(asked)
             and any(t.source == "device" for t in personal.values())
         )
         proposable = any(t.tier >= 2 for t in personal.values())
         must_act = False
         finished = False
+        last_words = ""  # what the round before a forced one said, in case that one says nothing
         used: list[str] = []
         waiting = False
         asked_for: set[str] = set()
@@ -797,6 +801,8 @@ class Assistant:
                     )
                     said = _finish_words(response)
                     finished = finished or said is not None
+                    if not response.tool_calls and not (response.text or "").strip():
+                        response.text = last_words  # a forced round with nothing to say
                     if response.tool_calls:
                         asked_for.discard("goal")  # it went on: the next stop is checked too
                     piece = _without_foreign(response.text or "", keep_foreign)
@@ -829,6 +835,13 @@ class Assistant:
                 if forcing:  # no model here can be made to: the rule alone says it
                     log.warning("forcing a tool call failed: %s", exc)
                     continue
+                if last_words and any(e.kind == "empty" for _, e in exc.errors):
+                    # What it said before it was asked to go on is better than asking them again.
+                    final_text = without_promises(last_words, claims=not used)
+                    if _letters(final_text) >= 2:
+                        yield {"type": "delta", "text": final_text}
+                        history.append(Message(role="assistant", content=final_text))
+                        break
                 if not tight and any(e.kind == "too_long" for _, e in exc.errors):
                     # Too long for the model: send much less of the past, once, and go on.
                     log.warning("conversation too long for the model; sending less of it")
@@ -886,7 +899,9 @@ class Assistant:
                 held = promise.take()
                 if not response.tool_calls and not waiting:
                     words = response.text or ""
-                    empty = promises(words) or (not used and claims_done(words))
+                    empty = not says_cannot(words) and (
+                        promises(words) or (not used and claims_done(words))
+                    )
                     why = None if finished and not empty else _ask_again(
                         words, empty, asked, used, here, named, named_up, asked_for, proposable,
                         self.device_label,
@@ -894,6 +909,7 @@ class Assistant:
                     if why is not None:
                         log.warning("%s: asked to go on (%s)", model, why[0])
                         asked_for.add(why[0])
+                        last_words = words
                         system += f"- {why[1]}\n"
                         must_act = bool(tools)
                         continue
@@ -901,7 +917,7 @@ class Assistant:
                         from ira.language import detect
 
                         log.warning("%s still said it did something, with no tool", model)
-                        kept = without_promises(words) if used else ""
+                        kept = without_promises(words, claims=not used)
                         kept = kept if _letters(kept) >= 2 else NOT_DONE[detect(asked)]
                         response.text = held = kept
                 if held:
@@ -1448,6 +1464,23 @@ def _not_on_offer(
     )
 
 
+def _rerouted(
+    tool: PersonalTool,
+    route: Callable[[dict[str, Any]], tuple[int, dict[str, Any]]],
+    **changes: Any,
+) -> PersonalTool:
+    """A tool several devices offer, with a new way to choose the device. Its run goes the same
+    way: a tool that runs at once never asks `target`, so a route alone would guard nothing."""
+    original = tool.run
+    label_of = {device: label for label, device in tool.devices.items()}
+
+    async def run(arguments: dict[str, Any]) -> Any:
+        device_id, rest = route(arguments)
+        return await original({**rest, "device": label_of[device_id]})
+
+    return dataclasses.replace(tool, route=route, run=run, **changes)
+
+
 def _toward_named(tool: PersonalTool, named: set[int] | None) -> PersonalTool:
     """A tool several devices offer, sent to the device the person named unless the model names
     one of the same, and never to any other."""
@@ -1467,7 +1500,7 @@ def _toward_named(tool: PersonalTool, named: set[int] | None) -> PersonalTool:
             raise ToolError(f"the person named {first}, not {wanted}")
         return labels[first], {k: v for k, v in arguments.items() if k != "device"}
 
-    return dataclasses.replace(tool, route=routed, devices=labels)
+    return _rerouted(tool, routed, devices=labels)
 
 
 def _ask_again(

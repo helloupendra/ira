@@ -25,6 +25,7 @@ from typing import Any
 
 import yaml
 
+from ira.assistant import NOT_DONE, SAY_AGAIN
 from ira.config import Settings
 from ira.devices.hub import Connection, ToolError
 from ira.devices.protocol import DeviceTool
@@ -65,6 +66,9 @@ SPOKEN_TIME = re.compile(
 FALSE_DONE = "said it did something, with nothing run"
 WRONG_DEVICE = "wrong device"
 PROMISE = "promised and did nothing"
+CANNED = "a canned line on a turn that was only talk"
+# What she says when the model gave her nothing to say. On plain chat it is a bug of ours.
+CANNED_LINES = {*NOT_DONE.values(), *SAY_AGAIN.values()}
 # Counting what was shown ("3 apps") is not inventing a number.
 SMALL = 12
 DEVANAGARI_DIGITS = str.maketrans("०१२३४५६७८९", "0123456789")
@@ -120,6 +124,7 @@ class Result:
     false_done: int = 0
     wrong_device: int = 0
     promises: int = 0
+    canned: int = 0  # tries that ended in a fixed line, whatever the case
     first_word: float | None = None
     checks: int = 0
 
@@ -218,6 +223,8 @@ def score(case: Case, turn: Turn) -> list[str]:
         problems.append(f"{FALSE_DONE}: {turn.reply[:80]}")
     if not turn.waiting and promises(turn.reply):
         problems.append(f"{PROMISE}: {turn.reply[:80]}")
+    if turn.reply.strip() in CANNED_LINES and (case.no_tool or case.group == "chat"):
+        problems.append(f"{CANNED}: {turn.reply[:80]}")
     allowed = {case.device, case.origin}
     if case.device:
         strays = [
@@ -422,6 +429,9 @@ async def run_cases(runtime: Any, cases: list[Case], runs: int = 1) -> Report:
                 p.startswith(PROMISE) for p in problems
             )
             result.checks = (previous.checks if previous else 0) + len(turn.checks)
+            result.canned = (previous.canned if previous else 0) + (
+                turn.reply.strip() in CANNED_LINES
+            )
             if turn.first_word is not None:
                 firsts.setdefault(case.id, []).append(turn.first_word)
         assert result is not None
@@ -492,6 +502,8 @@ def render(report: Report) -> str:
     wrong = sum(r.wrong_device for r in report.results)
     promised = sum(r.promises for r in report.results)
     checks = sum(r.checks for r in report.results)
+    canned = sum(r.canned for r in report.results)
+    canned_chat = sum(r.canned for r in report.results if r.group in ("chat",))
     firsts = [r.first_word for r in report.results if r.first_word is not None]
     first = f"{statistics.median(firsts):.2f} s" if firsts else "none"
     runs = report.results[0].runs if report.results else 1
@@ -503,7 +515,8 @@ def render(report: Report) -> str:
         f"{report.output_tokens} out, cost {cost}, {report.seconds} s.",
         "",
         f"**{good} of {tries} tries passed ({share}%), over {runs} run(s).** False done: "
-        f"{false_done}. Wrong device: {wrong}. Promises: {promised}. First words, median of "
+        f"{false_done}. Wrong device: {wrong}. Promises: {promised}. Canned lines: "
+        f"{canned} ({canned_chat} on chat). First words, median of "
         f"cases: {first}. Asked to go on: {checks} times.",
         "",
         "| Group | Passed |",
