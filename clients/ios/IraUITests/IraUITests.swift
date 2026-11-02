@@ -101,18 +101,30 @@ final class IraUITests: XCTestCase {
         // Typing: the demo model answers over /v1/ask/stream.
         let field = app.textFields["ask-field"].exists ? app.textFields["ask-field"] : app.textViews["ask-field"]
         XCTAssertTrue(field.waitForExistence(timeout: 10))
-        field.tap()
+        focus(field)
         field.typeText("hello Ira")
         app.buttons["send-button"].tap()
         XCTAssertTrue(app.staticTexts["answer"].waitForExistence(timeout: 20))
 
         // A tool on this iPhone: Ira calls contacts_lookup over the device WebSocket,
         // and the simulator's sample contacts answer.
-        field.tap()
+        focus(field)
         field.typeText("contacts lookup query=Kate")
         app.buttons["send-button"].tap()
         app.navigationBars.firstMatch.staticTexts.firstMatch.tap()  // lets the monitor answer iOS, if it asks
         let kate = app.staticTexts.containing(NSPredicate(format: "label CONTAINS %@", "Kate Bell")).firstMatch
         XCTAssertTrue(kate.waitForExistence(timeout: 30), "Ira did not read the iPhone's contacts")
+    }
+
+    /// A tap on a slow runner can land before the field takes the keyboard: tap until it has it,
+    /// so typing never starts on a field without focus.
+    private func focus(_ field: XCUIElement) {
+        for _ in 0..<5 {
+            field.tap()
+            let focused = NSPredicate(format: "hasKeyboardFocus == true")
+            let waiter = XCTNSPredicateExpectation(predicate: focused, object: field)
+            if XCTWaiter().wait(for: [waiter], timeout: 3) == .completed { return }
+        }
+        XCTFail("the field never took the keyboard")
     }
 }
