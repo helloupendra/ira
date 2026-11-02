@@ -487,6 +487,8 @@ public final class DeviceClient: @unchecked Sendable {
                 lock.locked { currentSkills = now }
                 log.info("skills now \(now)")
                 onState(.connected(deviceID: deviceID, skills: skills))
+            case .control:
+                NotificationCenter.default.post(name: Approvals.changed, object: nil)
             case .drop(let change):
                 onDrop(change)
             case .error(let reason):

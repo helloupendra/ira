@@ -141,6 +141,13 @@ public final class AskClient: @unchecked Sendable {
         _ = try await send(try request(path ?? "/v1/me/approvals", method: "DELETE", timeout: 15))
     }
 
+    /// What is off the never-lists on this device; adding to it takes the person's PIN.
+    public func setUnlocked(deviceID: Int, groups: [String], pin: String?) async throws -> JSONValue {
+        var body: [String: JSONValue] = ["device_id": .number(Double(deviceID)), "groups": .array(groups.map { .string($0) })]
+        if let pin { body["pin"] = .string(pin) }
+        return JSONValue.parse(try await send(try request("/v1/me/approvals/unlocked", method: "PUT", json: .object(body), timeout: 15))) ?? .null
+    }
+
     /// Enrol this device's approval key (SubjectPublicKeyInfo, DER), with the person's PIN.
     public func enrolApprovalKey(publicKey: Data, pin: String) async throws -> JSONValue {
         let body: JSONValue = ["public_key": .string(publicKey.base64EncodedString()), "algorithm": "ES256", "pin": .string(pin)]

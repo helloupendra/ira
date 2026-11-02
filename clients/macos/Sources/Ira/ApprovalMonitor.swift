@@ -15,6 +15,8 @@ final class ApprovalMonitor: ObservableObject {
     @Published private(set) var problem: String?
     /// Apps on this Mac where Ira may act without asking (bundle ids), from the server.
     @Published private(set) var trustedApps: [String] = []
+    /// What the person took off the never-lists on this Mac, with their PIN.
+    @Published private(set) var unlocked: Set<String> = NeverApps.unlocked
 
     private let settings: AppSettings
     private let secrets: SecretStore
@@ -25,6 +27,9 @@ final class ApprovalMonitor: ObservableObject {
     init(settings: AppSettings, secrets: SecretStore) {
         self.settings = settings
         self.secrets = secrets
+        NotificationCenter.default.addObserver(forName: Approvals.changed, object: nil, queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated { Task { await self?.refresh() } }
+        }
     }
 
     var remaining: TimeInterval? {
@@ -50,6 +55,9 @@ final class ApprovalMonitor: ObservableObject {
         do {
             let state = Approvals.parse(try await client.approvals())
             trustedApps = state.trustedApps[deviceID] ?? []
+            // The server can take one away; only a PIN here adds one.
+            NeverApps.unlocked = NeverApps.unlocked.intersection(state.unlocked[deviceID] ?? [])
+            unlocked = NeverApps.unlocked
             show(state.windows.first { $0.deviceID == deviceID })
         } catch let failure as AskClient.Failure where failure.status == 404 {
             show(nil)  // a server without approvals
@@ -72,6 +80,22 @@ final class ApprovalMonitor: ObservableObject {
 
     func openTrustedAppsPage() {
         if let link = Approvals.manageLink(server: settings.server) { NSWorkspace.shared.open(link) }
+    }
+
+    /// Change what is off the never-lists here. Nil when done, else what went wrong.
+    func setUnlocked(_ groups: Set<String>, pin: String) async -> String? {
+        guard let client = client(), let deviceID = settings.deviceID else { return "This Mac is not paired." }
+        do {
+            _ = try await client.setUnlocked(deviceID: deviceID, groups: groups.sorted(), pin: pin.isEmpty ? nil : pin)
+            NeverApps.unlocked = groups
+            unlocked = groups
+            IraLog.shared.info("the never-lists changed on this Mac: \(groups.sorted())")
+            return nil
+        } catch let failure as AskClient.Failure {
+            return failure.message
+        } catch {
+            return error.localizedDescription
+        }
     }
 
     /// Stop the window at once: the next control step asks for the PIN again.

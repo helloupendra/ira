@@ -1,5 +1,6 @@
 import AppKit
 import IraKit
+import SwiftUI
 
 /// Ira's window drawn into PNGs, for docs and reviews: `IRA_SNAPSHOT=<folder> Ira` draws each
 /// part of the window in light and dark, then closes it and opens it again (as a click on the
@@ -79,6 +80,13 @@ enum Snapshot {
                 wait(1)
                 save(main.window, to: folder.appendingPathComponent("speaking-\(name)-\(dark ? "dark" : "light").png"))
             }
+        }
+        // The bar that stays over everything while Ira may control this Mac.
+        let bar = NSHostingView(rootView: ControlBannerView(approvals: model.approvals, shown: Approvals.banner(remaining: 12 * 60)))
+        bar.frame = NSRect(x: 0, y: 0, width: 420, height: 44)
+        if let rep = bar.bitmapImageRepForCachingDisplay(in: bar.bounds) {
+            bar.cacheDisplay(in: bar.bounds, to: rep)
+            try? rep.representation(using: .png, properties: [:])?.write(to: folder.appendingPathComponent("control-banner.png"))
         }
         // Listening to a microphone that gives nothing.
         model.conversation.caption = ""
