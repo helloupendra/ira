@@ -182,7 +182,7 @@ async def test_stop_disconnect_and_minutes():
         )
         runtime.approvals.open(owner.id, phone.id)
         off = client.put("/v1/me/approvals/minutes", json={"minutes": 0}, headers=me).json()
-        assert off == {"minutes": 0, "windows": [], "trusted_apps": []}
+        assert off == {"minutes": 0, "windows": [], "trusted_apps": [], "unlocked": []}
 
         # Trusting an app takes the PIN; trusting fewer does not.
         apps = {"device_id": phone.id, "apps": ["com.google.android.youtube"]}
