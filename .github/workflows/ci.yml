@@ -183,7 +183,14 @@ jobs:
         run: scripts/ci.sh simulator
         timeout-minutes: 10
       - name: IraPhoneKit's tests on the simulator
-        run: scripts/ci.sh kit
+        # Failed tests also as annotations, so they show on the run's page.
+        run: |
+          set -o pipefail
+          mkdir -p build
+          scripts/ci.sh kit 2>&1 | tee build/kit.log || {
+            grep -E "✘|error:|' failed \(" build/kit.log | head -10 | sed 's/^/::error::/'
+            exit 1
+          }
         timeout-minutes: 25
       - name: The app and its UI tests
         # Build errors and failed tests also as annotations, so they show on the run's page.
