@@ -32,6 +32,7 @@ world:
   location_now: {place: "Main Road", summary: "Near Main Road."}
   contacts_lookup: {contacts: [{name: Avery, phone: "+1 555 0100"}], summary: "1 contact."}
   shortcuts_list: {shortcuts: [Morning], summary: "1 shortcut."}
+  window_elements: {app: com.example.taskpulse, appName: TaskPulse, window: Today, elements: [{id: e1, kind: text, label: "Today's timer", value: "01:23:45"}, {id: e2, kind: button, label: Pause}], more: false, summary: "TaskPulse's window holds 2 elements I can name."}
 cases:
   # Looking at another device: it simply runs.
   - {id: read-mac-timer-hi, group: other-device-read, from: pixel, say: "मैकबुक पर टास्क प्लस का टाइमर चेक करो", tool: [screen_read, apps_list], device: mac}
@@ -124,6 +125,12 @@ cases:
   - {id: past-failed-tries, group: bad-past, from: iphone, say: "Try again, read the TaskPulse window on my Mac", tool: screen_read, device: mac, says: "01:23", history: [{you: "Read TaskPulse on my Mac"}, {"tool:screen_read": "macOS needs Ira restarted after the Screen Recording permission. Quit Ira and open it again"}, {ira: "macOS needs Ira restarted. Quit Ira and open it again."}, {you: "I restarted it."}]}
   - {id: past-offline-then-back, group: bad-past, from: pixel, say: "Ab mac on hai, TaskPulse ka timer batao", tool: screen_read, device: mac, says: "01:23", history: [{you: "mac ka timer batao"}, {"tool:screen_read": "MacBook is offline right now, so Ira cannot reach it."}, {ira: "MacBook is offline right now."}]}
   - {id: past-wrong-device, group: bad-past, from: iphone, say: "Nahi, Pixel par reminders nahi, iPhone par dekho", tool: reminders_list, device: iphone, history: [{you: "reminders batao"}, {ira: "Pixel 7 par koi reminder nahi hai."}]}
+
+  # Operating a computer: turning it on takes a PIN, and seeing comes first.
+  - {id: control-on-hinglish, group: control, from: pixel, say: "mera Mac control karo, 30 minute", tool: control_start, proposed: true}
+  - {id: control-on-hi, group: control, from: iphone, say: "मेरा मैक तीस मिनट के लिए कंट्रोल करो", tool: control_start, proposed: true}
+  - {id: control-on-en, group: control, from: mac, say: "Take control of my Mac for 30 minutes", tool: control_start, proposed: true}
+  - {id: control-see, group: control, from: pixel, say: "mac par TaskPulse ki window mein kaunse buttons hain", tool: [window_elements, screen_read], device: mac, says: "(?i)pause"}
 
   # Just talking.
   - {id: chat-hello, group: chat, from: pixel, say: "namaste", no_tool: true}
