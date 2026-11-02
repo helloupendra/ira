@@ -7,9 +7,14 @@
 const IraLive = (() => {
   const RATE = 16000;
   const FRAME_MS = 40; // audio goes up in 40 ms frames
-  const START_MS = 120; // this much speech starts a turn
-  const BARGE_MS = 250; // while Ira speaks, a little more: its own voice is not you
-  const HANGOVER_MS = 600; // this much quiet ends a turn
+  const START_MS = 160; // this much speech starts a turn: a cough or a knock is shorter
+  const BARGE_MS = 200; // while Ira speaks, a little more: its own voice is not you
+  const HANGOVER_MS = 900; // this much quiet ends a turn: a pause in a sentence is shorter
+  const CHECK_MS = 300; // a sound over Ira's voice is watched this long, with her turned down
+  const LOUD_SHARE = 0.6; // and must stay loud for this share of it to be you, not her echo
+  const DUCK_LEVEL = 0.15; // how far she is turned down meanwhile
+  const ECHO_TAIL_MS = 400; // her voice may still be in the room this long after she stopped
+  const DUCK_AT_MOST_MS = 8000; // the server always answers; if that was lost, she comes back up
   const PREROLL_MS = 300; // and the 300 ms before speech goes too
   const MIN_LEVEL = 0.012;
 
@@ -112,6 +117,8 @@ const IraLive = (() => {
     if (context.state !== "running") await context.resume().catch(() => {});
     const source = context.createMediaStreamSource(stream);
     const node = new AudioWorkletNode(context, "recorder");
+    const volume = context.createGain();
+    volume.connect(context.destination);
     const scheme = location.protocol === "https:" ? "wss" : "ws";
     const ws = new WebSocket(`${scheme}://${location.host}/v1/voice/live`);
     ws.binaryType = "arraybuffer";
@@ -120,10 +127,18 @@ const IraLive = (() => {
       stream,
       context,
       node,
+      volume,
       level: 0,
       floor: MIN_LEVEL / 2,
       voiced: 0,
       speaking: false,
+      check: null, // a sound over Ira's voice, being watched before any of it is sent
+      talkingOver: false, // you are talking over her: the server decides by your words
+      duckedAt: null,
+      echoUntil: 0,
+      voicedTurn: 0, // the last turn whose voice came
+      heardTurn: 0,
+      doneThrough: 0, // the last turn that is complete
       lastVoiced: 0,
       frame: [],
       frameSamples: 0,
@@ -137,6 +152,7 @@ const IraLive = (() => {
       decoding: Promise.resolve(),
       stopped: new Set(), // turns whose audio was cut off
       turns: new Map(), // turn number -> its Ira bubble
+      yours: new Map(), // turn number -> your line, and what was remembered of it
       ready: false,
       wakeLock: null,
     };
@@ -194,9 +210,14 @@ const IraLive = (() => {
     const ms = (samples.length / call.context.sampleRate) * 1000;
     const level = rms(samples);
     call.level = level;
-    const playing = call.sources.length > 0;
-    const threshold = Math.max(MIN_LEVEL, call.floor * 3) * (playing ? 1.5 : 1);
-    if (level > threshold) {
+    if (call.duckedAt !== null && !call.speaking && now - call.duckedAt > DUCK_AT_MOST_MS) {
+      duck(false);
+      call.talkingOver = false;
+    }
+    const guarded = replying(now) && !call.talkingOver;
+    const threshold = Math.max(MIN_LEVEL, call.floor * 3) * (guarded ? 1.5 : 1);
+    const loud = level > threshold;
+    if (loud) {
       call.voiced += ms;
       call.lastVoiced = now;
     } else {
@@ -208,24 +229,50 @@ const IraLive = (() => {
       call.preroll.push(pcm);
       call.prerollSamples += pcm.length;
       while (call.prerollSamples > (RATE * PREROLL_MS) / 1000) call.prerollSamples -= call.preroll.shift().length;
-      if (call.ready && call.voiced >= (playing ? BARGE_MS : START_MS)) {
+      if (call.ready && call.voiced >= (guarded ? BARGE_MS : START_MS)) {
         call.speaking = true;
-        if (playing) cutOff();
-        send({ type: "speech_start", at: now });
         call.frame = [...call.preroll];
         call.frameSamples = call.prerollSamples;
         call.preroll = [];
         call.prerollSamples = 0;
-        label("Listening…");
+        if (guarded) {
+          // Ira is talking: this may be you, or her own voice from the speakers. She is turned
+          // down while it is checked; only your words, on the server, stop her.
+          duck(true);
+          call.check = { start: now, frames: 0, loud: 0 };
+        } else {
+          send({ type: "speech_start", at: now });
+          label("Listening…");
+        }
       }
       return;
     }
     call.frame.push(pcm);
     call.frameSamples += pcm.length;
+    if (call.check) {
+      call.check.frames += 1;
+      if (loud) call.check.loud += 1;
+      if (now - call.check.start < CHECK_MS) return;
+      const { start, frames, loud: stayed } = call.check;
+      call.check = null;
+      if (stayed < frames * LOUD_SHARE) {
+        // It faded with her voice: her echo. Nothing was sent, and she comes back up.
+        duck(false);
+        call.speaking = false;
+        call.voiced = 0;
+        call.frame = [];
+        call.frameSamples = 0;
+        return;
+      }
+      call.talkingOver = true;
+      send({ type: "speech_start", at: start });
+      label("Listening…");
+    }
     if (call.frameSamples >= (RATE * FRAME_MS) / 1000) flush();
     if (now - call.lastVoiced >= HANGOVER_MS) {
       flush();
       call.speaking = false;
+      call.talkingOver = false;
       call.voiced = 0;
       send({ type: "speech_end", at: call.lastVoiced });
       label("Thinking…");
@@ -242,8 +289,25 @@ const IraLive = (() => {
 
   // --- Ira's voice -----------------------------------------------------------------
 
+  // She is speaking, or about to go on, or was a moment ago: gaps between sentences count.
+  function replying(now) {
+    return call.sources.length > 0 || call.voicedTurn > call.doneThrough || now < call.echoUntil;
+  }
+
+  function duck(on) {
+    call.duckedAt = on ? performance.now() : null;
+    call.volume.gain.setTargetAtTime(on ? DUCK_LEVEL : 1, call.context.currentTime, 0.02);
+  }
+
+  // Nothing more of hers is playing or coming.
+  function quiet() {
+    if (call.voicedTurn > 0) call.echoUntil = performance.now() + ECHO_TAIL_MS;
+    if (call.duckedAt !== null) duck(false);
+  }
+
   function cutOff() {
     if (!call) return;
+    call.echoUntil = performance.now() + ECHO_TAIL_MS;
     for (const s of call.sources) {
       try {
         s.stop();
@@ -266,7 +330,7 @@ const IraLive = (() => {
         if (call !== current || current.stopped.has(turn)) return;
         const source = current.context.createBufferSource();
         source.buffer = buffer;
-        source.connect(current.context.destination);
+        source.connect(current.volume);
         const at = Math.max(current.context.currentTime + 0.02, current.nextStart);
         source.start(at);
         current.nextStart = at + buffer.duration;
@@ -274,7 +338,11 @@ const IraLive = (() => {
         current.playingTurn = turn;
         source.addEventListener("ended", () => {
           current.sources = current.sources.filter((s) => s !== source);
-          if (!current.sources.length && call === current && !current.speaking) label("Listening…");
+          if (current.sources.length || call !== current) return;
+          // Between two sentences she is still speaking: the next is on its way.
+          if (current.voicedTurn > current.doneThrough) return;
+          quiet();
+          if (!current.speaking) label(current.heardTurn > current.doneThrough ? "Thinking…" : "Listening…");
         });
         if (!current.reported.has(turn)) {
           current.reported.add(turn);
@@ -297,6 +365,22 @@ const IraLive = (() => {
       call.turns.set(turn, li);
     }
     return li;
+  }
+
+  // That turn was the first half of a sentence: its lines go, its words are in the next.
+  function forget(turn) {
+    const yours = call.yours.get(turn);
+    if (yours) {
+      yours.li.remove();
+      const index = state.turns.lastIndexOf(yours.remembered);
+      if (index >= 0) state.turns.splice(index, 1);
+      call.yours.delete(turn);
+    }
+    const li = call.turns.get(turn);
+    if (li) {
+      li.remove();
+      call.turns.delete(turn);
+    }
   }
 
   function onMessage(data) {
@@ -322,11 +406,15 @@ const IraLive = (() => {
       case "partial":
         label(message.text || "Listening…");
         break;
-      case "heard":
-        addTurn("user", message.text);
-        remember({ role: "user", text: message.text });
+      case "heard": {
+        if (message.replaces != null) forget(message.replaces);
+        call.heardTurn = Math.max(call.heardTurn, message.turn);
+        const remembered = { role: "user", text: message.text };
+        call.yours.set(message.turn, { li: addTurn("user", message.text), remembered });
+        remember(remembered);
         bubble(message.turn);
         break;
+      }
       case "delta": {
         const li = bubble(message.turn);
         const text = $(".turn-text", li);
@@ -336,6 +424,7 @@ const IraLive = (() => {
       }
       case "audio":
         call.header = message;
+        if (!call.stopped.has(message.turn)) call.voicedTurn = Math.max(call.voicedTurn, message.turn);
         break;
       case "action":
         actionCard(message.action);
@@ -346,11 +435,27 @@ const IraLive = (() => {
         remember({ role: "ira", text: message.text, how: { model: null, tools: [] } });
         if (message.message_id && typeof IraPersonal !== "undefined") IraPersonal.answered(li, message.message_id);
         announce(message.text);
-        if (!call.sources.length && !call.speaking) label("Listening…");
+        call.doneThrough = Math.max(call.doneThrough, message.turn);
+        if (!call.sources.length && call.voicedTurn <= call.doneThrough) {
+          quiet();
+          if (!call.speaking) label(call.heardTurn > call.doneThrough ? "Thinking…" : "Listening…");
+        }
         break;
       }
       case "interrupted":
         call.stopped.add(message.turn);
+        call.doneThrough = Math.max(call.doneThrough, message.turn);
+        // Your words were heard: she stops now, even an answer that was fully sent.
+        if (call.playingTurn !== null && call.playingTurn <= message.turn) cutOff();
+        if (call.duckedAt !== null) duck(false);
+        break;
+      case "speech_ignored":
+        // A noise, or her own voice: she comes back up, and the answer on its way stands.
+        if (call.duckedAt !== null) duck(false);
+        if (!call.speaking) {
+          if (call.sources.length) label("Ira is speaking…");
+          else label(call.heardTurn > call.doneThrough ? "Thinking…" : "Listening…");
+        }
         break;
       case "ping":
         send({ type: "pong" });
