@@ -582,3 +582,20 @@ async def test_out_of_steps_with_only_a_promise_says_what_was_tried():
     runtime.assistant.max_tool_rounds = 1
     events = await turn(runtime, owner, "screen padho", ids["mac"])
     assert "I tried screen_read" in events[-1]["text"]
+
+
+async def test_the_turn_says_which_round_its_final_words_came_from():
+    runtime, owner, ids, _ = world(["Paris."])
+    events = await turn(runtime, owner, "capital of France", ids["mac"])
+    assert events[-1]["said_in"] == "first"
+    runtime, owner, ids, _ = world([call("screen_read"), "Yeh mila."])
+    events = await turn(runtime, owner, "screen padho", ids["mac"])
+    assert events[-1]["said_in"] == "later"
+    done = call("finish_turn", {"say": "It cannot."})
+    runtime, owner, ids, _ = world(["Main dekhti hoon.", done])
+    events = await turn(runtime, owner, "screen padho", ids["mac"])
+    assert events[-1]["said_in"] == "forced"
+    runtime, owner, ids, _ = world([call("screen_read"), "Yeh mila."])
+    runtime.assistant.max_tool_rounds = 1
+    events = await turn(runtime, owner, "screen padho", ids["mac"])
+    assert events[-1]["said_in"] == "wrap-up"

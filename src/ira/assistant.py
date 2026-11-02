@@ -875,6 +875,7 @@ class Assistant:
             seconds=patience * 2 if patience else None,
         )
         withheld: set[str] = set()
+        said_in = ""  # which round the final words came from, to trace a bad one
 
         budget, tight = self.history_chars, False
         asked_again = False
@@ -885,7 +886,7 @@ class Assistant:
                 (i for i in range(len(history) - 1, -1, -1) if history[i].role == "user"), start
             )
         controlling = self.approvals is not None and bool(self.approvals.prompt_lines(user_id, str))
-        for _ in range(max(self.max_tool_rounds, CONTROL_ROUNDS if controlling else 0)):
+        for round_number in range(max(self.max_tool_rounds, CONTROL_ROUNDS if controlling else 0)):
             sent = fit(history, budget, current_from=current_from, tight=tight)
             messages = [Message(role="system", content=system), *sent]
             if cue and history and history[-1].role != "tool":
@@ -953,6 +954,7 @@ class Assistant:
                 if last_words and any(e.kind == "empty" for _, e in exc.errors):
                     # What it said before it was asked to go on is better than asking them again.
                     final_text = without_promises(last_words, claims=not used)
+                    said_in = "last words"
                     if _letters(final_text) >= 2:
                         yield {"type": "delta", "text": final_text}
                         history.append(Message(role="assistant", content=final_text))
@@ -967,7 +969,7 @@ class Assistant:
                     # A model was reached but said nothing: ask again, never answer blank.
                     from ira.language import detect
 
-                    final_text, model = SAY_AGAIN[detect(asked)], None
+                    final_text, model, said_in = SAY_AGAIN[detect(asked)], None, "fixed line"
                     yield {"type": "delta", "text": final_text}
                     history.append(Message(role="assistant", content=final_text))
                     break
@@ -1065,6 +1067,7 @@ class Assistant:
                     response.text = SAY_AGAIN[detect(asked)]
                     yield {"type": "delta", "text": response.text}
                 final_text = response.text
+                said_in = "forced" if forcing else "first" if round_number == 0 else "later"
                 if _QUOTED_START.match(final_text or ""):
                     # The leftovers of a call half-written as text, or of a dropped clause.
                     log.warning(
@@ -1137,7 +1140,7 @@ class Assistant:
             }
             tools = [t for t in tools if t["name"] not in spent] or tools
         else:
-            final_text, wrap_model = "", None
+            final_text, wrap_model, said_in = "", None, "wrap-up"
             # Out of steps, and no round is left to check its words: promises are only cut.
             wrap_gate = PromiseGate() if on_devices else None
             async for piece, wrapped_by in self._wrap_up(
@@ -1172,6 +1175,7 @@ class Assistant:
             "checks": sorted(asked_for),
             "asked_calls": asked_check.calls,
             "asked_seconds": round(asked_check.elapsed, 2),
+            "said_in": said_in,
         }
 
     async def _again_in_language(

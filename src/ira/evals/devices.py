@@ -122,6 +122,8 @@ class Turn:
     calls: list[tuple[str, dict[str, Any]]] = field(default_factory=list)  # what ran, in full
     asked_calls: int = 0  # the asked-for check: how many, and how long they took in all
     asked_seconds: float = 0.0
+    model: str = ""  # who wrote the final words, and in which round
+    said_in: str = ""
 
 
 @dataclass
@@ -148,6 +150,8 @@ class Result:
     steered: int = 0
     asked_calls: int = 0
     asked_seconds: float = 0.0
+    model: str = ""
+    said_in: str = ""
 
 
 @dataclass
@@ -435,6 +439,8 @@ async def run_case(runtime: Any, world: World, case: Case, attempt: int = 0) -> 
                 turn.checks = list(event.get("checks") or [])
                 turn.asked_calls = int(event.get("asked_calls") or 0)
                 turn.asked_seconds = float(event.get("asked_seconds") or 0.0)
+                turn.model = str(event.get("model") or "")
+                turn.said_in = str(event.get("said_in") or "")
             elif event["type"] == "tool":  # what it worked out itself: 5 minutes is 300 seconds
                 turn.seen += f" {json.dumps(event.get('arguments'), ensure_ascii=False)}"
             elif event["type"] == "tool_result":
@@ -475,6 +481,8 @@ async def run_cases(runtime: Any, cases: list[Case], runs: int = 1) -> Report:
                 ran=[f"{tool}@{device}" for tool, device in turn.ran],
                 waiting=[f"{tool}@{device}" for tool, device in turn.waiting],
                 refused=list(turn.refused),
+                model=turn.model,
+                said_in=turn.said_in,
                 reply=turn.reply,
                 seconds=0.0,
                 runs=runs,
@@ -606,9 +614,9 @@ def render(report: Report) -> str:
     lines += [
         "",
         "| | Passed | Case | From | Said | Used | Waiting for a yes | First words (s) | Problems "
-        "| Ira said |",
+        "| Model | Said in | Ira said |",
     ]
-    lines.append("|---|---|---|---|---|---|---|---|---|---|")
+    lines.append("|---|---|---|---|---|---|---|---|---|---|---|---|")
     for r in report.results:
         cells = [
             "pass" if r.ok else "FAIL",
@@ -620,6 +628,8 @@ def render(report: Report) -> str:
             ", ".join(r.waiting),
             "" if r.first_word is None else f"{r.first_word:.2f}",
             "; ".join(r.problems),
+            r.model,
+            r.said_in,
             r.reply[:400],
         ]
         lines.append(
