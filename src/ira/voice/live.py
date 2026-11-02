@@ -181,6 +181,7 @@ class LiveCall:
         self.talking: Turn | None = None  # the last turn whose voice went out
         self.spoken: list[tuple[float, str]] = []  # what Ira said lately, for her echo
         self.words_heard = False  # in this utterance: Ira was already stopped for it
+        self.over_her = True  # this utterance began while Ira's voice was playing
         # The first half of a sentence waiting for the next utterance, and the turn it was.
         self.carried: tuple[str, int | None] | None = None
         self.hold: asyncio.Task[None] | None = None
@@ -248,7 +249,7 @@ class LiveCall:
             return True
         kind = message.get("type")
         if kind == "speech_start":
-            await self.speech_start()
+            await self.speech_start(message.get("over"))
         elif kind == "speech_end":
             await self.speech_end(_number(message.get("at")))
         elif kind == "text":
@@ -273,11 +274,13 @@ class LiveCall:
         if self.audio_bytes <= MAX_AUDIO_BYTES:
             self.transcription.feed(chunk)
 
-    async def speech_start(self) -> None:
-        """Something was heard. Not an interruption yet: only words are (`_words_heard`)."""
+    async def speech_start(self, over: Any = None) -> None:
+        """Something was heard. Not an interruption yet: only words are (`_words_heard`).
+        `over`: it began over Ira's voice. Older apps do not say, so they may have."""
         self._stop_holding()  # a fragment waiting for its rest: this may be it
         if self.transcription is not None:
             return
+        self.over_her = over is None or bool(over)
         self.audio_bytes = 0
         self.words_heard = False
         stt = self.runtime.stt
@@ -288,12 +291,16 @@ class LiveCall:
         self.transcription = stt.live(self.languages(), partial)
 
     async def _partial(self, text: str, language: str | None) -> None:
-        if not text.strip() or maybe_echo(text, self._spoken_lately()):
+        if not text.strip() or maybe_echo(text, self._perhaps_hers()):
             return  # perhaps her own voice: more words will tell
         await self._words_heard()
         await self.send({"type": "partial", "text": text, "language": language})
 
-    def _spoken_lately(self) -> list[str]:
+    def _perhaps_hers(self) -> list[str]:
+        """What this utterance may be an echo of. With Ira quiet when it began, nothing: a
+        reply uses her words, and it is still the person's."""
+        if not self.over_her:
+            return []
         since = self.clock() - ECHO_MEMORY_SECONDS
         self.spoken = [(at, line) for at, line in self.spoken if at >= since]
         return [line for _, line in self.spoken]
@@ -392,7 +399,7 @@ class LiveCall:
                 self.audio_bytes >= TRIED_BYTES
                 and self.current is None
                 and self.carried is None
-                and not self._spoken_lately()
+                and not self._perhaps_hers()
             ):
                 await self.send(
                     {
@@ -403,7 +410,7 @@ class LiveCall:
                 )
             await self._no_turn(at, language, started)
             return
-        if looks_like_echo(text, self._spoken_lately()):
+        if looks_like_echo(text, self._perhaps_hers()):
             log.info("heard Ira's own voice; not a turn")
             await self._no_turn(at, language, started)
             return

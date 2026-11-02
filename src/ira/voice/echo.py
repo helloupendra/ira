@@ -3,11 +3,13 @@
 A phone's echo cancelling does not catch everything: her voice from the speaker reaches the
 microphone and comes back from the speech-to-text as words. They are hers, often in another
 script (she writes "Kal do appointments hain", it hears "कल दो अपॉइंटमेंट्स हैं"), so words
-are compared by their consonants, which both scripts share.
+are compared by their consonants, which both scripts share. An echo comes back as runs of her
+words in her order; a person's reply reuses her words in its own, and is not one.
 """
 
 from __future__ import annotations
 
+import difflib
 import re
 
 _DEVANAGARI = {
@@ -26,8 +28,11 @@ _LATIN = (
 _WORD = re.compile(r"[\w\u0900-\u097f]+")  # with Devanagari's vowel signs, which \\w leaves out
 # How much of what was heard must be hers.
 ECHO_SHARE = 0.75
-# Fewer words than this are his at the end of a turn: a "haan" is an answer, even to her "haan".
+# Fewer words than this are the person's at the end of a turn: a "haan" is an answer, even to
+# her "haan".
 ECHO_WORDS = 3
+# Her words in a row that count as her saying them: one word alone proves nothing.
+ECHO_RUN = 2
 
 
 def skeleton(word: str) -> str:
@@ -42,12 +47,15 @@ def skeleton(word: str) -> str:
 
 
 def _share(heard: str, spoken: list[str]) -> tuple[float, int]:
-    """How much of what was heard she said lately, and how many words that is of."""
-    hers = {s for line in spoken for s in map(skeleton, _WORD.findall(line)) if s}
+    """How much of what was heard she said lately, in runs in her order, and how many words
+    that is of."""
+    hers = [s for line in spoken for s in map(skeleton, _WORD.findall(line)) if s]
     words = [s for s in map(skeleton, _WORD.findall(heard)) if s]
     if not words or not hers:
         return 0.0, len(words)
-    return sum(word in hers for word in words) / len(words), len(words)
+    blocks = difflib.SequenceMatcher(None, words, hers, autojunk=False).get_matching_blocks()
+    run = min(ECHO_RUN, len(words))
+    return sum(b.size for b in blocks if b.size >= run) / len(words), len(words)
 
 
 def maybe_echo(heard: str, spoken: list[str]) -> bool:

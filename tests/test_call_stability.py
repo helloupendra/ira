@@ -99,13 +99,16 @@ class Call:
     async def start(self) -> None:
         await self.live.start({"type": "start", "conversation_id": "c1"})
 
-    async def speak(self, audio: bytes = LONG) -> None:
+    async def speak(self, audio: bytes = LONG, over: bool | None = None) -> None:
         """The app heard speech, and it ended."""
-        await self.begin_speaking(audio)
+        await self.begin_speaking(audio, over)
         await self.stop_speaking()
 
-    async def begin_speaking(self, audio: bytes = LONG) -> None:
-        await self.live.on_text(json.dumps({"type": "speech_start", "at": 1.0}))
+    async def begin_speaking(self, audio: bytes = LONG, over: bool | None = None) -> None:
+        start: dict[str, Any] = {"type": "speech_start", "at": 1.0}
+        if over is not None:
+            start["over"] = over
+        await self.live.on_text(json.dumps(start))
         await self.live.on_audio(audio)
         await asyncio.sleep(0)  # partials go out
 
@@ -362,6 +365,31 @@ async def test_a_noise_after_a_fragment_does_not_lose_it():
     await call.finished(1)
     assert call.of("heard")[0]["text"] == "ira"
     await call.close()
+
+
+async def test_a_reply_in_her_own_words_is_the_persons_when_she_was_quiet():
+    # 2 Nov 2026: "mai bolta hu toh sunti nhi": a reply was dropped as her echo for 25 s after.
+    call = Call(
+        ScriptedProvider(["Pehla sentence hai.", "Theek hai."]),
+        {"partials": ["kal ka schedule"], "final": "kal ka schedule kya hai"},
+        {"partials": ["pehla sentence hai"], "final": "pehla sentence hai"},
+    )
+    await call.start()
+    await call.speak()
+    await call.finished(1)
+    await call.speak(over=False)
+    await call.finished(2)
+    assert [m["text"] for m in call.of("heard")][1] == "pehla sentence hai"
+    assert not call.of("speech_ignored")
+    await call.close()
+
+
+def test_a_reply_that_reuses_her_words_is_not_her_echo():
+    spoken = ["Aaj admin account mein nuksan hua hai aur ek position khuli hai."]
+    assert looks_like_echo("admin account mein nuksan hua", spoken)  # a run, in her order
+    assert not looks_like_echo("hua hai aaj", spoken)  # her words, in the person's order
+    assert not looks_like_echo("position aaj nuksan account", spoken)
+    assert not maybe_echo("nuksan aaj", spoken)
 
 
 def test_echo_is_told_from_the_person_in_either_script():

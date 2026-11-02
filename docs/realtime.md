@@ -34,10 +34,13 @@ you speak ──► the app's voice detector ──► audio, only while you spe
   answer is dropped and the two are answered as one (`heard` with `replaces`).
   A word or two that is no reply by itself waits 1.2 s for the rest.
 - **Barge-in is by words**: when the app hears something while Ira talks, it
-  turns her down and sends the speech (`speech_start`). Only words stop her:
-  the server sends `interrupted`, and the app stops playing. A cough, a click or
-  her own voice coming back (the same words she just said, in either script)
-  end in `speech_ignored`: she comes back up and the answer goes on.
+  turns her down and sends the speech (`speech_start`, with `over`). Words stop
+  her: the server sends `interrupted`, and the app stops playing. A cough, a
+  click or her own voice coming back (a run of the words she just said, in either
+  script) end in `speech_ignored`, and the answer goes on. She is turned down only
+  while the sound lasts, 3 s at most. If it stays loud with her turned down
+  (1.2 s, louder than her echo at full volume), it is a person whatever the
+  speech-to-text has said so far: the app stops her itself (`interrupt`).
 - **Sentence by sentence**: Ira's answer streams from the model; each
   sentence is spoken as soon as it is complete, so the first words play
   while the rest is still being written.
@@ -81,7 +84,7 @@ Messages are JSON text frames, except audio, which goes in binary frames.
 | --- | --- |
 | `{"type": "start", "protocol": 1, "client": "ira-pwa/0.2", "conversation_id": "..."}` | first, once. `conversation_id` is optional: the same one continues a conversation; without it, a new one starts |
 | binary audio | while you speak |
-| `{"type": "speech_start", "at": 1234.5}` | the voice detector heard speech start. It does not interrupt Ira by itself: words do. `at`: the app's own clock, in milliseconds (`performance.now()` or monotonic), the same clock for every message |
+| `{"type": "speech_start", "at": 1234.5, "over": false}` | the voice detector heard speech start. It does not interrupt Ira by itself: words do. `at`: the app's own clock, in milliseconds (`performance.now()` or monotonic), the same clock for every message. `over`: it began while Ira's voice was playing; only then can it be her echo (left out: it may have) |
 | `{"type": "speech_end", "at": 2345.6}` | you stopped: after the app's hangover (about 900 ms of quiet). `at` is when the last spoken audio ended, not when the hangover ran out |
 | `{"type": "text", "text": "..."}` | a typed turn, in the same conversation |
 | `{"type": "interrupt"}` | stop talking and stop this answer (a stop button) |
