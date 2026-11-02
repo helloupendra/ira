@@ -1,0 +1,153 @@
+"""The device scorecard: its set, its scoring, and a run with scripted models. The real models
+are only ever used by `ira eval devices` on the owner's machine, never here."""
+
+from __future__ import annotations
+
+import json
+from typing import Any
+
+import pytest
+
+from ira.evals.devices import (
+    LABELS,
+    Case,
+    Turn,
+    invented_numbers,
+    load_cases,
+    load_tools,
+    load_world,
+    render,
+    run_cases,
+    score,
+)
+from ira.language import detect
+from ira.models.base import ChatResponse, ToolCall
+from ira.models.fake import ScriptedProvider
+
+from .conftest import make_runtime
+
+pytestmark = pytest.mark.anyio
+
+# What Ira said on 2 Nov 2026, from the Pixel, with the Mac connected.
+REFUSAL = "MacBook ke screen_read ke liye aapko MacBook se hi baat karni hoti hai."
+
+
+def test_the_set_covers_what_was_asked_for():
+    cases = load_cases()
+    assert len(cases) >= 60
+    assert len({c.id for c in cases}) == len(cases)
+    assert {c.origin for c in cases} == {"pixel", "iphone", "mac", "web"}
+    assert {detect(c.say) for c in cases} >= {"hi", "hinglish", "en"}
+    groups = {c.group for c in cases}
+    assert groups >= {
+        "other-device-read", "misheard", "other-device-act", "offline", "tool-error", "multi-step",
+    }  # fmt: skip
+
+
+def test_every_tool_named_is_one_the_device_offers():
+    tools = {device: {t["name"] for t in some} for device, some in load_tools().items()}
+    for case in load_cases():
+        for device in case.offline:
+            assert device in LABELS, case.id
+        if case.device is None:
+            continue
+        for name in case.tools:
+            assert name in tools[case.device], case.id
+        for name in case.then:
+            assert name in tools[case.device] or name in {
+                t for some in tools.values() for t in some
+            }, case.id
+    assert set(load_world()) <= {t for some in tools.values() for t in some}
+
+
+def timer() -> Case:
+    return Case("c", "g", "pixel", "मैकबुक पर टाइमर चेक करो", tools=["screen_read"], device="mac")
+
+
+def test_todays_refusal_fails_on_both_counts():
+    problems = score(timer(), Turn(reply=REFUSAL))
+    assert "told them to talk from another device" in problems
+    assert any("did not use screen_read" in p for p in problems)
+
+
+def test_reading_on_the_right_device_passes():
+    seen = "TaskPulse timer 01:23:45"
+    good = Turn(reply="Timer 01:23:45 dikha raha hai.", ran=[("screen_read", "mac")], seen=seen)
+    assert score(timer(), good) == []
+
+
+def test_the_wrong_device_fails():
+    turn = Turn(reply="Done.", ran=[("screen_read", "pixel")])
+    assert any("wrong device" in p for p in score(timer(), turn))
+
+
+def test_a_number_from_nowhere_fails():
+    assert invented_numbers("Aapka nuksan 10,622 hai.", "timer 01:23:45") == ["10,622"]
+    assert invented_numbers("Timer 01:23:45 hai.", "timer 01:23:45") == []
+    assert invented_numbers("3 apps chal rahe hain.", "") == []
+    assert invented_numbers("टाइमर १८२५० है", "18,250") == []
+
+
+def test_acting_on_another_device_must_wait_and_name_it():
+    case = Case("c", "g", "pixel", "mac par safari kholo", ["app_open"], "mac", proposed=True)
+    waited = Turn(
+        reply="Shall I?", waiting=[("app_open", "mac")], summaries=["Open Safari on MacBook"]
+    )
+    assert score(case, waited) == []
+    ran = Turn(reply="Opened.", ran=[("app_open", "mac")])
+    assert any("without a yes" in p for p in score(case, ran))
+    unnamed = Turn(reply="Shall I?", waiting=[("app_open", "mac")], summaries=["Open Safari"])
+    assert any("does not name" in p for p in score(case, unnamed))
+
+
+def test_a_tools_internal_words_fail():
+    assert any("leaked" in p for p in score(timer(), Turn(reply="unknown tool 'screen_read'")))
+
+
+class Perfect(ScriptedProvider):
+    """A model that does what each case wants, from the case it is told about."""
+
+    def __init__(self, cases: list[Case]) -> None:
+        super().__init__()
+        self.by_words = {c.say: c for c in cases}
+
+    async def _next(self, model: str, messages: list[Any], tools: Any) -> ChatResponse:
+        self.calls.append({"model": model, "messages": list(messages), "tools": tools})
+        asked = next(m.content for m in reversed(messages) if m.role == "user")
+        case = self.by_words[asked]
+        done = [m.tool_call_id for m in messages if m.role == "tool"]
+        steps = [
+            *case.tools[:1],
+            *case.then,
+        ]
+        offered = {t["name"]: t for t in tools or []}
+        if len(done) < len(steps) and steps[len(done)] in offered:
+            name = steps[len(done)]
+            arguments: dict[str, Any] = {}
+            properties = offered[name]["parameters"].get("properties", {})
+            if "device" in properties and case.device:
+                arguments["device"] = LABELS[case.device]
+            call = ToolCall(f"c{len(done)}", name, json.dumps(arguments))
+            return ChatResponse(text="", tool_calls=[call], model=model)
+        said = case.says.replace("(?i)", "") or "Ho gaya."  # these sets say plain words
+        return ChatResponse(text=said, model=model)
+
+
+async def test_a_good_model_scores_well_without_any_real_model():
+    cases = [c for c in load_cases() if c.group in {"other-device-read", "only-that-device"}]
+    runtime = make_runtime(provider=Perfect(cases))
+    report = await run_cases(runtime, cases)
+    failed = [(r.id, r.problems, r.ran, r.waiting, r.reply) for r in report.results if not r.ok]
+    assert failed == []
+    assert report.calls > 0
+    assert "| pass |" in render(report)
+
+
+async def test_a_model_that_refuses_is_caught():
+    cases = [c for c in load_cases() if c.id == "read-mac-timer-hi"]
+    runtime = make_runtime(provider=ScriptedProvider([REFUSAL]))
+    report = await run_cases(runtime, cases)
+    assert not report.results[0].ok
+    assert "told them to talk from another device" in report.results[0].problems
+    card = render(report)
+    assert "FAIL" in card and "**0 of 1 passed.**" in card and REFUSAL in card

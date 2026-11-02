@@ -12,6 +12,7 @@ ira token list | revoke ID|LABEL
 ira telegram pair                 print a one-time pairing code
 ira demo seed                     create demo data for the configured tools
 ira eval language [--spoken]      measure Hindi, English and Hinglish understanding
+ira eval devices [--out card.md]  score reaching each device with the right tool, from any device
 ira drop login | send | list | get | rm   your Drop, from any computer (see ira.dropcli)
 """
 
@@ -469,6 +470,19 @@ def cmd_eval_language(args: argparse.Namespace) -> int:
     )
 
 
+def cmd_eval_devices(args: argparse.Namespace) -> int:
+    from ira.evals.devices import main as evaluate
+
+    return evaluate(
+        _settings(args),
+        group=args.group,
+        only=args.only,
+        limit=args.limit,
+        out=args.out,
+        as_json=args.json,
+    )
+
+
 def cmd_eval_live(args: argparse.Namespace) -> int:
     from ira.evals.live import main as evaluate
 
@@ -630,6 +644,12 @@ def build_parser() -> argparse.ArgumentParser:
         help="who speaks for --spoken: macOS say, or Amazon Polly (default: say on macOS)",
     )
     p.add_argument("--only", choices=["hi", "hinglish", "en"], help="one language only")
+    p.add_argument("--json", action="store_true", help="every result as JSON")
+    p = add("devices", cmd_eval_devices, "the right device and tool, from any device", evals)
+    p.add_argument("--group", help="one group of cases only (other-device-read, offline, ...)")
+    p.add_argument("--only", help="only cases whose id has this in it")
+    p.add_argument("--limit", type=int, help="at most this many cases")
+    p.add_argument("--out", help="also write the scorecard to this file")
     p.add_argument("--json", action="store_true", help="every result as JSON")
     p = add("live", cmd_eval_live, "real-time voice: end of speech to first word", evals)
     p.add_argument("--hangover", type=float, default=0.6, help="the app's quiet wait, seconds")

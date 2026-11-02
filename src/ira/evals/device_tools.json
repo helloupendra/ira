@@ -1,0 +1,1769 @@
+{
+ "mac": [
+  {
+   "name": "files_find",
+   "description": "Find files on this Mac with Spotlight, by words in the name or inside the file, by kind and by date. Returns up to 20: name, folder, path, kind, size and when it was last changed, newest first. Use it for 'where is that file', 'the PDF I downloaded yesterday'.",
+   "parameters": {
+    "additionalProperties": false,
+    "properties": {
+     "folder": {
+      "description": "Look only in this folder: Downloads, Desktop, Documents, or a path such as ~/Projects.",
+      "type": "string"
+     },
+     "kind": {
+      "description": "The kind of file.",
+      "enum": [
+       "app",
+       "archive",
+       "audio",
+       "document",
+       "folder",
+       "image",
+       "pdf",
+       "presentation",
+       "spreadsheet",
+       "text",
+       "video",
+       "word"
+      ],
+      "type": "string"
+     },
+     "modifiedWithinDays": {
+      "description": "Only files changed or added in the last this many days (1 means the last 24 hours).",
+      "maximum": 3650,
+      "minimum": 1,
+      "type": "integer"
+     },
+     "query": {
+      "description": "Words from the file's name or its text. Leave empty to list recent files of a kind.",
+      "type": "string"
+     }
+    },
+    "type": "object"
+   },
+   "skill": "files",
+   "tier": 0
+  },
+  {
+   "name": "file_read",
+   "description": "Read the text of one file on this Mac: PDF, Word (.docx), RTF, plain text or Markdown, up to 20,000 characters. Give the full path from files_find. Never keychains, ~/Library or hidden files.",
+   "parameters": {
+    "additionalProperties": false,
+    "properties": {
+     "maxChars": {
+      "description": "Read at most this many characters (default and most: 20,000).",
+      "maximum": 20000,
+      "minimum": 200,
+      "type": "integer"
+     },
+     "path": {
+      "description": "The file's full path, e.g. ~/Downloads/invoice.pdf.",
+      "type": "string"
+     }
+    },
+    "required": [
+     "path"
+    ],
+    "type": "object"
+   },
+   "skill": "files",
+   "tier": 0
+  },
+  {
+   "name": "file_open",
+   "description": "Open a file on this Mac in its usual app, or a folder or file in VS Code (app: vscode), e.g. a repository. With app vscode and a prompt, the editor's assistant extension opens with it filled in (if this Mac set that up); the person presses Return to send it. Say that you opened it. Never runs scripts or installers.",
+   "parameters": {
+    "additionalProperties": false,
+    "properties": {
+     "app": {
+      "description": "Where to open it: its usual app (default) or VS Code.",
+      "enum": [
+       "default",
+       "vscode"
+      ],
+      "type": "string"
+     },
+     "path": {
+      "description": "The file's or folder's full path, e.g. ~/code/shop.",
+      "type": "string"
+     },
+     "prompt": {
+      "description": "With app vscode: a request to fill in for the editor's assistant.",
+      "type": "string"
+     }
+    },
+    "required": [
+     "path"
+    ],
+    "type": "object"
+   },
+   "skill": "files",
+   "tier": 1
+  },
+  {
+   "name": "screen_read",
+   "description": "Read the text of a window on this Mac, only when the person asks what it shows: the window in front, or with app, that app's window even behind others, without bringing it to the front. Returns the app's name, the window's title and the text, read on the Mac; no picture is sent.",
+   "parameters": {
+    "additionalProperties": false,
+    "properties": {
+     "app": {
+      "description": "The app to read, as the person named it; the name may be misheard (\"Task Plus\" for TaskPulse), so it is matched loosely. Leave out for the window in front.",
+      "type": "string"
+     }
+    },
+    "type": "object"
+   },
+   "skill": "screen",
+   "tier": 0
+  },
+  {
+   "name": "apps_list",
+   "description": "List the apps running on this Mac: each one's name, whether it is in front, and its windows' titles. Use it to find the name for screen_read's app.",
+   "parameters": {
+    "additionalProperties": false,
+    "properties": {},
+    "type": "object"
+   },
+   "skill": "screen",
+   "tier": 0
+  },
+  {
+   "name": "browser_tabs",
+   "description": "List the tabs open in the browsers on this Mac (Chrome, Safari, Arc, Edge, Brave): each tab's title and address (without its query), which is in front, and an id. Only titles and addresses, never page contents. Use it for 'what is open in Chrome?'; not for which AI session or coding agent is running on this Mac (that is ai_sessions).",
+   "parameters": {
+    "additionalProperties": false,
+    "properties": {
+     "browser": {
+      "description": "Only this browser: chrome, safari, arc, edge or brave.",
+      "type": "string"
+     }
+    },
+    "type": "object"
+   },
+   "skill": "browser",
+   "tier": 0
+  },
+  {
+   "name": "browser_show_tab",
+   "description": "Bring one browser tab to the front, by words from its title or address or by its id from browser_tabs. To answer what a tab shows ('how far is that upload?'), bring it to the front, then use screen_read. Say that you switched to it.",
+   "parameters": {
+    "additionalProperties": false,
+    "properties": {
+     "browser": {
+      "description": "Only this browser: chrome, safari, arc, edge or brave.",
+      "type": "string"
+     },
+     "id": {
+      "description": "The tab's id from browser_tabs.",
+      "type": "string"
+     },
+     "match": {
+      "description": "Words from the tab's title or address, e.g. 'upload' or 'github'.",
+      "type": "string"
+     }
+    },
+    "type": "object"
+   },
+   "skill": "browser",
+   "tier": 1
+  },
+  {
+   "name": "contacts_lookup",
+   "description": "Look up people in this Mac's Contacts (iCloud, Google and Exchange accounts included) by name, phone number or email. Returns up to 10 with their numbers and emails. Use it to put a name to a number, or to find the number or email to send to.",
+   "parameters": {
+    "additionalProperties": false,
+    "properties": {
+     "query": {
+      "description": "A name, a phone number (any format, or its last digits), or an email address.",
+      "type": "string"
+     }
+    },
+    "required": [
+     "query"
+    ],
+    "type": "object"
+   },
+   "skill": "contacts",
+   "tier": 0
+  },
+  {
+   "name": "calendar_read",
+   "description": "Read the events on this Mac's calendars (iCloud, Google, Exchange): title, start, end, place and calendar. Today by default.",
+   "parameters": {
+    "additionalProperties": false,
+    "properties": {
+     "calendar": {
+      "description": "Only this calendar, by name.",
+      "type": "string"
+     },
+     "days": {
+      "description": "How many days from then (default 1).",
+      "maximum": 31,
+      "minimum": 1,
+      "type": "integer"
+     },
+     "from": {
+      "description": "The first day. A date (2026-10-23) or a local date and time (2026-10-23T14:30). Default: today.",
+      "type": "string"
+     },
+     "query": {
+      "description": "Only events whose title or place has these words.",
+      "type": "string"
+     }
+    },
+    "type": "object"
+   },
+   "skill": "calendar",
+   "tier": 0
+  },
+  {
+   "name": "calendar_add",
+   "description": "Add an event to a calendar on this Mac. Give the exact title, start and calendar: they are read back to the person before it is added.",
+   "parameters": {
+    "additionalProperties": false,
+    "properties": {
+     "allDay": {
+      "description": "An all-day event.",
+      "type": "boolean"
+     },
+     "calendar": {
+      "description": "Which calendar, by name. Default: the Mac's default calendar.",
+      "type": "string"
+     },
+     "durationMinutes": {
+      "description": "How long, if no end is given (default 60).",
+      "maximum": 1440,
+      "minimum": 5,
+      "type": "integer"
+     },
+     "end": {
+      "description": "When it ends. A date (2026-10-23) or a local date and time (2026-10-23T14:30).",
+      "type": "string"
+     },
+     "location": {
+      "description": "Where.",
+      "type": "string"
+     },
+     "notes": {
+      "description": "Notes on the event.",
+      "type": "string"
+     },
+     "start": {
+      "description": "When it starts. A date (2026-10-23) or a local date and time (2026-10-23T14:30). A bare date makes an all-day event.",
+      "type": "string"
+     },
+     "title": {
+      "description": "The event's title.",
+      "type": "string"
+     }
+    },
+    "required": [
+     "title",
+     "start"
+    ],
+    "type": "object"
+   },
+   "skill": "calendar",
+   "tier": 2
+  },
+  {
+   "name": "reminders_list",
+   "description": "List the reminders on this Mac (Apple Reminders), open ones first by due date.",
+   "parameters": {
+    "additionalProperties": false,
+    "properties": {
+     "includeDone": {
+      "description": "Also the ones already done.",
+      "type": "boolean"
+     },
+     "list": {
+      "description": "Only this list, by name.",
+      "type": "string"
+     },
+     "query": {
+      "description": "Only reminders whose title has these words.",
+      "type": "string"
+     }
+    },
+    "type": "object"
+   },
+   "skill": "reminders",
+   "tier": 0
+  },
+  {
+   "name": "reminders_set",
+   "description": "Set a reminder in Apple Reminders on this Mac, with a due time if given (it alerts then); or, with done: true, mark one as done by its id from reminders_list or its exact title. Say what you did.",
+   "parameters": {
+    "additionalProperties": false,
+    "properties": {
+     "done": {
+      "description": "Mark the reminder (by id or exact title) as done instead of adding one.",
+      "type": "boolean"
+     },
+     "due": {
+      "description": "When. A date (2026-10-23) or a local date and time (2026-10-23T14:30).",
+      "type": "string"
+     },
+     "id": {
+      "description": "With done: the reminder's id from reminders_list.",
+      "type": "string"
+     },
+     "list": {
+      "description": "Which list, by name. Default: the default list.",
+      "type": "string"
+     },
+     "notes": {
+      "description": "Notes.",
+      "type": "string"
+     },
+     "title": {
+      "description": "What to be reminded of; or, with done, the reminder's exact title.",
+      "type": "string"
+     }
+    },
+    "type": "object"
+   },
+   "skill": "reminders",
+   "tier": 1
+  },
+  {
+   "name": "mail_search",
+   "description": "Search the Mail app's inbox on this Mac (read only): emails whose subject or sender has these words, from the last days. Returns id, subject, sender, date and whether it was read, newest first. With an id from a search, reads that one email instead: subject, sender, date, recipients and text, up to 20,000 characters.",
+   "parameters": {
+    "additionalProperties": false,
+    "properties": {
+     "days": {
+      "description": "How far back, in days (default 14).",
+      "maximum": 365,
+      "minimum": 1,
+      "type": "integer"
+     },
+     "id": {
+      "description": "Read this email, by its id from a search.",
+      "type": "string"
+     },
+     "limit": {
+      "description": "At most this many (default 10).",
+      "maximum": 25,
+      "minimum": 1,
+      "type": "integer"
+     },
+     "maxChars": {
+      "description": "With id: read at most this many characters.",
+      "maximum": 20000,
+      "minimum": 200,
+      "type": "integer"
+     },
+     "query": {
+      "description": "Words from the subject or the sender. Empty: the latest emails.",
+      "type": "string"
+     }
+    },
+    "type": "object"
+   },
+   "skill": "mail",
+   "tier": 0
+  },
+  {
+   "name": "mail_draft",
+   "description": "Write a draft email in the Mail app and open it for the person to check and send. Ira never sends it. Give the exact addresses (look them up with contacts_lookup), subject and body.",
+   "parameters": {
+    "additionalProperties": false,
+    "properties": {
+     "body": {
+      "description": "The text of the email.",
+      "type": "string"
+     },
+     "cc": {
+      "description": "Email addresses to copy.",
+      "items": {
+       "type": "string"
+      },
+      "type": "array"
+     },
+     "subject": {
+      "description": "The subject.",
+      "type": "string"
+     },
+     "to": {
+      "description": "Email addresses.",
+      "items": {
+       "type": "string"
+      },
+      "type": "array"
+     }
+    },
+    "required": [
+     "to"
+    ],
+    "type": "object"
+   },
+   "skill": "mail",
+   "tier": 2
+  },
+  {
+   "name": "messages_send",
+   "description": "Send an iMessage from this Mac's Messages app to a phone number or an email address. Give the exact number and the person's name: both are read back before it is sent.",
+   "parameters": {
+    "additionalProperties": false,
+    "properties": {
+     "name": {
+      "description": "The person's name, for the read-back.",
+      "type": "string"
+     },
+     "text": {
+      "description": "The message, exactly as it will be sent.",
+      "type": "string"
+     },
+     "to": {
+      "description": "The phone number (with the country code, e.g. +91...) or email address, from contacts_lookup.",
+      "type": "string"
+     }
+    },
+    "required": [
+     "to",
+     "text"
+    ],
+    "type": "object"
+   },
+   "skill": "messages",
+   "tier": 2
+  },
+  {
+   "name": "notes_search",
+   "description": "Search Apple Notes on this Mac by words in the title or the text. Returns id, title, folder and when it changed. With an id from a search, reads that one note instead, up to 20,000 characters.",
+   "parameters": {
+    "additionalProperties": false,
+    "properties": {
+     "id": {
+      "description": "Read this note, by its id from a search.",
+      "type": "string"
+     },
+     "limit": {
+      "description": "At most this many (default 10).",
+      "maximum": 25,
+      "minimum": 1,
+      "type": "integer"
+     },
+     "maxChars": {
+      "description": "With id: read at most this many characters.",
+      "maximum": 20000,
+      "minimum": 200,
+      "type": "integer"
+     },
+     "query": {
+      "description": "Words to look for. Empty: the latest notes.",
+      "type": "string"
+     }
+    },
+    "type": "object"
+   },
+   "skill": "notes",
+   "tier": 0
+  },
+  {
+   "name": "notes_add",
+   "description": "Add a note in Apple Notes on this Mac. Say that you added it.",
+   "parameters": {
+    "additionalProperties": false,
+    "properties": {
+     "body": {
+      "description": "The note's text.",
+      "type": "string"
+     },
+     "folder": {
+      "description": "Which folder, by name.",
+      "type": "string"
+     },
+     "title": {
+      "description": "The note's title.",
+      "type": "string"
+     }
+    },
+    "required": [
+     "title"
+    ],
+    "type": "object"
+   },
+   "skill": "notes",
+   "tier": 1
+  },
+  {
+   "name": "app_open",
+   "description": "Open an app on this Mac by its name (Safari, Calendar, Visual Studio Code...). Say that you opened it.",
+   "parameters": {
+    "additionalProperties": false,
+    "properties": {
+     "name": {
+      "description": "The app's name.",
+      "type": "string"
+     }
+    },
+    "required": [
+     "name"
+    ],
+    "type": "object"
+   },
+   "skill": "apps",
+   "tier": 1
+  },
+  {
+   "name": "url_open",
+   "description": "Open a web page in the person's browser on this Mac. The exact address is read back first.",
+   "parameters": {
+    "additionalProperties": false,
+    "properties": {
+     "url": {
+      "description": "The web address (https://...).",
+      "type": "string"
+     }
+    },
+    "required": [
+     "url"
+    ],
+    "type": "object"
+   },
+   "skill": "apps",
+   "tier": 2
+  },
+  {
+   "name": "clipboard_read",
+   "description": "Read the text on this Mac's clipboard, only when the person asks about what they copied. Never what a password manager marked as private.",
+   "parameters": {
+    "additionalProperties": false,
+    "properties": {},
+    "type": "object"
+   },
+   "skill": "clipboard",
+   "tier": 0
+  },
+  {
+   "name": "shortcuts_list",
+   "description": "List the person's shortcuts in the Shortcuts app on this Mac.",
+   "parameters": {
+    "additionalProperties": false,
+    "properties": {},
+    "type": "object"
+   },
+   "skill": "shortcuts",
+   "tier": 0
+  },
+  {
+   "name": "shortcuts_run",
+   "description": "Run one of the person's shortcuts by its exact name, with optional text as its input. Shortcuts can do anything the person built them to, so the name and input are read back first.",
+   "parameters": {
+    "additionalProperties": false,
+    "properties": {
+     "input": {
+      "description": "Text to pass to it.",
+      "type": "string"
+     },
+     "name": {
+      "description": "The shortcut's exact name, from shortcuts_list.",
+      "type": "string"
+     }
+    },
+    "required": [
+     "name"
+    ],
+    "type": "object"
+   },
+   "skill": "shortcuts",
+   "tier": 2
+  },
+  {
+   "name": "mac_type",
+   "description": "Type text on this Mac's keyboard into the field that has the cursor, in the app in front or in app. Put the cursor there first with mac_click. Never types into a password field. Last resort: first use a direct tool when one fits (url_open for a page or a search, e.g. https://www.youtube.com/results?search_query=lofi+music; app_open; browser_show_tab; mail_draft; notes_add). Needs the person's PIN, or runs within an approval they opened with it. Give the same task on every step of one job, and check with screen_read before the next step.",
+   "parameters": {
+    "additionalProperties": false,
+    "properties": {
+     "app": {
+      "description": "The app to do it in, by name (brought to the front first). Default: the app in front.",
+      "type": "string"
+     },
+     "pressReturn": {
+      "description": "Press Return after typing (to search or send a line).",
+      "type": "boolean"
+     },
+     "task": {
+      "description": "The whole job this step belongs to, the same on every step, e.g. 'play lofi music on YouTube'.",
+      "type": "string"
+     },
+     "text": {
+      "description": "Exactly what to type.",
+      "type": "string"
+     }
+    },
+    "required": [
+     "text"
+    ],
+    "type": "object"
+   },
+   "skill": "control",
+   "tier": 3
+  },
+  {
+   "name": "mac_keys",
+   "description": "Press keys or a keyboard shortcut on this Mac, in the app in front or in app: e.g. 'cmd+l', 'cmd+shift+t', 'return', 'esc', 'down down return'. Up to 12 presses, US key names. Never in a password field. Last resort: first use a direct tool when one fits (url_open for a page or a search, e.g. https://www.youtube.com/results?search_query=lofi+music; app_open; browser_show_tab; mail_draft; notes_add). Needs the person's PIN, or runs within an approval they opened with it. Give the same task on every step of one job, and check with screen_read before the next step.",
+   "parameters": {
+    "additionalProperties": false,
+    "properties": {
+     "app": {
+      "description": "The app to do it in, by name (brought to the front first). Default: the app in front.",
+      "type": "string"
+     },
+     "keys": {
+      "description": "The presses in order, separated by spaces; + joins a shortcut's keys (cmd, shift, option, ctrl, fn).",
+      "type": "string"
+     },
+     "task": {
+      "description": "The whole job this step belongs to, the same on every step, e.g. 'play lofi music on YouTube'.",
+      "type": "string"
+     }
+    },
+    "required": [
+     "keys"
+    ],
+    "type": "object"
+   },
+   "skill": "control",
+   "tier": 3
+  },
+  {
+   "name": "mac_click",
+   "description": "Click a button, link, tab, checkbox or row in the front window of the app in front or of app, found by its label as shown on screen (or as described for VoiceOver); a field gets the cursor, ready for mac_type. If no control has that label, clicks where those words are written on screen. When several match, the answer says how many: say which with index. Last resort: first use a direct tool when one fits (url_open for a page or a search, e.g. https://www.youtube.com/results?search_query=lofi+music; app_open; browser_show_tab; mail_draft; notes_add). Needs the person's PIN, or runs within an approval they opened with it. Give the same task on every step of one job, and check with screen_read before the next step.",
+   "parameters": {
+    "additionalProperties": false,
+    "properties": {
+     "app": {
+      "description": "The app to do it in, by name (brought to the front first). Default: the app in front.",
+      "type": "string"
+     },
+     "index": {
+      "description": "Which of several matches, 1 for the one nearest the top.",
+      "maximum": 20,
+      "minimum": 1,
+      "type": "integer"
+     },
+     "label": {
+      "description": "The control's label as shown, e.g. 'Search', 'Subscribe', 'Downloads'.",
+      "type": "string"
+     },
+     "role": {
+      "description": "The kind of control, to tell apart two with one label.",
+      "enum": [
+       "button",
+       "link",
+       "field",
+       "checkbox",
+       "tab",
+       "menu",
+       "row",
+       "any"
+      ],
+      "type": "string"
+     },
+     "task": {
+      "description": "The whole job this step belongs to, the same on every step, e.g. 'play lofi music on YouTube'.",
+      "type": "string"
+     }
+    },
+    "required": [
+     "label"
+    ],
+    "type": "object"
+   },
+   "skill": "control",
+   "tier": 3
+  },
+  {
+   "name": "mac_scroll",
+   "description": "Scroll the front window of the app in front or of app. Last resort: first use a direct tool when one fits (url_open for a page or a search, e.g. https://www.youtube.com/results?search_query=lofi+music; app_open; browser_show_tab; mail_draft; notes_add). Needs the person's PIN, or runs within an approval they opened with it. Give the same task on every step of one job, and check with screen_read before the next step.",
+   "parameters": {
+    "additionalProperties": false,
+    "properties": {
+     "amount": {
+      "description": "How far, in steps of three lines (default 5).",
+      "maximum": 30,
+      "minimum": 1,
+      "type": "integer"
+     },
+     "app": {
+      "description": "The app to do it in, by name (brought to the front first). Default: the app in front.",
+      "type": "string"
+     },
+     "direction": {
+      "description": "Which way the page should move into view.",
+      "enum": [
+       "up",
+       "down",
+       "left",
+       "right"
+      ],
+      "type": "string"
+     },
+     "task": {
+      "description": "The whole job this step belongs to, the same on every step, e.g. 'play lofi music on YouTube'.",
+      "type": "string"
+     }
+    },
+    "required": [
+     "direction"
+    ],
+    "type": "object"
+   },
+   "skill": "control",
+   "tier": 3
+  },
+  {
+   "name": "mac_menu",
+   "description": "Choose an item from the menu bar of the app in front or of app, e.g. 'File > New Window' or 'View > Show Sidebar'. Never the Apple menu. Last resort: first use a direct tool when one fits (url_open for a page or a search, e.g. https://www.youtube.com/results?search_query=lofi+music; app_open; browser_show_tab; mail_draft; notes_add). Needs the person's PIN, or runs within an approval they opened with it. Give the same task on every step of one job, and check with screen_read before the next step.",
+   "parameters": {
+    "additionalProperties": false,
+    "properties": {
+     "app": {
+      "description": "The app to do it in, by name (brought to the front first). Default: the app in front.",
+      "type": "string"
+     },
+     "path": {
+      "description": "The menu and the item, separated by >, as the menus show them.",
+      "type": "string"
+     },
+     "task": {
+      "description": "The whole job this step belongs to, the same on every step, e.g. 'play lofi music on YouTube'.",
+      "type": "string"
+     }
+    },
+    "required": [
+     "path"
+    ],
+    "type": "object"
+   },
+   "skill": "control",
+   "tier": 3
+  },
+  {
+   "name": "code_task_start",
+   "description": "Start a coding task on this Mac: a coding agent works in a new git worktree of one of the person's allowed repositories, on its own branch, with VS Code open on it so they can watch. It never pushes. Ira says when it is done. With chat, it stays on as a conversation the person can talk to from their phone (code_task_say), until it has been idle for 30 minutes.",
+   "parameters": {
+    "additionalProperties": false,
+    "properties": {
+     "agent": {
+      "description": "Which of this Mac's coding agents does it, by the name code_task_status lists (default: this Mac's default agent).",
+      "type": "string"
+     },
+     "chat": {
+      "description": "Keep the agent on between messages, as a conversation (needs an agent that takes messages).",
+      "type": "boolean"
+     },
+     "instruction": {
+      "description": "What to do, in full. A chat may start without one.",
+      "type": "string"
+     },
+     "label": {
+      "description": "A short name to call it by (default: the repository and the agent, such as 'shop · main').",
+      "type": "string"
+     },
+     "openInVSCode": {
+      "description": "Open VS Code on the worktree (default: as this Mac is set up).",
+      "type": "boolean"
+     },
+     "repo": {
+      "description": "An allowed repository's name, from code_task_status.",
+      "type": "string"
+     }
+    },
+    "required": [
+     "repo"
+    ],
+    "type": "object"
+   },
+   "skill": "tasks",
+   "tier": 2
+  },
+  {
+   "name": "code_task_status",
+   "description": "How a coding task is going: running, waiting for the person's next message (a chat), paused, done, failed or stopped; its latest progress, the files changed and the tests. Without an id: this Mac's coding tasks by name, newest first, the repositories tasks may use, and its coding agents.",
+   "parameters": {
+    "additionalProperties": false,
+    "properties": {
+     "id": {
+      "description": "Which task: its id, its name (the repository and agent, such as 'shop · main', or part of it), or 'last'. Leave out to list them all.",
+      "type": "string"
+     }
+    },
+    "type": "object"
+   },
+   "skill": "tasks",
+   "tier": 0
+  },
+  {
+   "name": "code_task_stop",
+   "description": "Stop a running coding task. Its worktree and branch stay.",
+   "parameters": {
+    "additionalProperties": false,
+    "properties": {
+     "id": {
+      "description": "Which task: its id, its name (the repository and agent, such as 'shop · main', or part of it), or 'last'.",
+      "type": "string"
+     }
+    },
+    "required": [
+     "id"
+    ],
+    "type": "object"
+   },
+   "skill": "tasks",
+   "tier": 1
+  },
+  {
+   "name": "code_task_push",
+   "description": "Push a finished task's own branch to the repository's origin: never main, master or the default branch, never forced, nothing merged. Needs the person's PIN.",
+   "parameters": {
+    "additionalProperties": false,
+    "properties": {
+     "id": {
+      "description": "Which task: its id, its name (the repository and agent, such as 'shop · main', or part of it), or 'last'.",
+      "type": "string"
+     }
+    },
+    "required": [
+     "id"
+    ],
+    "type": "object"
+   },
+   "skill": "tasks",
+   "tier": 3
+  },
+  {
+   "name": "ai_sessions",
+   "description": "What the AI coding sessions on this Mac are doing (a coding agent in VS Code or a terminal, and Ira's coding tasks): for each, the project, whether it is working, waiting for the person or finished, how much of its task list is done and the item in progress, its last step, and the person's latest request and its last answer, cut short. Read and summarised on the Mac; never a transcript or a file. Use it for any question about an AI session, AI agent or coding assistant on this Mac, whatever its name, and which one is on: 'what is the AI doing on my Mac', 'which AI session is running', 'Mac pe AI kya kar raha hai'. Not the browser's tabs: a chat open in a tab is not a session here.",
+   "parameters": {
+    "additionalProperties": false,
+    "properties": {
+     "hours": {
+      "description": "Sessions active in the last this many hours (default 12).",
+      "maximum": 48,
+      "minimum": 1,
+      "type": "integer"
+     }
+    },
+    "type": "object"
+   },
+   "skill": "agents",
+   "tier": 0
+  },
+  {
+   "name": "ai_session_detail",
+   "description": "The last 10 steps of one AI session from ai_sessions, each a short phrase (what it read, edited or ran, what was asked and said), and its state. Ira only reads sessions it did not start: to stop one, the person stops it where it runs.",
+   "parameters": {
+    "additionalProperties": false,
+    "properties": {
+     "id": {
+      "description": "The session's id from ai_sessions (its first 8 characters are enough).",
+      "type": "string"
+     }
+    },
+    "required": [
+     "id"
+    ],
+    "type": "object"
+   },
+   "skill": "agents",
+   "tier": 0
+  },
+  {
+   "name": "code_task_say",
+   "description": "Send the person's message to one of Ira's own coding tasks on this Mac and hear its reply: for 'tell the shop task to write the tests first', 'OpenFNO wale ko bolo tests likho', 'ask it what it changed'. Its reply comes back here within about 20 seconds, with the steps it took, or later as a message. Only tasks Ira started; sessions the person opened in an editor or a terminal are read-only (ai_sessions).",
+   "parameters": {
+    "additionalProperties": false,
+    "properties": {
+     "id": {
+      "description": "Which task: its id, its name (the repository and agent, such as 'shop · main', or part of it), or 'last'.",
+      "type": "string"
+     },
+     "text": {
+      "description": "The person's message, in their words.",
+      "type": "string"
+     }
+    },
+    "required": [
+     "id",
+     "text"
+    ],
+    "type": "object"
+   },
+   "skill": "tasks",
+   "tier": 2
+  },
+  {
+   "name": "code_task_pause",
+   "description": "Pause a running coding task: its agent stops, and its session is kept so code_task_resume goes on from there. Its worktree and branch stay.",
+   "parameters": {
+    "additionalProperties": false,
+    "properties": {
+     "id": {
+      "description": "Which task: its id, its name (the repository and agent, such as 'shop · main', or part of it), or 'last'.",
+      "type": "string"
+     }
+    },
+    "required": [
+     "id"
+    ],
+    "type": "object"
+   },
+   "skill": "tasks",
+   "tier": 1
+  },
+  {
+   "name": "code_task_resume",
+   "description": "Go on with a paused or finished coding task in its worktree, where its agent left off, with the person's words if they gave any ('now update the docs'). Ira says when it is done.",
+   "parameters": {
+    "additionalProperties": false,
+    "properties": {
+     "id": {
+      "description": "Which task: its id, its name (the repository and agent, such as 'shop · main', or part of it), or 'last'.",
+      "type": "string"
+     },
+     "text": {
+      "description": "What to tell it as it goes on (default: carry on).",
+      "type": "string"
+     }
+    },
+    "required": [
+     "id"
+    ],
+    "type": "object"
+   },
+   "skill": "tasks",
+   "tier": 2
+  }
+ ],
+ "iphone": [
+  {
+   "name": "contacts_lookup",
+   "description": "Look up people in this iPhone's contacts (iCloud, Google and Exchange accounts included) by name, phone number or email. Returns up to 10 with their numbers and emails. Use it to put a name to a number, or to find the number before a call.",
+   "parameters": {
+    "additionalProperties": false,
+    "properties": {
+     "query": {
+      "description": "A name, a phone number (any format, or its last digits), or an email address.",
+      "maxLength": 100,
+      "type": "string"
+     }
+    },
+    "required": [
+     "query"
+    ],
+    "type": "object"
+   },
+   "skill": "contacts",
+   "tier": 0
+  },
+  {
+   "name": "calendar_read",
+   "description": "Read the events in this iPhone's calendars (iCloud, Google, Exchange): title, start, end, place and calendar. Today by default.",
+   "parameters": {
+    "additionalProperties": false,
+    "properties": {
+     "calendar": {
+      "description": "Only this calendar, by name.",
+      "maxLength": 80,
+      "type": "string"
+     },
+     "days": {
+      "description": "How many days from then (default 1).",
+      "maximum": 31,
+      "minimum": 1,
+      "type": "integer"
+     },
+     "from": {
+      "description": "The first day. A date (2026-10-23) or a local date and time (2026-10-23T14:30). Default: today.",
+      "maxLength": 25,
+      "type": "string"
+     },
+     "query": {
+      "description": "Only events whose title or place has these words.",
+      "maxLength": 100,
+      "type": "string"
+     }
+    },
+    "type": "object"
+   },
+   "skill": "calendar",
+   "tier": 0
+  },
+  {
+   "name": "calendar_add",
+   "description": "Add an event to a calendar on this iPhone. Give the exact title, start and calendar: they are read back to the person before it is added.",
+   "parameters": {
+    "additionalProperties": false,
+    "properties": {
+     "allDay": {
+      "description": "An all-day event.",
+      "type": "boolean"
+     },
+     "calendar": {
+      "description": "Which calendar, by name. Default: the iPhone's default calendar.",
+      "maxLength": 80,
+      "type": "string"
+     },
+     "durationMinutes": {
+      "description": "How long, if no end is given (default 60).",
+      "maximum": 1440,
+      "minimum": 5,
+      "type": "integer"
+     },
+     "end": {
+      "description": "When it ends. A date (2026-10-23) or a local date and time (2026-10-23T14:30).",
+      "maxLength": 25,
+      "type": "string"
+     },
+     "location": {
+      "description": "Where.",
+      "maxLength": 300,
+      "type": "string"
+     },
+     "notes": {
+      "description": "Notes on the event.",
+      "maxLength": 2000,
+      "type": "string"
+     },
+     "start": {
+      "description": "When it starts. A date (2026-10-23) or a local date and time (2026-10-23T14:30). A bare date makes an all-day event.",
+      "maxLength": 25,
+      "type": "string"
+     },
+     "title": {
+      "description": "The event's title.",
+      "maxLength": 200,
+      "type": "string"
+     }
+    },
+    "required": [
+     "title",
+     "start"
+    ],
+    "type": "object"
+   },
+   "skill": "calendar",
+   "tier": 2
+  },
+  {
+   "name": "reminders_list",
+   "description": "List the reminders on this iPhone (Apple Reminders), open ones first by due date.",
+   "parameters": {
+    "additionalProperties": false,
+    "properties": {
+     "includeDone": {
+      "description": "Also the ones already done.",
+      "type": "boolean"
+     },
+     "list": {
+      "description": "Only this list, by name.",
+      "maxLength": 80,
+      "type": "string"
+     },
+     "query": {
+      "description": "Only reminders whose title has these words.",
+      "maxLength": 100,
+      "type": "string"
+     }
+    },
+    "type": "object"
+   },
+   "skill": "reminders",
+   "tier": 0
+  },
+  {
+   "name": "reminders_add",
+   "description": "Add a reminder in Apple Reminders on this iPhone, with a due time if given (the iPhone alerts then, even when Ira is closed). Say that you added it.",
+   "parameters": {
+    "additionalProperties": false,
+    "properties": {
+     "due": {
+      "description": "When. A date (2026-10-23) or a local date and time (2026-10-23T14:30).",
+      "maxLength": 25,
+      "type": "string"
+     },
+     "list": {
+      "description": "Which list, by name. Default: the default list.",
+      "maxLength": 80,
+      "type": "string"
+     },
+     "notes": {
+      "description": "Notes.",
+      "maxLength": 2000,
+      "type": "string"
+     },
+     "title": {
+      "description": "What to be reminded of.",
+      "maxLength": 300,
+      "type": "string"
+     }
+    },
+    "required": [
+     "title"
+    ],
+    "type": "object"
+   },
+   "skill": "reminders",
+   "tier": 1
+  },
+  {
+   "name": "reminders_done",
+   "description": "Mark a reminder as done, by its id from reminders_list or its exact title.",
+   "parameters": {
+    "additionalProperties": false,
+    "properties": {
+     "id": {
+      "description": "The reminder's id.",
+      "maxLength": 200,
+      "type": "string"
+     },
+     "title": {
+      "description": "The reminder's exact title.",
+      "maxLength": 300,
+      "type": "string"
+     }
+    },
+    "type": "object"
+   },
+   "skill": "reminders",
+   "tier": 1
+  },
+  {
+   "name": "location_now",
+   "description": "Where this iPhone is now: latitude, longitude, how accurate, and the address when the iPhone can tell. Read once when asked, only while Ira is open on the iPhone; the iPhone keeps nothing.",
+   "parameters": {
+    "additionalProperties": false,
+    "properties": {},
+    "type": "object"
+   },
+   "skill": "location",
+   "tier": 0
+  },
+  {
+   "name": "call_place",
+   "description": "Start a phone call from this iPhone. Give the exact number and, when known, the person's name: both are read back before anything happens. Then the iPhone shows its own Call prompt and the person taps Call; iOS lets no app call by itself. Only while Ira is open on the iPhone.",
+   "parameters": {
+    "additionalProperties": false,
+    "properties": {
+     "name": {
+      "description": "Who is being called, as the person knows them.",
+      "maxLength": 80,
+      "type": "string"
+     },
+     "number": {
+      "description": "The phone number to call: digits, with + and the country code if known.",
+      "maxLength": 24,
+      "type": "string"
+     }
+    },
+    "required": [
+     "number"
+    ],
+    "type": "object"
+   },
+   "skill": "calls",
+   "tier": 2
+  },
+  {
+   "name": "app_open",
+   "description": "Open an app on this iPhone by its name: YouTube, YouTube Music, WhatsApp, Instagram, Spotify, Telegram, Gmail, Google Maps, Chrome, Netflix, Maps, Music, Mail, Calendar, Notes, Photos, Podcasts. Only while Ira is open on the iPhone. Say that you opened it, on this iPhone.",
+   "parameters": {
+    "additionalProperties": false,
+    "properties": {
+     "name": {
+      "description": "The app's name.",
+      "maxLength": 60,
+      "type": "string"
+     }
+    },
+    "required": [
+     "name"
+    ],
+    "type": "object"
+   },
+   "skill": "apps",
+   "tier": 1
+  },
+  {
+   "name": "url_open",
+   "description": "Open a web page on this iPhone (in the app it belongs to when installed, else the browser). The exact address is read back first. Only while Ira is open on the iPhone.",
+   "parameters": {
+    "additionalProperties": false,
+    "properties": {
+     "url": {
+      "description": "The web address (https://...).",
+      "maxLength": 2000,
+      "type": "string"
+     }
+    },
+    "required": [
+     "url"
+    ],
+    "type": "object"
+   },
+   "skill": "apps",
+   "tier": 2
+  }
+ ],
+ "pixel": [
+  {
+   "name": "calls_recent",
+   "description": "Recent calls on this phone, newest first: the person's name (from the phone's contacts), the number, incoming, outgoing or missed, when, and how long. For 'who called?' or 'kiska call aaya tha?'.",
+   "parameters": {
+    "type": "object",
+    "properties": {
+     "limit": {
+      "type": "integer",
+      "description": "How many calls, newest first (default 10).",
+      "minimum": 1,
+      "maximum": 50
+     },
+     "kind": {
+      "type": "string",
+      "description": "Only these calls.",
+      "enum": [
+       "any",
+       "missed",
+       "incoming",
+       "outgoing"
+      ]
+     },
+     "since_hours": {
+      "type": "integer",
+      "description": "Only calls in the last this many hours.",
+      "minimum": 1,
+      "maximum": 720
+     }
+    }
+   },
+   "skill": "calls",
+   "tier": 0
+  },
+  {
+   "name": "contacts_lookup",
+   "description": "Find people in this phone's contacts by name or by phone number, with their numbers. Turns a number into a name, or a name into a number before a call or a message. Several matches mean asking which one.",
+   "parameters": {
+    "type": "object",
+    "properties": {
+     "query": {
+      "type": "string",
+      "description": "A name, part of a name, or a phone number.",
+      "maxLength": 100
+     },
+     "limit": {
+      "type": "integer",
+      "description": "How many people at most (default 5).",
+      "minimum": 1,
+      "maximum": 20
+     }
+    },
+    "required": [
+     "query"
+    ]
+   },
+   "skill": "contacts",
+   "tier": 0
+  },
+  {
+   "name": "call_place",
+   "description": "Start a phone call from this phone. Give the exact number and, when known, the person's name: both are read back before the call starts.",
+   "parameters": {
+    "type": "object",
+    "properties": {
+     "number": {
+      "type": "string",
+      "description": "The phone number to call, as digits, with + and the country code if known.",
+      "maxLength": 24
+     },
+     "name": {
+      "type": "string",
+      "description": "Who is being called, as the person knows them.",
+      "maxLength": 80
+     }
+    },
+    "required": [
+     "number"
+    ]
+   },
+   "skill": "calls",
+   "tier": 2
+  },
+  {
+   "name": "sms_read",
+   "description": "Read SMS text messages on this phone, newest first: from whom (name and number), when, and the text. Filter by a number or a name, or by words in the text.",
+   "parameters": {
+    "type": "object",
+    "properties": {
+     "from": {
+      "type": "string",
+      "description": "Only messages from this number or contact name.",
+      "maxLength": 80
+     },
+     "contains": {
+      "type": "string",
+      "description": "Only messages containing these words.",
+      "maxLength": 80
+     },
+     "limit": {
+      "type": "integer",
+      "description": "How many messages, newest first (default 5).",
+      "minimum": 1,
+      "maximum": 20
+     },
+     "since_hours": {
+      "type": "integer",
+      "description": "Only messages in the last this many hours.",
+      "minimum": 1,
+      "maximum": 720
+     }
+    }
+   },
+   "skill": "messages",
+   "tier": 0
+  },
+  {
+   "name": "sms_send",
+   "description": "Send an SMS from this phone. Give the exact number, the person's name when known, and the exact text: all are read back before it is sent.",
+   "parameters": {
+    "type": "object",
+    "properties": {
+     "number": {
+      "type": "string",
+      "description": "The phone number to send to.",
+      "maxLength": 24
+     },
+     "name": {
+      "type": "string",
+      "description": "Who it is for, as the person knows them.",
+      "maxLength": 80
+     },
+     "text": {
+      "type": "string",
+      "description": "The exact message.",
+      "maxLength": 1000
+     }
+    },
+    "required": [
+     "number",
+     "text"
+    ]
+   },
+   "skill": "messages",
+   "tier": 2
+  },
+  {
+   "name": "notifications_read",
+   "description": "Read the notifications showing on this phone now (WhatsApp, Telegram, email, deliveries and other apps): the app, the sender or title, the text and the time. Each has a key; can_reply says a message can be answered with notification_reply.",
+   "parameters": {
+    "type": "object",
+    "properties": {
+     "app": {
+      "type": "string",
+      "description": "Only this app's notifications, by its name (for example WhatsApp).",
+      "maxLength": 60
+     },
+     "limit": {
+      "type": "integer",
+      "description": "How many at most, newest first (default 10).",
+      "minimum": 1,
+      "maximum": 30
+     }
+    }
+   },
+   "skill": "notifications",
+   "tier": 0
+  },
+  {
+   "name": "notification_reply",
+   "description": "Answer a message notification on this phone (a WhatsApp or Telegram message, for example) through the notification's own reply button. Use its key from notifications_read, and give who it goes to and the exact text: both are read back before it is sent.",
+   "parameters": {
+    "type": "object",
+    "properties": {
+     "key": {
+      "type": "string",
+      "description": "The notification's key, from notifications_read.",
+      "maxLength": 300
+     },
+     "to": {
+      "type": "string",
+      "description": "Who or which chat the reply goes to, as the notification shows it.",
+      "maxLength": 80
+     },
+     "app": {
+      "type": "string",
+      "description": "The app, as the notification shows it.",
+      "maxLength": 60
+     },
+     "text": {
+      "type": "string",
+      "description": "The exact reply.",
+      "maxLength": 1000
+     }
+    },
+    "required": [
+     "key",
+     "text"
+    ]
+   },
+   "skill": "notifications",
+   "tier": 2
+  },
+  {
+   "name": "alarm_set",
+   "description": "Set an alarm in this phone's clock app at a time of day (24-hour), optionally repeating on some days of the week.",
+   "parameters": {
+    "type": "object",
+    "properties": {
+     "hour": {
+      "type": "integer",
+      "description": "The hour, 0 to 23.",
+      "minimum": 0,
+      "maximum": 23
+     },
+     "minute": {
+      "type": "integer",
+      "description": "The minute, 0 to 59.",
+      "minimum": 0,
+      "maximum": 59
+     },
+     "label": {
+      "type": "string",
+      "description": "A short label for the alarm.",
+      "maxLength": 60
+     },
+     "days": {
+      "type": "array",
+      "description": "Repeat on these days; leave out for once.",
+      "items": {
+       "type": "string",
+       "enum": [
+        "mon",
+        "tue",
+        "wed",
+        "thu",
+        "fri",
+        "sat",
+        "sun"
+       ]
+      }
+     }
+    },
+    "required": [
+     "hour",
+     "minute"
+    ]
+   },
+   "skill": "reminders",
+   "tier": 1
+  },
+  {
+   "name": "timer_set",
+   "description": "Start a countdown timer in this phone's clock app.",
+   "parameters": {
+    "type": "object",
+    "properties": {
+     "seconds": {
+      "type": "integer",
+      "description": "The length of the timer in seconds.",
+      "minimum": 1,
+      "maximum": 86400
+     },
+     "label": {
+      "type": "string",
+      "description": "A short label for the timer.",
+      "maxLength": 60
+     }
+    },
+    "required": [
+     "seconds"
+    ]
+   },
+   "skill": "reminders",
+   "tier": 1
+  },
+  {
+   "name": "reminder_set",
+   "description": "Remind the person on this phone at a time, with a notification that shows the text. Give the local date and time (YYYY-MM-DDTHH:MM, the phone's time zone) or the minutes from now.",
+   "parameters": {
+    "type": "object",
+    "properties": {
+     "text": {
+      "type": "string",
+      "description": "What to remind about, in the person's words.",
+      "maxLength": 200
+     },
+     "at": {
+      "type": "string",
+      "description": "The local date and time, YYYY-MM-DDTHH:MM.",
+      "maxLength": 16
+     },
+     "in_minutes": {
+      "type": "integer",
+      "description": "Minutes from now, instead of a time.",
+      "minimum": 1,
+      "maximum": 525600
+     }
+    },
+    "required": [
+     "text"
+    ]
+   },
+   "skill": "reminders",
+   "tier": 1
+  },
+  {
+   "name": "calendar_read",
+   "description": "Events in the calendars on this phone (Google and any other account synced to the phone) for a day or a few days: title, start, end, place and calendar.",
+   "parameters": {
+    "type": "object",
+    "properties": {
+     "date": {
+      "type": "string",
+      "description": "The first day, YYYY-MM-DD (default today).",
+      "maxLength": 10
+     },
+     "days": {
+      "type": "integer",
+      "description": "How many days from that one (default 1).",
+      "minimum": 1,
+      "maximum": 31
+     },
+     "query": {
+      "type": "string",
+      "description": "Only events whose title has these words.",
+      "maxLength": 80
+     }
+    }
+   },
+   "skill": "calendar",
+   "tier": 0
+  },
+  {
+   "name": "calendar_add",
+   "description": "Add an event to a calendar on this phone. Give the title, the local start (YYYY-MM-DDTHH:MM) and the end or the length; it is read back before it is added.",
+   "parameters": {
+    "type": "object",
+    "properties": {
+     "title": {
+      "type": "string",
+      "description": "The event's title.",
+      "maxLength": 120
+     },
+     "start": {
+      "type": "string",
+      "description": "The local start, YYYY-MM-DDTHH:MM (or YYYY-MM-DD for all day).",
+      "maxLength": 16
+     },
+     "end": {
+      "type": "string",
+      "description": "The local end, YYYY-MM-DDTHH:MM.",
+      "maxLength": 16
+     },
+     "duration_minutes": {
+      "type": "integer",
+      "description": "The length in minutes, instead of an end (default 60).",
+      "minimum": 5,
+      "maximum": 1440
+     },
+     "location": {
+      "type": "string",
+      "description": "Where it is.",
+      "maxLength": 120
+     },
+     "calendar": {
+      "type": "string",
+      "description": "Which calendar, by its name; leave out for the main one.",
+      "maxLength": 80
+     },
+     "all_day": {
+      "type": "boolean",
+      "description": "An all-day event."
+     }
+    },
+    "required": [
+     "title",
+     "start"
+    ]
+   },
+   "skill": "calendar",
+   "tier": 2
+  },
+  {
+   "name": "app_open",
+   "description": "Open an app on this phone by its name (YouTube, Camera, WhatsApp) or its package (com.google.android.youtube). Use this, never screen_act, to open an app.",
+   "parameters": {
+    "type": "object",
+    "properties": {
+     "name": {
+      "type": "string",
+      "description": "The app's name as the phone shows it.",
+      "maxLength": 60
+     },
+     "package": {
+      "type": "string",
+      "description": "Or the app's package name.",
+      "maxLength": 120
+     }
+    }
+   },
+   "skill": "apps",
+   "tier": 1
+  },
+  {
+   "name": "url_open",
+   "description": "Open a web address on this phone. A link an app handles opens in that app: a YouTube link in YouTube, a Maps link in Maps. For a YouTube search use https://www.youtube.com/results?search_query=WORDS. Use this, never screen_act, to show a page, a search or a video.",
+   "parameters": {
+    "type": "object",
+    "properties": {
+     "url": {
+      "type": "string",
+      "description": "The http or https address.",
+      "maxLength": 2000
+     }
+    },
+    "required": [
+     "url"
+    ]
+   },
+   "skill": "apps",
+   "tier": 1
+  },
+  {
+   "name": "media_play",
+   "description": "Play music, a podcast or videos by name on this phone: a song, an artist, an album, \"Hindi news\". Music opens in the phone's music app (or the app named); videos open as a YouTube search. Use this, never screen_act, to play something.",
+   "parameters": {
+    "type": "object",
+    "properties": {
+     "query": {
+      "type": "string",
+      "description": "What to play, in the person's words.",
+      "maxLength": 200
+     },
+     "kind": {
+      "type": "string",
+      "description": "music (default) or video.",
+      "enum": [
+       "music",
+       "video"
+      ]
+     },
+     "app": {
+      "type": "string",
+      "description": "A music app by name, for example Spotify or YouTube Music.",
+      "maxLength": 60
+     }
+    },
+    "required": [
+     "query"
+    ]
+   },
+   "skill": "media",
+   "tier": 1
+  },
+  {
+   "name": "maps_navigate",
+   "description": "Start directions in this phone's maps app to a place or an address.",
+   "parameters": {
+    "type": "object",
+    "properties": {
+     "destination": {
+      "type": "string",
+      "description": "The place or the address.",
+      "maxLength": 200
+     },
+     "mode": {
+      "type": "string",
+      "description": "How to travel (default drive).",
+      "enum": [
+       "drive",
+       "walk",
+       "bike",
+       "transit"
+      ]
+     }
+    },
+    "required": [
+     "destination"
+    ]
+   },
+   "skill": "apps",
+   "tier": 1
+  },
+  {
+   "name": "media_control",
+   "description": "Control what is playing on this phone (music, podcasts, videos): play, pause, the next or previous track, or the volume.",
+   "parameters": {
+    "type": "object",
+    "properties": {
+     "action": {
+      "type": "string",
+      "description": "What to do.",
+      "enum": [
+       "play",
+       "pause",
+       "toggle",
+       "next",
+       "previous",
+       "volume_up",
+       "volume_down",
+       "mute",
+       "unmute"
+      ]
+     }
+    },
+    "required": [
+     "action"
+    ]
+   },
+   "skill": "media",
+   "tier": 1
+  },
+  {
+   "name": "location_now",
+   "description": "Where this phone is now: latitude, longitude, how accurate, and the address when the phone can tell. Read once when asked; the phone never stores it.",
+   "parameters": {
+    "type": "object",
+    "properties": {}
+   },
+   "skill": "location",
+   "tier": 0
+  },
+  {
+   "name": "settings_toggle",
+   "description": "Change a phone setting that apps may change: the flashlight (on, off), the ringer (normal, vibrate, silent), the media volume (0 to 100) or Do Not Disturb (on, off). Android lets no app switch Wi-Fi, Bluetooth, mobile data or NFC: for those the phone shows their switch for the person to tap.",
+   "parameters": {
+    "type": "object",
+    "properties": {
+     "setting": {
+      "type": "string",
+      "description": "Which setting.",
+      "enum": [
+       "flashlight",
+       "ringer",
+       "volume",
+       "dnd",
+       "wifi",
+       "bluetooth",
+       "mobile_data",
+       "nfc"
+      ]
+     },
+     "value": {
+      "type": "string",
+      "description": "on, off, normal, vibrate, silent, or a volume 0 to 100.",
+      "maxLength": 10
+     }
+    },
+    "required": [
+     "setting"
+    ]
+   },
+   "skill": "settings",
+   "tier": 1
+  }
+ ]
+}

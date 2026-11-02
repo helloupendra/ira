@@ -1,0 +1,123 @@
+# Asking Ira from one device about another, in Hindi, Hinglish and English, as speech-to-text
+# writes it. Every name, file and number is made up.
+#
+#   from:     the device asked from: pixel, iphone, mac or web
+#   say:      what the person said
+#   tool:     the tool a good turn uses (a list: any of them)
+#   device:   where it must go: mac, iphone or pixel
+#   then:     further tools, in order, after `tool`
+#   proposed: true when the tool changes something on another device: it must wait for a yes
+#             that names that device, and not run
+#   no_tool:  true when no tool fits
+#   never:    tools that must not be used
+#   offline:  devices that are not connected
+#   errors:   a tool's failure, as the device reports it
+#   says:     a pattern the answer must have
+world:
+  screen_read: {app: com.example.taskpulse, appName: TaskPulse, window: Today, text: "TaskPulse\nToday's timer 01:23:45\nProject: Sunrise Dental Clinic website", chars: 70, truncated: false, summary: "Read the TaskPulse window: 3 lines of text."}
+  apps_list: {apps: [{name: TaskPulse, front: false, windows: [Today]}, {name: Safari, front: true, windows: [Sunrise Dental Clinic]}, {name: Mail, front: false, windows: [Inbox]}], summary: "3 apps are running."}
+  browser_tabs: {tabs: [{id: "t1", browser: Chrome, title: "Invoice 4471 - Sunrise Dental Clinic", url: "https://billing.example.com/invoice", front: true}, {id: "t2", browser: Chrome, title: "Weather", url: "https://weather.example.com", front: false}], summary: "2 tabs are open."}
+  browser_show_tab: {summary: "Invoice 4471 is in front now."}
+  files_find: {files: [{path: "~/Documents/invoice-4471.pdf", name: invoice-4471.pdf}], summary: "Found 1 file."}
+  file_read: {path: "~/Documents/invoice-4471.pdf", text: "Invoice 4471. Amount due 18,250. Due on 14 November.", summary: "Read the file."}
+  mail_search: {mails: [{id: "m1", from: "Avery at Sunrise Dental Clinic", subject: "Appointment on Friday at 10:30"}], summary: "Found 1 email."}
+  notes_search: {notes: [{id: "n1", title: "Dentist", text: "Bring the X-ray on Friday"}], summary: "Found 1 note."}
+  clipboard_read: {text: "Sunrise Dental Clinic, 14 Main Road", summary: "Read the clipboard."}
+  ai_sessions: {sessions: [{name: website-fix, state: running}], summary: "1 session is running."}
+  calendar_read: {events: [{title: "Dentist with Avery", start: "2026-11-03T10:30"}], summary: "1 event."}
+  reminders_list: {reminders: [{title: "Call Avery", due: "2026-11-03T18:00"}], summary: "1 reminder."}
+  calls_recent: {calls: [{name: Avery, number: "+1 555 0100", kind: missed, at: "2026-11-02T14:05"}], summary: "1 call."}
+  sms_read: {messages: [{from: Avery, text: "Running late, see you at 11:15"}], summary: "1 message."}
+  notifications_read: {notifications: [{app: Mail, text: "New mail from Avery"}], summary: "1 notification."}
+  location_now: {place: "Main Road", summary: "Near Main Road."}
+  contacts_lookup: {contacts: [{name: Avery, phone: "+1 555 0100"}], summary: "1 contact."}
+  shortcuts_list: {shortcuts: [Morning], summary: "1 shortcut."}
+cases:
+  # Looking at another device: it simply runs.
+  - {id: read-mac-timer-hi, group: other-device-read, from: pixel, say: "मैकबुक पर टास्क प्लस का टाइमर चेक करो", tool: [screen_read, apps_list], device: mac}
+  - {id: read-mac-timer-hinglish, group: other-device-read, from: pixel, say: "mac par TaskPulse ka timer kitna dikha raha hai", tool: screen_read, device: mac, says: "01:23"}
+  - {id: read-mac-timer-en, group: other-device-read, from: pixel, say: "What does the TaskPulse timer show on my Mac?", tool: screen_read, device: mac, says: "01:23"}
+  - {id: read-laptop-front-hi, group: other-device-read, from: iphone, say: "लैपटॉप पर अभी स्क्रीन पर क्या खुला है", tool: [screen_read, apps_list], device: mac}
+  - {id: read-mac-tabs-hinglish, group: other-device-read, from: iphone, say: "macbook pe chrome mein kaunse tabs khule hain", tool: browser_tabs, device: mac, says: "(?i)invoice"}
+  - {id: read-mac-calendar-hi, group: other-device-read, from: pixel, say: "मैक के कैलेंडर में कल क्या है", tool: calendar_read, device: mac}
+  - {id: read-web-mac-screen, group: other-device-read, from: web, say: "What's on my Mac's screen right now?", tool: [screen_read, apps_list], device: mac}
+  - {id: read-web-pixel-calls, group: other-device-read, from: web, say: "pixel par kiska call aaya tha", tool: calls_recent, device: pixel, says: "Avery"}
+  - {id: read-pixel-sms-hi, group: other-device-read, from: mac, say: "फ़ोन पर कोई नया मैसेज आया क्या", tool: sms_read, device: pixel}
+  - {id: read-pixel-calls-en, group: other-device-read, from: mac, say: "Who called me on my phone?", tool: calls_recent, device: pixel, says: "Avery"}
+  - {id: read-pixel-notifications, group: other-device-read, from: iphone, say: "Pixel pe kaunse notifications hain", tool: notifications_read, device: pixel}
+  - {id: read-iphone-reminders, group: other-device-read, from: mac, say: "iPhone pe reminders dikhao", tool: reminders_list, device: iphone, says: "Avery"}
+  - {id: read-iphone-reminders-hi, group: other-device-read, from: pixel, say: "मेरे आईफोन पर कौन से रिमाइंडर हैं", tool: reminders_list, device: iphone}
+  - {id: read-mac-file, group: other-device-read, from: pixel, say: "mac pe invoice naam ki file dhundo", tool: files_find, device: mac}
+  - {id: read-mac-mail-hi, group: other-device-read, from: pixel, say: "मैकबुक पर मेल में एवरी का ईमेल ढूंढो", tool: mail_search, device: mac}
+  - {id: read-iphone-where, group: other-device-read, from: mac, say: "मेरा आईफोन कहाँ है", tool: location_now, device: iphone}
+
+  # Only one device can answer: it needs no naming.
+  - {id: only-mac-clipboard, group: only-that-device, from: pixel, say: "clipboard mein kya copy kiya tha", tool: clipboard_read, device: mac}
+  - {id: only-mac-sessions, group: only-that-device, from: iphone, say: "Which AI session is running?", tool: ai_sessions, device: mac}
+  - {id: only-mac-notes-hi, group: only-that-device, from: pixel, say: "मेरे नोट्स में डेंटिस्ट वाला नोट ढूंढो", tool: notes_search, device: mac}
+  - {id: only-mac-apps, group: only-that-device, from: iphone, say: "Which apps are running on my computer?", tool: apps_list, device: mac}
+  - {id: only-pixel-sms, group: only-that-device, from: web, say: "Do I have any new SMS?", tool: sms_read, device: pixel}
+
+  # As speech-to-text writes names.
+  - {id: heard-task-plus-alone, group: misheard, from: pixel, say: "टास्क प्लस का टाइमर कितना हुआ", tool: [screen_read, apps_list], device: mac}
+  - {id: heard-task-plus, group: misheard, from: pixel, say: "मैक बुक पर टास्क प्लस में टाइमर देखो", tool: [screen_read, apps_list], device: mac}
+  - {id: heard-make-book, group: misheard, from: iphone, say: "मेक बुक पर क्रोम के टैब बताओ", tool: browser_tabs, device: mac}
+  - {id: heard-mac-pe, group: misheard, from: pixel, say: "मैक पे सफारी में क्या खुला है", tool: [browser_tabs, screen_read, apps_list], device: mac}
+  - {id: heard-mac-air, group: misheard, from: pixel, say: "मैकबुक एयर की स्क्रीन पढ़ो", tool: screen_read, device: mac}
+  - {id: heard-computer, group: misheard, from: iphone, say: "मेरे कंप्यूटर की स्क्रीन पर क्या है", tool: [screen_read, apps_list], device: mac}
+  - {id: heard-pixel-hi, group: misheard, from: mac, say: "पिक्सल पर किसका कॉल आया था", tool: calls_recent, device: pixel}
+  - {id: heard-iphone-spelt, group: misheard, from: mac, say: "आई फोन के रिमाइंडर बताओ", tool: reminders_list, device: iphone}
+  - {id: heard-mobile, group: misheard, from: mac, say: "मोबाइल पर मिस्ड कॉल देखो", tool: calls_recent, device: pixel}
+
+  # Said without a device: the one asked from.
+  - {id: here-pixel-youtube, group: own-device, from: pixel, say: "youtube kholo", tool: [app_open, url_open], device: pixel}
+  - {id: here-iphone-youtube, group: own-device, from: iphone, say: "YouTube on karo", tool: [app_open, url_open], device: iphone}
+  - {id: here-pixel-timer, group: own-device, from: pixel, say: "पाँच मिनट का टाइमर लगाओ", tool: timer_set, device: pixel}
+  - {id: here-pixel-calendar, group: own-device, from: pixel, say: "मेरे कल के कैलेंडर में क्या है", tool: calendar_read, device: pixel}
+  - {id: here-iphone-where, group: own-device, from: iphone, say: "मैं अभी कहाँ हूँ", tool: location_now, device: iphone}
+  - {id: here-mac-open, group: own-device, from: mac, say: "Open Safari", tool: app_open, device: mac}
+  - {id: here-mac-screen, group: own-device, from: mac, say: "स्क्रीन पर क्या लिखा है", tool: screen_read, device: mac}
+  - {id: here-mac-screen-en, group: own-device, from: mac, say: "Read my screen", tool: screen_read, device: mac}
+  - {id: here-iphone-contact, group: own-device, from: iphone, say: "Avery ka number kya hai", tool: contacts_lookup, device: iphone, says: "555"}
+
+  # Changing something on another device: it waits for a yes that names the device.
+  - {id: act-mac-open, group: other-device-act, from: pixel, say: "mac par safari kholo", tool: app_open, device: mac, proposed: true}
+  - {id: act-mac-url, group: other-device-act, from: iphone, say: "macbook pe youtube.com kholo", tool: url_open, device: mac, proposed: true}
+  - {id: act-pixel-timer, group: other-device-act, from: mac, say: "Pixel pe 5 minute ka timer lagao", tool: timer_set, device: pixel, proposed: true}
+  - {id: act-mac-note, group: other-device-act, from: pixel, say: "मैक के नोट्स में लिखो कि एवरी को कॉल करना है", tool: notes_add, device: mac, proposed: true}
+  - {id: act-pixel-sms, group: other-device-act, from: mac, say: "Pixel se Avery ko sms bhejo ki main late hoon", tool: sms_send, device: pixel, proposed: true}
+
+  # The device is off: she says that, and nothing else.
+  - {id: off-mac-hi, group: offline, from: pixel, say: "मैकबुक पर टाइमर चेक करो", offline: [mac], says: "(?i)offline|ऑफ़लाइन|ऑफलाइन|बंद|band|connect|कनेक्ट|जुड़ा"}
+  - {id: off-mac-tabs, group: offline, from: iphone, say: "mac pe chrome ke tabs batao", offline: [mac], says: "(?i)offline|ऑफ़लाइन|ऑफलाइन|बंद|band|connect|कनेक्ट|जुड़ा"}
+  - {id: off-mac-en, group: offline, from: pixel, say: "What's on my Mac's screen?", offline: [mac], says: "(?i)offline|connect|not on|off\\b|reach"}
+  - {id: off-mac-web, group: offline, from: web, say: "Check my Mac's clipboard", offline: [mac], says: "(?i)offline|connect|not on|off\\b|reach"}
+  - {id: off-pixel-hi, group: offline, from: mac, say: "पिक्सल पर मिस्ड कॉल देखो", offline: [pixel], says: "(?i)offline|ऑफ़लाइन|ऑफलाइन|बंद|band|connect|कनेक्ट|जुड़ा"}
+  - {id: off-pixel-sms, group: offline, from: web, say: "Do I have a new SMS on my Pixel?", offline: [pixel], says: "(?i)offline|connect|not on|off\\b|reach"}
+  - {id: off-iphone, group: offline, from: pixel, say: "iPhone ke reminders batao", offline: [iphone], says: "(?i)offline|ऑफ़लाइन|ऑफलाइन|बंद|band|connect|कनेक्ट|जुड़ा"}
+
+  # The tool fails: she gives that reason, not one of her own.
+  - {id: err-screen-permission, group: tool-error, from: pixel, say: "mac par TaskPulse ka timer dekho", tool: screen_read, device: mac, errors: {screen_read: "Screen Recording is off for Ira, so I cannot read the screen. Allow Ira in System Settings → Privacy & Security → Screen & System Audio Recording, then ask again"}, says: "(?i)screen recording|स्क्रीन रिकॉर्डिंग|permission|अनुमति|इजाज़त|ijazat|allow"}
+  - {id: err-screen-late, group: tool-error, from: pixel, say: "मैकबुक पर टाइमर चेक करो", tool: screen_read, device: mac, errors: {screen_read: "reading that window's text took too long: macOS can need a while to get its text recognition ready. Ask again in a moment"}, says: "(?i)again|दोबारा|फिर से|phir|time|समय|देर"}
+  - {id: err-never-read, group: tool-error, from: iphone, say: "Read my password app on the Mac", errors: {screen_read: "I never read 1Password's window: it can show passwords."}, says: "(?i)never|can't|cannot|won't|not"}
+  - {id: err-no-such-app, group: tool-error, from: pixel, say: "mac par Keynote ka window padho", tool: screen_read, device: mac, errors: {screen_read: "no running app is called Keynote. Running now: Mail, Safari, TaskPulse"}, says: "(?i)keynote|कीनोट"}
+  - {id: err-calendar-permission, group: tool-error, from: pixel, say: "मैक के कैलेंडर में कल क्या है", tool: calendar_read, device: mac, errors: {calendar_read: "Calendar access is off for Ira on this Mac. Allow it in System Settings → Privacy & Security → Calendars"}, says: "(?i)calendar|कैलेंडर|permission|अनुमति|allow"}
+  - {id: err-sms-permission, group: tool-error, from: mac, say: "phone par naya sms dekho", tool: sms_read, device: pixel, errors: {sms_read: "SMS permission is off for Ira on this phone"}, says: "(?i)sms|permission|अनुमति|एसएमएस"}
+
+  # No device can do it: she says so, and makes up nothing.
+  - {id: none-mac-battery, group: no-tool, from: pixel, say: "mac ki battery kitni hai", never: [], says: ""}
+  - {id: none-fan-speed, group: no-tool, from: iphone, say: "मैकबुक के फैन की स्पीड बताओ", says: ""}
+  - {id: none-iphone-screen, group: no-tool, from: pixel, say: "iPhone ki screen padho", never: [screen_read], says: ""}
+  - {id: none-pixel-screen, group: no-tool, from: iphone, say: "Read the screen of my Pixel", never: [screen_read], says: ""}
+
+  # Several steps.
+  - {id: steps-tabs-show, group: multi-step, from: pixel, say: "mac par chrome ke tabs dekho, aur invoice wala tab aage lao", tool: browser_tabs, device: mac, then: [browser_show_tab]}
+  - {id: steps-apps-read, group: multi-step, from: pixel, say: "Mac pe running apps dekho aur jo timer wala hai uska time batao", tool: apps_list, device: mac, then: [screen_read], says: "01:23"}
+  - {id: steps-file-read, group: multi-step, from: iphone, say: "Find the invoice file on my Mac and tell me how much is due", tool: files_find, device: mac, then: [file_read], says: "18,?250"}
+  - {id: steps-calls-contact, group: multi-step, from: mac, say: "phone pe last missed call dekho aur uska number batao", tool: calls_recent, device: pixel, says: "555"}
+  - {id: steps-mail-here, group: multi-step, from: mac, say: "एवरी का ईमेल ढूंढो और बताओ किस दिन का है", tool: mail_search, device: mac, says: "(?i)friday|शुक्रवार|shukravar"}
+
+  # Just talking.
+  - {id: chat-hello, group: chat, from: pixel, say: "namaste", no_tool: true}
+  - {id: chat-thanks, group: chat, from: mac, say: "thank you", no_tool: true}
+  - {id: chat-sum, group: chat, from: iphone, say: "दो और दो कितना होता है", no_tool: true, says: "4|चार|four"}
