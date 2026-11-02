@@ -88,18 +88,18 @@ cases:
   - {id: act-pixel-sms, group: other-device-act, from: mac, say: "Pixel se Avery ko sms bhejo ki main late hoon", tool: sms_send, device: pixel, proposed: true}
 
   # The device is off: she says that, and nothing else.
-  - {id: off-mac-hi, group: offline, from: pixel, say: "मैकबुक पर टाइमर चेक करो", offline: [mac], says: "(?i)offline|ऑफ़लाइन|ऑफलाइन|बंद|band|connect|कनेक्ट|जुड़ा"}
-  - {id: off-mac-tabs, group: offline, from: iphone, say: "mac pe chrome ke tabs batao", offline: [mac], says: "(?i)offline|ऑफ़लाइन|ऑफलाइन|बंद|band|connect|कनेक्ट|जुड़ा"}
+  - {id: off-mac-hi, group: offline, from: pixel, say: "मैकबुक पर टाइमर चेक करो", offline: [mac], says: "(?i)offline|online|ऑफ़लाइन|ऑफलाइन|ऑनलाइन|बंद|band|connect|कनेक्ट|जुड़ा"}
+  - {id: off-mac-tabs, group: offline, from: iphone, say: "mac pe chrome ke tabs batao", offline: [mac], says: "(?i)offline|online|ऑफ़लाइन|ऑफलाइन|ऑनलाइन|बंद|band|connect|कनेक्ट|जुड़ा"}
   - {id: off-mac-en, group: offline, from: pixel, say: "What's on my Mac's screen?", offline: [mac], says: "(?i)offline|connect|not on|off\\b|reach"}
   - {id: off-mac-web, group: offline, from: web, say: "Check my Mac's clipboard", offline: [mac], says: "(?i)offline|connect|not on|off\\b|reach"}
-  - {id: off-pixel-hi, group: offline, from: mac, say: "पिक्सल पर मिस्ड कॉल देखो", offline: [pixel], says: "(?i)offline|ऑफ़लाइन|ऑफलाइन|बंद|band|connect|कनेक्ट|जुड़ा"}
+  - {id: off-pixel-hi, group: offline, from: mac, say: "पिक्सल पर मिस्ड कॉल देखो", offline: [pixel], says: "(?i)offline|online|ऑफ़लाइन|ऑफलाइन|ऑनलाइन|बंद|band|connect|कनेक्ट|जुड़ा"}
   - {id: off-pixel-sms, group: offline, from: web, say: "Do I have a new SMS on my Pixel?", offline: [pixel], says: "(?i)offline|connect|not on|off\\b|reach"}
-  - {id: off-iphone, group: offline, from: pixel, say: "iPhone ke reminders batao", offline: [iphone], says: "(?i)offline|ऑफ़लाइन|ऑफलाइन|बंद|band|connect|कनेक्ट|जुड़ा"}
+  - {id: off-iphone, group: offline, from: pixel, say: "iPhone ke reminders batao", offline: [iphone], says: "(?i)offline|online|ऑफ़लाइन|ऑफलाइन|ऑनलाइन|बंद|band|connect|कनेक्ट|जुड़ा"}
 
   # The tool fails: she gives that reason, not one of her own.
   - {id: err-screen-permission, group: tool-error, from: pixel, say: "mac par TaskPulse ka timer dekho", tool: screen_read, device: mac, errors: {screen_read: "Screen Recording is off for Ira, so I cannot read the screen. Allow Ira in System Settings → Privacy & Security → Screen & System Audio Recording, then ask again"}, says: "(?i)screen recording|स्क्रीन रिकॉर्डिंग|permission|अनुमति|इजाज़त|ijazat|allow"}
   - {id: err-screen-late, group: tool-error, from: pixel, say: "मैकबुक पर टाइमर चेक करो", tool: [screen_read, apps_list], device: mac, errors: {screen_read: "reading that window's text took too long: macOS can need a while to get its text recognition ready. Ask again in a moment"}}
-  - {id: err-never-read, group: tool-error, from: iphone, say: "Read my password app on the Mac", errors: {screen_read: "I never read 1Password's window: it can show passwords."}, says: "(?i)never|can't|cannot|won't|not"}
+  - {id: err-never-read, group: tool-error, from: iphone, say: "Read my password app on the Mac", errors: {screen_read: "I never read 1Password's window: it can show passwords."}, never: [files_find, file_read], says: "(?i)never|can't|cannot|won't|not"}
   - {id: err-no-such-app, group: tool-error, from: pixel, say: "mac par Keynote ka window padho", tool: screen_read, device: mac, errors: {screen_read: "no running app is called Keynote. Running now: Mail, Safari, TaskPulse"}, says: "(?i)keynote|कीनोट"}
   - {id: err-calendar-permission, group: tool-error, from: pixel, say: "मैक के कैलेंडर में कल क्या है", tool: calendar_read, device: mac, errors: {calendar_read: "Calendar access is off for Ira on this Mac. Allow it in System Settings → Privacy & Security → Calendars"}, says: "(?i)calendar|कैलेंडर|permission|अनुमति|allow"}
   - {id: err-sms-permission, group: tool-error, from: mac, say: "phone par naya sms dekho", tool: sms_read, device: pixel, errors: {sms_read: "SMS permission is off for Ira on this phone"}, says: "(?i)sms|permission|अनुमति|एसएमएस"}
@@ -114,7 +114,7 @@ cases:
   - {id: steps-tabs-show, group: multi-step, from: pixel, say: "mac par chrome ke tabs dekho, aur invoice wala tab aage lao", tool: browser_tabs, device: mac, then: [browser_show_tab]}
   - {id: steps-apps-read, group: multi-step, from: pixel, say: "Mac pe running apps dekho aur jo timer wala hai uska time batao", tool: apps_list, device: mac, then: [screen_read], says: "01:23"}
   - {id: steps-file-read, group: multi-step, from: iphone, say: "Find the invoice file on my Mac and tell me how much is due", tool: files_find, device: mac, then: [file_read], says: "18,?250"}
-  - {id: steps-calls-contact, group: multi-step, from: mac, say: "phone pe last missed call dekho aur uska number batao", tool: calls_recent, device: pixel, says: "555"}
+  - {id: steps-calls-contact, group: multi-step, from: mac, say: "phone pe last missed call dekho aur uska number batao", tool: calls_recent, device: pixel, never: [call_place, sms_send], says: "555"}
   - {id: steps-mail-here, group: multi-step, from: mac, say: "एवरी का ईमेल ढूंढो और बताओ किस दिन का है", tool: mail_search, device: mac, says: "(?i)friday|शुक्रवार|shukravar"}
 
   # A conversation that has already gone wrong: the model must not repeat its own mistakes.

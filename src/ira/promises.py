@@ -23,8 +23,8 @@ _DONE = re.compile(
 )
 # First person, now or next: "dekhti hoon", "khol raha hoon", "karungi", "देखता हूँ", "let me".
 _WILL = re.compile(
-    r"(?<![a-z])(?:let me(?! know)|i'll(?! be\b)|i will(?! be\b)|i am going to|i'm going to|"
-    r"i am now|i'm now|i'm checking|"
+    r"(?<![a-z])(?:let me(?! know)|i'll(?! be\b| not\b)|i will(?! be\b| not\b)|i am going to|"
+    r"i'm going to|i am now|i'm now|i'm checking|"
     r"i am checking|i'm opening|i'm looking|i'm reading|checking now|one moment|just a moment|"
     r"give me a moment|hold on)(?![a-z])"
     r"|(?<![a-z])[a-z]+(?:ta|ti)\s+(?:hoon|hun|hu)(?![a-z])"
@@ -55,11 +55,17 @@ _YES_IN_WORDS = re.compile(
     r"|हाँ बोल|हां बोल|हाँ कह|हां कह|कन्फर्म कर|क्या भेज",
     re.IGNORECASE,
 )
-# Saying it cannot is an answer, whatever else the sentence says.
+# Saying it cannot, or that the device is off: an answer, and what led to it in the sentence is too.
 _CANNOT = re.compile(
-    r"can't|cannot|can not|won't|unable|not able|never read|nahi kar (?:sakt|paung|pa)|"
-    r"nahi ho sakta|nahin kar sakt|nahi padh sakt|nahi dekh sakt"
-    r"|नहीं कर सकत|नहीं कर पा|नहीं हो सकता|नहीं पढ़ सकत|नहीं देख सकत",
+    r"can't|cannot|can not|couldn't|won't|unable|not able|never read|offline|"
+    r"(?<![a-z])nahi+n?\s+(?:[a-z]+\s+)?(?:sakt|pa(?:ung|aung)?(?![a-z]))|nahi+n? ho sakta"
+    r"|नहीं\s+(?:[ऀ-ॿ]+\s+)?(?:सकत|पा)|नहीं हो सकता|ऑफ़लाइन|ऑफलाइन",
+    re.IGNORECASE,
+)
+# Apps that are never read, on any device: saying so about them is right, not a refusal to correct.
+_NEVER_READ = re.compile(
+    r"password|passwords|passkey|keychain|bitwarden|lastpass|dashlane|login window|"
+    r"पासवर्ड|पास वर्ड|पासकी|कीचेन",
     re.IGNORECASE,
 )
 # Said to her, not asking for anything: nothing here can be an empty promise.
@@ -85,18 +91,24 @@ def claims_done(text: str) -> bool:
 
 
 def promises(text: str) -> bool:
-    """It says it is doing something, or is about to. A question is not a promise."""
+    """It says it is doing something, or is about to, sentence by sentence. A question is not a
+    promise, nor is what leads to "I can't"; "I can't now, I'll tell you later" still is."""
     for sentence in _SENTENCE.findall(text):
         if sentence.rstrip().endswith("?"):
             continue
+        cannot = max((m.end() for m in _CANNOT.finditer(sentence)), default=0)
         for match in _WILL.finditer(sentence):
-            if not _NOT_A_PROMISE.match(match.group(0)):
+            if match.start() >= cannot and not _NOT_A_PROMISE.match(match.group(0)):
                 return True
     return False
 
 
 def says_cannot(text: str) -> bool:
     return bool(_CANNOT.search(text))
+
+
+def names_a_never_read_app(text: str) -> bool:
+    return bool(_NEVER_READ.search(text))
 
 
 def is_chatter(text: str) -> bool:

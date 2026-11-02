@@ -457,3 +457,128 @@ async def test_a_tool_on_several_devices_unnamed_runs_where_they_are():
     mac.tools = {**mac.tools, "calendar_read": shared}
     await turn(runtime, owner, "kal ke calendar mein kya hai", ids["pixel"])
     assert ran == [(ids["pixel"].id, "calendar_read")]
+
+
+@pytest.mark.parametrize(
+    "words",
+    [
+        "मैकबुक अभी ऑफ़लाइन है, इसलिए मैं उसे एक्सेस नहीं कर पा रहा हूँ।",
+        "पिक्सल 7 अभी ऑफ़लाइन है। इसलिए मैं मिस्ड कॉल देख नहीं सकता।",
+        "मैं आपके मैकबुक को चेक करता हूँ, लेकिन ऐसा लगता है कि वह अभी ऑफलाइन है।",
+        "Mac abhi offline hai, main use nahi dekh pa raha hoon.",
+        "मैं TaskPulse का timer देख नहीं पा रहा हूं क्योंकि permission बंद है।",
+        "Main timer dekh nahi pa raha hoon.",
+        "Your MacBook is offline, so I'm unable to look.",
+        "I can't read that window, and I will not try.",
+    ],
+)
+def test_saying_it_cannot_is_no_promise_sentence_by_sentence(words: str):
+    assert not promises(words)
+
+
+@pytest.mark.parametrize(
+    "words",
+    [
+        "आपका iPhone अभी offline है, इसलिए मैं नहीं देख सकता। जब यह online आएगा तो मैं बता दूंगा।",
+        "I can't see the battery from here. Let me check the apps.",
+        "Your MacBook is offline right now, I'll tell you when it is back.",
+    ],
+)
+def test_a_promise_beside_a_cannot_is_still_one(words: str):
+    assert promises(words)
+
+
+async def test_a_sentence_saying_it_cannot_goes_out_at_once():
+    gate = PromiseGate()
+    assert gate.feed("Mac abhi offline hai, main nahi dekh pa raha hoon. Aur") == (
+        "Mac abhi offline hai, main nahi dekh pa raha hoon."
+    )
+
+
+async def test_the_device_off_takes_no_extra_round_and_loses_only_the_promise():
+    words = "आपका MacBook अभी ऑफ़लाइन है, मैं नहीं देख सकता। जब यह online आएगा तो मैं बता दूंगा।"
+    runtime, owner, ids, ran = world([words], offline=("mac",))
+    events = await turn(runtime, owner, "मैकबुक पर टाइमर चेक करो", ids["pixel"])
+    assert events[-1]["text"] == "आपका MacBook अभी ऑफ़लाइन है, मैं नहीं देख सकता।"
+    assert len(runtime.test_provider.calls) == 1 and ran == []
+
+
+async def test_the_device_off_with_only_a_promise_to_say_still_gets_its_round():
+    answer = call("finish_turn", {"say": "MacBook is offline."})
+    runtime, owner, ids, _ = world(["Main dekhti hoon.", answer], offline=("mac",))
+    events = await turn(runtime, owner, "mac par timer dekho", ids["pixel"])
+    assert events[-1]["text"] == "MacBook is offline."
+
+
+async def test_i_cannot_then_let_me_check_goes_on_when_the_device_is_up():
+    runtime, owner, ids, ran = world(
+        ["I can't see the battery here. Let me check the apps.", call("screen_read"), "It is 80%."]
+    )
+    events = await turn(runtime, owner, "mac ki battery kitni hai", ids["pixel"])
+    assert [name for _, name in ran] == ["screen_read"] and "80%" in events[-1]["text"]
+
+
+@pytest.mark.parametrize(
+    "said",
+    ["Read my password app on the Mac", "mac par 1Password padho", "मैक पर पासवर्ड ऐप पढ़ो"],
+)
+async def test_a_password_app_refused_is_answered_not_forced(said: str):
+    words = "I won't read your password app on the Mac."
+    runtime, owner, ids, ran = world([words])
+    events = await turn(runtime, owner, said, ids["pixel"])
+    assert events[-1]["text"] == words and ran == []
+    assert len(runtime.test_provider.calls) == 1
+
+
+async def test_a_named_device_refused_otherwise_is_still_asked_to_go_on():
+    words = "I can't reach your Mac from here."
+    runtime, owner, ids, ran = world([words, call("screen_read"), "Timer 01:23."])
+    events = await turn(runtime, owner, "mac par timer dekho", ids["pixel"])
+    assert [name for _, name in ran] == ["screen_read"] and events[-1]["text"] == "Timer 01:23."
+
+
+async def test_one_device_tool_is_tried_three_rounds_then_answered_with():
+    runtime, owner, ids, ran = world(
+        [call("screen_read"), call("screen_read"), call("screen_read"), "Yeh mila."]
+    )
+    events = await turn(runtime, owner, "screen padho", ids["mac"])
+    assert [name for _, name in ran] == ["screen_read"] * 3
+    assert "screen_read" not in offered(runtime, 3) and events[-1]["text"] == "Yeh mila."
+
+
+async def test_a_tool_called_again_after_its_rounds_does_not_run():
+    runtime, owner, ids, ran = world(
+        [call("screen_read")] * 4 + ["Yeh mila."],
+    )
+    events = await turn(runtime, owner, "screen padho", ids["mac"])
+    assert [name for _, name in ran] == ["screen_read"] * 3
+    result = next(
+        e for e in events if e["type"] == "tool_result" and "already been tried" in e["result"]
+    )
+    assert result["ok"] is False and events[-1]["text"] == "Yeh mila."
+
+
+async def test_several_calls_in_one_round_count_as_one():
+    three = ChatResponse(
+        text="", tool_calls=[ToolCall(f"c{n}", "screen_read", "{}") for n in range(5)]
+    )
+    runtime, owner, ids, ran = world([three, "Yeh mila."])
+    await turn(runtime, owner, "screen padho", ids["mac"])
+    assert len(ran) == 5
+
+
+async def test_out_of_steps_its_promises_are_cut_and_what_it_found_stands():
+    runtime, owner, ids, _ = world(
+        [call("screen_read"), call("screen_read"), "Timer 01:23 hai. Main aur dekhti hoon."]
+    )
+    runtime.assistant.max_tool_rounds = 2
+    events = await turn(runtime, owner, "screen padho", ids["mac"])
+    assert events[-1]["text"] == "Timer 01:23 hai."
+    assert said(events) == "Timer 01:23 hai."
+
+
+async def test_out_of_steps_with_only_a_promise_says_what_was_tried():
+    runtime, owner, ids, _ = world([call("screen_read"), "Main aur dekhti hoon."])
+    runtime.assistant.max_tool_rounds = 1
+    events = await turn(runtime, owner, "screen padho", ids["mac"])
+    assert "I tried screen_read" in events[-1]["text"]

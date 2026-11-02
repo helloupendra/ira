@@ -52,6 +52,8 @@ FALSE_REFUSAL = re.compile(
     r"|वहीं\s+से\s+(?:बात|पूछ)",
     re.IGNORECASE,
 )
+# A call the server would not run, in its own words: the card shows these beside what ran.
+BLOCKED = re.compile(r'"error": "(?:refused|Not run)')
 # The server's own words for what went wrong, never meant for the person.
 LEAKED = re.compile(r"unknown tool|tool_call|ToolError|Traceback", re.IGNORECASE)
 NUMBER = re.compile(r"\d[\d,:.]*\d|\d")
@@ -105,6 +107,7 @@ class Turn:
     error: str | None = None
     first_word: float | None = None  # seconds to the first words out
     checks: list[str] = field(default_factory=list)  # why it was asked to go on
+    refused: list[str] = field(default_factory=list)  # tools it tried that were not let run
 
 
 @dataclass
@@ -127,6 +130,7 @@ class Result:
     canned: int = 0  # tries that ended in a fixed line, whatever the case
     first_word: float | None = None
     checks: int = 0
+    refused: list[str] = field(default_factory=list)
 
 
 @dataclass
@@ -383,6 +387,8 @@ async def run_case(runtime: Any, world: World, case: Case, attempt: int = 0) -> 
                 turn.seen += f" {json.dumps(event.get('arguments'), ensure_ascii=False)}"
             elif event["type"] == "tool_result":
                 turn.seen += f" {json.dumps(event, ensure_ascii=False, default=str)}"
+                if not event.get("ok") and BLOCKED.search(str(event.get("result"))):
+                    turn.refused.append(str(event.get("name")))
     except Exception as exc:  # a failed case is scored, not fatal
         turn.error = f"{type(exc).__name__}: {exc}"[:300]
     turn.ran = list(world.ran)
@@ -412,6 +418,7 @@ async def run_cases(runtime: Any, cases: list[Case], runs: int = 1) -> Report:
                 problems=problems,
                 ran=[f"{tool}@{device}" for tool, device in turn.ran],
                 waiting=[f"{tool}@{device}" for tool, device in turn.waiting],
+                refused=list(turn.refused),
                 reply=turn.reply,
                 seconds=0.0,
                 runs=runs,
@@ -538,7 +545,7 @@ def render(report: Report) -> str:
             r.id,
             r.origin,
             r.say,
-            ", ".join(r.ran),
+            ", ".join([*r.ran, *(f"{tool} (refused)" for tool in r.refused)]),
             ", ".join(r.waiting),
             "" if r.first_word is None else f"{r.first_word:.2f}",
             "; ".join(r.problems),

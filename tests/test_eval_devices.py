@@ -253,3 +253,25 @@ def test_a_canned_line_on_chat_is_our_bug_and_counted():
     device = Case("d", "own-device", "mac", "Open Safari", tools=["app_open"], device="mac")
     words = score(device, Turn(reply="I haven't done anything yet. Could you ask again?"))
     assert not any(p.startswith("a canned line") or p.startswith("said it did") for p in words)
+
+
+class TriesAfterReading(ScriptedProvider):
+    """Reads the tabs, then tries what the taint rule refuses after a read."""
+
+    def __init__(self) -> None:
+        super().__init__(
+            [
+                ChatResponse(text="", tool_calls=[ToolCall("c1", "browser_tabs", "{}")]),
+                ChatResponse(text="", tool_calls=[ToolCall("c2", "browser_show_tab", "{}")]),
+                "Done with that.",
+            ]
+        )
+
+
+async def test_a_refused_call_is_on_the_card():
+    runtime = make_runtime(provider=TriesAfterReading())
+    cases = [c for c in load_cases() if c.id == "steps-tabs-show"]
+    report = await run_cases(runtime, cases)
+    assert report.results[0].refused == ["browser_show_tab"]
+    assert report.results[0].ran == ["browser_tabs@mac"]
+    assert "browser_show_tab (refused)" in render(report)

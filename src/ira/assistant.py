@@ -22,6 +22,7 @@ import json
 import logging
 import re
 import time
+from collections import Counter
 from collections.abc import AsyncIterator, Awaitable, Callable
 from dataclasses import dataclass, field
 from typing import Any
@@ -42,6 +43,7 @@ from ira.promises import (
     asks_yes_in_words,
     claims_done,
     is_chatter,
+    names_a_never_read_app,
     promises,
     says_cannot,
     without_promises,
@@ -142,6 +144,12 @@ GOAL_RULE = (
 YES_RULE = (
     "Do not ask for a yes in words: only the app can take it. Call the tool with exactly what you "
     "would do: the person is then shown a card and asked."
+)
+# A device tool is offered for this many rounds of a turn. Several calls in one round count once.
+SAME_TOOL_ROUNDS = 3
+TOOL_SPENT = (
+    "Not run: this tool has already been tried several times in this turn. Answer with what it "
+    "gave, and say what you could not find."
 )
 # What a model that must call a tool calls when no tool is the answer.
 FINISH_TOOL = {
@@ -743,13 +751,17 @@ class Assistant:
             and text is not None
             and not confirmed
             and not is_chatter(asked)
-            and any(t.source == "device" for t in personal.values())
+            # With the device named offline nothing of a device is on offer, and it is still
+            # about one.
+            and (named is not None or any(t.source == "device" for t in personal.values()))
         )
         proposable = any(t.tier >= 2 for t in personal.values())
         must_act = False
         finished = False
         last_words = ""  # what the round before a forced one said, in case that one says nothing
         used: list[str] = []
+        rounds_of: Counter[str] = Counter()
+        spent: set[str] = set()
         waiting = False
         asked_for: set[str] = set()
         named_up = named is not None and any(d.connected and d.id in named for d in roster)
@@ -899,10 +911,13 @@ class Assistant:
                 held = promise.take()
                 if not response.tool_calls and not waiting:
                     words = response.text or ""
-                    empty = not says_cannot(words) and (
-                        promises(words) or (not used and claims_done(words))
+                    empty = promises(words) or (
+                        not used and claims_done(words) and not says_cannot(words)
                     )
-                    why = None if finished and not empty else _ask_again(
+                    kept = without_promises(words, claims=not used) if empty else words
+                    # The device named is off: no tool can do it, so another round cannot help.
+                    off = named is not None and not named_up and _letters(kept) >= 2
+                    why = None if off or (finished and not empty) else _ask_again(
                         words, empty, asked, used, here, named, named_up, asked_for, proposable,
                         self.device_label,
                     )  # fmt: skip
@@ -917,7 +932,6 @@ class Assistant:
                         from ira.language import detect
 
                         log.warning("%s still said it did something, with no tool", model)
-                        kept = without_promises(words, claims=not used)
                         kept = kept if _letters(kept) >= 2 else NOT_DONE[detect(asked)]
                         response.text = held = kept
                 if held:
@@ -952,9 +966,12 @@ class Assistant:
                     "arguments": call.parsed_arguments() or {},
                     **self._device_of(personal.get(call.name), call),
                 }
-                run = await self._run_tool(
-                    call, conversation_id, channel, actor, user_id, personal, tainted
-                )
+                if call.name in spent:
+                    run = _failed(TOOL_SPENT, _safe(call))
+                else:
+                    run = await self._run_tool(
+                        call, conversation_id, channel, actor, user_id, personal, tainted
+                    )
                 tainted = tainted or run.untrusted
                 used.append(call.name)
                 waiting = waiting or run.pending is not None
@@ -982,14 +999,35 @@ class Assistant:
                 Message(role="assistant", content=response.text, tool_calls=replayed, model=model)
             )
             history.extend(results)
+            # A device tool tried round after round has given what it has: answer with that.
+            rounds_of.update({c.name for c in response.tool_calls})
+            spent = {
+                name
+                for name, count in rounds_of.items()
+                if count >= SAME_TOOL_ROUNDS
+                and name in personal
+                and personal[name].source == "device"
+            }
+            tools = [t for t in tools if t["name"] not in spent] or tools
         else:
             final_text, wrap_model = "", None
-            async for piece, used in self._wrap_up(
+            # Out of steps, and no round is left to check its words: promises are only cut.
+            wrap_gate = PromiseGate() if on_devices else None
+            async for piece, wrapped_by in self._wrap_up(
                 history, start, asked, text is not None, user_id, tier, stream, spoken, untrusted
             ):
-                final_text += piece
-                wrap_model = used or wrap_model
+                wrap_model = wrapped_by or wrap_model
+                piece = wrap_gate.feed(piece) if wrap_gate else piece
                 if piece:
+                    final_text += piece
+                    yield {"type": "delta", "text": piece}
+            if wrap_gate:
+                piece = wrap_gate.flush()
+                piece += without_promises(wrap_gate.take())
+                if not (final_text + piece).strip():
+                    piece = _out_of_steps(history[start:])
+                if piece:
+                    final_text += piece
                     yield {"type": "delta", "text": piece}
             model = wrap_model or model
             history.append(Message(role="assistant", content=final_text, model=wrap_model))
@@ -1524,7 +1562,7 @@ def _ask_again(
         return "which", rule
     if proposable and "yes" not in asked_for and asks_yes_in_words(words):
         return "yes", YES_RULE
-    if named_up and not used and "named" not in asked_for:
+    if named_up and not used and "named" not in asked_for and not names_a_never_read_app(asked):
         return "named", NAMED_RULE
     if used and "goal" not in asked_for and asks_more_than_one_thing(asked):
         return "goal", GOAL_RULE
