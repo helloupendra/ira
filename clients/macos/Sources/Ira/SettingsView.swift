@@ -87,6 +87,7 @@ struct SettingsView: View {
                     .font(.caption).foregroundStyle(.secondary)
                 ApprovalBanner(approvals: model.approvals)
                 TrustedAppsRow(approvals: model.approvals)
+                ControlListsRow(approvals: model.approvals)
                 if EnclaveApprovalKey.available {
                     TouchIDSetup(model: model)
                 }
@@ -264,6 +265,60 @@ struct TouchIDSetup: View {
             state.answer = await work()
             state.enrolled = model.touchIDEnrolled
             state.working = false
+        }
+    }
+}
+
+/// What Ira may never work in, for a person who wants her to run the whole Mac: two of the lists
+/// are theirs to change, with their PIN; what stays locked says so.
+struct ControlListsRow: View {
+    @ObservedObject var approvals: ApprovalMonitor
+    @State private var terminals = false
+    @State private var editors = false
+    @State private var pin = ""
+    @State private var problem: String?
+    @State private var saving = false
+
+    private var chosen: Set<String> {
+        var groups: Set<String> = []
+        if terminals { groups.insert(NeverApps.terminals) }
+        if editors { groups.insert(NeverApps.editors) }
+        return groups
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Where Ira may not work").font(.headline)
+            Toggle("Terminal, iTerm, Script Editor, Automator, Shortcuts", isOn: Binding(get: { !terminals }, set: { terminals = !$0 }))
+            Toggle("Code editors with a terminal (VS Code and others)", isOn: Binding(get: { !editors }, set: { editors = !$0 }))
+            Text("Whatever is typed in these can run as a command. Untick one only if you want Ira to work there.")
+                .font(.caption).foregroundStyle(.secondary)
+            Toggle("Password managers", isOn: .constant(true)).disabled(true)
+            Toggle("Ira's own approval windows", isOn: .constant(true)).disabled(true)
+            Text("These two stay blocked. Inside a session too, banking and payment sites, purchases, sending money and deleting files always ask you first.")
+                .font(.caption).foregroundStyle(.secondary)
+            if chosen != approvals.unlocked {
+                HStack {
+                    if !chosen.subtracting(approvals.unlocked).isEmpty {
+                        SecureField("Your PIN", text: $pin).frame(width: 110)
+                    }
+                    Button("Save") {
+                        saving = true
+                        Task {
+                            problem = await approvals.setUnlocked(chosen, pin: pin)
+                            pin = ""
+                            saving = false
+                        }
+                    }
+                    .disabled(saving)
+                }
+            }
+            if let problem { Text(problem).font(.caption).foregroundStyle(.orange) }
+        }
+        .onAppear {
+            Task { await approvals.refresh() }
+            terminals = approvals.unlocked.contains(NeverApps.terminals)
+            editors = approvals.unlocked.contains(NeverApps.editors)
         }
     }
 }

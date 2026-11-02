@@ -19,6 +19,8 @@ public enum DeviceProtocol {
         case ping
         case pong
         case skills([String])
+        /// Control of a device of this person was turned on or off, perhaps from another device.
+        case control(open: Bool)
         /// Something new in the person's Drop, or one deleted, on another of their devices.
         case drop(DropFrame)
         case error(String)
@@ -62,6 +64,7 @@ public enum DeviceProtocol {
         case "ping": return .ping
         case "pong": return .pong
         case "skills": return .skills(strings(frame["skills"]))
+        case "control": return .control(open: frame["open"]?.boolValue ?? false)
         case "drop":
             switch frame["event"]?.stringValue {
             case "new":

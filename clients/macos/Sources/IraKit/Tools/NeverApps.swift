@@ -4,8 +4,22 @@ import Foundation
 /// Automator, and Shortcuts (a "Run Shell Script" step). This Mac never opens them for Ira and
 /// never types, clicks or presses keys in them, whatever the server asks; the server keeps the
 /// same list. Code editors with a terminal of their own (a key opens it) may be opened, but
-/// are never typed in either.
+/// are never typed in either. The person may take either list off, on this Mac, with their PIN
+/// (`unlocked`). Password managers and Ira's own windows are not on these lists: see
+/// `MacControl.refusal`; nothing unlocks those.
 public enum NeverApps {
+    public static let terminals = "terminals"
+    public static let editors = "editors"
+    private static let key = "control.unlocked"
+    private static let lock = NSLock()
+
+    /// What the person took off the lists here. Kept on this Mac, set only after the server has
+    /// checked their PIN; the server's copy can take one away, never add one.
+    public static var unlocked: Set<String> {
+        get { lock.withLock { Set(UserDefaults.standard.stringArray(forKey: key) ?? []) } }
+        set { lock.withLock { UserDefaults.standard.set(Array(newValue.intersection([terminals, editors])).sorted(), forKey: key) } }
+    }
+
     public static let bundleIDs: Set<String> = [
         "com.apple.terminal", "com.googlecode.iterm2", "com.apple.scripteditor2", "com.apple.automator",
         "com.apple.shortcuts", "dev.warp.warp-stable", "com.mitchellh.ghostty", "net.kovidgoyal.kitty",
@@ -15,7 +29,8 @@ public enum NeverApps {
     /// Matched by any part of the name, erring on the safe side on purpose.
     public static let words = ["terminal", "iterm", "script editor", "automator", "shortcuts"]
 
-    public static func contains(bundleID: String?, name: String) -> Bool {
+    public static func contains(bundleID: String?, name: String, unlocked: Set<String> = NeverApps.unlocked) -> Bool {
+        if unlocked.contains(terminals) { return false }
         if let bundleID, bundleIDs.contains(bundleID.lowercased()) { return true }
         let lower = name.lowercased()
         return words.contains { lower.contains($0) }
@@ -36,8 +51,9 @@ public enum NeverApps {
     public static let editorNames: Set<String> = ["code", "cursor", "windsurf", "zed", "nova"]
 
     /// Whether Ira must never type, click or press keys in this app.
-    public static func neverType(bundleID: String?, name: String) -> Bool {
-        if contains(bundleID: bundleID, name: name) { return true }
+    public static func neverType(bundleID: String?, name: String, unlocked: Set<String> = NeverApps.unlocked) -> Bool {
+        if contains(bundleID: bundleID, name: name, unlocked: unlocked) { return true }
+        if unlocked.contains(editors) { return false }
         if let bundleID {
             let id = bundleID.lowercased()
             if editorIDs.contains(id) || editorPrefixes.contains(where: { id.hasPrefix($0) }) { return true }

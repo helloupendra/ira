@@ -220,7 +220,9 @@ struct DeviceClientTests {
         #expect(names.count > 30)
         #expect(names.prefix(30).allSatisfy { !$0.hasPrefix("ai_") })
         #expect(names.contains("ai_sessions") && names.contains("ai_session_detail"))
-        #expect(ToolCatalog.all(tasksConfigured: false).count <= 30)
+        #expect(names.prefix(30).allSatisfy { !["window_elements", "mac_drag", "mac_window"].contains($0) })
+        #expect(names.count <= 40)  // what a server takes now
+        #expect(ToolCatalog.all(tasksConfigured: false).count <= 33)
     }
 
     @Test func aRefusedHelloEndsTheConnection() async {
