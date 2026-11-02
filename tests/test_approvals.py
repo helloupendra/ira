@@ -102,6 +102,9 @@ async def test_a_pin_opens_a_window_and_covered_steps_then_run():
             "Done.",
             act("screen_act"),
             "Tapped.",
+            ChatResponse(
+                text="", tool_calls=[ToolCall("c2", "finish_turn", json.dumps({"say": "Tapped."}))]
+            ),  # with control on, every stop is checked against the goal
             act("sms_send"),
             "Send it?",
             act("screen_act"),

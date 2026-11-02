@@ -605,15 +605,16 @@ public final class Toolbox: ToolRunner, @unchecked Sendable {
         let wanted = args["app"]?.stringValue?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         let found: (pid: pid_t, name: String)?
         if wanted.isEmpty {
-            found = await frontApp().map { ($0.pid, $0.name) }
+            if let front = await frontApp() { found = (pid: front.pid, name: front.name) } else { found = nil }
         } else {
-            found = await MainActor.run {
+            let named: (pid: pid_t, name: String)? = await MainActor.run {
                 let apps = ScreenText.runningApps()
                 guard let best = AppTools.bestApp(wanted, among: apps.compactMap(\.localizedName)),
                     let app = apps.first(where: { $0.localizedName == best })
                 else { return nil }
-                return (app.processIdentifier, best)
+                return (pid: app.processIdentifier, name: best)
             }
+            found = named
         }
         guard let found else {
             let names = await MainActor.run { ScreenText.runningApps().compactMap(\.localizedName).sorted() }

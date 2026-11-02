@@ -90,7 +90,14 @@ jobs:
     steps:
       - uses: actions/checkout@v6
       - run: swift --version
-      - run: swift build
+      - name: swift build
+        # Build errors also as annotations, so they show on the run's page.
+        run: |
+          set -o pipefail
+          swift build 2>&1 | tee build.log || {
+            grep -E "error:" build.log | head -10 | sed 's/^/::error::/'
+            exit 1
+          }
       - run: scripts/test.sh
       - run: UNIVERSAL=1 scripts/make-app.sh
       - uses: actions/upload-artifact@v4

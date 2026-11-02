@@ -829,7 +829,11 @@ class Assistant:
             # known. With a check still to come on the whole answer, nothing at all does.
             hold_all = on_devices and (
                 (named_up and not used and "named" not in asked_for)
-                or (used and "goal" not in asked_for and asks_more_than_one_thing(asked))
+                or (
+                    used
+                    and "goal" not in asked_for
+                    and (controlling or asks_more_than_one_thing(asked))
+                )
             )
             promise = PromiseGate(hold_all) if on_devices else None
             forcing, must_act = must_act, False
@@ -952,7 +956,7 @@ class Assistant:
                     off = named is not None and not named_up and _letters(kept) >= 2
                     why = None if off or (finished and not empty) else _ask_again(
                         words, empty, asked, used, here, named, named_up, asked_for, proposable,
-                        self.device_label,
+                        self.device_label, controlling,
                     )  # fmt: skip
                     if why is not None:
                         log.warning("%s: asked to go on (%s)", model, why[0])
@@ -1620,6 +1624,7 @@ def _ask_again(
     asked_for: set[str],
     proposable: bool,
     label: Callable[[int], str],
+    controlling: bool = False,
 ) -> tuple[str, str] | None:
     """One more chance for a turn that ended short of the goal: which, and the rule that says
     so. Each is asked once, so a turn always ends."""
@@ -1632,7 +1637,8 @@ def _ask_again(
         return "yes", YES_RULE
     if named_up and not used and "named" not in asked_for and not names_a_never_read_app(asked):
         return "named", NAMED_RULE
-    if used and "goal" not in asked_for and asks_more_than_one_thing(asked):
+    # While the person lets her operate a device, any stop is checked against the goal.
+    if used and "goal" not in asked_for and (controlling or asks_more_than_one_thing(asked)):
         return "goal", GOAL_RULE
     return None
 
