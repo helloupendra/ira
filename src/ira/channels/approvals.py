@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
 from ira.accounts import Principal
-from ira.approvals import valid_minutes
+from ira.approvals import UNLOCKABLE, valid_minutes
 from ira.channels.deps import get_runtime, require, require_session
 from ira.channels.devices import _check_pin
 from ira.channels.schemas import OkResponse
@@ -30,16 +30,30 @@ class TrustedAppsView(BaseModel):
     apps: list[str] = Field(description="Android packages or macOS bundle ids.")
 
 
+class UnlockedView(BaseModel):
+    device_id: int
+    groups: list[str] = Field(description="What is off the never-lists there, with the PIN.")
+
+
 class ApprovalsView(BaseModel):
     minutes: int = Field(description="How long a PIN on screen control covers; 0 is off.")
     windows: list[ApprovalWindowView]
     trusted_apps: list[TrustedAppsView] = Field(default_factory=list)
+    unlocked: list[UnlockedView] = Field(default_factory=list)
 
 
 class TrustedAppsIn(BaseModel):
     device_id: int
     apps: list[str] = Field(max_length=20, description="The whole list for that device.")
     pin: str | None = Field(default=None, max_length=20, description="Needed to add an app.")
+
+
+class UnlockedIn(BaseModel):
+    device_id: int
+    groups: list[str] = Field(
+        max_length=2, description="The whole list for that device: terminals, editors."
+    )
+    pin: str | None = Field(default=None, max_length=20, description="Needed to add one.")
 
 
 class ApprovalMinutes(BaseModel):
@@ -64,6 +78,11 @@ def _view(runtime: Runtime, user_id: int) -> ApprovalsView:
         trusted_apps=[
             TrustedAppsView(device_id=d, device=runtime.device_label(d), apps=apps)
             for d, apps in runtime.approvals.trusted_by_device(user_id).items()
+        ],
+        unlocked=[
+            UnlockedView(device_id=d.id, groups=sorted(groups))
+            for d in (runtime.hub.devices.for_user(user_id) if runtime.hub is not None else [])
+            if (groups := runtime.approvals.unlocked(user_id, d.id))
         ],
     )
 
@@ -107,6 +126,25 @@ async def set_trusted_apps(
     if added:  # more trust: the PIN
         await _check_pin(runtime, who, body.pin, f"let Ira tap and type in {', '.join(added)}")
     runtime.approvals.set_trusted(who.user.id, device.id, body.apps)
+    return _view(runtime, who.user.id)
+
+
+@router.put("/unlocked", response_model=ApprovalsView, summary="Apps taken off the never-lists")
+async def set_unlocked(
+    body: UnlockedIn,
+    who: Principal = Depends(require("ask")),
+    runtime: Runtime = Depends(get_runtime),
+) -> ApprovalsView:
+    device = runtime.hub.devices.get(body.device_id) if runtime.hub is not None else None
+    if device is None or device.user_id != who.user.id:
+        raise HTTPException(404, detail="no such device of yours")
+    unknown = set(body.groups) - UNLOCKABLE
+    if unknown:
+        raise HTTPException(422, detail=f"not a list you can change: {', '.join(sorted(unknown))}")
+    added = set(body.groups) - runtime.approvals.unlocked(who.user.id, device.id)
+    if added:  # more trust: the PIN
+        await _check_pin(runtime, who, body.pin, f"let Ira work in {', '.join(sorted(added))}")
+    runtime.approvals.set_unlocked(who.user.id, device.id, body.groups)
     return _view(runtime, who.user.id)
 
 

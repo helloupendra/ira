@@ -26,6 +26,23 @@ NEVER = re.compile(
     r"(^|_)(send|reply|call|place|pay|payment|buy|transfer|delete|remove|push|grant|pair)(_|$)"
 )
 MINUTES_CHOICES = (0, 5, 10, 15, 20, 30, 45, 60)
+# What the person may take off the lists below, per device, with their PIN. Password managers and
+# Ira's own windows are on no list here: the devices refuse those whatever is unlocked.
+UNLOCKABLE = frozenset({"terminals", "editors"})
+NOTHING_UNLOCKED: frozenset[str] = frozenset()
+# Inside a window too, these ask every time: money, and what cannot be undone.
+RISKY_WORDS = re.compile(
+    r"\b(pay|payment|buy|purchase|checkout|check out|place order|order now|transfer|send money|"
+    r"upi|delete|erase|empty trash|move to trash|move to bin)\b"
+    r"|भुगतान|ख़रीद|खरीद|हटाओ|डिलीट|मिटाओ|पेमेंट",
+    re.IGNORECASE,
+)
+RISKY_PLACES = re.compile(
+    r"\b(bank|banking|netbanking|paypal|razorpay|paytm|phonepe|gpay|stripe|checkout|wallet|"
+    r"payment|payments)\b|बैंक",
+    re.IGNORECASE,
+)
+RISKY_KEYS = re.compile(r"(cmd|command)\+(shift\+)?(delete|backspace|forwarddelete)", re.IGNORECASE)
 # Apps Ira never acts in, by name or bundle id: whatever is typed there runs as a command.
 NEVER_APPS = (
     "terminal", "iterm", "script editor", "scripteditor", "automator", "termux",
@@ -86,12 +103,14 @@ NEVER_OPEN_REFUSAL = (
 URL_REFUSAL = "refused: Ira opens only web addresses (https://...), never a file or an app's link."
 
 
-def open_refusal(tool: str, arguments: dict[str, object]) -> str | None:
+def open_refusal(
+    tool: str, arguments: dict[str, object], unlocked: frozenset[str] = NOTHING_UNLOCKED
+) -> str | None:
     """Why a device must not open this, or None. The devices refuse these too; this is the
     server's own check, so an older app or a server-side mistake cannot get round them."""
     if tool == "app_open":
         named = [arguments.get(key) for key in ("name", "package", "app")]
-        if any(isinstance(value, str) and never_app(value) for value in named):
+        if any(isinstance(value, str) and never_app(value, unlocked) for value in named):
             return NEVER_OPEN_REFUSAL
     if tool == "file_open" and isinstance(arguments.get("path"), str):
         # Windows drops trailing dots and spaces, so "run.bat. " opens as run.bat.
@@ -107,29 +126,48 @@ def open_refusal(tool: str, arguments: dict[str, object]) -> str | None:
     return None
 
 
-def never_app(app: str | None) -> bool:
+def risky_step(tool: str, arguments: dict[str, Any], looked: dict[str, Any] | None) -> str | None:
+    """Why this step needs its own yes inside an approval, or None. `looked`: what the last look
+    at that device's window showed, so a click by id is read by its label."""
+    looked = looked or {}
+    shown = (looked.get("elements") or {}).get(str(arguments.get("id") or ""))
+    said = " ".join(str(arguments.get(key) or "") for key in ("label", "path")) + f" {shown or ''}"
+    if RISKY_WORDS.search(said):
+        return f"it may pay or delete: {said.strip()[:80]}"
+    if RISKY_KEYS.search(str(arguments.get("keys") or "")):
+        return "those keys delete a file"
+    place = " ".join(str(looked.get(key) or "") for key in ("appName", "window"))
+    if RISKY_PLACES.search(f"{place} {arguments.get('url') or ''} {arguments.get('app') or ''}"):
+        return f"a banking or payment place: {place.strip()[:80]}"
+    return None
+
+
+def never_app(app: str | None, unlocked: frozenset[str] = NOTHING_UNLOCKED) -> bool:
     """Terminal, iTerm, Script Editor, Automator, and on Windows the Command Prompt, PowerShell,
     Windows Terminal and the Registry Editor: never acted in, never trusted.
 
     Names match by any part ("terminal" anywhere in it): an app that merely has such a word
     in its name is refused too. That errs on the safe side on purpose; do not narrow it
     to exact names without weighing that."""
-    if not app:
+    if not app or "terminals" in unlocked:
         return False
     name = app.strip().lower().removesuffix(".app")
     return name in NEVER_IDS or any(word in name for word in NEVER_APPS)
 
 
-def never_type(app: str | None) -> bool:
+def never_type(app: str | None, unlocked: frozenset[str] = NOTHING_UNLOCKED) -> bool:
     """Whether Ira must never type, click or press keys in this app, nor trust it: the
     never-list, and the apps that may be opened but run what is typed in them (an
     editor's terminal, Explorer's address bar)."""
     if not app:
         return False
     name = app.strip().lower().removesuffix(".app")
+    if never_app(app, unlocked):
+        return True
+    if "editors" in unlocked:
+        return False
     return (
-        never_app(app)
-        or name in NEVER_TYPE_IDS
+        name in NEVER_TYPE_IDS
         or name.startswith(NEVER_TYPE_PREFIXES)
         or any(word in name for word in NEVER_TYPE_WORDS)
     )
@@ -185,10 +223,13 @@ class Approvals:
         self.connected = connected
         self.clock = clock
 
-    def open(self, user_id: int, device_id: int, action_id: str | None = None) -> Window | None:
-        """A PIN confirmed a covered action on this device: open the window, or start it
-        again from now. None when the person switched approvals off."""
-        minutes = self.minutes_for(user_id)
+    def open(
+        self, user_id: int, device_id: int, action_id: str | None = None, minutes: int | None = None
+    ) -> Window | None:
+        """A PIN confirmed a covered action on this device, or the person asked for this many
+        minutes with their PIN: open the window, or start it again from now. None when the
+        person switched approvals off and asked for no length."""
+        minutes = self.minutes_for(user_id) if minutes is None else minutes
         if minutes <= 0:
             return None
         now = self.clock()
@@ -261,6 +302,30 @@ class Approvals:
             (self.clock(), why, *params, self.clock()),
         )
         return cursor.rowcount
+
+    # What the person took off the never-lists on a device, with their PIN.
+
+    def unlocked(self, user_id: int, device_id: int) -> frozenset[str]:
+        rows = self.store.query(
+            "SELECT grp FROM control_unlocked WHERE user_id = ? AND device_id = ?",
+            (user_id, device_id),
+        )
+        return frozenset(r["grp"] for r in rows)
+
+    def set_unlocked(self, user_id: int, device_id: int, groups: list[str]) -> frozenset[str]:
+        clean = {g for g in groups if g in UNLOCKABLE}
+        with self.store.transaction():
+            self.store.execute(
+                "DELETE FROM control_unlocked WHERE user_id = ? AND device_id = ?",
+                (user_id, device_id),
+            )
+            for group in sorted(clean):
+                self.store.execute(
+                    "INSERT INTO control_unlocked (user_id, device_id, grp, added_at) "
+                    "VALUES (?, ?, ?, ?)",
+                    (user_id, device_id, group, self.clock()),
+                )
+        return frozenset(clean)
 
     # Trusted apps: screen control there runs without asking, while the app is in front.
 
