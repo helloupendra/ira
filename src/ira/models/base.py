@@ -181,6 +181,7 @@ class ChatProvider(Protocol):
         *,
         max_tokens: int,
         timeout: float,
+        tool_choice: str | None = None,
     ) -> ChatResponse: ...
 
     def stream(

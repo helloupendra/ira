@@ -630,6 +630,8 @@ def build_runtime(
         tool_calls_per_minute=settings.assistant.tool_calls_per_minute,
     )
     assistant.voice_tier = settings.voice.tier
+    assistant.first_token_seconds = settings.assistant.first_token_seconds
+    assistant.voice_first_token_seconds = settings.voice.first_token_seconds
     runtime = Runtime(
         settings=settings,
         store=store,

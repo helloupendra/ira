@@ -132,6 +132,7 @@ class AnthropicProvider:
         messages: list[Message],
         tools: list[dict[str, Any]] | None,
         max_tokens: int,
+        tool_choice: str | None = None,
     ) -> dict[str, Any]:
         system, turns = to_anthropic(messages)
         payload: dict[str, Any] = {"model": model, "max_tokens": max_tokens, "messages": turns}
@@ -140,6 +141,8 @@ class AnthropicProvider:
         anthropic_tools = to_anthropic_tools(tools)
         if anthropic_tools:
             payload["tools"] = anthropic_tools
+            if tool_choice == "required":
+                payload["tool_choice"] = {"type": "any"}
         return payload
 
     async def chat(
@@ -150,8 +153,9 @@ class AnthropicProvider:
         *,
         max_tokens: int,
         timeout: float,
+        tool_choice: str | None = None,
     ) -> ChatResponse:
-        payload = self._payload(model, messages, tools, max_tokens)
+        payload = self._payload(model, messages, tools, max_tokens, tool_choice)
         data = await self.http.post_json("/v1/messages", payload, timeout=timeout)
         return parse_message(data, model)
 
@@ -172,6 +176,7 @@ class AnthropicProvider:
         started_usage: dict[str, Any] | None = None
         output_tokens = 0
         stop_reason: str | None = None
+        alive = False  # the model has begun: words, a tool call or its reasoning
         async with self.http.stream_lines("/v1/messages", payload, timeout=timeout) as lines:
             async for data in sse_data(lines):
                 try:
@@ -185,6 +190,9 @@ class AnthropicProvider:
                     started_usage = (event.get("message") or {}).get("usage") or None
                 elif kind == "content_block_start":
                     block = event.get("content_block") or {}
+                    if block.get("type") in ("tool_use", "thinking") and not alive:
+                        alive = True
+                        yield TextDelta("")  # no words yet, but it is not stuck
                     if block.get("type") == "tool_use":
                         blocks[event.get("index", 0)] = {
                             "id": block.get("id", ""),
@@ -194,6 +202,7 @@ class AnthropicProvider:
                 elif kind == "content_block_delta":
                     delta = event.get("delta") or {}
                     if delta.get("type") == "text_delta" and delta.get("text"):
+                        alive = True
                         text.append(delta["text"])
                         yield TextDelta(delta["text"])
                     elif delta.get("type") == "input_json_delta":

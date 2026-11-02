@@ -39,8 +39,10 @@ from ira.promises import (
     PromiseGate,
     asks_more_than_one_thing,
     asks_which_device,
+    asks_yes_in_words,
     claims_done,
     promises,
+    without_promises,
 )
 from ira.security import looks_like_pin
 from ira.store import Store
@@ -123,17 +125,33 @@ NOT_DONE = {
 }
 PROMISE_RULE = (
     "Your last answer said you did or will do something, and you called no tool: nothing has "
-    "happened. Call the tool now, or say plainly that you cannot. Never say a thing is done "
-    "unless a tool did it."
+    "happened. Call the tool now. Only if none can do it, call finish_turn and say so. Never say "
+    "a thing is done unless a tool did it."
 )
 NAMED_RULE = (
-    "The person named a device that is connected, and you used none of its tools. Use its tool "
-    "now if one fits, or say plainly that it cannot do this. No general advice."
+    "The person named a device that is connected, and you used none of its tools. Call its tool "
+    "now. Only if none fits, call finish_turn and say that it cannot do this. No general advice."
 )
 GOAL_RULE = (
-    "You have done only one step of what the person asked. If they asked for more, call the next "
-    "tool now; if the goal is really done, answer."
+    "Look again at what the person asked. If any part of it is not done yet, call the next tool "
+    "now, using what the last tool returned. Only when all of it is done, or you truly cannot go "
+    "on, call finish_turn, with what you found and what is left."
 )
+YES_RULE = (
+    "Do not ask for a yes in words: only the app can take it. Call the tool with exactly what you "
+    "would do: the person is then shown a card and asked."
+)
+# What a model that must call a tool calls when no tool is the answer.
+FINISH_TOOL = {
+    "name": "finish_turn",
+    "description": "End this turn with words to the person, in their language: what was done, "
+    "what you found, and what is left. Only when no other tool should run now.",
+    "parameters": {
+        "type": "object",
+        "properties": {"say": {"type": "string", "description": "What to tell the person."}},
+        "required": ["say"],
+    },
+}
 SPOKEN_RULE = (
     "This is a live voice call: answer in one to three short sentences meant to be heard, "
     "the most useful thing first. No lists, tables, markdown or web addresses; say numbers "
@@ -270,6 +288,8 @@ class Assistant:
         self.business = business
         self.instructions = instructions.strip()
         self.tier = tier
+        self.first_token_seconds: float | None = None
+        self.voice_first_token_seconds: float | None = None
         self.voice_tier: str | None = None  # a live call's tier, when it should be faster
         self.max_tool_rounds = max_tool_rounds
         self.history_messages = history_messages
@@ -281,6 +301,8 @@ class Assistant:
         self.personal_tools = personal_tools
         self.tool_missing: Callable[[int | None, str], str | None] | None = None
         self.device_roster: Callable[[int], list[Roster]] | None = None
+        # Off only to measure what holding answers back costs (`ira eval devices --no-holds`).
+        self.check_promises = True
         # This turn's tools that are not on offer, and why: said if the model calls one anyway.
         self._hidden: dict[str, dict[str, str]] = {}
         self.user_settings = user_settings or UserSettings(store)
@@ -715,15 +737,20 @@ class Assistant:
         # What this turn has really done, to tell an answer from an empty promise.
         # (A turn carrying on after a yes or a PIN has done what was confirmed, before it began.)
         on_devices = (
-            text is not None
+            self.check_promises
+            and text is not None
             and not confirmed
             and any(t.source == "device" for t in personal.values())
         )
+        proposable = any(t.tier >= 2 for t in personal.values())
+        must_act = False
+        finished = False
         used: list[str] = []
         waiting = False
         asked_for: set[str] = set()
         named_up = named is not None and any(d.connected and d.id in named for d in roster)
         tier = self.voice_tier if spoken and self.voice_tier else self.tier
+        patience = self.voice_first_token_seconds if spoken else self.first_token_seconds
         model: str | None = None
         final_text = ""
         # Every call id in the conversation so far: a new call never repeats one, which
@@ -753,17 +780,33 @@ class Assistant:
             # known. With a check still to come on the whole answer, nothing at all does.
             hold_all = on_devices and (
                 (named_up and not used and "named" not in asked_for)
-                or (
-                    len(set(used)) == 1
-                    and "goal" not in asked_for
-                    and asks_more_than_one_thing(asked)
-                )
+                or (used and "goal" not in asked_for and asks_more_than_one_thing(asked))
             )
             promise = PromiseGate(hold_all) if on_devices else None
+            forcing, must_act = must_act, False
             try:
                 response: ChatResponse | None = None
-                if stream:
-                    async for event in self.gateway.stream(messages, tools or None, tier=tier):
+                if forcing:
+                    # Words again are not an answer now: a tool, or finish_turn.
+                    response = await self.gateway.chat(
+                        messages,
+                        [*tools, FINISH_TOOL],
+                        tier=tier,
+                        tool_choice="required",
+                        seconds=patience * 3 if patience else None,  # the whole answer, not a word
+                    )
+                    said = _finish_words(response)
+                    finished = finished or said is not None
+                    if response.tool_calls:
+                        asked_for.discard("goal")  # it went on: the next stop is checked too
+                    piece = _without_foreign(response.text or "", keep_foreign)
+                    piece = promise.feed(piece) + promise.flush() if promise else piece
+                    if piece:
+                        yield {"type": "delta", "text": piece}
+                elif stream:
+                    async for event in self.gateway.stream(
+                        messages, tools or None, tier=tier, first_token_seconds=patience
+                    ):
                         if isinstance(event, TextDelta):
                             piece = foreign.feed(gate.feed(event.text))
                             piece = promise.feed(piece) if promise else piece
@@ -783,6 +826,9 @@ class Assistant:
                     if piece:
                         yield {"type": "delta", "text": piece}
             except GatewayError as exc:
+                if forcing:  # no model here can be made to: the rule alone says it
+                    log.warning("forcing a tool call failed: %s", exc)
+                    continue
                 if not tight and any(e.kind == "too_long" for _, e in exc.errors):
                     # Too long for the model: send much less of the past, once, and go on.
                     log.warning("conversation too long for the model; sending less of it")
@@ -841,20 +887,23 @@ class Assistant:
                 if not response.tool_calls and not waiting:
                     words = response.text or ""
                     empty = promises(words) or (not used and claims_done(words))
-                    why = _ask_again(
-                        words, empty, asked, used, here, named, named_up, asked_for,
+                    why = None if finished and not empty else _ask_again(
+                        words, empty, asked, used, here, named, named_up, asked_for, proposable,
                         self.device_label,
                     )  # fmt: skip
                     if why is not None:
                         log.warning("%s: asked to go on (%s)", model, why[0])
                         asked_for.add(why[0])
                         system += f"- {why[1]}\n"
+                        must_act = bool(tools)
                         continue
-                    if empty:  # it had its chance: say what is true
+                    if empty:  # it had its chance: what it found stands, its promises do not
                         from ira.language import detect
 
                         log.warning("%s still said it did something, with no tool", model)
-                        response.text = held = NOT_DONE[detect(asked)]
+                        kept = without_promises(words) if used else ""
+                        kept = kept if _letters(kept) >= 2 else NOT_DONE[detect(asked)]
+                        response.text = held = kept
                 if held:
                     yield {"type": "delta", "text": held}
 
@@ -934,7 +983,13 @@ class Assistant:
             task = asyncio.create_task(self.after_turn(user_id, text))
             self._background.add(task)
             task.add_done_callback(self._background.discard)
-        yield {"type": "done", "text": final_text, "model": model, "message_id": ids[-1]}
+        yield {
+            "type": "done",
+            "text": final_text,
+            "model": model,
+            "message_id": ids[-1],
+            "checks": sorted(asked_for),
+        }
 
     async def _again_in_language(
         self, messages: list[Message], tools: list[dict[str, Any]], tier: str | None, asked: str
@@ -1424,6 +1479,7 @@ def _ask_again(
     named: set[int] | None,
     named_up: bool,
     asked_for: set[str],
+    proposable: bool,
     label: Callable[[int], str],
 ) -> tuple[str, str] | None:
     """One more chance for a turn that ended short of the goal: which, and the rule that says
@@ -1433,11 +1489,28 @@ def _ask_again(
     if here is not None and named is None and "which" not in asked_for and asks_which_device(words):
         rule = f"They mean {label(here)}, the device they are talking from. Use its tool now."
         return "which", rule
+    if proposable and "yes" not in asked_for and asks_yes_in_words(words):
+        return "yes", YES_RULE
     if named_up and not used and "named" not in asked_for:
         return "named", NAMED_RULE
-    if len(set(used)) == 1 and "goal" not in asked_for and asks_more_than_one_thing(asked):
+    if used and "goal" not in asked_for and asks_more_than_one_thing(asked):
         return "goal", GOAL_RULE
     return None
+
+
+def _finish_words(response: ChatResponse) -> str | None:
+    """A forced round ended with finish_turn: its words become the answer, and no tool is left."""
+    calls = response.tool_calls or []
+    finish = next((c for c in calls if c.name == FINISH_TOOL["name"]), None)
+    if finish is None:
+        return None
+    others = [c for c in calls if c.name != FINISH_TOOL["name"]]
+    response.tool_calls = others
+    if others:
+        return None
+    arguments = finish.parsed_arguments() or {}
+    response.text = str(arguments.get("say") or response.text or "")
+    return response.text
 
 
 def _failed(message: str, call: ToolCall) -> ToolRun:

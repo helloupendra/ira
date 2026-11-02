@@ -126,6 +126,7 @@ class OpenAICompatProvider:
         messages: list[Message],
         tools: list[dict[str, Any]] | None,
         max_tokens: int,
+        tool_choice: str | None = None,
     ) -> dict[str, Any]:
         payload: dict[str, Any] = {
             "model": model,
@@ -136,6 +137,8 @@ class OpenAICompatProvider:
         openai_tools = to_openai_tools(tools)
         if openai_tools:
             payload["tools"] = openai_tools
+            if tool_choice:
+                payload["tool_choice"] = tool_choice
         return payload
 
     async def chat(
@@ -146,8 +149,9 @@ class OpenAICompatProvider:
         *,
         max_tokens: int,
         timeout: float,
+        tool_choice: str | None = None,
     ) -> ChatResponse:
-        payload = self._payload(model, messages, tools, max_tokens)
+        payload = self._payload(model, messages, tools, max_tokens, tool_choice)
         data = await self.http.post_json("/chat/completions", payload, timeout=timeout)
         return parse_completion(data, model)
 
@@ -169,6 +173,7 @@ class OpenAICompatProvider:
         slots: dict[int, dict[str, str]] = {}
         usage = Usage(known=False)  # until a chunk carries it
         stop_reason: str | None = None
+        alive = False  # the model has begun: words, a tool call or its reasoning
         async with self.http.stream_lines("/chat/completions", payload, timeout=timeout) as lines:
             async for data in sse_data(lines):
                 if data == "[DONE]":
@@ -185,8 +190,16 @@ class OpenAICompatProvider:
                     delta = choice.get("delta") or {}
                     piece = _text_of(delta.get("content"))
                     if piece:
+                        alive = True
                         text.append(piece)
                         yield TextDelta(piece)
+                    elif not alive and (
+                        delta.get("tool_calls")
+                        or delta.get("reasoning_content")
+                        or delta.get("reasoning")
+                    ):
+                        alive = True
+                        yield TextDelta("")  # no words yet, but it is not stuck
                     for call in delta.get("tool_calls") or []:
                         slot = slots.setdefault(
                             call.get("index", 0), {"id": "", "name": "", "arguments": ""}

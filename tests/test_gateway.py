@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import asyncio
+
 import httpx
 import pytest
 
@@ -253,3 +255,74 @@ def test_providers_say_what_was_cached():
     )
     assert split.output_tokens == 30
     assert not openai_usage(None).known and not anthropic_usage({}).known
+
+
+class Silent:
+    """A model that says nothing for a long time, as a stuck one does."""
+
+    def __init__(self, seconds: float, words: str = "late") -> None:
+        self.seconds = seconds
+        self.words = words
+        self.asked = 0
+
+    async def stream(self, model, messages, tools, *, max_tokens, timeout):
+        self.asked += 1
+        await asyncio.sleep(self.seconds)
+        yield TextDelta(self.words)
+        yield StreamDone(ChatResponse(text=self.words))
+
+    async def chat(self, model, messages, tools, *, max_tokens, timeout, tool_choice=None):
+        self.asked += 1
+        await asyncio.sleep(self.seconds)
+        return ChatResponse(text=self.words)
+
+
+def two(first: Silent, second: Silent) -> Gateway:
+    return Gateway({"a": first, "b": second}, {"default": ["a:m", "b:m"]})
+
+
+async def test_a_silent_first_model_gives_way_at_the_first_token_limit():
+    gateway = two(Silent(5.0, "first"), Silent(0.0, "second"))
+    events = [
+        e
+        async for e in gateway.stream(
+            [Message(role="user", content="hi")], first_token_seconds=0.02
+        )
+    ]
+    assert events[-1].response.text == "second"
+    assert "a:m" in gateway.cooling()
+
+
+async def test_the_last_model_gets_the_whole_timeout():
+    gateway = two(Silent(5.0, "first"), Silent(0.05, "second"))
+    events = [
+        e
+        async for e in gateway.stream(
+            [Message(role="user", content="hi")], first_token_seconds=0.01
+        )
+    ]
+    assert events[-1].response.text == "second"  # slower than the limit, and nothing else is left
+
+
+async def test_a_model_that_has_begun_is_not_held_to_the_first_token_limit():
+    class Slowly(Silent):
+        async def stream(self, model, messages, tools, *, max_tokens, timeout):
+            yield TextDelta("")  # it is calling a tool, with no words yet
+            await asyncio.sleep(0.05)
+            yield StreamDone(ChatResponse(text="", tool_calls=[ToolCall("c", "t", "{}")]))
+
+    gateway = two(Slowly(0.0), Silent(0.0, "second"))
+    events = [
+        e
+        async for e in gateway.stream(
+            [Message(role="user", content="hi")], first_token_seconds=0.01
+        )
+    ]
+    assert events[-1].response.tool_calls  # the first answered
+    assert not [e for e in events if isinstance(e, TextDelta)]  # and the marker never goes out
+
+
+async def test_a_whole_answer_has_its_own_limit_while_another_model_is_left():
+    gateway = two(Silent(5.0, "first"), Silent(0.0, "second"))
+    answer = await gateway.chat([Message(role="user", content="hi")], seconds=0.02)
+    assert answer.text == "second"

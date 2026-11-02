@@ -8,6 +8,7 @@ from typing import Any
 
 import pytest
 
+from ira.assistant import NOT_DONE
 from ira.devices.hub import Connection
 from ira.devices.naming import Roster, named_devices
 from ira.devices.protocol import DeviceTool
@@ -237,12 +238,14 @@ async def test_a_named_device_gets_its_tool_used_not_general_advice():
 
 
 async def test_two_things_asked_and_one_done_goes_on_and_is_said_once():
+    done = call("finish_turn", {"say": "File 18,250 ki hai."})
     runtime, owner, ids, ran = world(
-        [call("files_find"), "Mil gayi file.", call("file_read"), "File 18,250 ki hai."]
+        [call("files_find"), "Mil gayi file.", call("file_read"), "Padh li.", done]
     )
     events = await turn(runtime, owner, "file dhundo aur padho", ids["mac"])
     assert [name for _, name in ran] == ["files_find", "file_read"]
     assert said(events) == "File 18,250 ki hai."
+    assert runtime.test_provider.forced == ["required", "required"]
 
 
 async def test_a_plain_answer_with_no_device_named_passes_straight():
@@ -302,3 +305,92 @@ async def test_think_tags_never_reach_the_person_streamed_or_not():
     runtime, owner, _, _ = world(["Namaste. </think>Sach mein namaste."])
     reply = await runtime.assistant.ask("namaste", conversation_id="c2", user_id=owner.id)
     assert reply.text == "Sach mein namaste."
+
+
+async def test_a_promise_round_must_call_a_tool_and_the_escape_is_offered():
+    runtime, owner, ids, ran = world(["Main dekhti hoon.", call("screen_read"), "Timer chal raha."])
+    await turn(runtime, owner, "screen padho", ids["mac"])
+    assert ran == [(ids["mac"].id, "screen_read")]
+    assert runtime.test_provider.forced == ["required"]
+    tools = {t["name"] for t in runtime.test_provider.calls[1]["tools"]}
+    assert "finish_turn" in tools  # only there
+    assert "finish_turn" not in {t["name"] for t in runtime.test_provider.calls[0]["tools"]}
+
+
+async def test_finishing_in_words_is_the_answer_but_a_promise_in_them_is_not():
+    done = call("finish_turn", {"say": "Yeh yahan nahi ho sakta."})
+    runtime, owner, ids, ran = world(["Main dekhti hoon.", done])
+    events = await turn(runtime, owner, "screen padho", ids["mac"])
+    assert ran == [] and events[-1]["text"] == "Yeh yahan nahi ho sakta."
+    again = call("finish_turn", {"say": "Main abhi dekhti hoon."})
+    runtime, owner, ids, ran = world(["Main dekhti hoon.", again])
+    events = await turn(runtime, owner, "screen padho", ids["mac"])
+    assert events[-1]["text"] in NOT_DONE.values()
+
+
+async def test_what_was_found_stands_when_only_its_closing_promise_is_empty():
+    closing = "Timer 01:23 hai. Main aur dekhti hoon."
+    runtime, owner, ids, _ = world([call("screen_read"), closing, closing])
+    events = await turn(runtime, owner, "screen padho", ids["mac"])
+    assert events[-1]["text"] == "Timer 01:23 hai."
+
+
+async def test_a_model_that_cannot_be_forced_still_gets_the_rule():
+    from ira.models.base import ProviderError
+
+    runtime, owner, ids, ran = world(["Main dekhti hoon.", call("screen_read"), "Yeh hai."])
+    provider = runtime.test_provider
+    real = provider.chat
+
+    async def refuses(model: str, messages: Any, tools: Any, **options: Any) -> Any:
+        if options.get("tool_choice"):
+            raise ProviderError("tool_choice is not supported", kind="bad_request")
+        return await real(model, messages, tools, **options)
+
+    provider.chat = refuses
+    await turn(runtime, owner, "screen padho", ids["mac"])
+    assert ran == [(ids["mac"].id, "screen_read")]
+
+
+async def test_a_yes_asked_in_words_becomes_the_real_card():
+    runtime, owner, ids, ran = world(["Avery ko bhejun? Haan bolo.", call("app_open"), "Dekh lo."])
+    events = await turn(runtime, owner, "mac par safari kholo", ids["pixel"])
+    assert [e for e in events if e["type"] == "action"]
+    assert ran == []
+    assert "Haan bolo" not in said(events)
+
+
+def test_first_person_now_and_next_are_promises_and_can_is_not():
+    for words in (
+        "Ab invoice wala tab aage laata hoon.",
+        "main MacBook pe YouTube khool raha hoon",
+        "मैं आपके iPhone पर Avery का नंबर ढूंढता हूं।",
+        "मैं खोल रही हूँ",
+        "Main check karungi",
+        "मैं देखूंगी",
+        "Screen read karke status check karta hoon.",
+        "I'll check that now.",
+    ):
+        assert promises(words), words
+    for words in (
+        "Main aapki madad kar sakti hoon.",
+        "क्या मैं कुछ और कर सकती हूँ?",
+        "मैं जानती हूँ कि यह कठिन है।",
+        "Kya main dekhungi?",
+        "Timer 01:23 par hai.",
+    ):
+        assert not promises(words), words
+
+
+@pytest.mark.parametrize("cut", [1, 2, 3, 7])
+async def test_the_gates_eat_nothing_of_a_plain_answer(cut: int):
+    # 2 Nov 2026, once: "दो और दो, प।". The final text is the provider's, untouched by these.
+    from ira.models.leaked import MarkupGate
+
+    text = "दो और दो चार होते हैं। क्या आप मुझसे कुछ और पूछना चाहेंगे?"
+    think, markup, promise = ThinkGate(), MarkupGate(), PromiseGate()
+    out = ""
+    for i in range(0, len(text), cut):
+        out += promise.feed(markup.feed(think.feed(text[i : i + cut])))
+    out += promise.feed(markup.feed(think.flush()) + markup.flush()) + promise.flush()
+    assert out + promise.take() == text

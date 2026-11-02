@@ -92,6 +92,7 @@ voice:
     # provider: openai
     # model: tts-1
     # voice: alloy
+  first_token_seconds: 5          # a call moves to the next model after this long with nothing
   max_spoken_chars: 400           # longer answers are cut at a sentence
   max_audio_seconds: 60
 

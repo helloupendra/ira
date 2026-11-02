@@ -41,6 +41,7 @@ class ScriptedProvider:
         self.script = list(script or [])
         self.delay = delay
         self.calls: list[dict[str, Any]] = []
+        self.forced: list[str | None] = []  # each chat's tool_choice
 
     async def _next(
         self, model: str, messages: list[Message], tools: list[dict[str, Any]] | None
@@ -70,7 +71,9 @@ class ScriptedProvider:
         *,
         max_tokens: int,
         timeout: float,
+        tool_choice: str | None = None,
     ) -> ChatResponse:
+        self.forced.append(tool_choice)
         return await self._next(model, messages, tools)
 
     async def stream(
@@ -226,6 +229,7 @@ class RouterProvider:
         *,
         max_tokens: int,
         timeout: float,
+        tool_choice: str | None = None,
     ) -> ChatResponse:
         response = self._respond(messages, tools or [])
         response.model = model

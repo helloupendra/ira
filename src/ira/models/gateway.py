@@ -227,14 +227,21 @@ class Gateway:
         *,
         tier: str = "default",
         purpose: str = "chat",
+        tool_choice: str | None = None,
+        seconds: float | None = None,
     ) -> ChatResponse:
+        """``tool_choice`` "required": the model must call a tool, where the provider can say so.
+        ``seconds``: how long a model may take while another is left to try."""
         request = _request()
+        forcing = {"tool_choice": tool_choice} if tool_choice else {}
+        chain = self.chain(tier)
         errors: list[tuple[str, ProviderError]] = []
         tried: list[str] = []
-        for ref in self.chain(tier):
+        for ref in chain:
             provider_name, model = split_ref(ref)
             tried.append(ref)
             started = time.monotonic()
+            allowed = seconds if seconds and ref != chain[-1] else self.timeout_seconds
             try:
                 response = await asyncio.wait_for(
                     self.providers[provider_name].chat(
@@ -243,13 +250,12 @@ class Gateway:
                         tools,
                         max_tokens=self.max_tokens,
                         timeout=self.timeout_seconds,
+                        **forcing,
                     ),
-                    timeout=self.timeout_seconds,
+                    timeout=allowed,
                 )
             except TimeoutError:
-                error = ProviderError(
-                    f"{ref}: no answer in {self.timeout_seconds}s", kind="timeout"
-                )
+                error = ProviderError(f"{ref}: no answer in {allowed}s", kind="timeout")
                 errors.append((ref, error))
                 self._cool_down(ref, error)
                 self._record(request, tier, purpose, tried, ref, None, error.kind, started)
@@ -285,17 +291,22 @@ class Gateway:
         *,
         tier: str = "default",
         purpose: str = "chat",
+        first_token_seconds: float | None = None,
     ) -> AsyncIterator[StreamEvent]:
         """Stream from the first model that answers.
 
         Falling back is only possible until the first text reaches the caller;
         after that, a failure is raised rather than mixing two models' words. A reply
         with no words (blank space at most) and no tool calls falls back too.
+
+        ``first_token_seconds``: how long a model may stay silent before its first words, tool
+        call or reasoning while another is left to try. The last one gets the whole timeout.
         """
         request = _request()
         errors: list[tuple[str, ProviderError]] = []
         tried: list[str] = []
-        for ref in self.chain(tier):
+        chain = self.chain(tier)
+        for ref in chain:
             provider_name, model = split_ref(ref)
             tried.append(ref)
             started = time.monotonic()
@@ -305,18 +316,22 @@ class Gateway:
             emitted = False
             recorded = False
             thinking = ThinkGate()
+            allowed = (
+                first_token_seconds
+                if first_token_seconds and ref != chain[-1]
+                else self.timeout_seconds
+            )
             try:
                 while True:
                     try:
-                        event = await asyncio.wait_for(
-                            events.__anext__(), timeout=self.timeout_seconds
-                        )
+                        event = await asyncio.wait_for(events.__anext__(), timeout=allowed)
                     except StopAsyncIteration:
                         raise ProviderError(f"{ref}: stream ended early", kind="server") from None
                     except TimeoutError:
                         raise ProviderError(
-                            f"{ref}: stream stalled for {self.timeout_seconds}s", kind="timeout"
+                            f"{ref}: stream stalled for {allowed}s", kind="timeout"
                         ) from None
+                    allowed = self.timeout_seconds  # it has begun: the first limit is behind it
                     if isinstance(event, TextDelta):
                         shown = thinking.feed(event.text)
                         if shown:

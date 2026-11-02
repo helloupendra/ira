@@ -1,8 +1,9 @@
 """An answer that says something happened, or is about to, when no tool ran.
 
-Models write "Done, I opened Safari" and "let me read it" and end the turn there. Only the words
-are looked at here, in English, Hinglish and Hindi, so this is a net and not a proof. A turn it
-catches gets one more chance to call the tool or say it cannot; see ``Assistant._turn``.
+Models write "Done, I opened Safari", "main dekhti hoon" and "Haan bolo" and end the turn there.
+Only the words are looked at here, in English, Hinglish and Hindi, so this finds a turn to check
+and proves nothing. What such a turn gets is in ``Assistant._turn``: a round in which the model must
+call a tool or say it is finished, in words that are checked again.
 """
 
 from __future__ import annotations
@@ -19,21 +20,40 @@ _DONE = re.compile(
     r"चला दिया|चला दी|बंद कर दिया|मैंने किया",
     re.IGNORECASE,
 )
+# First person, now or next: "dekhti hoon", "khol raha hoon", "karungi", "देखता हूँ", "let me".
 _WILL = re.compile(
-    r"(?<![a-z])(?:let me|i'll|i will|i am going to|i'm going to|i'm checking|i am checking|"
-    r"checking now|one moment|just a moment|"
-    r"main\b[^.!?।\n]{0,60}\b(?:karta|karti|dekhta|dekhti|bhejta|bhejti|kholta|kholti|padhta|padhti|"
-    r"lagata|lagati|check karta|check karti)\s+hoon|"
-    r"ab main\b|abhi (?:dekhta|dekhti|karta|karti|bhejta|bhejti))(?![a-z])"
-    r"|(?:देखता|देखती|करता|करती|भेजता|भेजती|खोलता|खोलती|पढ़ता|पढ़ती|लगाता|लगाती)\s+हूँ"
-    r"|(?:देखता|देखती|करता|करती|भेजता|भेजती|खोलता|खोलती|पढ़ता|पढ़ती|लगाता|लगाती)\s+हूं",
+    r"(?<![a-z])(?:let me|i'll|i will|i am going to|i'm going to|i am now|i'm now|i'm checking|"
+    r"i am checking|i'm opening|i'm looking|i'm reading|checking now|one moment|just a moment|"
+    r"give me a moment|hold on)(?![a-z])"
+    r"|(?<![a-z])[a-z]+(?:ta|ti)\s+(?:hoon|hun|hu)(?![a-z])"
+    r"|(?<![a-z])[a-z]+\s+(?:raha|rahi)\s+(?:hoon|hun|hu)(?![a-z])"
+    r"|(?<![a-z])[a-z]+(?:unga|ungi|oonga|oongi)(?![a-z])"
+    r"|[ऀ-ॿ]+(?:ता|ती)\s+(?:हूं|हूँ)"
+    r"|[ऀ-ॿ]+\s+(?:रहा|रही)\s+(?:हूं|हूँ)"
+    r"|[ऀ-ॿ]+(?:ूंगा|ूंगी|ूँगा|ूँगी)",
+    re.IGNORECASE,
+)
+# "I can", "I want", "I know", "I think": first person, and no promise.
+_NOT_A_PROMISE = re.compile(
+    r"^(?:sak|chah|jaan|jan|maan|man|samajh|soch|lag|reh|sak|hot)(?:ta|ti)\b"
+    r"|^(?:सक|चाह|जान|मान|समझ|सोच|लग|रह|हो)(?:ता|ती)",
     re.IGNORECASE,
 )
 _WHICH = re.compile(
-    r"which device|which one of your|on which device|kis device|kaunse device|kaun se device"
-    r"|किस डिवाइस|कौन से डिवाइस|कौनसे डिवाइस",
+    r"which device|which phone|which one of your|on which device|kis device|kis phone|"
+    r"kaunse device|kaun se device|kaunsa phone|phone kaunsa|konsa phone"
+    r"|किस डिवाइस|कौन से डिवाइस|कौनसे डिवाइस|किस फ़ोन|किस फोन|कौन सा फ़ोन|कौन सा फोन",
     re.IGNORECASE,
 )
+# Asking for a yes in words: only the app's card can take it.
+_YES_IN_WORDS = re.compile(
+    r"haan bol|haan kah|han bol|say yes|reply yes|please confirm|kya bhej|bhej dun|bhej doon|"
+    r"bhejun\b|shall i (?:send|open|set|call|do)|should i (?:send|open|set|call|do)|"
+    r"do you want me to|want me to (?:send|open|set|call)"
+    r"|हाँ बोल|हां बोल|हाँ कह|हां कह|कन्फर्म कर|क्या भेज",
+    re.IGNORECASE,
+)
+_SENTENCE = re.compile(r"[^.!?।\n]*[.!?।\n]+|[^.!?।\n]+$")
 _SENTENCE_END = re.compile(r"[.!?।\n]")
 # More than one thing asked in a sentence.
 _AND_THEN = re.compile(
@@ -48,12 +68,22 @@ def claims_done(text: str) -> bool:
 
 
 def promises(text: str) -> bool:
-    """It says it is doing something, or is about to."""
-    return bool(_WILL.search(text))
+    """It says it is doing something, or is about to. A question is not a promise."""
+    for sentence in _SENTENCE.findall(text):
+        if sentence.rstrip().endswith("?"):
+            continue
+        for match in _WILL.finditer(sentence):
+            if not _NOT_A_PROMISE.match(match.group(0)):
+                return True
+    return False
 
 
 def asks_which_device(text: str) -> bool:
     return bool(_WHICH.search(text))
+
+
+def asks_yes_in_words(text: str) -> bool:
+    return bool(_YES_IN_WORDS.search(text))
 
 
 def asks_more_than_one_thing(text: str) -> bool:
@@ -61,7 +91,12 @@ def asks_more_than_one_thing(text: str) -> bool:
 
 
 def doubtful(text: str) -> bool:
-    return claims_done(text) or promises(text) or asks_which_device(text)
+    return claims_done(text) or promises(text) or asks_which_device(text) or asks_yes_in_words(text)
+
+
+def without_promises(text: str) -> str:
+    """The answer with its promises taken out: what it found stands, what it never did goes."""
+    return "".join(s for s in _SENTENCE.findall(text) if not promises(s)).strip()
 
 
 class PromiseGate:

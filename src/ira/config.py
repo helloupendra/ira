@@ -97,6 +97,8 @@ class VoiceConfig(_Strict):
     browser_stt: Literal["off", "fallback", "prefer"] = "fallback"
     # The model tier for live calls (a faster one cuts the wait); none: the assistant's.
     tier: str | None = None
+    # A live call moves on to the next model after this long with nothing from the first.
+    first_token_seconds: float = Field(default=5.0, gt=0, le=60)
     max_spoken_chars: int = 400
     max_audio_seconds: float = 60
 
@@ -170,6 +172,8 @@ class AssistantConfig(_Strict):
     instructions: str = ""
     tier: str = "default"
     max_tool_rounds: int = 8
+    # Typed: how long a model may stay silent before the next one is tried.
+    first_token_seconds: float = Field(default=20.0, gt=0, le=120)
     # A tool that has not answered by then is given up on, so one stuck tool never holds a
     # conversation (or a channel) for ever.
     tool_seconds: float = Field(default=45, gt=0, le=600)
