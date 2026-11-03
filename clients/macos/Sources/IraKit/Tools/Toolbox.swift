@@ -342,7 +342,7 @@ public final class Toolbox: ToolRunner, @unchecked Sendable {
     static func number(_ args: [String: JSONValue], _ name: String, _ range: ClosedRange<Int>) throws -> Int? {
         guard let value = args[name], !value.isNull else { return nil }
         guard let number = value.doubleValue, number.isFinite else { throw ToolFailure("\(name) must be a number") }
-        return min(max(Int(number), range.lowerBound), range.upperBound)
+        return Int(min(max(number, Double(range.lowerBound)), Double(range.upperBound)))
     }
 
     // files_find

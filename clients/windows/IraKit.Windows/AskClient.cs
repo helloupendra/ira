@@ -61,6 +61,8 @@ public sealed class AskClient(HttpClient http, ServerAddress server, string toke
     }
 
     /// <summary>A Tier 2 "yes", by the action's id (never by sending the word "yes").</summary>
+    private const string TookTooLong = "Your Ira took too long to answer. Check What Ira did before you try again.";
+
     public Task<ActionOutcome> ApproveAsync(string actionId, CancellationToken ct = default) =>
         ActAsync($"/v1/actions/{Uri.EscapeDataString(actionId)}/approve", null, ct);
 
@@ -117,6 +119,10 @@ public sealed class AskClient(HttpClient http, ServerAddress server, string toke
         {
             throw new IraError($"Can't reach your Ira at {server.Host}.", e);
         }
+        catch (OperationCanceledException e) when (!ct.IsCancellationRequested)
+        {
+            throw new IraError(TookTooLong, e);
+        }
         using (response)
         {
             var text = await response.Content.ReadAsStringAsync(ct);
@@ -143,6 +149,10 @@ public sealed class AskClient(HttpClient http, ServerAddress server, string toke
         catch (HttpRequestException e)
         {
             throw new IraError($"Can't reach your Ira at {server.Host}.", e);
+        }
+        catch (OperationCanceledException e) when (!ct.IsCancellationRequested)
+        {
+            throw new IraError(TookTooLong, e);
         }
         if (response.IsSuccessStatusCode) return response;
         using (response)

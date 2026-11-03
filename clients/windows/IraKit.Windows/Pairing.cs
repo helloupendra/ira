@@ -30,12 +30,24 @@ public static class Pairing
         {
             throw new IraError($"Can't reach your Ira at {server.Host}. Check the address and that it is running.", e);
         }
+        catch (OperationCanceledException e) when (!ct.IsCancellationRequested)
+        {
+            throw new IraError($"Your Ira at {server.Host} took too long to answer.", e);
+        }
 
         if (response.IsSuccessStatusCode)
         {
-            var result = await response.Content.ReadFromJsonAsync<PairResult>(Json.Options, ct)
-                ?? throw new IraError("Your Ira's answer was empty.");
-            if (!result.Token.StartsWith("irad_", StringComparison.Ordinal))
+            PairResult? result;
+            try
+            {
+                result = await response.Content.ReadFromJsonAsync<PairResult>(Json.Options, ct);
+            }
+            catch (Exception e) when (e is System.Text.Json.JsonException or NotSupportedException or IOException)
+            {
+                throw new IraError("Your Ira answered with something that is not a device key.", e);
+            }
+            if (result is null) throw new IraError("Your Ira's answer was empty.");
+            if (result.Token?.StartsWith("irad_", StringComparison.Ordinal) != true)
                 throw new IraError("Your Ira answered with something that is not a device key.");
             return result;
         }

@@ -24,6 +24,21 @@ internal sealed class FileTools(Func<PathPolicy> currentPolicy)
         "vhd", "vhdx", "chm", "theme", "themepack", "deskthemepack", "ws", "sct", "dll", "sys",
     };
 
+    /// <summary>
+    /// What file_open does open, besides folders: documents, pictures, sound, video and archives.
+    /// A list of what is safe, because no list of what runs can be complete: whatever a program has
+    /// claimed on this PC runs when opened. Office files with macros are not on it.
+    /// </summary>
+    public static readonly HashSet<string> MayOpen = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "pdf", "doc", "docx", "xls", "xlsx", "ppt", "pptx", "odt", "ods", "odp", "rtf", "txt", "md",
+        "csv", "tsv", "log", "json", "xml", "yaml", "yml", "htm", "html",
+        "jpg", "jpeg", "png", "gif", "bmp", "webp", "heic", "tif", "tiff", "svg",
+        "mp3", "m4a", "aac", "wav", "flac", "ogg", "opus", "wma",
+        "mp4", "m4v", "mov", "mkv", "avi", "webm", "wmv",
+        "zip", "7z", "rar", "tar", "gz", "tgz", "bz2", "xz",
+    };
+
     public IEnumerable<DeviceTool> Tools() =>
     [
         new("files_find",
@@ -146,7 +161,9 @@ internal sealed class FileTools(Func<PathPolicy> currentPolicy)
     {
         if (policy.Refusal(path) is { } refusal) return refusal;
         var real = PathPolicy.Resolve(policy.Expand(path)!);
-        if (NeverOpen.Contains(Path.GetExtension(real).TrimStart('.').TrimEnd('.', ' ')))
+        if (Directory.Exists(real)) return null;
+        var kind = Path.GetExtension(real).TrimStart('.').TrimEnd('.', ' ');
+        if (NeverOpen.Contains(kind) || !MayOpen.Contains(kind))
             return "I never open programs, scripts, installers or links: they could run something";
         return null;
     }

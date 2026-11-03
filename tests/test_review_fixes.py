@@ -11,6 +11,7 @@ from fastapi.testclient import TestClient
 
 from ira import accounts as accounts_module
 from ira.accounts import AccountError, LoginLimiter
+from ira.approvals import open_refusal
 from ira.channels.http import SWAGGER_CSS_HASH, SWAGGER_JS_HASH, create_app
 from ira.channels.me import export_data
 from ira.channels.telegram import MAX_WAITING_UPDATES, next_offset
@@ -220,3 +221,14 @@ def test_uploads_under_way_count_against_the_quota(tmp_path: Path):
         owner.id, io.BytesIO(b"x" * 200), "a.txt", "text/plain", from_label="Web"
     )
     assert item.size == 200 and runtime.drop._arriving == {}
+
+
+@pytest.mark.parametrize(
+    "name", ["a.pyz", "a.ahk", "a.au3", "a.msu", "a.jnlp", "a.scf", "a.docm", "a.xlsm"]
+)
+def test_files_that_run_something_are_never_opened(name: str):
+    assert open_refusal("file_open", {"path": f"~/Downloads/{name}"})
+
+
+def test_a_document_opens():
+    assert open_refusal("file_open", {"path": "~/Downloads/invoice.pdf"}) is None

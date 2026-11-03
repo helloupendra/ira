@@ -366,6 +366,7 @@ public final class CodeTasks: @unchecked Sendable {
     private let lock = NSLock()
     private var tasks: [String: Job] = [:]
     private var commands: [String: Command] = [:]
+    private var starting = 0  // tasks past the limit's check, not yet in `tasks`
     /// code_task_say waiting for a task's next reply, by task id (with a token: only its own
     /// timer may end it).
     private var waiters: [String: (token: UUID, reply: CheckedContinuation<String?, Never>)] = [:]
@@ -490,10 +491,16 @@ public final class CodeTasks: @unchecked Sendable {
         guard instruction.count <= CodeTasks.maxInstruction else {
             throw ToolFailure("keep the task under \(CodeTasks.maxInstruction) characters")
         }
-        let running = lock.locked { tasks.values.filter { CodeTasks.live.contains($0.status) }.count }
-        guard running < CodeTasks.maxRunning else {
+        // Held while the worktree is made, so that several at once cannot all pass the limit.
+        let free = lock.locked { () -> Bool in
+            guard tasks.values.filter({ CodeTasks.live.contains($0.status) }).count + starting < CodeTasks.maxRunning else { return false }
+            starting += 1
+            return true
+        }
+        guard free else {
             throw ToolFailure("\(CodeTasks.maxRunning) tasks are running already; wait or stop one")
         }
+        defer { lock.locked { starting -= 1 } }
         let id = "t" + String(UUID().uuidString.lowercased().prefix(6))
         let branch = PushGuard.taskPrefix + id
         let worktree = settings.worktrees.appendingPathComponent("\(repo.name)-\(id)")
@@ -834,13 +841,20 @@ public final class CodeTasks: @unchecked Sendable {
             let command = try Command.start(
                 sandboxed(CodeTasks.argv(agent, prompt: prompt, session: session), task: task, settings: settings),
                 directory: task.worktree.path, environment: environment(), keepInput: agent.streamsInput)
-            try lock.locked {
+            // Stopped, or replaced, while this was getting going: it must not run on regardless.
+            let wanted = try lock.locked { () -> Bool in
+                guard let job = tasks[id], job.runs == run, CodeTasks.live.contains(job.status) else { return false }
                 commands[id] = command
                 if agent.streamsInput {
                     try command.write(CodeTasks.message(prompt))
                     tasks[id]?.sent = 1
                     tasks[id]?.answered = 0
                 }
+                return true
+            }
+            guard wanted else {
+                command.stop()
+                return
             }
             update(id) { if $0.status == "starting" { $0.status = "running" } }
             // A chat lasts as long as the person talks to it: it pauses when idle instead.

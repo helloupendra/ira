@@ -11,7 +11,8 @@ public sealed class IraController
 {
     public const string Version = "0.1.0";
 
-    private readonly HttpClient _http = new() { Timeout = TimeSpan.FromSeconds(120) };
+    // Long: a confirmed action waits for the whole turn that follows it, and a Drop file for its upload.
+    private readonly HttpClient _http = new() { Timeout = TimeSpan.FromMinutes(10) };
     private readonly DeviceKeyStore _keys = new();
     private DispatcherQueue? _ui;
     private DeviceSettings? _settings;

@@ -12,6 +12,7 @@ import android.os.IBinder
 import androidx.core.app.NotificationCompat
 import androidx.core.app.ServiceCompat
 import androidx.core.content.ContextCompat
+import io.github.helloupendra.ira.net.IraLog
 import io.github.helloupendra.ira.IraApp
 import io.github.helloupendra.ira.R
 import io.github.helloupendra.ira.tools.PhoneState
@@ -40,7 +41,14 @@ class ConversationService : Service() {
         }
         // The microphone type is Android 11's; Android 10 has no such limit on a foreground service.
         val type = if (Build.VERSION.SDK_INT >= 30) ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE else 0
-        ServiceCompat.startForeground(this, ID, notification(), type)
+        // Android may refuse when the person has left the app by now: then there is no call.
+        try {
+            ServiceCompat.startForeground(this, ID, notification(), type)
+        } catch (exc: RuntimeException) {
+            IraLog.warn("call: could not start in the background", exc)
+            stopSelf()
+            return START_NOT_STICKY
+        }
         if (app.startLive() == null) stopSelf()
         return START_NOT_STICKY
     }
@@ -79,9 +87,15 @@ class ConversationService : Service() {
         private const val ACTION_END = "io.github.helloupendra.ira.END_CALL"
 
         /** Start a call: only from a screen the person is using (the app, or the assistant panel). */
-        fun start(context: Context) {
-            ContextCompat.startForegroundService(context, Intent(context, ConversationService::class.java))
-        }
+        fun start(context: Context): Boolean =
+            try {
+                ContextCompat.startForegroundService(context, Intent(context, ConversationService::class.java))
+                true
+            } catch (exc: IllegalStateException) {
+                // The wait for /v1/info outlasted the person's tap, and they have left the app.
+                IraLog.warn("call: not started, the app is in the background", exc)
+                false
+            }
 
         fun end(context: Context) {
             context.startService(Intent(context, ConversationService::class.java).setAction(ACTION_END))

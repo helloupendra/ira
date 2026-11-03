@@ -30,6 +30,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -42,7 +43,9 @@ import androidx.core.content.IntentCompat
 import io.github.helloupendra.ira.IraApp
 import io.github.helloupendra.ira.core.Drop
 import io.github.helloupendra.ira.ui.IraTheme
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.withContext
 
 /**
  * Share → Ira from any app: what was shared, shown first, and sent to the person's Drop only
@@ -82,7 +85,10 @@ private fun ShareSheet(app: IraApp, shared: ShareActivity.Shared, close: () -> U
     val uploads by app.drop.uploads.collectAsState()
     var state by remember { mutableStateOf("ask") }
     var problem by remember { mutableStateOf<String?>(null) }
-    val described = remember(shared) { shared.files.map { app.drop.describe(it) } }
+    // Off the main thread: another app's provider can take its time, or never answer.
+    val described by produceState(emptyList<Pair<String, Long>>(), shared) {
+        value = withContext(Dispatchers.IO) { shared.files.map { app.drop.describe(it) } }
+    }
     LaunchedEffect(state) {
         if (state == "sent") {
             delay(1200)

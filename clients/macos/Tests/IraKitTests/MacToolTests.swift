@@ -819,6 +819,36 @@ struct CodeTaskTests {
 
     /// Stopping ends the agent and what it started at once, wherever Ira started it from (a
     /// thread that blocks signals passed that on to the agent, and SIGTERM did nothing).
+    @Test func aHugeNumberIsHeldToItsRangeAndDoesNotStopTheApp() throws {
+        let args = try ToolArgs(["hours": .number(1e20), "days": .number(-1e20)], allowed: ["hours", "days"])
+        #expect(try args.number("hours", 1...48) == 48)
+        #expect(try args.number("days", 1...48) == 1)
+    }
+
+    @Test func anOffsetNoZoneHasIsNoDateAndDoesNotStopTheApp() {
+        #expect(LocalDate.parse("2026-11-04T10:00:00+19:00") == nil)
+        #expect(LocalDate.parse("2026-11-04T10:00:00-99:99") == nil)
+        #expect(LocalDate.parse("2026-11-04T10:00:00+05:30") != nil)
+        #expect(LocalDate.parse("2026-11-04T10:00:00Z") != nil)
+    }
+
+    @Test func stoppingATaskWhileItStartsMeansItDoesNotRun() async throws {
+        let root = try temporaryFolder()
+        let repo = try await repository(in: root)
+        let marker = root.appendingPathComponent("ran.txt")
+        let agent = root.appendingPathComponent("marks.sh")
+        try script(agent, "sleep 0.3\ntouch \"\(marker.path)\"\n")
+        let events = EventLog<String>()
+        let tasks = tasks(root, repo, agents: [.init(name: "a", command: [agent.path])], events: events)
+        let started = try await tasks.start(["repo": "shop", "instruction": "x"])
+        let id = try #require(started["id"]?.stringValue)
+        _ = try await tasks.stop(["id": .string(id)])
+        try await Task.sleep(nanoseconds: 800_000_000)
+        #expect(!FileManager.default.fileExists(atPath: marker.path))
+        let status = try await tasks.status(["id": .string(id)])
+        #expect(status["status"] == "stopped")
+    }
+
     @Test func stopEndsTheAgentAtOnce() async throws {
         let root = try temporaryFolder()
         let agent = root.appendingPathComponent("sleepy.sh")

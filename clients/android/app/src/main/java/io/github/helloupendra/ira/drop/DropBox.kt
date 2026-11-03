@@ -205,6 +205,10 @@ class DropBox(private val app: IraApp) {
                     failed(if (exc.message == "unreadable") "$name could not be read." else OFFLINE)
                 } catch (exc: SecurityException) {
                     failed("$name could not be read.")
+                } catch (exc: RuntimeException) {
+                    // Another app's provider can throw anything across Binder.
+                    IraLog.warn("drop: a file did not go", exc)
+                    failed("$name could not be read.")
                 }
             }
             main.post { done(problem) }

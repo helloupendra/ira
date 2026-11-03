@@ -33,7 +33,8 @@ public struct ToolArgs {
     public func number(_ name: String, _ range: ClosedRange<Int>) throws -> Int? {
         guard let value = values[name], !value.isNull else { return nil }
         guard let number = value.doubleValue, number.isFinite else { throw ToolFailure("\(name) must be a number") }
-        return min(max(Int(number), range.lowerBound), range.upperBound)
+        // Held in Double first: Int(1e20) would stop the app.
+        return Int(min(max(number, Double(range.lowerBound)), Double(range.upperBound)))
     }
 
     public func bool(_ name: String) throws -> Bool? {
@@ -91,7 +92,11 @@ public enum LocalDate {
                 let digits = offset.dropFirst().replacingOccurrences(of: ":", with: "")
                 let hours = Int(digits.prefix(2)) ?? 0
                 let minutes = Int(digits.suffix(2)) ?? 0
-                calendar.timeZone = TimeZone(secondsFromGMT: sign * (hours * 3600 + minutes * 60))!
+                // No real offset is past 18 hours, and macOS has no zone for one.
+                guard hours * 60 + minutes <= 18 * 60,
+                    let zone = TimeZone(secondsFromGMT: sign * (hours * 3600 + minutes * 60))
+                else { return nil }
+                calendar.timeZone = zone
             }
         }
         guard let month = components.month, (1...12).contains(month),

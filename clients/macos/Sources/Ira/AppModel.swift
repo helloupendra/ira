@@ -42,6 +42,9 @@ final class AppModel: ObservableObject {
     private var observers: [NSObjectProtocol] = []
     private let oldCompanion = Companion()
 
+    /// Kept across reconnecting and reloading the tools: tasks under way must stay within reach.
+    private let codeTasks = CodeTasks()
+
     init(settings: AppSettings = AppSettings(), secrets: SecretStore = KeychainStore()) {
         self.settings = settings
         self.secrets = secrets
@@ -198,6 +201,7 @@ final class AppModel: ObservableObject {
         let toolbox = Toolbox(
             policy: { PathPolicy.current(settings: settings) },
             frontApp: { [weak self] in await self?.frontApp() },
+            tasks: codeTasks,
             record: { [weak self] activity in
                 Task { @MainActor in self?.remember(activity) }
             })

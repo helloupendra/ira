@@ -74,7 +74,8 @@ RUNNABLE = frozenset(
      "scpt", "scptd", "applescript", "osascript", "pkg", "mpkg", "shortcut", "webloc", "inetloc",
      "fileloc", "mobileconfig", "jar", "py", "pyw", "rb", "pl", "js", "jse", "vbs", "vbe", "wsf",
      "wsh", "hta", "exe", "com", "bat", "cmd", "ps1", "psm1", "msi", "msc", "cpl", "scr", "pif",
-     "lnk", "url", "reg", "inf", "appref-ms", "settingcontent-ms", "library-ms", "search-ms"}
+     "lnk", "url", "reg", "inf", "appref-ms", "settingcontent-ms", "library-ms", "search-ms",
+     "pyz", "pyzw", "ahk", "au3", "msu", "jnlp", "scf", "docm", "xlsm", "pptm", "dotm", "xltm"}
 )  # fmt: skip
 
 NEVER_OPEN_REFUSAL = (

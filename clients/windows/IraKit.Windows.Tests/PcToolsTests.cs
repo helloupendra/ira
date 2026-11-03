@@ -134,7 +134,7 @@ public sealed class PcToolsTests : IDisposable
     [Fact]
     public async Task Programs_scripts_and_links_are_never_opened()
     {
-        foreach (var name in new[] { "setup.exe", "run.ps1", "go.bat", "x.lnk", "site.url", "fix.reg", "app.msix", "page.hta" })
+        foreach (var name in new[] { "setup.exe", "run.ps1", "go.bat", "x.lnk", "site.url", "fix.reg", "app.msix", "page.hta", "a.pyz", "a.ahk", "a.au3", "a.msu", "a.jnlp", "a.scf", "a.docm", "a.xlsm", "noextension", "a.unknown" })
         {
             _home.Write($@"Downloads\{name}", "x");
             Assert.Contains("never open", await Refused("file_open", new JsonObject { ["path"] = $@"~\Downloads\{name}" }));

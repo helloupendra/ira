@@ -23,7 +23,17 @@ public partial class App : Application
 
     public static IraController Controller { get; } = new();
 
-    public App() => InitializeComponent();
+    public App()
+    {
+        InitializeComponent();
+        // What a handler missed stays a line in the log, not the end of the app. Only its type and
+        // place: a message can hold what the person was doing.
+        UnhandledException += (_, e) =>
+        {
+            System.Diagnostics.Trace.TraceError($"unhandled {e.Exception?.GetType().Name}: {e.Exception?.StackTrace}");
+            e.Handled = true;
+        };
+    }
 
     protected override void OnLaunched(LaunchActivatedEventArgs args)
     {
