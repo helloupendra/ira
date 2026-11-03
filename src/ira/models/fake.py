@@ -46,10 +46,12 @@ class ScriptedProvider:
         # by default), and what it was given.
         self.asks: set[str] | None = None
         self.asked: list[str] = []
+        self.asked_rules: list[str] = []
 
     def _answer_asked(self, model: str, messages: list[Message]) -> ChatResponse:
         given = messages[1].text
         self.asked.append(given)
+        self.asked_rules.append(messages[0].text)
         listed = re.findall(r"^- ([a-z0-9_]+): ", given.split("Actions:")[-1], re.MULTILINE)
         yes = [name for name in listed if self.asks is None or name in self.asks]
         return ChatResponse(text=json.dumps(yes), model=model)
@@ -84,9 +86,9 @@ class ScriptedProvider:
         timeout: float,
         tool_choice: str | None = None,
     ) -> ChatResponse:
-        from ira.asked import RULE
+        from ira.asked import READ_RULE, RULE
 
-        if messages and messages[0].text == RULE:
+        if messages and messages[0].text in (RULE, READ_RULE):
             return self._answer_asked(model, messages)
         self.forced.append(tool_choice)
         return await self._next(model, messages, tools)

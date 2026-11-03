@@ -9,8 +9,8 @@ from typing import Any
 
 import pytest
 
-from ira.asked import AskedFor, _names
-from ira.assistant import taints
+from ira.asked import READ_RULE, RULE, AskedFor, _names
+from ira.assistant import OPEN_AN_APP_RULE, WHAT_AN_APP_SHOWS_RULE, taints
 from ira.devices.hub import Connection, ToolError
 from ira.devices.protocol import DeviceTool
 from ira.models.base import ChatResponse, ToolCall
@@ -532,3 +532,55 @@ async def test_a_long_run_of_tools_leaves_the_next_turn_its_request():
     conversations.append("c1", long_run)
     loaded = conversations.load("c1", limit=30)
     assert loaded[0].content == "poora form bharo" and loaded[0].role == "user"
+
+
+# What the first card with the check found: a question about something asks to look at it.
+
+
+async def test_a_read_is_asked_as_a_read_and_an_act_as_an_act():
+    world = World([step("sms_read"), READ, step("app_open", app="x")], {"sms_read"})
+    await world.turn("Do I have any new SMS?", None)
+    assert world.ran[0] == "sms_read"
+    assert world.provider.asked_rules == [READ_RULE, RULE]
+    assert "asks to look at it" in READ_RULE
+
+
+async def test_no_answer_lets_a_read_through_but_never_an_act():
+    provider = ScriptedProvider()
+    gateway = Gateway({"fake": provider}, {"default": ["fake:m"]})
+
+    async def broken(*args: Any, **options: Any) -> Any:
+        from ira.models.base import ProviderError
+
+        raise ProviderError("down", kind="server")
+
+    provider.chat = broken  # type: ignore[method-assign]
+    assert await AskedFor(gateway, ["x"]).may_read("sms_read", "Read.")
+    assert not await AskedFor(gateway, ["x"]).allows("app_open", "Open.")
+
+
+async def test_an_unreadable_answer_lets_a_read_through_but_never_an_act():
+    provider = ScriptedProvider()
+    gateway = Gateway({"fake": provider}, {"default": ["fake:m"]})
+
+    async def garbled(model: str, *args: Any, **options: Any) -> ChatResponse:
+        return ChatResponse(text="Sure, that sounds fine.", model=model)
+
+    provider.chat = garbled  # type: ignore[method-assign]
+    assert await AskedFor(gateway, ["x"]).may_read("sms_read", "Read.")
+    assert not await AskedFor(gateway, ["x"]).allows("app_open", "Open.")
+
+
+async def test_a_read_refused_says_the_tool_exists():
+    world = World([step("sms_read"), "Ok."])
+    events = await world.turn("YouTube on karo", None)
+    result = next(e for e in events if e["type"] == "tool_result")
+    assert "never say you have none" in result["result"]
+
+
+async def test_the_rules_are_in_the_turn_with_the_tools():
+    world = World(["Ok."])
+    await world.turn("kuch batao", "mac")
+    system = world.provider.calls[0]["messages"][0].content
+    assert WHAT_AN_APP_SHOWS_RULE in system
+    assert OPEN_AN_APP_RULE not in system  # no media_play on these devices

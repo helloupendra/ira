@@ -75,7 +75,8 @@ You are {name}, a helpful voice and text assistant for {business}.
 Today is {today}. It is now {now}: use this time, never guess it.
 
 How you work:
-- Use the tools to look things up. Never invent appointments, prices, names or numbers.
+- Use the tools to look things up. Never invent appointments, prices, names or numbers, nor a \
+time, date or size a tool's result does not give: leave it out.
 - Plan: one request may need several tools in a row, on any of the person's devices or \
 connections. Use what one returns to call the next (the call log gives a number, the \
 contacts give its name, then the call). Never say you will look something up: call the \
@@ -173,7 +174,16 @@ TOOL_NOT_ASKED = (
 )
 READ_NOT_ASKED = (
     "Not run: this reads what the person holds on a device they did not name, and what they said "
-    "does not ask for it. If you truly need it, ask them."
+    "has nothing to do with it. The tool exists, so never say you have none: if it could help, "
+    "ask them whether to look."
+)
+# Which tool a device's question goes to, where models have reached for the wrong one.
+WHAT_AN_APP_SHOWS_RULE = (
+    "What an app shows right now (its timer, a status, a number in it) is read with screen_read, "
+    "or apps_list first if you do not know which app. A reminder or an alarm is something else."
+)
+OPEN_AN_APP_RULE = (
+    "Asked to open an app, use app_open. media_play is for when they name something to play."
 )
 TOOL_SPENT = (
     "Not run: this tool has already been tried several times in this turn. Answer with what it "
@@ -850,6 +860,10 @@ class Assistant:
             user_id, untrusted=untrusted, tier_one=tier_one, spoken=spoken,
             here=here, roster=roster, named=named,
         )  # fmt: skip
+        if "screen_read" in personal:
+            system += f"- {WHAT_AN_APP_SHOWS_RULE}\n"
+        if "media_play" in personal and "app_open" in personal:
+            system += f"- {OPEN_AN_APP_RULE}\n"
         # What this turn has really done, to tell an answer from an empty promise.
         # (A turn carrying on after a yes or a PIN has done what was confirmed, before it began.)
         on_devices = (
@@ -1443,7 +1457,7 @@ class Assistant:
             return False
         if target == self._from.get(conversation_id):
             return False
-        return not await asked.allows(extra.name, extra.description)
+        return not await asked.may_read(extra.name, extra.description)
 
     async def _run_now(
         self,

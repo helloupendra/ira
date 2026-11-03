@@ -25,6 +25,14 @@ RULE = (
     "about it, does not ask to act on it, and an action that merely could be useful is not asked "
     "for. Answer with a JSON array of the names and nothing else, [] if none."
 )
+# A read is another question. Asking about something asks to look at it, and what it costs to be
+# wrong differs: a read goes only to the person, and a false "I can't" is worse than a slow answer.
+READ_RULE = (
+    "You judge one thing: could each of these reads help answer what the person said? They may "
+    "speak English, Hindi or Hinglish. A question about something asks to look at it. Leave one "
+    "out only when it has nothing to do with their words, as reading messages has nothing to do "
+    "with opening an app. Answer with a JSON array of the names and nothing else."
+)
 _ARRAY = re.compile(r"\[[^\[\]]*\]")
 _FIRST_SENTENCE = re.compile(r"^.*?[.!?](?=\s|$)", re.DOTALL)
 
@@ -67,18 +75,27 @@ class AskedFor:
         """Of these actions, {name: what it does}, the ones the words ask for."""
         unknown = {n: d for n, d in actions.items() if n not in self.known}
         if unknown:
-            yes = await self._ask(unknown)
+            yes = await self._ask(unknown, RULE) or set()
             self.known.update({name: name in yes for name in unknown})
         return {name for name in actions if self.known[name]}
 
     async def allows(self, name: str, description: str) -> bool:
         return name in await self.which({name: description})
 
-    async def _ask(self, actions: dict[str, str]) -> set[str]:
+    async def may_read(self, name: str, description: str) -> bool:
+        """Whether a read has anything to do with what they said. No answer is a yes: it goes only
+        to them."""
+        if name not in self.known:
+            yes = await self._ask({name: description}, READ_RULE)
+            self.known[name] = yes is None or name in yes
+        return self.known[name]
+
+    async def _ask(self, actions: dict[str, str], rule: str) -> set[str] | None:
+        """The names the answer says, or None when there is no answer to go by."""
         listed = "\n".join(f"- {name}: {_short(text)}" for name, text in sorted(actions.items()))
         said = "\n".join(f"- {words}" for words in self.said)
         messages = [
-            Message(role="system", content=RULE),
+            Message(role="system", content=rule),
             Message(role="user", content=f"The person said:\n{said}\n\nActions:\n{listed}"),
         ]
         began = time.monotonic()
@@ -88,12 +105,13 @@ class AskedFor:
                 messages, None, tier=self.tier, purpose="asked", seconds=self.seconds
             )
         except GatewayError as exc:
-            log.warning("the asked-for check failed, so nothing passes it: %s", exc)
-            return set()
+            log.warning("the asked-for check failed: %s", exc)
+            return None
         finally:
             self.elapsed += time.monotonic() - began
         answer = response.text or ""
         if not _ARRAY.search(answer):
             self.unreadable += 1
-            log.warning("the asked-for check gave no list (%d characters): a no", len(answer))
+            log.warning("the asked-for check gave no list (%d characters)", len(answer))
+            return None
         return _names(answer, set(actions))
