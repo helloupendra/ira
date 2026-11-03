@@ -14,7 +14,7 @@ import re
 # alarm has been set". Not news or what another did: "The shop opened in 1990", "He sent it".
 _DONE = re.compile(
     r"^\s*(?:ok(?:ay)?[\s,!.]+|all\s+)?done(?![a-z])"
-    r"|(?<![a-z])(?:it|that|this)(?:'s|\s+is|\s+has\s+been)\s+done(?![a-z])"
+    r"|(?<![a-z])(?:it|that|this|everything)(?:'s|\s+is|\s+has\s+been)\s+done(?![a-z])"
     r"|(?<![a-z])i(?:'m|\s+am)\s+done(?![a-z])"
     r"|(?<![a-z])i(?:'ve|\s+have)?\s+(?:just\s+|now\s+)?(?:opened|set|sent|closed|started|turned|"
     r"clicked|typed|called|played|paused|saved|added|deleted|booked)(?![a-z])"
@@ -22,7 +22,8 @@ _DONE = re.compile(
     r"(?!\s+(?:that|about|somewhere|online|in)(?![a-z]))"
     r"|^\s*(?:opened|sent|set|closed|started|turned on|turned off|clicked|typed|called|played|"
     r"saved|added)(?![a-z])"
-    r"|(?<![a-z])(?:it|that|this|your\s+[a-z]+)\s+(?:has|have)\s+been\s+(?:opened|set|sent)(?![a-z])"
+    r"|(?<![a-z])(?:has|have)\s+been\s+(?:opened|set|sent|started|closed|added|saved)(?![a-z])"
+    r"|(?<![a-z])opened\s*[.!]*\s*$"
     r"|(?<![a-z])function call(?![a-z])",
     re.IGNORECASE,
 )
@@ -38,6 +39,7 @@ _DONE_HI = re.compile(
 # Someone else did it: "Avery ne bhej diya", "आपने भेज दिया". "maine" and "मैंने" are her own.
 _BY_ANOTHER = re.compile(r"(?<![a-z])([a-z]+)\s+ne(?![a-z])|(?<![ऀ-ॿ])([ऀ-ॿ]+)\s+ने(?![ऀ-ॿ])", re.I)
 _HER_OWN = {"main", "mai", "mein", "hum", "ham", "मैं", "मै", "हम"}
+_SAYS_HERS = re.compile(r"(?<![a-z])maine(?![a-z])|मैंने", re.IGNORECASE)
 _THEIRS = re.compile(
     r"(?<![a-z])(?:aapne|apne|tumne|usne|unhone|inhone)(?![a-z])|आपने|तुमने|उसने|उन्होंने", re.I
 )
@@ -120,6 +122,8 @@ def claims_done(text: str) -> bool:
 
 
 def _by_another(sentence: str) -> bool:
+    if _SAYS_HERS.search(sentence):  # "maine apne Mac par khol diya": "apne" is not another's
+        return False
     if _THEIRS.search(sentence):
         return True
     return any(

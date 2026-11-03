@@ -102,15 +102,24 @@ def open_refusal(tool: str, arguments: dict[str, object]) -> str | None:
             return NEVER_OPEN_REFUSAL
     if tool == "url_open" and isinstance(arguments.get("url"), str):
         # Only the web: any other scheme, with "//" or without ("javascript:", "shortcuts:run",
-        # "ms-settings:", "data:"). "example.com/menu" and "localhost:8080" have none.
-        scheme = _SCHEME.match(str(arguments["url"]).strip())
-        if scheme and scheme.group(1).lower() not in ("http", "https"):
+        # "tel:5551234"). "example.com/menu" and "localhost:8080" have none.
+        address = str(arguments["url"]).strip()
+        scheme = _SCHEME.match(address)
+        if (
+            scheme
+            and scheme.group(1).lower() not in ("http", "https")
+            and not _HOST_PORT.match(address)
+        ):
             return URL_REFUSAL
     return None
 
 
-# A URL's scheme: letters first, then a colon not followed by a port number ("host:8080").
-_SCHEME = re.compile(r"([a-z][a-z0-9+.-]*):(?!\d)", re.IGNORECASE)
+# A URL's scheme: letters first, then a colon. A host and a port look the same, so only a name with
+# a dot, or localhost, counts as a host: "tel:5551234" and "ms-settings:1" do not.
+_SCHEME = re.compile(r"([a-z][a-z0-9+.-]*):", re.IGNORECASE)
+_HOST_PORT = re.compile(
+    r"(?:localhost|[a-z0-9-]+(?:\.[a-z0-9-]+)+):\d{1,5}(?:[/?#]|$)", re.IGNORECASE
+)
 
 
 def never_app(app: str | None) -> bool:

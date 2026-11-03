@@ -196,7 +196,7 @@ internal sealed class SettingsWindow : Window
         if (_hello.Children.Count > 0 && state == _helloShown) return;
         _helloShown = state;
         _hello.Children.Clear();
-        if (_helloNotice is { } notice) _hello.Children.Add(Note(notice));
+        if (state == false && _helloNotice is { } notice) _hello.Children.Add(Note(notice));
         if (state is null)
         {
             _hello.Children.Add(Note("Pair this PC with your Ira first."));

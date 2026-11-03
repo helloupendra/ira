@@ -1363,6 +1363,9 @@ class Assistant:
             window = self.approvals.covers(user_id, target, extra.name, extra.skill)
             if never_app(app):  # opening Terminal and the like always asks
                 window = None
+            if elsewhere is not None and tainted:
+                # From another device they cannot see what a page may have talked her into.
+                window = None
             if window is not None:  # approved with a PIN for a few minutes: run it now
                 self.approvals.step(window)
                 return await self._run_now(

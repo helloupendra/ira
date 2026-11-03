@@ -690,3 +690,67 @@ async def test_out_of_steps_with_only_a_promise_says_what_was_tried():
     runtime.assistant.max_tool_rounds = 1
     events = await turn(runtime, owner, "screen padho", ids["mac"])
     assert "I tried screen_read" in events[-1]["text"]
+
+
+@pytest.mark.parametrize(
+    "words",
+    [
+        "Safari has been opened.",
+        "The timer has been set.",
+        "Safari opened.",
+        "Everything's done.",
+        "Maine apne Mac par Safari khol diya.",
+    ],
+)
+def test_a_claim_in_these_words_still_counts(words: str):
+    assert claims_done(words)
+
+
+@pytest.mark.parametrize(
+    "words",
+    ["The shop opened in 1990.", "He sent it.", "Avery ne bhej diya.", "Cancel ho gaya tha."],
+)
+def test_what_another_did_is_still_no_claim(words: str):
+    assert not claims_done(words)
+
+
+@pytest.mark.parametrize(
+    ("url", "refused"),
+    [
+        ("https://example.com", False),
+        ("example.com/menu", False),
+        ("localhost:8080", False),
+        ("example.com:8443/x", False),
+        ("tel:5551234", True),
+        ("sms:5551234", True),
+        ("facetime:5551234", True),
+        ("javascript:1+alert(1)", True),
+        ("ms-settings:1", True),
+        ("myapp:123", True),
+    ],
+)
+def test_only_the_web_opens_whatever_follows_the_colon(url: str, refused: bool):
+    from ira.approvals import open_refusal
+
+    assert (open_refusal("url_open", {"url": url}) is not None) is refused
+
+
+async def test_from_another_device_a_window_does_not_cover_a_step_after_a_read():
+    control = DeviceTool("mac_click", "Click.", NOTHING, "screen", 3)
+    runtime, owner, ids, ran = world([call("screen_read"), call("mac_click"), "Ok."])
+    mac = runtime.hub.connections[ids["mac"].id]
+    mac.tools = {**mac.tools, "mac_click": control}
+    runtime.approvals.open(owner.id, ids["mac"].id, None)
+    events = await turn(runtime, owner, "mac par dekho", ids["pixel"])
+    assert [name for _, name in ran] == ["screen_read"]
+    assert not [e for e in events if e["type"] == "action"]
+
+
+async def test_from_another_device_a_window_covers_a_step_with_nothing_read():
+    control = DeviceTool("mac_click", "Click.", NOTHING, "screen", 3)
+    runtime, owner, ids, ran = world([call("mac_click"), "Ok."])
+    mac = runtime.hub.connections[ids["mac"].id]
+    mac.tools = {**mac.tools, "mac_click": control}
+    runtime.approvals.open(owner.id, ids["mac"].id, None)
+    await turn(runtime, owner, "mac par button dabao", ids["pixel"])
+    assert [name for _, name in ran] == ["mac_click"]
