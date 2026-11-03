@@ -16,8 +16,10 @@ jobs:
   lint:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
-      - uses: actions/setup-python@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
           python-version: "3.12"
       - run: pip install "ruff==0.16.9"
@@ -32,8 +34,10 @@ jobs:
       matrix:
         python-version: ["3.11", "3.12"]
     steps:
-      - uses: actions/checkout@v6
-      - uses: actions/setup-python@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
           python-version: ${{ matrix.python-version }}
       - run: pip install -e ".[dev,aws,ogg,connectors]"
@@ -45,8 +49,10 @@ jobs:
     needs: lint
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v6
-      - uses: actions/setup-python@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
           python-version: "3.12"
       - run: pip install -e ".[dev,aws,ogg,connectors]"
@@ -65,8 +71,10 @@ jobs:
       run:
         working-directory: admin
     steps:
-      - uses: actions/checkout@v6
-      - uses: actions/setup-node@v5
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
         with:
           node-version-file: admin/.nvmrc
           cache: npm
@@ -88,12 +96,14 @@ jobs:
       run:
         working-directory: clients/macos
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
       - run: swift --version
       - run: swift build
       - run: scripts/test.sh
       - run: UNIVERSAL=1 scripts/make-app.sh
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: ira-mac-app
           path: |
@@ -109,21 +119,23 @@ jobs:
       run:
         working-directory: clients/android
     steps:
-      - uses: actions/checkout@v6
-      - uses: actions/setup-java@v5
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5
         with:
           distribution: temurin
           java-version: "17"
-      - uses: android-actions/setup-android@v4
+      - uses: android-actions/setup-android@be39fa834029ff78f1a44aa3bb0819b8fc2bd8fd # v4
       # Caches Gradle, and checks the wrapper jar against Gradle's published checksums.
-      - uses: gradle/actions/setup-gradle@v5
+      - uses: gradle/actions/setup-gradle@0723195856401067f7a2779048b490ace7a47d7c # v5
       - run: ./gradlew --no-daemon test assembleDebug
       # Lint fails on errors, among them a call newer than Android 10 (minSdk 29) unguarded.
       - run: ./gradlew --no-daemon lintPlayDebug lintPlayLiteDebug lintPersonalDebug
       # Play Lite must not ask for SMS or the call log; the full Play build does.
       - run: scripts/check-permissions.sh lite app/build/outputs/apk/playLite/debug/app-playLite-debug.apk
       - run: scripts/check-permissions.sh full app/build/outputs/apk/play/debug/app-play-debug.apk
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: ira-android-debug
           path: clients/android/app/build/outputs/apk/*/debug/*.apk
@@ -137,8 +149,10 @@ jobs:
       run:
         working-directory: clients/windows
     steps:
-      - uses: actions/checkout@v6
-      - uses: actions/setup-dotnet@v5
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1 # v5
         with:
           dotnet-version: "10.0.x"
       - run: dotnet --version
@@ -170,8 +184,10 @@ jobs:
       run:
         working-directory: clients/ios
     steps:
-      - uses: actions/checkout@v6
-      - uses: actions/setup-python@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
           python-version: "3.12"
       - run: pip install -e ../..
@@ -208,7 +224,7 @@ jobs:
       - name: The local Ira's log
         if: failure()
         run: cat "$IRA_TEST_DIR/serve.log"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: ira-ios-simulator
           path: clients/ios/dist/Ira-simulator.zip
@@ -221,15 +237,16 @@ jobs:
       contents: read
       pull-requests: write # lets gitleaks comment on a PR that adds a secret
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
+          persist-credentials: false
           fetch-depth: 0
       # On pull requests this scans the PR's commits and comments on the PR;
       # on schedule and manual runs it scans everything. GITHUB_TOKEN is the
       # automatic per-run token: a personal-account repository needs no stored
       # secret. Pushes are covered by the full scan below, because the
       # action's commit-range scan has no parent to start from on a first push.
-      - uses: gitleaks/gitleaks-action@v3
+      - uses: gitleaks/gitleaks-action@e0c47f4f8be36e29cdc102c57e68cb5cbf0e8d1e # v3
         if: github.event_name != 'push'
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
