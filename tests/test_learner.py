@@ -371,15 +371,15 @@ async def test_people_the_person_names_are_remembered_and_used(store):
     learner.service.user_settings.set(user.id, "learning", None)  # no switch needed
     remember, forget = people_tools(learner.data, user.id)
     assert remember.tier == 1 and forget.tier == 1
-    done = await remember.run({"name": "Rahul Sharma", "about": "my CA, files the GST"})
-    assert done == {"summary": "I'll remember: Rahul Sharma: my CA, files the GST"}
-    await remember.run({"name": "rahul  sharma", "about": "my CA"})  # the same person, updated
-    assert learner.memory(user.id) == ["rahul sharma: my CA"]
+    done = await remember.run({"name": "Avery Stone", "about": "my CA, files the GST"})
+    assert done == {"summary": "I'll remember: Avery Stone: my CA, files the GST"}
+    await remember.run({"name": "avery  stone", "about": "my CA"})  # the same person, updated
+    assert learner.memory(user.id) == ["avery stone: my CA"]
     with pytest.raises(ToolError, match="say who it is"):
         await remember.run({"name": "Priya", "about": " "})
     other = Accounts(store).create_user("staff@example.com", PASSWORD, "staff")
     assert learner.memory(other.id) == []
-    assert (await forget.run({"name": "Rahul Sharma"}))["summary"].startswith("Forgotten")
+    assert (await forget.run({"name": "Avery Stone"}))["summary"].startswith("Forgotten")
     assert learner.memory(user.id) == []
     assert (await forget.run({"name": "Nobody"}))["summary"] == "I had nothing saved about Nobody."
 

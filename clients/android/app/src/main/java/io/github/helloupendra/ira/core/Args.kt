@@ -109,7 +109,7 @@ class Args(private val raw: JsonObject) {
         fun youtubeSearch(query: String): String =
             "https://www.youtube.com/results?search_query=" + java.net.URLEncoder.encode(query.trim(), "UTF-8")
 
-        /** The last digits of a number, for matching "98100 00000" with "+919810000000". */
+        /** The last digits of a number, for matching "00100 00000" with "+910010000000". */
         fun numberKey(value: String, digits: Int = 10): String = value.filter { it.isDigit() }.takeLast(digits)
 
         fun localDateTime(value: String, name: String = "at"): LocalDateTime =

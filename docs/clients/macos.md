@@ -13,7 +13,7 @@ email, send an iMessage, run one of your Shortcuts, or start a coding task:
 >
 > screen pe kya hai?
 >
-> 98765 43210 kiska number hai? usko message karo ki main 10 minute late hoon
+> 00765 43210 kiska number hai? usko message karo ki main 10 minute late hoon
 >
 > kal ka calendar batao
 
@@ -223,7 +223,7 @@ devices**, with your PIN; nothing is on until you do. Each has a **tier**:
 reading needs nothing more (Tier 0); opening or adding something small, Ira
 does and tells you (Tier 1); anything that reaches another person or changes
 your calendar, Ira reads back exactly ("Send *I am 10 minutes late* to Avery
-Example, +91 98765 43210?") and waits for your yes (Tier 2); pushing code
+Example, +91 00765 43210?") and waits for your yes (Tier 2); pushing code
 and using the Mac for you need your PIN (Tier 3).
 
 | Skill | What Ira can do | Tier |
@@ -244,7 +244,7 @@ and using the Mac for you need your PIN (Tier 3).
 | **tasks** | start, follow and stop a coding task; push its branch | 2, 0, 1; 3 |
 | **routine** | lock, sleep, wake and the network's code, for learning your day | (no tool) |
 
-Ira chains these by itself: "98765 43210 kiska number hai?" looks the number
+Ira chains these by itself: "00765 43210 kiska number hai?" looks the number
 up in Contacts; "usko message karo..." then proposes the message to that
 person, and sends it on your "haan".
 

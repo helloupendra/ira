@@ -140,7 +140,7 @@ const IraPersonal = (() => {
   };
 
   function open(name) {
-    const panel = PANELS[name];
+    const panel = Object.hasOwn(PANELS, name) ? PANELS[name] : null; // "constructor" is no panel
     if (!panel || (name === "drop" && !canDrop())) return Promise.resolve();
     $("#menu").close();
     $("#panel-title").textContent = panel.title;

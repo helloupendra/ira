@@ -8,17 +8,17 @@ do, for you, when you ask:
 
 > kiska call aaya tha?
 >
-> 98100 00000 kiska number hai?
+> 00100 00000 kiska number hai?
 >
 > usko call karo
 >
-> WhatsApp pe kya aaya hai? Rahul ko bolo main 10 minute mein pahunch raha hoon
+> WhatsApp pe kya aaya hai? Avery ko bolo main 10 minute mein pahunch raha hoon
 >
 > kal subah 7 baje ka alarm laga do
 
 Ira finds the missed call in your call log, looks the number up in your
-contacts ("Rahul Sharma"), and for "usko call karo" reads the call back
-("Call Rahul Sharma, +91 98100 00000?") and dials on your "haan". Ira chains
+contacts ("Avery Stone"), and for "usko call karo" reads the call back
+("Call Avery Stone, +91 00100 00000?") and dials on your "haan". Ira chains
 the phone's tools the way it plans any task: there is no fixed list of
 commands.
 

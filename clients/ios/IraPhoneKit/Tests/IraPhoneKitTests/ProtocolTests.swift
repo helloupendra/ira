@@ -11,8 +11,8 @@ struct DeviceFrameTests {
     }
 
     @Test func call() throws {
-        let frame = try DeviceProtocol.decode(#"{"type":"call","id":"9b0c","tool":"contacts_lookup","args":{"query":"Rahul"}}"#)
-        #expect(frame == .call(id: "9b0c", tool: "contacts_lookup", args: ["query": "Rahul"]))
+        let frame = try DeviceProtocol.decode(#"{"type":"call","id":"9b0c","tool":"contacts_lookup","args":{"query":"Avery"}}"#)
+        #expect(frame == .call(id: "9b0c", tool: "contacts_lookup", args: ["query": "Avery"]))
         let bare = try DeviceProtocol.decode(#"{"type":"call","id":"1","tool":"location_now","args":null}"#)
         #expect(bare == .call(id: "1", tool: "location_now", args: .object([:])))
     }

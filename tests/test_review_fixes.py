@@ -12,11 +12,15 @@ from fastapi.testclient import TestClient
 from ira import accounts as accounts_module
 from ira.accounts import AccountError, LoginLimiter
 from ira.approvals import open_refusal
+from ira.channels.account import recheck_password
 from ira.channels.http import SWAGGER_CSS_HASH, SWAGGER_JS_HASH, create_app
 from ira.channels.me import export_data
 from ira.channels.telegram import MAX_WAITING_UPDATES, next_offset
 from ira.connectors.google import Google
+from ira.connectors.imap import search_command
 from ira.connectors.mcp import _private
+from ira.devices.hub import Connection
+from ira.devices.protocol import DeviceTool
 from ira.drop import DropError
 from ira.models.base import ChatResponse, StreamDone, TextDelta
 from ira.models.fake import ScriptedProvider
@@ -293,3 +297,98 @@ def test_addresses_not_on_the_internet_are_private(address: str):
 
 def test_an_internet_address_is_not_private():
     assert not _private("93.184.216.34")
+
+
+def test_an_imap_search_in_hindi_goes_as_a_literal():
+    command, literal = search_command({"words": "दंत चिकित्सक", "days": 7})
+    assert command[:2] == ["CHARSET", "UTF-8"] and command[-1] == "TEXT"
+    assert literal == "दंत चिकित्सक".encode()
+    assert all(part.isascii() for part in command)
+
+
+def test_an_imap_search_in_english_is_as_before():
+    command, literal = search_command({"words": "invoice", "days": 7})
+    assert literal is None and command[0] is None and command[1:3] == ["TEXT", '"invoice"']
+
+
+def test_a_second_word_outside_ascii_is_left_out_rather_than_failing():
+    command, literal = search_command({"words": "दंत", "sender": "एवरी", "days": 7})
+    assert literal == "दंत".encode() and "FROM" not in command
+
+
+def test_a_file_still_arriving_is_not_listed(tmp_path: Path):
+    runtime = make_runtime(provider=ScriptedProvider(), data_dir=tmp_path)
+    owner = runtime.accounts.create_first_owner("owner@example.com", PASSWORD)
+    drop = runtime.drop
+    seen: list[Any] = []
+
+    class Slow(io.BytesIO):
+        def read(self, *args: Any) -> bytes:
+            seen.append(drop.list(owner.id))
+            return super().read(*args)
+
+    item = drop.add_file(owner.id, Slow(b"x" * 10), "a.txt", "text/plain", from_label="Web")
+    assert seen[0] == [] and [i.id for i in drop.list(owner.id)] == [item.id]
+
+
+def test_a_file_whose_item_went_while_it_arrived_is_not_kept(tmp_path: Path):
+    runtime = make_runtime(provider=ScriptedProvider(), data_dir=tmp_path)
+    owner = runtime.accounts.create_first_owner("owner@example.com", PASSWORD)
+    drop = runtime.drop
+
+    class Gone(io.BytesIO):
+        def read(self, *args: Any) -> bytes:
+            runtime.store.execute("DELETE FROM drop_items")
+            return super().read(*args)
+
+    with pytest.raises(DropError, match="deleted"):
+        drop.add_file(owner.id, Gone(b"x" * 10), "a.txt", "text/plain", from_label="Web")
+    assert drop._arriving == {}
+    assert not list((tmp_path).rglob("*.part"))
+
+
+async def test_an_action_does_not_run_after_its_skill_was_switched_off():
+    runtime = make_runtime(provider=ScriptedProvider())
+    owner = runtime.accounts.create_first_owner("owner@example.com", PASSWORD)
+    hub = runtime.hub
+    code, _ = hub.devices.start_pairing(owner.id, "android", "Pixel 7", ["messages"])
+    _, device = hub.devices.redeem(code)
+    tool = DeviceTool("sms_send", "Send.", {"type": "object"}, "messages", 2)
+    hub.connections[device.id] = Connection(
+        hub.devices.get(device.id), None, {"sms_send": tool}, 1.0
+    )  # type: ignore[arg-type]
+    hub.devices.set_skills(device.id, [])
+    pending = runtime.guard.propose_on_device(
+        "sms_send", {}, "Send", 2, device_id=device.id, user_id=owner.id, conversation_id="c",
+        channel="api", actor=owner.email,
+    )  # fmt: skip
+    with pytest.raises(ToolError, match="switched off"):
+        await hub.run_action(pending)
+
+
+def test_a_wrong_password_is_counted_before_it_is_checked(tmp_path: Path):
+    runtime = make_runtime(provider=ScriptedProvider(), data_dir=tmp_path)
+    runtime.accounts.create_first_owner("owner@example.com", PASSWORD)
+    user = runtime.accounts.authenticate("owner@example.com", PASSWORD)
+    limiter = runtime.accounts.limiter
+    counted: list[int] = []
+
+    def check(_: int, __: str) -> bool:
+        counted.append(len(limiter._recent(f"pin-password:{user.id}")))
+        return False
+
+    runtime.accounts.check_password = check
+
+    class Who:
+        pass
+
+    who = Who()
+    who.user = user
+
+    class Req:
+        client = type("C", (), {"host": "1.2.3.4"})()
+        headers: dict[str, str] = {}
+
+    with pytest.raises(Exception, match="403|not your password"):
+        recheck_password(runtime, Req(), who, "x", "pin-password")  # type: ignore[arg-type]
+    assert counted == [1]

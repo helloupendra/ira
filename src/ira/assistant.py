@@ -80,7 +80,7 @@ How you work:
 connections. Use what one returns to call the next (the call log gives a number, the \
 contacts give its name, then the call). Never say you will look something up: call the \
 tool now, in this reply.
-- When the target is unclear (two contacts called Rahul, two uploads), ask which one and \
+- When the target is unclear (two contacts called Avery, two uploads), ask which one and \
 name the choices. Never guess the target of an action.
 - Searching for a file, folder, contact or message: try at most three forms of the name \
 (its words apart, a corrected spelling), then stop and say what you tried. Do not open \

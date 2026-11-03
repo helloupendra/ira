@@ -23,7 +23,7 @@ struct AskIraIntent: AppIntent {
     }
 }
 
-/// "Hey Siri, Tell Ira": for what you tell Ira rather than ask ("Rahul is my CA",
+/// "Hey Siri, Tell Ira": for what you tell Ira rather than ask ("Avery is my CA",
 /// "remind me at 6 to call the bank"). Ira says what it saved.
 struct TellIraIntent: AppIntent {
     static let title: LocalizedStringResource = "Tell Ira"

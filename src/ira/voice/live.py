@@ -718,7 +718,7 @@ def hung_up(exc: BaseException) -> bool:
 
 
 def read_back(summary: str) -> str:
-    """An action's summary as it is said: "call number on Pixel 7: name Rahul, number ..."."""
+    """An action's summary as it is said: "call number on Pixel 7: name Avery, number ..."."""
     head, found, rest = summary.partition(" with {")
     if found:
         try:

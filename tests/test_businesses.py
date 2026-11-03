@@ -71,7 +71,7 @@ async def test_ira_keeps_them_in_mind_and_remembers_what_it_is_told():
     assert tool.tier == 1
     told = await tool.run({"name": "sunrise dental clinic", "terms": "pays net 30"})
     assert told["summary"].endswith("Terms: pays net 30. Ira may: never message patients")
-    await tool.run({"name": "Lotus Bakery", "about": "my sister's bakery"})
+    await tool.run({"name": "Lotus Bakery", "about": "a bakery I help with"})
     assert [b.name for b in runtime.businesses.list(owner.id)][0] == "Lotus Bakery"
     with pytest.raises(Exception, match="what to remember"):
         await tool.run({"name": "Lotus Bakery"})

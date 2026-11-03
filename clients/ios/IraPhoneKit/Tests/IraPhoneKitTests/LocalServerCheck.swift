@@ -58,7 +58,7 @@ struct LocalServerCheck {
     func askWithADeviceTool(_ client: AskClient, conversation: String, calls: EventLog<String>) async throws {
         var names: [String] = []
         var answer = ""
-        for try await event in client.askStream("contacts lookup query=Rahul", conversationID: conversation) {
+        for try await event in client.askStream("contacts lookup query=Avery", conversationID: conversation) {
             switch event {
             case .tool(_, let name, _): names.append(name)
             case .done(let text, _, _): answer = text
@@ -67,13 +67,13 @@ struct LocalServerCheck {
         }
         #expect(names == ["contacts_lookup"])
         #expect(calls.all.contains("contacts_lookup"))
-        #expect(answer.contains("Rahul Sharma"))
+        #expect(answer.contains("Avery Stone"))
     }
 
     /// 4. A Tier 2 proposal on this iPhone: read back, then run on the person's yes.
     func approveATier2Proposal(_ client: AskClient, conversation: String, calls: EventLog<String>) async throws {
         var proposal: ActionCard?
-        for try await event in client.askStream("call place number=9810000000", conversationID: conversation) {
+        for try await event in client.askStream("call place number=0010000000", conversationID: conversation) {
             if case .action(let card) = event { proposal = card }
         }
         let card = try #require(proposal)
@@ -184,9 +184,9 @@ struct CannedPhone: ToolRunner {
         calls.add(name)
         switch name {
         case "contacts_lookup":
-            let phone: JSONValue = ["label": "mobile", "number": "+91 98100 00000"]
-            let person: JSONValue = ["name": "Rahul Sharma", "phones": [phone]]
-            return ["contacts": [person], "count": 1, "summary": "Rahul Sharma, +91 98100 00000."]
+            let phone: JSONValue = ["label": "mobile", "number": "+91 00100 00000"]
+            let person: JSONValue = ["name": "Avery Stone", "phones": [phone]]
+            return ["contacts": [person], "count": 1, "summary": "Avery Stone, +91 00100 00000."]
         case "call_place":
             return ["number": args["number"] ?? .null, "summary": "The iPhone is asking to call that number."]
         default:

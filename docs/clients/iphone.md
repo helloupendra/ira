@@ -114,7 +114,7 @@ this iPhone's own key, so they are the same Ira, in the same conversation:
 | Say | What happens |
 | --- | --- |
 | **"Hey Siri, Ask Ira"** | Siri asks what you want to ask, sends it to your Ira and says the answer. |
-| **"Hey Siri, Tell Ira"** | For things you tell Ira ("Rahul is my CA", "remind me at 6 to call the bank"); Ira says what it saved. |
+| **"Hey Siri, Tell Ira"** | For things you tell Ira ("Avery is my CA", "remind me at 6 to call the bank"); Ira says what it saved. |
 | **"Hey Siri, Talk to Ira"** | Opens Ira and starts a call. |
 
 They also appear in the **Shortcuts** app and in Spotlight. When Ira
@@ -421,7 +421,7 @@ short note instead of talking back. Make it like **Ask Ira**, but:
 - name it **Tell Ira**;
 - replace step 4 with **Show Notification**: the **Dictionary Value**.
 
-> Tell Ira: Rahul is my CA
+> Tell Ira: Avery is my CA
 >
 > Tell Ira: Sunrise pays in 30 days
 >

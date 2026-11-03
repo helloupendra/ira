@@ -11,12 +11,12 @@ class ArgsTest {
 
     @Test
     fun `phone numbers keep digits and a leading plus`() {
-        assertEquals("+919810000000", Args.phoneNumber("+91 98100 00000"))
+        assertEquals("+910010000000", Args.phoneNumber("+91 00100 00000"))
         assertEquals("02212345678", Args.phoneNumber("(022) 1234-5678"))
-        assertThrows(ToolFailure::class.java) { Args.phoneNumber("call Rahul") }
+        assertThrows(ToolFailure::class.java) { Args.phoneNumber("call Avery") }
         assertThrows(ToolFailure::class.java) { Args.phoneNumber("12") }
         assertThrows(ToolFailure::class.java) { Args.phoneNumber("*21*123#") }
-        assertEquals("9810000000", Args.numberKey("+91 98100 00000"))
+        assertEquals("0010000000", Args.numberKey("+91 00100 00000"))
     }
 
     @Test
@@ -32,7 +32,7 @@ class ArgsTest {
 
     @Test
     fun `text is checked`() {
-        assertEquals("Rahul", args("""{"name": "  Rahul "}""").string("name", 80))
+        assertEquals("Avery", args("""{"name": "  Avery "}""").string("name", 80))
         assertNull(args("""{"name": ""}""").string("name", 80))
         assertThrows(ToolFailure::class.java) { args("""{}""").string("text", 10, required = true) }
         assertThrows(ToolFailure::class.java) { args("""{"text": 5}""").string("text", 10) }

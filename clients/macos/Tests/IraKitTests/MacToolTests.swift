@@ -98,7 +98,7 @@ struct CatalogTests {
     }
 
     @Test func whatIReadNeverHoldsAMessage() {
-        let target = Toolbox.target("messages_send", ["to": "+919876543210", "name": "Avery Example", "text": "the secret plan"])
+        let target = Toolbox.target("messages_send", ["to": "+910076543210", "name": "Avery Example", "text": "the secret plan"])
         #expect(target == "to Avery Example")
         let draft = Toolbox.target("mail_draft", ["to": ["avery@example.com"], "subject": "x", "body": "private words"])
         #expect(draft == "to avery@example.com")
@@ -139,18 +139,18 @@ struct ArgsTests {
 @Suite("Contacts, mail, notes and messages")
 struct PersonalToolTests {
     @Test func whatAQueryIs() {
-        #expect(ContactsTool.kind(of: "+91 98765 43210") == .number("919876543210"))
+        #expect(ContactsTool.kind(of: "+91 00765 43210") == .number("910076543210"))
         #expect(ContactsTool.kind(of: "Avery@Example.com") == .email("avery@example.com"))
         #expect(ContactsTool.kind(of: "Avery Example") == .name("Avery Example"))
         #expect(ContactsTool.kind(of: "Avery 2") == .name("Avery 2"))
     }
 
     @Test func numbersMatchHoweverTheyAreWritten() {
-        #expect(ContactsTool.sameNumber("9876543210", "+91 98765 43210"))
-        #expect(ContactsTool.sameNumber("+91-98765-43210", "098765 43210"))
-        #expect(ContactsTool.sameNumber("43210", "+91 98765 43210"))
-        #expect(!ContactsTool.sameNumber("9876543211", "+91 98765 43210"))
-        #expect(!ContactsTool.sameNumber("12", "+91 98765 43210"))
+        #expect(ContactsTool.sameNumber("0076543210", "+91 00765 43210"))
+        #expect(ContactsTool.sameNumber("+91-00765-43210", "000765 43210"))
+        #expect(ContactsTool.sameNumber("43210", "+91 00765 43210"))
+        #expect(!ContactsTool.sameNumber("0076543211", "+91 00765 43210"))
+        #expect(!ContactsTool.sameNumber("12", "+91 00765 43210"))
     }
 
     @Test func scriptOutput() {
@@ -171,7 +171,7 @@ struct PersonalToolTests {
     @Test func addresses() {
         #expect(AppleScriptTools.isEmail("avery@example.com"))
         #expect(!AppleScriptTools.isEmail("Avery Example"))
-        #expect(AppleScriptTools.messageHandle("+91 98765-43210") == "+919876543210")
+        #expect(AppleScriptTools.messageHandle("+91 00765-43210") == "+910076543210")
         #expect(AppleScriptTools.messageHandle("avery@example.com") == "avery@example.com")
         #expect(AppleScriptTools.messageHandle("Avery") == nil)
         #expect(AppleScriptTools.messageHandle("123") == nil)
@@ -819,6 +819,12 @@ struct CodeTaskTests {
 
     /// Stopping ends the agent and what it started at once, wherever Ira started it from (a
     /// thread that blocks signals passed that on to the agent, and SIGTERM did nothing).
+    @Test func wordsThatLookLikeAnOptionAreNotOne() {
+        #expect(CodeTasks.argv(["agent", "-p"], prompt: "--mcp-config=x").last == " --mcp-config=x")
+        #expect(CodeTasks.argv(["agent", "-p"], prompt: "fix it").last == "fix it")
+        #expect(CodeTasks.argv(["agent", "{prompt}"], prompt: "-x") == ["agent", " -x"])
+    }
+
     @Test func aTabsAddressKeepsNoPasswordOrQuery() {
         #expect(BrowserTools.clean("https://me:secret@example.com/a?token=1#x") == "https://example.com/a")  // pragma: allowlist secret
         #expect(BrowserTools.clean("https://example.com/a@b") == "https://example.com/a@b")

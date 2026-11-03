@@ -15,7 +15,8 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 
 from ira import changes, toollog
 from ira.accounts import Principal
-from ira.channels.deps import client_ip, get_runtime, require, require_session
+from ira.channels.account import recheck_password
+from ira.channels.deps import get_runtime, require, require_session
 from ira.channels.paging import PAGED, page
 from ira.channels.schemas import (
     ERRORS,
@@ -403,14 +404,7 @@ async def delete_my_data(
     principal: Principal = Depends(require_session()),
     runtime: Runtime = Depends(get_runtime),
 ) -> DataDeleted:
-    limiter = runtime.accounts.limiter
-    key = f"delete-password:{principal.user.id}"
-    if limiter.blocked(key, f"ip:{client_ip(request)}"):
-        raise HTTPException(429, detail="too many wrong passwords; try again in 15 minutes")
-    if not runtime.accounts.check_password(principal.user.id, body.password):
-        limiter.fail(key)
-        raise HTTPException(403, detail="that is not your password")
-    limiter.clear(key)
+    recheck_password(runtime, request, principal, body.password, "delete-password")
     assert runtime.hub is not None
     user_id = principal.user.id
     store = runtime.store

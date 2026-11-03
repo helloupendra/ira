@@ -126,7 +126,7 @@ async def test_a_pin_opens_a_window_and_covered_steps_then_run():
     assert runtime.approvals.for_user(owner.id)[0].steps == 1
 
     # Sending is never covered: it still waits for a yes.
-    third = await ask("Rahul ko SMS karo", conversation_id="t", user_id=owner.id)
+    third = await ask("Avery ko SMS karo", conversation_id="t", user_id=owner.id)
     assert third.action is not None and third.action.tool == "sms_send"
     assert ran == ["screen_act", "screen_act"]
 

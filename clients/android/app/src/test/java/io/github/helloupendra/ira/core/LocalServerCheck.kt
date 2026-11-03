@@ -132,8 +132,8 @@ class LocalServerCheck {
             assertEquals("calls_recent", call.tool)
             val content =
                 buildJsonObject {
-                    put("calls", buildJsonArray { add(buildJsonObject { put("name", JsonPrimitive("Rahul Sharma")); put("number", JsonPrimitive("+919810000000")); put("kind", JsonPrimitive("missed")) }) })
-                    put("summary", JsonPrimitive("missed from Rahul Sharma at 10:42"))
+                    put("calls", buildJsonArray { add(buildJsonObject { put("name", JsonPrimitive("Avery Stone")); put("number", JsonPrimitive("+910010000000")); put("kind", JsonPrimitive("missed")) }) })
+                    put("summary", JsonPrimitive("missed from Avery Stone at 10:42"))
                 }
             device.send(DeviceProtocol.result(call.id, content))
         }

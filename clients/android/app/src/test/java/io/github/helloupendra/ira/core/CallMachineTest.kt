@@ -42,7 +42,7 @@ class CallMachineTest {
         m.onSentenceFinished()
         // The second sentence starting is not a new `played`.
         assertTrue(m.onSentenceStarted(1, 2_500.0).isEmpty())
-        m.onServer(Live.Done(1, "Rahul Sharma ka call tha.", 5), 0.0)
+        m.onServer(Live.Done(1, "Avery Stone ka call tha.", 5), 0.0)
         m.onSentenceFinished()
         assertEquals(Phase.Listening, m.phase)
         assertTrue(!m.playing)
@@ -151,7 +151,7 @@ class CallMachineTest {
     @Test
     fun `a proposed action is shown`() {
         val m = ready()
-        val card = ActionCard("a1", "call_place", "call Rahul Sharma, +91 98100 00000", 2, true, 120)
+        val card = ActionCard("a1", "call_place", "call Avery Stone, +91 00100 00000", 2, true, 120)
         assertEquals(Effect.ShowAction(1, card), m.onServer(Live.Action(1, card), 0.0).single())
     }
 }

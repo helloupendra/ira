@@ -807,7 +807,9 @@ public final class CodeTasks: @unchecked Sendable {
         return String(cString: resolved)
     }
 
-    static func argv(_ command: [String], prompt: String) -> [String] {
+    static func argv(_ command: [String], prompt given: String) -> [String] {
+        // A space keeps words such as "--mcp-config=x" from being read as the agent's own options.
+        let prompt = given.hasPrefix("-") ? " " + given : given
         if command.contains(where: { $0.contains("{prompt}") }) {
             return command.map { $0.replacingOccurrences(of: "{prompt}", with: prompt) }
         }

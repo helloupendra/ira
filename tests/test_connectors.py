@@ -568,7 +568,7 @@ class StandInMailbox:
     async def call(self, name, args):
         StandInMailbox.opened.append((name, args))
         if name == "mail_search":
-            return {"messages": [{"id": "42", "from": "Rahul", "subject": "GST", "date": "today"}]}
+            return {"messages": [{"id": "42", "from": "Avery", "subject": "GST", "date": "today"}]}
         return {"text": "Please send the invoices."}
 
 
@@ -588,13 +588,13 @@ async def test_imap_mail_with_an_app_password(store):
     assert b"app-password" not in raw
     tools = {t.name: t for t in connectors.tools_for(1)}
     assert set(tools) == {"mail_mail_search", "mail_mail_read"}
-    found = await tools["mail_mail_search"].run({"sender": "Rahul"})
+    found = await tools["mail_mail_search"].run({"sender": "Avery"})
     assert found["messages"][0]["subject"] == "GST"
-    assert criteria({"words": 'say "hi"', "sender": "rahul@example.com", "days": 7})[:4] == [
+    assert criteria({"words": 'say "hi"', "sender": "avery@example.com", "days": 7})[:4] == [
         "TEXT",
         '"say  hi"',
         "FROM",
-        '"rahul@example.com"',
+        '"avery@example.com"',
     ]
 
 
@@ -652,7 +652,7 @@ class StandInTelethon:
                 entity=SimpleNamespace(title=name), unread_count=unread, message=None
             )
 
-        return [dialog("Rahul Sharma", 2), dialog("Rahul (Office)", 0), dialog("Family", 5)]
+        return [dialog("Avery Stone", 2), dialog("Avery (Office)", 0), dialog("Family", 5)]
 
     async def iter_dialogs(self, limit=None):
         for d in self._dialogs()[:limit]:
@@ -682,9 +682,9 @@ async def test_telegram_as_the_person(store):
     )
     assert connectors.builtins()[2]["kind"] == "telegram"
     with pytest.raises(ToolError, match="country code"):
-        await connectors.add_telegram(1, "Telegram", 12345, "a" * 32, "98100 00000")
+        await connectors.add_telegram(1, "Telegram", 12345, "a" * 32, "00100 00000")
     added = await connectors.add_telegram(
-        1, "Telegram", 12345, "0123456789abcdef" * 2, "+91 98100 00000"
+        1, "Telegram", 12345, "0123456789abcdef" * 2, "+91 00100 00000"
     )
     assert added.status == "needs_code" and connectors.tools_for(1) == []
     with pytest.raises(ToolError, match="code is wrong"):
@@ -703,14 +703,14 @@ async def test_telegram_as_the_person(store):
         "telegram_send": 2,
     }
     chats = await tools["telegram_chats"].run({})
-    assert [c["name"] for c in chats["chats"]] == ["Rahul Sharma", "Rahul (Office)", "Family"]
+    assert [c["name"] for c in chats["chats"]] == ["Avery Stone", "Avery (Office)", "Family"]
     with pytest.raises(
-        ToolError, match="several chats match rahul: Rahul \\(Office\\), Rahul Sharma"
+        ToolError, match="several chats match avery: Avery \\(Office\\), Avery Stone"
     ):
-        await tools["telegram_read"].run({"chat": "rahul"})
-    read = await tools["telegram_read"].run({"chat": "Rahul Sharma"})
+        await tools["telegram_read"].run({"chat": "avery"})
+    read = await tools["telegram_read"].run({"chat": "Avery Stone"})
     assert read["messages"][-1] == {
-        "from": "Rahul Sharma",
+        "from": "Avery Stone",
         "at": "10:01",
         "text": "GST file kar diya?",
     }

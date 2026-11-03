@@ -200,14 +200,7 @@ def set_my_pin(
     principal: Principal = Depends(require_session("actions")),
     runtime: Runtime = Depends(get_runtime),
 ) -> OkResponse:
-    limiter = runtime.accounts.limiter
-    key = f"pin-password:{principal.user.id}"
-    if limiter.blocked(key, f"ip:{client_ip(request)}"):
-        raise HTTPException(429, detail="too many wrong passwords; try again in 15 minutes")
-    if not runtime.accounts.check_password(principal.user.id, body.password):
-        limiter.fail(key)
-        raise HTTPException(403, detail="that is not your password")
-    limiter.clear(key)
+    recheck_password(runtime, request, principal, body.password, "pin-password")
     runtime.guard.set_pin(
         body.pin, user_id=principal.user.id, actor=principal.actor, channel=principal.channel
     )
@@ -323,15 +316,26 @@ def end_my_other_sessions(
 # Your own password and email. Both need your password again.
 
 
-def _recheck(runtime: Runtime, request: Request, principal: Principal, password: str) -> None:
+def recheck_password(
+    runtime: Runtime, request: Request, principal: Principal, password: str, purpose: str
+) -> None:
+    """Their password again, counted before it is checked so that guesses at once cannot race the
+    limit; a right one gives its count back."""
     limiter = runtime.accounts.limiter
-    key = f"password-check:{principal.user.id}"
-    if limiter.blocked(key, f"ip:{client_ip(request)}"):
+    key = f"{purpose}:{principal.user.id}"
+    if limiter.blocked(f"ip:{client_ip(request)}"):
+        raise HTTPException(429, detail="too many wrong passwords; try again in 15 minutes")
+    attempt = limiter.take(key)
+    if attempt is None:
         raise HTTPException(429, detail="too many wrong passwords; try again in 15 minutes")
     if not runtime.accounts.check_password(principal.user.id, password):
-        limiter.fail(key)
         raise HTTPException(403, detail="that is not your password")
+    limiter.release(attempt, key)
     limiter.clear(key)
+
+
+def _recheck(runtime: Runtime, request: Request, principal: Principal, password: str) -> None:
+    recheck_password(runtime, request, principal, password, "password-check")
 
 
 @router.put(

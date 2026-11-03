@@ -391,6 +391,11 @@ class DeviceHub:
         device = self.devices.get(pending.device_id)
         if device is None or device.user_id != pending.user_id:
             raise ToolError("that device is no longer paired")
+        # Proposed earlier, answered now: the skill may have been switched off in between.
+        connection = self.connections.get(pending.device_id)
+        tool = connection.tools.get(pending.tool) if connection is not None else None
+        if tool is not None and tool.skill and tool.skill not in device.skills:
+            raise ToolError(f"the {tool.skill} skill was switched off, so this did not run")
         return await self.call(pending.device_id, pending.tool, pending.params)
 
     # Events.

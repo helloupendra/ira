@@ -44,7 +44,7 @@ def runtime(registry):
 
 def test_labels_are_names_never_coordinates():
     assert clean_label("  Office  ") == "Office"
-    for bad in ("28.6139, 77.2090", "12.97 77.59", ""):
+    for bad in ("10.1234, 20.9876", "12.97 77.59", ""):
         with pytest.raises(LearningError):
             clean_label(bad)
 
@@ -121,7 +121,7 @@ def test_the_phone_token_only_reports_places(runtime):
         assert client.get("/v1/me/learning", headers=phone).status_code == 403
         extra = {"event": "arrive", "place": "Office", "lat": 28.61, "lon": 77.2}
         assert client.post("/v1/observations", json=extra, headers=phone).status_code == 422
-        coords = {"event": "arrive", "place": "28.6139, 77.2090"}
+        coords = {"event": "arrive", "place": "10.1234, 20.9876"}
         assert client.post("/v1/observations", json=coords, headers=phone).status_code == 400
         listed = client.get("/v1/me/learning", headers=mine).json()["phone_tokens"]
         assert [t["id"] for t in listed] == [made["id"]]

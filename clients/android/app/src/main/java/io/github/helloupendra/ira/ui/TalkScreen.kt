@@ -295,10 +295,15 @@ fun TalkScreen(app: IraApp, talkRequests: Int, onSkills: () -> Unit, onSettings:
                 val activity = context as? android.app.Activity
                 val fingerprint =
                     if (Approvals.FINGERPRINT && card.needsPin && activity != null && app.settings.approvalsEnrolled && DeviceKey.exists()) {
-                        {
+                        fingerprint@{
                             // The server signs the same bytes: the action, the summary shown, its expiry.
                             val expiresAt = card.expiresAt ?: (System.currentTimeMillis() / 1000 + (card.expiresIn ?: 120))
-                            val payload = Approvals.payload(card.id, card.summary, expiresAt)
+                            val payload =
+                                runCatching { Approvals.payload(card.id, card.summary, expiresAt) }.getOrNull()
+                            if (payload == null) {
+                                outcome = "Your Ira sent this card in a form the phone can't sign."
+                                return@fingerprint
+                            }
                             Fingerprint.approve(activity, card.summary, payload) { signature, problem ->
                                 if (signature == null) {
                                     outcome = problem

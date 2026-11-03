@@ -1,4 +1,4 @@
-"""People in a person's life, as they told Ira: "Rahul mera CA hai".
+"""People in a person's life, as they told Ira: "Avery mera CA hai".
 
 ``remember_person`` and ``forget_person`` are Tier 1: the person asked, it is
 small and undoable, Ira does it at once and says so. Each is a learning of
@@ -67,7 +67,7 @@ def people_tools(data: LearningStore, user_id: int) -> list[PersonalTool]:
         PersonalTool(
             name="remember_person",
             description="Remember who someone is to the person, when they tell you: their "
-            "role, relation or how they know them ('Rahul Sharma is my CA'). Use the name as "
+            "role, relation or how they know them ('Avery Stone is my CA'). Use the name as "
             "they say it.",
             parameters={
                 "type": "object",

@@ -73,6 +73,24 @@ def criteria(args: dict[str, Any]) -> list[str]:
     return parts
 
 
+def search_command(args: dict[str, Any]) -> tuple[list[str], bytes | None]:
+    """The SEARCH arguments, and the one literal a word outside ASCII has to go in: imaplib can
+    send only ASCII in a command, and one literal, last. A second such word is left out, so a mail
+    search finds too much rather than fails."""
+    parts = criteria(args)
+    plain: list[str] = []
+    literal: bytes | None = None
+    key = ""
+    for name, value in zip(parts[::2], parts[1::2], strict=True):
+        if value.isascii():
+            plain += [name, value]
+        elif literal is None:
+            key, literal = name, value.strip('"').encode()
+    if literal is None:
+        return [None, *plain], None  # type: ignore[list-item]
+    return ["CHARSET", "UTF-8", *plain, key], literal
+
+
 def _text(message: EmailMessage) -> str:
     part = message.get_body(preferencelist=("plain", "html"))
     if part is None:
@@ -127,7 +145,9 @@ class Mailbox:
     def _search(self, args: dict[str, Any]) -> dict[str, Any]:
         box = self._open()
         try:
-            status, data = box.uid("SEARCH", None, *criteria(args))
+            command, literal = search_command(args)
+            box.literal = literal
+            status, data = box.uid("SEARCH", *command)
             if status != "OK":
                 raise ToolError("the mail server could not search")
             uids = (data[0] or b"").split()[::-1][: int(args.get("max") or 10)]

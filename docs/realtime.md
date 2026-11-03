@@ -46,7 +46,7 @@ you speak ──► the app's voice detector ──► audio, only while you spe
   while the rest is still being written.
 - **The same Ira**: the same conversation, tools, security tiers, privacy
   and learning as typing. A Tier 2 action is read back with its exact
-  target ("call number on Pixel 7: name Rahul Sharma, number +91 98100
+  target ("call number on Pixel 7: name Avery Stone, number +91 98100
   00000. Haan ya na?") and takes a spoken "haan" or "yes"; a Tier 3 action
   shows its card in the app and needs the PIN typed, never spoken.
 

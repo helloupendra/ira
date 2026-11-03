@@ -16,13 +16,13 @@ class AskStreamTest {
     fun `server-sent events become events, other lines are skipped`() {
         assertEquals(AskStream.Event.Start("c1"), AskStream.parseLine("""data: {"type": "start", "conversation_id": "c1"}"""))
         assertEquals(AskStream.Event.Tool("calls_recent"), AskStream.parseLine("""data: {"type": "tool", "id": "t1", "name": "calls_recent", "arguments": {}}"""))
-        assertEquals(AskStream.Event.Delta("Rahul"), AskStream.parseLine("""data:{"type": "delta", "text": "Rahul"}"""))
+        assertEquals(AskStream.Event.Delta("Avery"), AskStream.parseLine("""data:{"type": "delta", "text": "Avery"}"""))
         assertEquals(AskStream.Event.Error("no model could answer"), AskStream.parseLine("""data: {"type": "error"}"""))
         assertEquals(
-            AskStream.Event.Done("Rahul Sharma ka call tha.", "c1", 812),
-            AskStream.parseLine("""data: {"type": "done", "text": "Rahul Sharma ka call tha.", "model": "demo:router", "conversation_id": "c1", "message_id": 812}"""),
+            AskStream.Event.Done("Avery Stone ka call tha.", "c1", 812),
+            AskStream.parseLine("""data: {"type": "done", "text": "Avery Stone ka call tha.", "model": "demo:router", "conversation_id": "c1", "message_id": 812}"""),
         )
-        val action = AskStream.parseLine("""data: {"type": "action", "action": {"id": "a1", "tool": "call_place", "summary": "call Rahul", "tier": 2, "can_approve": true}}""")
+        val action = AskStream.parseLine("""data: {"type": "action", "action": {"id": "a1", "tool": "call_place", "summary": "call Avery", "tier": 2, "can_approve": true}}""")
         assertTrue(action is AskStream.Event.Action && action.card.tier == 2)
         // A tool's end: its receipt shows before the answer comes.
         assertEquals(AskStream.Event.ToolResult("calls_recent", false), AskStream.parseLine("""data: {"type": "tool_result", "name": "calls_recent", "ok": false}"""))

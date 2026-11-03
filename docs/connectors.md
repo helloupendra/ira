@@ -175,7 +175,7 @@ own chats and, after your yes, sends as you. It is opt-in, and needs:
 Ira then has three tools: list your chats (Tier 0), read the latest
 messages of one chat (Tier 0), and send a message to one chat by its exact
 name (Tier 2: read back with the chat and the words, then your yes). When
-two chats match a name ("Rahul"), Ira asks which one. The login session is
+two chats match a name ("Avery"), Ira asks which one. The login session is
 sealed like a token; **Remove** forgets it (also end it in Telegram's
 Settings, Devices).
 

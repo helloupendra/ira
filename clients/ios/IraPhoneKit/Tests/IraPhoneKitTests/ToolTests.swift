@@ -93,7 +93,7 @@ struct ToolboxTests {
     @Test func anAllowedSkillRuns() async throws {
         let activity = EventLog<Activity>()
         let box = toolbox(FakePermissions([:]), activity: activity)
-        let result = try await box.call("contacts_lookup", args: ["query": "Rahul"])
+        let result = try await box.call("contacts_lookup", args: ["query": "Avery"])
         #expect(result["ran"] == "contacts_lookup")
         #expect(activity.all.map(\.tool) == ["contacts_lookup"] && activity.all.allSatisfy(\.ok))
         #expect(activity.all.first?.verb == "Looked up a contact")
@@ -145,34 +145,34 @@ struct ToolboxTests {
 @Suite("Calls")
 struct CallToolTests {
     @Test func onlyDigitsAndALeadingPlus() throws {
-        #expect(try CallTool.dialable("+91 98100-00000") == "+919810000000")
-        #expect(try CallTool.dialable("(080) 4567 8901") == "08045678901")
+        #expect(try CallTool.dialable("+91 00100-00000") == "+910010000000")
+        #expect(try CallTool.dialable("(000) 4567 8901") == "00045678901")
         #expect(try CallTool.dialable("100") == "100")
-        for bad in ["*21*9810000000#", "98100#", "call me", "9+1", "12", "+"] {
+        for bad in ["*21*0010000000#", "98100#", "call me", "9+1", "12", "+"] {
             #expect(throws: ToolFailure.self, "\(bad)") { try CallTool.dialable(bad) }
         }
-        #expect(CallTool.telURL("+919810000000")?.absoluteString == "tel:+919810000000")
+        #expect(CallTool.telURL("+910010000000")?.absoluteString == "tel:+910010000000")
     }
 
     @Test func theIPhoneAsksAndThePersonTaps() async throws {
         let opened = EventLog<URL>()
-        let result = try await CallTool.place(["number": "+91 98100 00000", "name": "Rahul Sharma"], foreground: true) { url in
+        let result = try await CallTool.place(["number": "+91 00100 00000", "name": "Avery Stone"], foreground: true) { url in
             opened.add(url)
             return true
         }
-        #expect(opened.all.map(\.absoluteString) == ["tel:+919810000000"])
+        #expect(opened.all.map(\.absoluteString) == ["tel:+910010000000"])
         #expect(result["summary"]?.stringValue?.contains("taps Call") == true)
     }
 
     @Test func offScreenOrWithoutAPhoneItSaysWhy() async {
         await #expect(throws: ToolFailure.self) {
-            try await CallTool.place(["number": "9810000000"], foreground: false) { _ in true }
+            try await CallTool.place(["number": "0010000000"], foreground: false) { _ in true }
         }
         await #expect(throws: ToolFailure("this iPhone cannot make calls (an iPad or a simulator?)")) {
-            try await CallTool.place(["number": "9810000000"], foreground: true) { _ in false }
+            try await CallTool.place(["number": "0010000000"], foreground: true) { _ in false }
         }
         await #expect(throws: ToolFailure("unknown argument(s): text")) {
-            try await CallTool.place(["number": "9810000000", "text": "hi"], foreground: true) { _ in true }
+            try await CallTool.place(["number": "0010000000", "text": "hi"], foreground: true) { _ in true }
         }
     }
 }
@@ -180,12 +180,12 @@ struct CallToolTests {
 @Suite("Tool helpers")
 struct ToolHelperTests {
     @Test func contactQueries() {
-        #expect(ContactsTool.kind(of: "rahul@example.com") == .email("rahul@example.com"))
-        #expect(ContactsTool.kind(of: "+91 98100 00000") == .number("919810000000"))
-        #expect(ContactsTool.kind(of: "Rahul Sharma") == .name("Rahul Sharma"))
-        #expect(ContactsTool.sameNumber("98100 00000", "+91 98100-00000"))
-        #expect(ContactsTool.sameNumber("00000", "+91 98100 00000"))
-        #expect(!ContactsTool.sameNumber("98100 00001", "+91 98100 00000"))
+        #expect(ContactsTool.kind(of: "avery@example.com") == .email("avery@example.com"))
+        #expect(ContactsTool.kind(of: "+91 00100 00000") == .number("910010000000"))
+        #expect(ContactsTool.kind(of: "Avery Stone") == .name("Avery Stone"))
+        #expect(ContactsTool.sameNumber("00100 00000", "+91 00100-00000"))
+        #expect(ContactsTool.sameNumber("00000", "+91 00100 00000"))
+        #expect(!ContactsTool.sameNumber("00100 00001", "+91 00100 00000"))
     }
 
     @Test func datesAsModelsWriteThem() throws {
@@ -200,18 +200,18 @@ struct ToolHelperTests {
     }
 
     @Test func locationInWords() {
-        #expect(LocationTool.rounded(28.6139391) == 28.61394)
-        #expect(LocationTool.summary(address: "Connaught Place, New Delhi", latitude: 0, longitude: 0, accuracy: 35)
-            == "Connaught Place, New Delhi (within 35 m)")
-        #expect(LocationTool.summary(address: nil, latitude: 28.61394, longitude: 77.20902, accuracy: 65)
-            == "28.61394, 77.20902 (within 65 m)")
+        #expect(LocationTool.rounded(10.1234567) == 10.12346)
+        #expect(LocationTool.summary(address: "14 Main Road", latitude: 0, longitude: 0, accuracy: 35)
+            == "14 Main Road (within 35 m)")
+        #expect(LocationTool.summary(address: nil, latitude: 10.12346, longitude: 20.98765, accuracy: 65)
+            == "10.12346, 20.98765 (within 65 m)")
     }
 
     @Test func argumentsAreChecked() throws {
         #expect(throws: ToolFailure("unknown argument(s): x")) { try ToolArgs(["x": 1], allowed: ["query"]) }
         #expect(throws: ToolFailure("arguments must be an object")) { try ToolArgs("text", allowed: []) }
-        let args = try ToolArgs(["query": "  Rahul  ", "days": 99], allowed: ["query", "days"])
-        #expect(try args.text("query") == "Rahul")
+        let args = try ToolArgs(["query": "  Avery  ", "days": 99], allowed: ["query", "days"])
+        #expect(try args.text("query") == "Avery")
         #expect(try args.number("days", 1...31) == 31)
     }
 }

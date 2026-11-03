@@ -21,7 +21,7 @@ public enum ContactsTool {
     }
 
     /// Whether a stored number is the one asked about: the same last digits, so
-    /// "+91 98765 43210", "098765 43210" and "9876543210" all match.
+    /// "+91 00765 43210", "000765 43210" and "0076543210" all match.
     public static func sameNumber(_ query: String, _ stored: String) -> Bool {
         let a = query.filter(\.isNumber)
         let b = stored.filter(\.isNumber)

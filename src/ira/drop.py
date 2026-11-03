@@ -107,6 +107,10 @@ def clean_name(name: str | None) -> str:
     return base[:200] or "file"
 
 
+# A file is an item once all of it has arrived: its hash is written last.
+_ARRIVED = "AND (kind != 'file' OR sha256 IS NOT NULL)"
+
+
 class Drop:
     def __init__(
         self,
@@ -152,7 +156,7 @@ class Drop:
 
     def get(self, user_id: int, item_id: int) -> Item | None:
         row = self.store.one(
-            "SELECT * FROM drop_items WHERE id = ? AND user_id = ? AND expires_at > ?",
+            f"SELECT * FROM drop_items WHERE id = ? AND user_id = ? AND expires_at > ? {_ARRIVED}",
             (item_id, user_id, self.clock()),
         )
         return _item(row) if row else None
@@ -169,7 +173,7 @@ class Drop:
         ``before_id`` only older ones (the next page)."""
         rows = self.store.query(
             "SELECT * FROM drop_items WHERE user_id = ? AND id > ? AND id < ? "
-            "AND expires_at > ? ORDER BY id DESC LIMIT ?",
+            f"AND expires_at > ? {_ARRIVED} ORDER BY id DESC LIMIT ?",
             (user_id, after_id or 0, before_id or 2**62, self.clock(), limit),
         )
         return [_item(r) for r in rows]
@@ -293,11 +297,14 @@ class Drop:
             partial.unlink(missing_ok=True)
             self.store.execute("DELETE FROM drop_items WHERE id = ?", (item_id,))
             raise
-        self.store.execute(
+        saved = self.store.execute(
             "UPDATE drop_items SET size = ?, sha256 = ? WHERE id = ?",
             (size, digest.hexdigest(), item_id),
         )
         self._arrived(user_id, arrived)
+        if saved.rowcount != 1:  # its row went while it arrived (their whole Drop was deleted)
+            path.unlink(missing_ok=True)
+            raise DropError("that item was deleted while it was being sent", 409)
         log.info("drop %s: file, %d bytes", item_id, size)
         item = self.get(user_id, item_id)
         assert item is not None

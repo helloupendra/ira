@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
 import re
 import secrets
@@ -33,6 +34,10 @@ class NeedsSignIn(ConnectionError_):
 SIGN_IN_SECONDS = 600.0  # the person has ten minutes to finish signing in
 
 
+# A sign-in nobody finished is forgotten after this long.
+SIGN_IN_SECONDS = 15 * 60
+
+
 @dataclass
 class GoogleSignIn:
     """A Google sign-in in progress: the PKCE verifier waits for the code."""
@@ -41,6 +46,7 @@ class GoogleSignIn:
     user_id: int
     verifier: str
     redirect_uri: str
+    started: float = field(default_factory=time.time)
 
 
 @dataclass
@@ -146,6 +152,7 @@ class Connectors:
         self._mailbox = mailbox
         self._telegram = telegram
         self.telegrams: dict[str, Any] = {}  # live Telegram clients, by connection
+        self._closing: set[asyncio.Task[None]] = set()
         self.logins: dict[str, tuple[Any, str, str]] = {}  # (client, phone, code hash)
         self.zone_for = zone_for
 
@@ -428,11 +435,27 @@ class Connectors:
             await worker.close()
         self.store.execute("DELETE FROM connections WHERE id = ?", (connection.id,))
 
+    def _forget_old_sign_ins(self) -> None:
+        now = time.time()
+        for state, sign_in in list(self.by_state.items()):
+            if isinstance(sign_in, GoogleSignIn) and now - sign_in.started > SIGN_IN_SECONDS:
+                del self.by_state[state]
+
     def delete_user(self, user_id: int) -> int:
         for connection in self.for_user(user_id):
             worker = self.workers.pop(connection.id, None)
             if worker is not None and worker.task is not None:
                 worker.task.cancel()
+            # Their live Telegram clients go with them.
+            for live in (
+                self.telegrams.pop(connection.id, None),
+                self.logins.pop(connection.id, (None,))[0],
+            ):
+                if live is not None:
+                    with contextlib.suppress(RuntimeError):  # no loop: the process is ending
+                        task = asyncio.get_running_loop().create_task(live.close())
+                        self._closing.add(task)
+                        task.add_done_callback(self._closing.discard)
         return self.store.execute("DELETE FROM connections WHERE user_id = ?", (user_id,)).rowcount
 
     # Changing.
@@ -570,6 +593,7 @@ class Connectors:
             verifier, challenge = pkce()
             state = secrets.token_urlsafe(32)
             redirect = f"{self.callback_url().rstrip('/')}/v1/connections/oauth/callback"
+            self._forget_old_sign_ins()
             self.by_state[state] = GoogleSignIn(connection.id, user_id, verifier, redirect)
             return google.authorize_url(redirect, state, challenge)
         if connection.kind != "mcp_http":

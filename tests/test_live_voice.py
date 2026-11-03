@@ -264,13 +264,13 @@ def test_a_proposed_call_is_read_back_with_its_exact_number():
     from ira.models.base import ChatResponse, ToolCall
     from ira.tools.personal import PersonalTool
 
-    arguments = '{"name": "Rahul Sharma", "number": "+91 98100 00000"}'
+    arguments = '{"name": "Avery Stone", "number": "+91 00100 00000"}'
     provider = ScriptedProvider(
         [
             ChatResponse(
                 text="", tool_calls=[ToolCall(id="c1", name="call_number", arguments=arguments)]
             ),
-            "Rahul ko call karun?",
+            "Avery ko call karun?",
         ]
     )
     runtime = runtime_with(provider=provider)
@@ -295,12 +295,12 @@ def test_a_proposed_call_is_read_back_with_its_exact_number():
     with client, client.websocket_connect("/v1/voice/live", headers=session(client)) as ws:
         ws.send_json({"type": "start", "protocol": 1})
         ws.receive_json()
-        ws.send_json({"type": "text", "text": "rahul ko call karo"})
+        ws.send_json({"type": "text", "text": "avery ko call karo"})
         seen = until(ws, "done")
     spoken = [m["text"] for m in seen if m["type"] == "audio"]
     assert spoken == [
         "Ek second.",
-        "call number on Pixel 7: name Rahul Sharma, number +91 98100 00000. Haan ya na?",
+        "call number on Pixel 7: name Avery Stone, number +91 00100 00000. Haan ya na?",
     ]
     action = next(m for m in seen if m["type"] == "action")["action"]
-    assert action["tier"] == 2 and "+91 98100 00000" in action["summary"]
+    assert action["tier"] == 2 and "+91 00100 00000" in action["summary"]

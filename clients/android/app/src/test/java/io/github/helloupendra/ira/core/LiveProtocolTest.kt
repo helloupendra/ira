@@ -36,7 +36,7 @@ class LiveProtocolTest {
         )
         assertEquals(Live.Partial("kal subah", "hi-IN"), LiveProtocol.parse("""{"type": "partial", "text": "kal subah", "language": "hi-IN"}"""))
         assertEquals(Live.Heard(3, "kiska call aaya tha?", "hi-IN"), LiveProtocol.parse("""{"type": "heard", "turn": 3, "text": "kiska call aaya tha?", "language": "hi-IN"}"""))
-        assertEquals(Live.Delta(3, "Rahul"), LiveProtocol.parse("""{"type": "delta", "turn": 3, "text": "Rahul"}"""))
+        assertEquals(Live.Delta(3, "Avery"), LiveProtocol.parse("""{"type": "delta", "turn": 3, "text": "Avery"}"""))
         assertEquals(
             Live.AudioHeader(3, 0, "Theek hai.", "mp3", 5321),
             LiveProtocol.parse("""{"type": "audio", "turn": 3, "seq": 0, "text": "Theek hai.", "format": "mp3", "bytes": 5321}"""),
@@ -52,7 +52,7 @@ class LiveProtocolTest {
     fun `an action carries its card`() {
         val parsed =
             LiveProtocol.parse(
-                """{"type": "action", "turn": 4, "action": {"id": "a9", "tool": "call_place", "summary": "call number on Pixel 7: name Rahul Sharma, number +91 98100 00000", "status": "pending", "expires_in": 120, "tier": 2, "can_approve": true}}""",
+                """{"type": "action", "turn": 4, "action": {"id": "a9", "tool": "call_place", "summary": "call number on Pixel 7: name Avery Stone, number +91 00100 00000", "status": "pending", "expires_in": 120, "tier": 2, "can_approve": true}}""",
             ) as Live.Action
         assertEquals(4, parsed.turn)
         assertEquals("a9", parsed.card.id)

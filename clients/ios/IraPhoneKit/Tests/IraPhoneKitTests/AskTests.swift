@@ -27,7 +27,7 @@ struct StreamParsingTests {
         #expect(AskEvent(["type": "done", "text": "Kal free.", "model": "demo", "conversation_id": "ios-1", "message_id": 44])
             == .done(text: "Kal free.", conversationID: "ios-1", messageID: 44))
         #expect(AskEvent(["type": "later"]) == .other("later"))
-        let action = AskEvent(["type": "action", "action": ["id": "act_9", "tool": "call_place", "summary": "Call Rahul Sharma, +91 98100 00000",
+        let action = AskEvent(["type": "action", "action": ["id": "act_9", "tool": "call_place", "summary": "Call Avery Stone, +91 00100 00000",
                                                            "status": "pending", "expires_in": 120, "tier": 2, "can_approve": true,
                                                            "confirm_roles": ["owner"], "can_confirm": true]])
         guard case .action(let card) = action else {
@@ -133,15 +133,15 @@ struct AskClientTests {
         let host = "ask3.example.com"
         let session = StubProtocol.session(host: host) { _, _ in
             .init(status: 200, body: Data(#"""
-                {"text": "Call Rahul Sharma?", "conversation_id": "ios-s", "message_id": 3,
-                 "action": {"id": "act_2", "tool": "call_place", "summary": "Call Rahul Sharma, +91 98100 00000",
+                {"text": "Call Avery Stone?", "conversation_id": "ios-s", "message_id": 3,
+                 "action": {"id": "act_2", "tool": "call_place", "summary": "Call Avery Stone, +91 00100 00000",
                             "status": "pending", "expires_in": 120, "tier": 2, "can_approve": true, "can_confirm": true,
                             "confirm_roles": ["owner"]}}
                 """#.utf8))
         }
         let client = AskClient(server: "https://\(host)", session: session, token: { "irad_test" })
-        let answer = try await client.ask("Rahul ko call karo", conversationID: "ios-s")
-        #expect(answer.text == "Call Rahul Sharma?")
+        let answer = try await client.ask("Avery ko call karo", conversationID: "ios-s")
+        #expect(answer.text == "Call Avery Stone?")
         #expect(answer.messageID == 3)
         #expect(answer.action?.need == .yes)
     }

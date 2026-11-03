@@ -191,7 +191,7 @@ struct HeroContent: View {
                 Text("Hindi, English or Hinglish. Try:")
                     .font(.system(size: 13))
                     .foregroundStyle(Presence.muted)
-                ForEach(["“kal ka schedule kya hai?”", "“98100 00000 kiska number hai?”", "“kal subah 9 baje yaad dilana”"], id: \.self) {
+                ForEach(["“kal ka schedule kya hai?”", "“00100 00000 kiska number hai?”", "“kal subah 9 baje yaad dilana”"], id: \.self) {
                     Text($0).font(Presence.serif(16).italic()).foregroundStyle(Presence.ink.opacity(0.8))
                 }
                 Text("“Hey Siri, Ask \(name)” works too.")
