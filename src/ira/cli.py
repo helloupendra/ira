@@ -229,7 +229,11 @@ def cmd_token_list(args: argparse.Namespace) -> int:
 
 def cmd_token_revoke(args: argparse.Namespace) -> int:
     settings = _settings(args)
-    count = Accounts(_store(settings)).revoke_token(args.token)
+    try:
+        count = Accounts(_store(settings)).revoke_token(args.token, args.email)
+    except AccountError as exc:
+        print(exc, file=sys.stderr)
+        return 1
     print(f"Revoked {count} token(s).")
     return 0 if count else 1
 
@@ -584,6 +588,7 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--user", help="owner of the token (default: the first owner)")
     add("list", cmd_token_list, "list tokens", token)
     p = add("revoke", cmd_token_revoke, "revoke a token by id or label", token)
+    p.add_argument("--email", help="whose token, when several people use that label")
     p.add_argument("token")
 
     telegram = sub.add_parser("telegram", help="Telegram channel").add_subparsers(

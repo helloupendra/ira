@@ -95,5 +95,5 @@ class AskedFor:
         answer = response.text or ""
         if not _ARRAY.search(answer):
             self.unreadable += 1
-            log.warning("the asked-for check gave no list, so nothing passes it: %r", answer[:120])
+            log.warning("the asked-for check gave no list (%d characters): a no", len(answer))
         return _names(answer, set(actions))

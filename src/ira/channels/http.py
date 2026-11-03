@@ -679,6 +679,12 @@ def create_app(runtime: Runtime, *, start_channels: bool = True) -> FastAPI:
         response = await call_next(request)
         response.headers.setdefault("X-Content-Type-Options", "nosniff")
         response.headers.setdefault("Referrer-Policy", "no-referrer")
+        # Only the microphone is used, and only by Ira's own pages.
+        response.headers.setdefault(
+            "Permissions-Policy", "camera=(), geolocation=(), payment=(), microphone=(self)"
+        )
+        if request.url.scheme == "https" or request.headers.get("x-forwarded-proto") == "https":
+            response.headers.setdefault("Strict-Transport-Security", "max-age=31536000")
         if not request.url.path.startswith("/v1/docs"):
             response.headers.setdefault("Content-Security-Policy", CSP)
             response.headers.setdefault("X-Frame-Options", "DENY")

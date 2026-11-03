@@ -127,10 +127,18 @@ public enum BrowserTools {
 
     // MARK: Reading the tabs
 
-    /// An address without its query and fragment.
+    /// An address without its query and fragment, nor a user and password written in it.
     public static func clean(_ url: String) -> String {
-        guard let cut = url.firstIndex(where: { $0 == "?" || $0 == "#" }) else { return url }
-        return String(url[..<cut])
+        var address = url
+        if let cut = address.firstIndex(where: { $0 == "?" || $0 == "#" }) { address = String(address[..<cut]) }
+        if let scheme = address.range(of: "://") {
+            let rest = address[scheme.upperBound...]
+            let host = rest.prefix { $0 != "/" }
+            if let at = host.lastIndex(of: "@") {
+                address.removeSubrange(host.startIndex...at)
+            }
+        }
+        return address
     }
 
     static func parse(_ output: String, browser: Browser) -> [Tab] {

@@ -96,7 +96,8 @@ INSERT OR IGNORE INTO pin_state (id, failures, locked_until) VALUES (1, 0, 0);
 CREATE TABLE IF NOT EXISTS pin_locks (
     subject      INTEGER PRIMARY KEY,
     failures     INTEGER NOT NULL DEFAULT 0,
-    locked_until REAL NOT NULL DEFAULT 0
+    locked_until REAL NOT NULL DEFAULT 0,
+    lockouts     INTEGER NOT NULL DEFAULT 0
 );
 
 CREATE TABLE IF NOT EXISTS users (
@@ -475,6 +476,7 @@ class Store:
 
     # Columns added after v0.1: (table, column, declaration).
     _ADDED_COLUMNS = (
+        ("pin_locks", "lockouts", "INTEGER NOT NULL DEFAULT 0"),
         ("users", "pin_hash", "TEXT"),
         ("users", "pin_set_at", "REAL"),
         ("sessions", "user_agent", "TEXT"),

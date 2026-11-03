@@ -16,6 +16,7 @@ from ira.channels.http import SWAGGER_CSS_HASH, SWAGGER_JS_HASH, create_app
 from ira.channels.me import export_data
 from ira.channels.telegram import MAX_WAITING_UPDATES, next_offset
 from ira.connectors.google import Google
+from ira.connectors.mcp import _private
 from ira.drop import DropError
 from ira.models.base import ChatResponse, StreamDone, TextDelta
 from ira.models.fake import ScriptedProvider
@@ -232,3 +233,63 @@ def test_files_that_run_something_are_never_opened(name: str):
 
 def test_a_document_opens():
     assert open_refusal("file_open", {"path": "~/Downloads/invoice.pdf"}) is None
+
+
+def test_the_headers_say_what_the_pages_may_use(tmp_path: Path):
+    client = http_client(make_runtime(provider=ScriptedProvider(), data_dir=tmp_path))
+    plain = client.get("/healthz")
+    assert "microphone=(self)" in plain.headers["permissions-policy"]
+    assert "camera=()" in plain.headers["permissions-policy"]
+    assert "strict-transport-security" not in plain.headers
+    secure = client.get("/healthz", headers={"x-forwarded-proto": "https"})
+    assert "max-age" in secure.headers["strict-transport-security"]
+
+
+async def test_a_pins_lock_grows_until_the_right_pin(tmp_path: Path):
+    now = [1000.0]
+    runtime = make_runtime(provider=ScriptedProvider(), data_dir=tmp_path)
+    owner = runtime.accounts.create_first_owner("owner@example.com", PASSWORD)
+    guard = runtime.guard
+    guard.clock = lambda: now[0]
+
+    async def wrong() -> bool:
+        return False
+
+    async def right() -> bool:
+        return True
+
+    waits = []
+    for _ in range(3):
+        for _ in range(guard.max_wrong_pins):
+            verdict, until = await guard._checked(owner.id, wrong)
+        assert verdict == "wrong_locked"
+        waits.append(until - now[0])
+        now[0] = until + 1
+    assert waits == [guard.lock_seconds, guard.lock_seconds * 2, guard.lock_seconds * 4]
+    assert (await guard._checked(owner.id, right))[0] == "ok"
+    for _ in range(guard.max_wrong_pins):
+        verdict, until = await guard._checked(owner.id, wrong)
+    assert until - now[0] == guard.lock_seconds
+
+
+def test_a_label_several_people_use_needs_to_say_whose(tmp_path: Path):
+    runtime = make_runtime(provider=ScriptedProvider(), data_dir=tmp_path)
+    accounts = runtime.accounts
+    first = accounts.create_first_owner("first@example.com", PASSWORD)
+    invite, _ = accounts.create_invite("second@example.com", "staff", "first@example.com")
+    second = accounts.accept_invite(invite, PASSWORD)
+    accounts.create_token(first, "phone", ["ask"])
+    accounts.create_token(second, "phone", ["ask"])
+    with pytest.raises(AccountError, match="several people"):
+        accounts.revoke_token("phone")
+    assert accounts.revoke_token("phone", "first@example.com") == 1
+    assert accounts.revoke_token("phone") == 1
+
+
+@pytest.mark.parametrize("address", ["100.64.0.1", "10.0.0.1", "127.0.0.1", "169.254.1.1"])
+def test_addresses_not_on_the_internet_are_private(address: str):
+    assert _private(address)
+
+
+def test_an_internet_address_is_not_private():
+    assert not _private("93.184.216.34")

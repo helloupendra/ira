@@ -737,13 +737,26 @@ class Accounts:
         )
         return cursor.rowcount == 1
 
-    def revoke_token(self, id_or_label: str) -> int:
-        cursor = self.store.execute(
-            "UPDATE api_tokens SET revoked_at = ? "
-            "WHERE (id = ? OR label = ?) AND revoked_at IS NULL",
-            (self.clock(), id_or_label, id_or_label),
+    def revoke_token(self, id_or_label: str, email: str | None = None) -> int:
+        """By id, or by label. A label can be anyone's: with several people's tokens under it,
+        ``email`` must say whose, or nothing is revoked (AccountError)."""
+        rows = self.store.query(
+            "SELECT t.id, t.user_id FROM api_tokens t JOIN users u ON u.id = t.user_id "
+            "WHERE (t.id = ? OR t.label = ?) AND t.revoked_at IS NULL "
+            "AND (? IS NULL OR u.email = ?)",
+            (id_or_label, id_or_label, email, email),
         )
-        return cursor.rowcount
+        if len({row["user_id"] for row in rows}) > 1:
+            raise AccountError(
+                f"several people have a token called {id_or_label!r}: say whose with --email, or "
+                "use its id from `ira token list`"
+            )
+        now = self.clock()
+        for row in rows:
+            self.store.execute(
+                "UPDATE api_tokens SET revoked_at = ? WHERE id = ?", (now, row["id"])
+            )
+        return len(rows)
 
     def principal(self, bearer: str) -> Principal | None:
         """Resolve a bearer value: a session token or an API token."""

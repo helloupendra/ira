@@ -1108,9 +1108,7 @@ class Assistant:
                 said_in = "forced" if forcing else "first" if round_number == 0 else "later"
                 if _QUOTED_START.match(final_text or ""):
                     # The leftovers of a call half-written as text, or of a dropped clause.
-                    log.warning(
-                        "%s began its answer with quoted bits: %r", model, (final_text or "")[:80]
-                    )
+                    log.warning("%s began its answer with quoted bits", model)
                 history.append(Message(role="assistant", content=response.text, model=model))
                 break
 
@@ -1391,6 +1389,9 @@ class Assistant:
                 )
             except ToolError as exc:
                 return _failed(str(exc), safe_call)
+            except Exception as exc:  # a tool's own summary failing must not end the turn
+                log.exception("proposing %s failed", call.name)
+                return _failed(f"it could not be proposed ({type(exc).__name__})", safe_call)
             return _proposed(pending, safe_call)
 
         try:

@@ -819,6 +819,12 @@ struct CodeTaskTests {
 
     /// Stopping ends the agent and what it started at once, wherever Ira started it from (a
     /// thread that blocks signals passed that on to the agent, and SIGTERM did nothing).
+    @Test func aTabsAddressKeepsNoPasswordOrQuery() {
+        #expect(BrowserTools.clean("https://me:secret@example.com/a?token=1#x") == "https://example.com/a")  // pragma: allowlist secret
+        #expect(BrowserTools.clean("https://example.com/a@b") == "https://example.com/a@b")
+        #expect(BrowserTools.clean("https://example.com") == "https://example.com")
+    }
+
     @Test func aHugeNumberIsHeldToItsRangeAndDoesNotStopTheApp() throws {
         let args = try ToolArgs(["hours": .number(1e20), "days": .number(-1e20)], allowed: ["hours", "days"])
         #expect(try args.number("hours", 1...48) == 48)

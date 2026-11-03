@@ -147,6 +147,10 @@ def _subject(user_id: int | None) -> int:
     return user_id if user_id is not None else 0
 
 
+# The longest a PIN's lock grows to.
+MAX_LOCK_SECONDS = 24 * 3600
+
+
 class ActionGuard:
     def __init__(
         self,
@@ -296,9 +300,15 @@ class ActionGuard:
                 "UPDATE pin_locks SET failures = failures + 1 WHERE subject = ?", (subject,)
             )
             if self.wrong_pins(user_id) >= self.max_wrong_pins:
-                until = self.clock() + self.lock_seconds
+                # Longer each time until the right PIN: a short PIN must not fall in days to a
+                # stolen session trying three an hour.
+                row = self.store.one("SELECT lockouts FROM pin_locks WHERE subject = ?", (subject,))
+                lockouts = int(row["lockouts"]) if row else 0
+                wait = min(self.lock_seconds * 2 ** min(lockouts, 16), MAX_LOCK_SECONDS)
+                until = self.clock() + max(wait, self.lock_seconds)
                 self.store.execute(
-                    "UPDATE pin_locks SET failures = 0, locked_until = ? WHERE subject = ?",
+                    "UPDATE pin_locks SET failures = 0, locked_until = ?, lockouts = lockouts + 1 "
+                    "WHERE subject = ?",
                     (until, subject),
                 )
                 return "wrong_locked", until
@@ -306,7 +316,7 @@ class ActionGuard:
 
     def _right_pin(self, user_id: int | None) -> None:
         self.store.execute(
-            "UPDATE pin_locks SET failures = 0, locked_until = 0 WHERE subject = ?",
+            "UPDATE pin_locks SET failures = 0, locked_until = 0, lockouts = 0 WHERE subject = ?",
             (_subject(user_id),),
         )
 
@@ -771,7 +781,7 @@ class ActionGuard:
         one, locked actions."""
         failures = self.wrong_pins(user_id)
         if until is not None:
-            minutes = round(self.lock_seconds / 60)
+            minutes = max(1, round((until - self.clock()) / 60))
             return self._finish(
                 pending,
                 "locked",
