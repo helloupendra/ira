@@ -43,6 +43,7 @@ from ira.promises import (
     asks_about_messages,
     asks_about_the_screen,
     asks_more_than_one_thing,
+    asks_only_to_open,
     asks_which_device,
     asks_yes_in_words,
     claims_done,
@@ -50,6 +51,7 @@ from ira.promises import (
     names_a_never_read_app,
     promises,
     says_cannot,
+    says_device_is_off,
     without_promises,
 )
 from ira.security import looks_like_pin
@@ -182,6 +184,21 @@ WHAT_AN_APP_SHOWS_RULE = (
     "What an app shows right now (its timer, a status, a number in it) is read with screen_read, "
     "or apps_list first if you do not know which app. A reminder or an alarm is something else."
 )
+USE_APP_OPEN = "Not run: they asked to open it, not to play something. Use app_open."
+ACT_NOT_ASKED = (
+    "Not run: what they said does not ask for this. If they asked what something shows, read it "
+    "with a tool that reads; never open or change anything to answer a question."
+)
+OFFLINE_RULE = (
+    "The device they named is offline, and no tool can reach it. Say exactly that, in their "
+    "language, and say nothing about what is or is not on it or on any other device."
+)
+# When that is still not what it says: what it said about another device must not stand.
+OFFLINE_NOW = {
+    "hi": "{names} अभी ऑफ़लाइन है।",
+    "hinglish": "{names} abhi offline hai.",
+    "en": "{names} is offline right now.",
+}
 OPEN_AN_APP_RULE = (
     "Asked to open an app, use app_open. media_play is for when they name something to play."
 )
@@ -877,6 +894,7 @@ class Assistant:
         )
         proposable = any(t.tier >= 2 for t in personal.values())
         must_act = False
+        offer_finish = True
         finished = False
         last_words = ""  # what the round before a forced one said, in case that one says nothing
         used: list[str] = []
@@ -939,6 +957,7 @@ class Assistant:
             hold_all = on_devices and (
                 (named_up and not used and "named" not in asked_for)
                 or (must_look and not used and "look" not in asked_for)
+                or (bool(named) and not named_up and not used)
                 or (used and "goal" not in asked_for and asks_more_than_one_thing(asked))
             )
             promise = PromiseGate(hold_all) if on_devices else None
@@ -949,7 +968,7 @@ class Assistant:
                     # Words again are not an answer now: a tool, or finish_turn.
                     response = await self.gateway.chat(
                         messages,
-                        [*tools, FINISH_TOOL],
+                        [*tools, FINISH_TOOL] if offer_finish else tools,
                         tier=tier,
                         tool_choice="required",
                         seconds=patience * 3 if patience else None,  # the whole answer, not a word
@@ -1058,6 +1077,23 @@ class Assistant:
 
             if promise is not None:
                 held = promise.take()
+                if (
+                    not response.tool_calls
+                    and named
+                    and not named_up
+                    and not used
+                    and not says_device_is_off(response.text or "")
+                ):
+                    # All it can truly say is that the device is off: what it says instead, of
+                    # this device or another, it cannot know.
+                    if "offline" not in asked_for:
+                        asked_for.add("offline")
+                        system += f"- {OFFLINE_RULE}\n"
+                        continue
+                    from ira.language import detect
+
+                    names = ", ".join(self.device_label(device) for device in sorted(named))
+                    response.text = held = OFFLINE_NOW[detect(asked)].format(names=names)
                 if not response.tool_calls and not waiting:
                     words = response.text or ""
                     empty = promises(words) or (
@@ -1081,6 +1117,13 @@ class Assistant:
                             if any(t["name"] == name for t in tools)
                         }
                         wanted = await asked_check.which(acts) if acts else set()
+                        if tainted:  # what can never follow a read is not there to reach for
+                            wanted = {
+                                name
+                                for name in wanted
+                                if (extra := personal.get(name)) is None
+                                or (extra.tier < 3 and not outward(extra.name, extra.skill))
+                            }
                         tools = [
                             t
                             for t in tools
@@ -1092,6 +1135,9 @@ class Assistant:
                         if why[0] == "yes":  # what it would do, and nothing to read on the way
                             only = [t for t in tools if t["name"] in wanted]
                             tools = only or tools
+                        offer_finish = why[0] != "messages"  # the read it left out, and only that
+                        if not offer_finish:
+                            tools = [t for t in tools if t["name"] == "sms_read"] or tools
                         # With an approval open, clicks and looks are only the means.
                         left = {
                             name
@@ -1544,6 +1590,11 @@ class Assistant:
     ) -> ToolRun:
         arguments = call.parsed_arguments() or {}
         safe_call = _safe(call)
+        if extra.name == "media_play" and asked is not None and asks_only_to_open(asked.said[-1]):
+            run = _failed(USE_APP_OPEN, safe_call)
+            run.outcome = "refused"
+            run.spent = True
+            return run
         if await self._read_nobody_asked_for(extra, arguments, conversation_id, asked):
             run = _failed(READ_NOT_ASKED, safe_call)
             run.outcome = "refused"
@@ -1617,6 +1668,18 @@ class Assistant:
             and not await _may_follow_a_read(extra, asked)
         ):
             return _refused(safe_call)
+        # From another device a card nobody asked for only gets in the way of what they did ask:
+        # "what does the timer say" must not become "may I open the app?".
+        if (
+            not tainted
+            and elsewhere is not None
+            and asked is not None
+            and not await asked.may_propose(extra.name, extra.description)
+        ):
+            run = _failed(ACT_NOT_ASKED, safe_call)
+            run.outcome = "refused"
+            run.spent = True
+            return run
         if extra.tier >= 2:
             # The tier is the device's or the skill's, from code; the model cannot lower it.
             try:

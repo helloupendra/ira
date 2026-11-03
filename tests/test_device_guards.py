@@ -588,8 +588,7 @@ async def test_the_device_off_takes_no_extra_round_and_loses_only_the_promise():
 
 
 async def test_the_device_off_with_only_a_promise_to_say_still_gets_its_round():
-    answer = call("finish_turn", {"say": "MacBook is offline."})
-    runtime, owner, ids, _ = world(["Main dekhti hoon.", answer], offline=("mac",))
+    runtime, owner, ids, _ = world(["Main dekhti hoon.", "MacBook is offline."], offline=("mac",))
     events = await turn(runtime, owner, "mac par timer dekho", ids["pixel"])
     assert events[-1]["text"] == "MacBook is offline."
 

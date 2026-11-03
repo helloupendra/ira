@@ -82,6 +82,16 @@ class AskedFor:
     async def allows(self, name: str, description: str) -> bool:
         return name in await self.which({name: description})
 
+    async def may_propose(self, name: str, description: str) -> bool:
+        """Whether an act may be put to them on a card, with nothing read. No answer is a yes: the
+        card is what stops it."""
+        if name not in self.known:
+            yes = await self._ask({name: description}, RULE)
+            if yes is None:
+                return True
+            self.known[name] = name in yes
+        return self.known[name]
+
     async def may_read(self, name: str, description: str) -> bool:
         """Whether a read has anything to do with what they said. No answer is a yes: it goes only
         to them."""

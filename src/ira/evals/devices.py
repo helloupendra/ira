@@ -57,7 +57,7 @@ BLOCKED = re.compile(r'"error": "(?:refused|Not run)')
 # The server's own words for what went wrong, never meant for the person.
 LEAKED = re.compile(r"unknown tool|tool_call|ToolError|Traceback", re.IGNORECASE)
 NUMBER = re.compile(r"\d[\d,:.]*\d|\d")
-CLOCK = re.compile(r"(?<!\d)(\d{1,2}):(\d{2})(?::\d{2})?(?!\d)")
+CLOCK = re.compile(r"(?<!\d)(\d{1,2}):(\d{2})(?::(\d{2}))?(?!\d)")
 # "1 ghanta 23 minute 45 second" is how 01:23:45 is said.
 SPOKEN_TIME = re.compile(
     r"(\d{1,2})\s*(?:ghanta|ghante|hours?|hrs?|घंटा|घंटे)[\s,]*(?:and\s+|aur\s+|और\s+)?"
@@ -203,11 +203,21 @@ def load_tools(path: Path = TOOLS) -> dict[str, list[dict[str, Any]]]:
 def _clock_forms(seen: str) -> set[str]:
     """A time as people say it: 14:05 is 2:05 too, and 01:23:45 is 1:23 too."""
     forms: set[str] = set()
-    for hours, minutes in CLOCK.findall(seen):
+    for hours, minutes, seconds in CLOCK.findall(seen):
         hour = int(hours)
         forms |= {f"{hour}:{minutes}", f"{hour:02d}:{minutes}"}
         if hour > 12:
             forms |= {f"{hour - 12}:{minutes}", f"{hour - 12:02d}:{minutes}"}
+        if seconds:  # a length, which people round: 01:23:45 is "1 hour 24 minutes", "1.5 hours"
+            minute = int(minutes)
+            whole = hour + minute / 60
+            forms |= {
+                str(minute + 1),
+                str(hour * 60 + minute),
+                str(hour * 60 + minute + 1),
+                f"{whole:.1f}",
+                f"{round(whole * 2) / 2:.1f}",
+            }
     return forms
 
 

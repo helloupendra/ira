@@ -16,7 +16,12 @@ from ira.devices.protocol import DeviceTool
 from ira.models.base import ChatResponse, ToolCall
 from ira.models.fake import ScriptedProvider
 from ira.models.gateway import Gateway
-from ira.promises import asks_about_messages, asks_more_than_one_thing, asks_yes_in_words
+from ira.promises import (
+    asks_about_messages,
+    asks_more_than_one_thing,
+    asks_only_to_open,
+    asks_yes_in_words,
+)
 from ira.tools.personal import PersonalTool
 
 from .conftest import make_runtime
@@ -45,6 +50,7 @@ PHONE = [
     ("sms_send", "messages", 2),
     ("notifications_read", "notifications", 0),
     ("app_open", "apps", 1),
+    ("media_play", "media", 1),
 ]
 
 
@@ -203,10 +209,44 @@ async def test_what_reaches_others_or_takes_a_pin_never_follows_a_read(act: str)
     assert world.provider.asked == []
 
 
-async def test_with_nothing_read_an_act_is_not_checked():
-    world = World([step("browser_show_tab", match="invoice")])
+async def test_on_this_device_with_nothing_read_an_act_is_not_checked():
+    world = World([step("app_open", app="Safari")])
+    await world.turn("Safari kholo", "mac")
+    assert world.ran == ["app_open"] and world.provider.asked == []
+
+
+async def test_from_another_device_a_card_needs_their_words():
+    world = World([step("browser_show_tab", match="invoice")], {"browser_show_tab"})
     events = await world.turn("mac par invoice wala tab aage lao", "pixel")
-    assert cards(events) and world.provider.asked == []
+    assert cards(events)[0]["tool"] == "browser_show_tab"
+
+
+async def test_a_question_does_not_become_a_card_to_open_an_app():
+    world = World([step("app_open", app="TaskPulse"), READ, "Timer 01:23."])
+    events = await world.turn("mac par TaskPulse ka timer check karo", "pixel")
+    assert not cards(events) and world.ran == ["screen_read"]
+    assert refused(events) == ["app_open"]
+    assert "never open or change anything to answer a question" in events[1]["result"]
+
+
+async def test_no_answer_from_the_check_still_puts_the_card_to_them():
+    world = World([step("browser_show_tab", match="invoice")])
+
+    async def broken(*args: Any, **options: Any) -> Any:
+        from ira.models.base import ProviderError
+
+        raise ProviderError("down", kind="server")
+
+    real = world.provider.chat
+
+    async def chat(model: str, messages: Any, tools: Any, **options: Any) -> Any:
+        if messages and messages[0].text == RULE:
+            return await broken()
+        return await real(model, messages, tools, **options)
+
+    world.provider.chat = chat  # type: ignore[method-assign]
+    events = await world.turn("mac par invoice wala tab aage lao", "pixel")
+    assert cards(events)
 
 
 async def test_a_tool_refused_for_what_it_is_is_not_offered_or_run_again():
@@ -227,6 +267,14 @@ async def test_a_goal_round_with_nothing_asked_left_is_free_and_offers_no_act():
     offered = {t["name"] for t in world.provider.calls[2]["tools"]}
     assert "calls_recent" in offered and "call_place" not in offered
     assert "required" not in world.provider.forced
+
+
+async def test_what_can_never_follow_a_read_is_no_reason_to_push():
+    world = World([READ, "TaskPulse chal raha hai.", "Timer 01:23."], {"mac_click"})
+    events = await world.turn("mac pe apps dekho aur timer batao", "pixel")
+    assert "required" not in world.provider.forced
+    assert "mac_click" not in {t["name"] for t in world.provider.calls[2]["tools"]}
+    assert events[-1]["text"] == "Timer 01:23."
 
 
 async def test_a_goal_round_with_an_asked_act_undone_requires_a_tool():
@@ -264,6 +312,9 @@ async def test_a_yes_asked_in_words_offers_only_what_was_asked_nothing_to_read()
         "Send karo? (yes/no)",
         "Kya yeh sahi hai? Apna naam bataiye confirm karne ke liye.",
         "Kya main us tab ko aage laaoon?",
+        "Iska time dekhne ke liye Main TaskPulse ki screen read karoon?",
+        "Keynote open karoon?",
+        "क्या मैं स्क्रीन पढ़ूँ?",
         "क्या मैं यह मैसेज भेजूँ?",
         '"हां" बोलिए।',
     ],
@@ -351,6 +402,64 @@ async def test_notifications_alone_do_not_answer_a_question_about_messages():
     )
     events = await world.turn("pixel par koi naya message aaya kya", "mac")
     assert world.ran == ["notifications_read", "sms_read"] and events[-1]["text"] == "Ek SMS hai."
+    assert world.provider.forced == ["required"]
+    assert [t["name"] for t in world.provider.calls[2]["tools"]] == ["sms_read"]  # no way out
+
+
+# The device named is off.
+
+
+def world_with_phone_off(script: list[Any]) -> World:
+    world = World(script)
+    del world.runtime.hub.connections[world.devices["pixel"].id]
+    return world
+
+
+async def test_of_a_device_that_is_off_she_says_that_and_nothing_else():
+    world = world_with_phone_off(["Your Mac par koi reminder nahi hai.", "Pixel abhi offline hai."])
+    events = await world.turn("Pixel ke reminders batao", "mac")
+    assert events[-1]["text"] == "Pixel abhi offline hai."
+    assert "koi reminder" not in "".join(e["text"] for e in events if e["type"] == "delta")
+
+
+async def test_when_she_still_will_not_say_it_it_is_said_for_her():
+    world = world_with_phone_off(["Koi reminder nahi hai.", "Reminders khaali hain."])
+    events = await world.turn("Pixel ke reminders batao", "mac")
+    assert events[-1]["text"].endswith("abhi offline hai.")
+    assert "khaali" not in "".join(e["text"] for e in events if e["type"] == "delta")
+
+
+async def test_saying_the_device_is_off_goes_straight_out():
+    world = world_with_phone_off(["Pixel abhi offline hai."])
+    events = await world.turn("Pixel ke reminders batao", "mac")
+    assert events[-1]["text"] == "Pixel abhi offline hai."
+    assert len(world.provider.calls) == 1
+
+
+# Opening is not playing.
+
+
+@pytest.mark.parametrize(
+    ("said", "only_open"),
+    [
+        ("youtube kholo", True),
+        ("YouTube open karo", True),
+        ("यूट्यूब खोलो", True),
+        ("gaana chalao", False),
+        ("Play Hindi news", False),
+        ("youtube kholo aur gaana chalao", False),
+    ],
+)
+def test_asked_only_to_open(said: str, only_open: bool):
+    assert asks_only_to_open(said) is only_open
+
+
+async def test_youtube_kholo_goes_to_app_open_not_media_play():
+    world = World(
+        [step("media_play", query="YouTube"), step("app_open", app="YouTube"), "Khul gaya."]
+    )
+    events = await world.turn("youtube kholo", "pixel")
+    assert world.ran == ["app_open"] and refused(events) == ["media_play"]
 
 
 # What the review of 2 Nov found about tainted turns.

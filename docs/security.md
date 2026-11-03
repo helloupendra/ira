@@ -229,7 +229,13 @@ not run; otherwise it may simply answer.
 
 **A read nobody asked for.** With no device named in this message or the last, a read of what the
 person holds (messages, calls, mail, files, notes, the clipboard and so on) on a device other than
-the one they talk from needs the check too: "YouTube on karo" does not read the phone's SMS.
+the one they talk from needs the check too: "YouTube on karo" does not read the phone's SMS. This
+question is put differently from an act's, since a question about something asks to look at it, and
+no answer from the check lets the read go on: it goes only to the person.
+
+**A card nobody asked for.** From another device, an act goes to its card only if the check passes,
+so "what does the timer say" does not become "may I open the app?". No answer from the check puts
+the card to them all the same: the card is what stops it.
 
 ## Approvals: fewer PINs for one task
 

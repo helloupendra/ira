@@ -362,3 +362,14 @@ async def test_the_card_says_which_model_wrote_a_failing_try_and_in_which_round(
     assert result.model == "fake:m" and result.said_in == "forced"
     row = next(line for line in render(report).splitlines() if "read-mac-timer-hi" in line)
     assert "| fake:m | forced |" in row
+
+
+@pytest.mark.parametrize(
+    "said", ["1 घंटे 24 मिनट", "almost 1.5 ghante", "about 84 minutes", "1.4 hours"]
+)
+def test_a_length_rounded_is_no_invention(said: str):
+    assert invented_numbers(said, "Today's timer: 01:23:45") == []
+
+
+def test_a_time_of_day_is_not_rounded_into_a_new_number():
+    assert invented_numbers("at 1:24", "the call at 14:05") == ["1:24"]

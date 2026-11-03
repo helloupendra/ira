@@ -75,10 +75,13 @@ _YES_IN_WORDS = re.compile(
     r"bhej dun|bhej doon|confirm kar|confirm kij|sahi hai\s*\?|theek hai\s*\?|naam bata|"
     r"kya mai?n?\b[^?।]*(?:karoon|karun|kar doon|kar dun|bhejun|bhejoon|laaoon|laun|kholun|"
     r"kholoon|dabaun|dabaoon)\b|"
+    r"(?<![a-z])(?:karoon|karun|kar doon|kar dun|bhejun|bhejoon|laaoon|laun|kholun|kholoon|dabaun|"
+    r"dabaoon|padhoon|padhun|dekhoon|dekhun)\s*\?|"
     r"bhejun\b|shall i (?:send|open|set|call|do)|should i (?:send|open|set|call|do)|"
     r"do you want me to|want me to (?:send|open|set|call)"
     r"|हाँ[\"'”]?\s*(?:बोल|कह)|हां[\"'”]?\s*(?:बोल|कह)|कन्फर्म कर|क्या भेज|सही है\s*\?|नाम बता"
-    r"|क्या मैं[^?।]*(?:करूँ|करूं|भेजूँ|भेजूं|खोलूँ|खोलूं|लाऊँ|लाऊं|दबाऊँ|दबाऊं)",
+    r"|क्या मैं[^?।]*(?:करूँ|करूं|भेजूँ|भेजूं|खोलूँ|खोलूं|लाऊँ|लाऊं|दबाऊँ|दबाऊं)"
+    r"|(?:करूँ|करूं|भेजूँ|भेजूं|खोलूँ|खोलूं|लाऊँ|लाऊं|दबाऊँ|दबाऊं|पढ़ूँ|पढ़ूं|देखूँ|देखूं)\s*\?",
     re.IGNORECASE,
 )
 # Saying it cannot, or that the device is off: an answer, and what led to it in the sentence is too.
@@ -105,6 +108,19 @@ _CHATTER = re.compile(
 _SCREEN = re.compile(r"(?<![a-z])(?:screen|window)(?![a-z])|स्क्रीन|विंडो", re.IGNORECASE)
 _MESSAGES = re.compile(
     r"(?<![a-z])(?:sms|messages?|massage)(?![a-z])|मैसेज|संदेश|एसएमएस", re.IGNORECASE
+)
+# That a device is off or out of reach, however it is put.
+_DEVICE_OFF = re.compile(
+    r"offline|online|connect|reach|switched off|turned off|\bband\b|\bnot on\b"
+    r"|ऑफ़लाइन|ऑफलाइन|ऑनलाइन|बंद|कनेक्ट|जुड़ा",
+    re.IGNORECASE,
+)
+# "youtube kholo": open it. Asked to play something, media_play is right.
+_OPEN = re.compile(r"(?<![a-z])(?:open|khol[a-z]*)(?![a-z])|खोल", re.IGNORECASE)
+_PLAY = re.compile(
+    r"(?<![a-z])(?:play|chala[a-z]*|sunao|suna|bajao|baja[a-z]*|laga[a-z]*)(?![a-z])"
+    r"|चला|सुना|बजा|लगा",
+    re.IGNORECASE,
 )
 _SENTENCE = re.compile(r"[^.!?।\n]*[.!?।\n]+|[^.!?।\n]+$")
 _SENTENCE_END = re.compile(r"[.!?।\n]")
@@ -170,6 +186,14 @@ def asks_which_device(text: str) -> bool:
 
 def asks_yes_in_words(text: str) -> bool:
     return bool(_YES_IN_WORDS.search(text))
+
+
+def says_device_is_off(text: str) -> bool:
+    return bool(_DEVICE_OFF.search(text))
+
+
+def asks_only_to_open(text: str) -> bool:
+    return bool(_OPEN.search(text)) and not _PLAY.search(text)
 
 
 def asks_about_the_screen(text: str) -> bool:
