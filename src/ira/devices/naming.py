@@ -1,8 +1,15 @@
 """Which of the person's devices a sentence names, in any script, as speech-to-text writes it.
 
 A device the person names is the device they mean: other devices' tools are not on offer for that
-turn, whatever the model would like. So this errs on the side of a brand or a kind said outright;
-"phone" counts only as a place ("phone par", "on my phone"), never in "phone number".
+turn, whatever the model would like. So a word counts only when it is plainly the device:
+
+* a brand or model said outright ("MacBook", "iPhone", "Pixel se sms bhejo");
+* a plain word for a kind ("laptop", "computer", "PC", "phone") only as a place: "on my laptop",
+  "laptop par", "computer ki screen", never "charge my laptop", "the computer repair shop" or
+  "phone number";
+* the device's own name: in full when it has two words or more ("Studio Mac"), a single word of it
+  only as a place ("studio par"), and never the owner's name in "Upendra's iPhone" (that is a
+  person, often one the sentence is about) nor a model word such as "Air" or "Pro".
 """
 
 from __future__ import annotations
@@ -24,23 +31,31 @@ class Roster:
     skills: tuple[str, ...] = field(default_factory=tuple)
 
 
-# What a kind of device is called. "laptop" and "computer" are whichever computer they have.
+# Brands and models: said anywhere, they name the device.
 _KIND_WORDS: dict[str, tuple[str, ...]] = {
     "mac": (
-        "mac", "macbook", "mac book", "imac", "mac mini", "laptop", "computer",
-        "मैक", "मैकबुक", "मैक बुक", "मेकबुक", "मेक बुक", "लैपटॉप", "कंप्यूटर", "कम्प्यूटर",
+        "mac", "macbook", "mac book", "imac", "mac mini",
+        "मैक", "मैकबुक", "मैक बुक", "मेकबुक", "मेक बुक",
     ),
-    "windows": (
-        "pc", "windows", "laptop", "computer", "विंडोज", "लैपटॉप", "कंप्यूटर", "कम्प्यूटर",
-    ),
+    "windows": (),
     "ios": ("iphone", "i phone", "ipad", "आईफोन", "आई फोन", "आईफ़ोन", "आई फ़ोन", "आईपैड"),
     "android": (
         "android", "pixel", "samsung", "galaxy", "oneplus", "redmi",
         "एंड्रॉयड", "एंड्रॉइड", "पिक्सल", "पिक्सेल", "सैमसंग",
     ),
 }  # fmt: skip
+# Plain words for a kind: they name it only as a place. "laptop" and "computer" are whichever
+# computer they have; "windows" is also what a room has.
+_PLACE_WORDS: dict[str, tuple[str, ...]] = {
+    "mac": ("laptop", "computer", "लैपटॉप", "कंप्यूटर", "कम्प्यूटर"),
+    "windows": ("pc", "windows", "laptop", "computer", "विंडोज", "लैपटॉप", "कंप्यूटर", "कम्प्यूटर"),
+}  # fmt: skip
 _PHONE_KINDS = ("ios", "android")
-_NOT_A_NAME = {"my", "the", "phone", "mobile", "ira", "and", "for", "ios", "android", "mac", "ka"}
+_NOT_A_NAME = {
+    "my", "the", "phone", "mobile", "ira", "and", "for", "ios", "android", "mac", "ka",
+    # Model words: "MacBook Air" is not named by "the air conditioner".
+    "pro", "max", "air", "mini", "plus", "ultra", "lite", "note", "fold", "flip", "book",
+}  # fmt: skip
 # "phone" as a place, not "Avery ka phone number" nor "phone call".
 _PHONE_PLACE = re.compile(
     r"(?<![a-z0-9])(?:on|from|in|of)\s+(?:my|the)\s+(?:phone|mobile)(?![a-z0-9])"
@@ -59,33 +74,65 @@ def _says(text: str, word: str) -> bool:
     return bool(re.search(rf"(?<![a-z0-9]){re.escape(word)}(?![a-z0-9])", text))
 
 
+def _as_place(text: str, word: str) -> bool:
+    """The word said as where something is or happens: "on my laptop", "laptop par", "laptop se",
+    "laptop ki screen", "my laptop's screen"; not "charge my laptop" or "laptop ka number"."""
+    w = re.escape(word)
+    if re.search(f"[{_DEVANAGARI}]", word):
+        d = _DEVANAGARI
+        return bool(
+            re.search(rf"(?<![{d}]){w}\s+(?:पर|पे|में|से|का|के|की)(?![{d}])(?!\s*(?:नंबर|नम्बर))", text)
+        )
+    return bool(
+        re.search(
+            rf"(?<![a-z0-9])(?:on|from|in|of|to|at|using|via)\s+(?:(?:my|the|this|your)\s+)?{w}(?![a-z0-9])"
+            rf"|(?<![a-z0-9]){w}'s(?![a-z0-9])"
+            rf"|(?<![a-z0-9]){w}\s+(?:par|pe|per|mein|me|se)(?![a-z0-9])"
+            rf"|(?<![a-z0-9]){w}\s+(?:ka|ke|ki)\s+(?!number|no\b|nambar)",
+            text,
+        )
+    )
+
+
 def _label_words(label: str) -> list[str]:
-    """The words of a device's own name that are names: "Studio" of "Studio Mac"."""
+    """The words of a device's own name that are names: "Studio" of "Studio Mac"; never the
+    owner's name in "Upendra's iPhone", nor a model word."""
+    lower = label.lower().replace("’", "'")
+    owners = set(re.findall(r"([a-z0-9]+)'s(?![a-z0-9])", lower))
     return [
-        w for w in re.findall(r"[a-z0-9]+", label.lower()) if len(w) >= 3 and w not in _NOT_A_NAME
+        w
+        for w in re.findall(r"[a-z0-9]+", lower)
+        if len(w) >= 3 and w not in _NOT_A_NAME and w not in owners
     ]
+
+
+def _names_label(lower: str, label: str) -> bool:
+    """The device's own name: in full when it has two words or more, one word only as a place."""
+    full = label.lower().replace("’", "'").strip()
+    if len(re.findall(r"[a-z0-9]+", full)) >= 2 and _says(lower, full):
+        return True
+    return any(_as_place(lower, w) for w in _label_words(label))
 
 
 def named_kinds(text: str) -> set[str]:
     """The kinds of device a sentence names."""
-    lower = text.lower()
+    lower = text.lower().replace("’", "'")
     return {
-        kind for kind, words in _KIND_WORDS.items() if any(_says(lower, word) for word in words)
+        kind
+        for kind in _KIND_WORDS
+        if any(_says(lower, word) for word in _KIND_WORDS[kind])
+        or any(_as_place(lower, word) for word in _PLACE_WORDS.get(kind, ()))
     }
 
 
 def named_devices(text: str, roster: list[Roster]) -> set[int] | None:
     """The devices a sentence names. None: it names none. Empty: it names a device this person
     does not have (an iPhone, when they have none)."""
-    lower = text.lower()
+    lower = text.lower().replace("’", "'")
     kinds = named_kinds(text)
     found = {d.id for d in roster if d.kind in kinds}
-    # Their own names: "Pixel 7", "Studio".
-    found |= {
-        d.id
-        for d in roster
-        if _says(lower, d.label.lower()) or any(_says(lower, w) for w in _label_words(d.label))
-    }
+    # Their own names: "Pixel 7", "Studio par".
+    found |= {d.id for d in roster if _names_label(lower, d.label)}
     if _PHONE_PLACE.search(text) and not kinds & set(_PHONE_KINDS):
         phones = {d.id for d in roster if d.kind in _PHONE_KINDS}
         return found | phones

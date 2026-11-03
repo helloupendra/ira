@@ -101,10 +101,16 @@ def open_refusal(tool: str, arguments: dict[str, object]) -> str | None:
         if extension in RUNNABLE or (extension == "app" and never_app(stem)):
             return NEVER_OPEN_REFUSAL
     if tool == "url_open" and isinstance(arguments.get("url"), str):
-        address = str(arguments["url"]).strip()
-        if "://" in address and address.split("://", 1)[0].lower() not in ("http", "https"):
+        # Only the web: any other scheme, with "//" or without ("javascript:", "shortcuts:run",
+        # "ms-settings:", "data:"). "example.com/menu" and "localhost:8080" have none.
+        scheme = _SCHEME.match(str(arguments["url"]).strip())
+        if scheme and scheme.group(1).lower() not in ("http", "https"):
             return URL_REFUSAL
     return None
+
+
+# A URL's scheme: letters first, then a colon not followed by a port number ("host:8080").
+_SCHEME = re.compile(r"([a-z][a-z0-9+.-]*):(?!\d)", re.IGNORECASE)
 
 
 def never_app(app: str | None) -> bool:

@@ -23,6 +23,18 @@ class ToolGateTest {
     }
 
     @Test
+    fun `on Play, calls and SMS are read only when asked on the phone itself`() {
+        // The app open on the phone, asked from the Mac or the web: not the person on the phone.
+        val elsewhere = state(Flavor.PLAY).copy(askedHere = false)
+        assertTrue(ToolGate.check(tool(Flavor.PLAY, "sms_read"), elsewhere)!!.contains("ask on the phone itself"))
+        assertTrue(ToolGate.check(tool(Flavor.PLAY, "calls_recent"), elsewhere)!!.contains("ask on the phone itself"))
+        // Sending already waits for the person's yes on the card.
+        assertNull(ToolGate.check(tool(Flavor.PLAY, "sms_send"), elsewhere))
+        // The personal build reads from anywhere, as before.
+        assertNull(ToolGate.check(tool(Flavor.PERSONAL, "sms_read"), state(Flavor.PERSONAL).copy(askedHere = false)))
+    }
+
+    @Test
     fun `Play Lite says plainly that it cannot read call history or SMS`() {
         val calls = tool(Flavor.PLAY, "calls_recent")
         val message = ToolGate.check(calls, state(Flavor.PLAY_LITE))!!

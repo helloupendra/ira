@@ -10,16 +10,36 @@ from __future__ import annotations
 
 import re
 
+# Her own word that something just happened: "Done.", "I've opened Safari", "Opened it.", "Your
+# alarm has been set". Not news or what another did: "The shop opened in 1990", "He sent it".
 _DONE = re.compile(
-    r"(?<![a-z])(?<!n't )(?<!not )(?:done|opened|i opened|i've opened|i have opened|i set|"
-    r"i've set|i sent|i've sent|"
-    r"i closed|i started|i turned|i clicked|i typed|i read|i called|has been opened|has been set|"
-    r"khol diya|khol di|khola hai|kholi hai|bhej diya|bhej di|laga diya|laga di|set kar diya|"
-    r"kar diya|kar di|ho gaya|ho gayi|chala diya|chala di|band kar diya|maine kiya|function call)"
-    r"(?![a-z])"
-    r"|खोल दिया|खोल दी|भेज दिया|भेज दी|लगा दिया|लगा दी|सेट कर दिया|कर दिया|कर दी|हो गया|हो गई|"
-    r"चला दिया|चला दी|बंद कर दिया|मैंने किया",
+    r"^\s*(?:ok(?:ay)?[\s,!.]+|all\s+)?done(?![a-z])"
+    r"|(?<![a-z])(?:it|that|this)(?:'s|\s+is|\s+has\s+been)\s+done(?![a-z])"
+    r"|(?<![a-z])i(?:'m|\s+am)\s+done(?![a-z])"
+    r"|(?<![a-z])i(?:'ve|\s+have)?\s+(?:just\s+|now\s+)?(?:opened|set|sent|closed|started|turned|"
+    r"clicked|typed|called|played|paused|saved|added|deleted|booked)(?![a-z])"
+    r"|(?<![a-z])i(?:'ve|\s+have)?\s+(?:just\s+)?read(?![a-z])"
+    r"(?!\s+(?:that|about|somewhere|online|in)(?![a-z]))"
+    r"|^\s*(?:opened|sent|set|closed|started|turned on|turned off|clicked|typed|called|played|"
+    r"saved|added)(?![a-z])"
+    r"|(?<![a-z])(?:it|that|this|your\s+[a-z]+)\s+(?:has|have)\s+been\s+(?:opened|set|sent)(?![a-z])"
+    r"|(?<![a-z])function call(?![a-z])",
     re.IGNORECASE,
+)
+# The same in Hinglish and Hindi, unless it is the past it tells of: "cancel ho gaya tha".
+_DONE_HI = re.compile(
+    r"(?<![a-z])(?:khol diya|khol di|khola hai|kholi hai|bhej diya|bhej di|laga diya|laga di|"
+    r"set kar diya|kar diya|kar di|ho gaya|ho gayi|chala diya|chala di|band kar diya|maine kiya)"
+    r"(?![a-z])(?!\s+(?:tha|thi|the)(?![a-z]))"
+    r"|(?:खोल दिया|खोल दी|भेज दिया|भेज दी|लगा दिया|लगा दी|सेट कर दिया|कर दिया|कर दी|हो गया|हो गई|"
+    r"चला दिया|चला दी|बंद कर दिया|मैंने किया)(?!\s*(?:था|थी|थे))",
+    re.IGNORECASE,
+)
+# Someone else did it: "Avery ne bhej diya", "आपने भेज दिया". "maine" and "मैंने" are her own.
+_BY_ANOTHER = re.compile(r"(?<![a-z])([a-z]+)\s+ne(?![a-z])|(?<![ऀ-ॿ])([ऀ-ॿ]+)\s+ने(?![ऀ-ॿ])", re.I)
+_HER_OWN = {"main", "mai", "mein", "hum", "ham", "मैं", "मै", "हम"}
+_THEIRS = re.compile(
+    r"(?<![a-z])(?:aapne|apne|tumne|usne|unhone|inhone)(?![a-z])|आपने|तुमने|उसने|उन्होंने", re.I
 )
 # First person, now or next: "dekhti hoon", "khol raha hoon", "karungi", "देखता हूँ", "let me".
 _WILL = re.compile(
@@ -86,8 +106,25 @@ _AND_THEN = re.compile(
 
 
 def claims_done(text: str) -> bool:
-    """It says something was done."""
-    return bool(_DONE.search(text))
+    """It says she just did something, sentence by sentence. A question is no claim, nor is a
+    past it tells of ("ho gaya tha") or what another did ("The shop opened in 1990", "Avery ne
+    bhej diya")."""
+    for sentence in _SENTENCE.findall(text):
+        if sentence.rstrip().endswith("?"):
+            continue
+        if _DONE.search(sentence):
+            return True
+        if _DONE_HI.search(sentence) and not _by_another(sentence):
+            return True
+    return False
+
+
+def _by_another(sentence: str) -> bool:
+    if _THEIRS.search(sentence):
+        return True
+    return any(
+        (m.group(1) or m.group(2)).lower() not in _HER_OWN for m in _BY_ANOTHER.finditer(sentence)
+    )
 
 
 def promises(text: str) -> bool:

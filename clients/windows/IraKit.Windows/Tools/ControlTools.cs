@@ -9,7 +9,9 @@ namespace IraKit.Tools;
 /// like a person, in the window the person is in or in an app they name, each step after the
 /// PIN or within an approval it opened. The PC refuses, whatever the server asks: terminals,
 /// shells, Task Manager and script hosts (by program file), password managers and the sign-in
-/// and administrator prompts, the Windows key (it opens Run), and typing into a password field.
+/// and administrator prompts, the Windows key and Ctrl+Esc (they open Start and Run), shortcuts
+/// other apps and Ira itself take, and typing into a password field. Keys go one at a time, and
+/// stop if a press moved the keyboard somewhere else.
 /// </summary>
 internal sealed class ControlTools(Func<IntPtr> targetWindow)
 {
@@ -118,6 +120,31 @@ internal sealed class ControlTools(Func<IntPtr> targetWindow)
         return window;
     }
 
+    /// <summary>
+    /// After each press or line: the window in front must still be the one checked, or a window of
+    /// the same app that Ira may act in (a dialog it opened). Start, another app or a refused
+    /// window stops the rest, so a key that lands somewhere unexpected can't carry the next ones there.
+    /// Returns the window to go on in.
+    /// </summary>
+    private static WindowInfo StillIn(WindowInfo window, string after)
+    {
+        Thread.Sleep(120); // let the press take effect, as a new window takes a moment to come up
+        var front = Native.GetForegroundWindow();
+        var now = front == window.Handle ? window : WindowInfo.Of(front);
+        if (Moved(front, window.Handle, OwnerOf(front), OwnerOf(window.Handle), now is null ? "gone" : Refusal(now)) is { } why)
+            throw new ToolFailure($"after {after}, {now?.AppName ?? "another window"} came to the front, so I stopped there ({why}). Check with screen_read");
+        return now!;
+    }
+
+    /// <summary>Why the keys must stop, or null to go on: the same window, or one of the same app Ira may act in.</summary>
+    internal static string? Moved(IntPtr front, IntPtr target, uint frontProcess, uint targetProcess, string? frontRefusal)
+    {
+        if (front == target) return null;
+        if (front == IntPtr.Zero || frontProcess == 0) return "nothing is in front";
+        if (frontProcess != targetProcess) return "another app took the keyboard";
+        return frontRefusal is null ? null : "Ira doesn't act there";
+    }
+
     /// <summary>The process a window belongs to; 0 when there is no such window.</summary>
     private static uint OwnerOf(IntPtr handle)
     {
@@ -183,20 +210,33 @@ internal sealed class ControlTools(Func<IntPtr> targetWindow)
         if (text.Length > MaxText) throw new ToolFailure($"that is more than {MaxText} characters: type it in parts");
         var enter = args.Flag("pressEnter") ?? false;
         var window = Front(args);
-        CheckFocus(window);
-        Keyboard.Text(text);
-        if (enter) Keyboard.Press([], Keyboard.VK_RETURN);
+        // Line by line: each Enter may open something, and the next line must not land there.
+        var lines = text.Replace("\r\n", "\n").Split('\n');
+        for (var i = 0; i < lines.Length; i++)
+        {
+            CheckFocus(window);
+            Keyboard.Text(lines[i]);
+            if (i == lines.Length - 1 && !enter) break;
+            Keyboard.Press([], Keyboard.VK_RETURN);
+            window = StillIn(window, $"line {i + 1} of {lines.Length} and Enter");
+        }
         return Done(window, $"Typed {text.Length} characters in {window.AppName}" + (enter ? " and pressed Enter." : "."));
     }
 
     private JsonNode Keys(JsonObject raw)
     {
         var args = new ToolArgs(raw, "keys", "app", "task");
-        var presses = Keyboard.Parse(args.Required("keys", 200, "which keys to press"));
+        var keys = args.Required("keys", 200, "which keys to press");
+        var presses = Keyboard.Parse(keys);
         var window = Front(args);
-        CheckFocus(window);
-        foreach (var (modifiers, key) in presses) Keyboard.Press(modifiers, key);
-        return Done(window, $"Pressed {args.Text("keys", 200)} in {window.AppName}.");
+        // One at a time, checking where each landed: never a run of presses sent blind.
+        for (var i = 0; i < presses.Count; i++)
+        {
+            CheckFocus(window);
+            Keyboard.Press(presses[i].Modifiers, presses[i].Key);
+            if (i < presses.Count - 1) window = StillIn(window, $"press {i + 1} of {presses.Count}");
+        }
+        return Done(window, $"Pressed {keys} in {window.AppName}.");
     }
 
     // --- clicking ----------------------------------------------------------------------
@@ -334,18 +374,36 @@ internal sealed class ControlTools(Func<IntPtr> targetWindow)
                 }
                 var key = Key(parts[^1]);
                 var name = string.Join("+", parts.Select(p => p.ToLowerInvariant()));
-                // Task Manager, the security screen, and switching to some other app unseen.
-                if (held.Contains(VK_CONTROL) && held.Contains(VK_SHIFT) && key == 0x1B
-                    || held.Contains(VK_CONTROL) && held.Contains(VK_MENU) && key == 0x2E
-                    || held.Contains(VK_MENU) && key is 0x09 or 0x1B)
-                {
-                    throw new ToolFailure($"I never press {name}: name the app to act in instead");
-                }
+                if (Reserved(held, key)) throw new ToolFailure($"I never press {name}: Windows or another app takes it, not the window in front. Name the app to act in instead");
                 presses.Add((held.ToArray(), key));
             }
             if (presses.Count == 0) throw new ToolFailure("say which keys to press");
             if (presses.Count > MaxPresses) throw new ToolFailure($"that is more than {MaxPresses} presses: do it in parts");
             return presses;
+        }
+
+        /// <summary>
+        /// Shortcuts that act outside the window in front, so a key Ira presses would count as the
+        /// person's elsewhere: Ctrl+Esc opens Start (as the Windows key does), Ctrl+Shift+Esc Task
+        /// Manager, Alt+Tab and Alt+Esc switch to another app unseen, and any Ctrl+Alt shortcut is
+        /// one Windows or another app listens for everywhere (Ctrl+Alt+Del, Ira's own Drop keys).
+        /// Ira's own panel shortcuts are refused too, whichever one Settings has.
+        /// </summary>
+        internal static bool Reserved(List<ushort> held, ushort key)
+        {
+            var ctrl = held.Contains(VK_CONTROL);
+            var alt = held.Contains(VK_MENU);
+            if (ctrl && key == 0x1B || ctrl && alt || alt && key is 0x09 or 0x1B) return true;
+            return Shortcut.Choices.Any(s => s.Key == key && ModifierKeys(s.Modifiers).SetEquals(held));
+        }
+
+        private static HashSet<ushort> ModifierKeys(uint modifiers)
+        {
+            var keys = new HashSet<ushort>();
+            if ((modifiers & Shortcut.Control) != 0) keys.Add(VK_CONTROL);
+            if ((modifiers & Shortcut.Alt) != 0) keys.Add(VK_MENU);
+            if ((modifiers & Shortcut.Shift) != 0) keys.Add(VK_SHIFT);
+            return keys;
         }
 
         private static ushort Key(string name)

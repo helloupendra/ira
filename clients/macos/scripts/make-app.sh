@@ -130,7 +130,6 @@ cat > "$entitlements" <<'PLIST'
 </plist>
 PLIST
 plutil -lint "$entitlements" >/dev/null
-sign="--options runtime --entitlements $entitlements"
 
 # The one asked for; else this Mac's Apple Development certificate; else the local one.
 identity="${IRA_SIGNING_NAME:-}"
@@ -140,12 +139,12 @@ if [ -z "$identity" ]; then
 fi
 if [ "$identity" != none ] && security find-identity -p codesigning 2>/dev/null | grep -q "\"$identity\""; then
   echo "Signing with \"$identity\""
-  # shellcheck disable=SC2086
-  codesign --force --sign "$identity" --identifier "$bundle_id" --timestamp=none $sign "$app"
+  codesign --force --sign "$identity" --identifier "$bundle_id" --timestamp=none \
+    --options runtime --entitlements "$entitlements" "$app"
 else
   echo "Signing ad hoc (add an Apple Development certificate in Xcode, or run scripts/make-signing-identity.sh, to keep permissions between builds)"
-  # shellcheck disable=SC2086
-  codesign --force --sign - --identifier "$bundle_id" --timestamp=none $sign "$app"
+  codesign --force --sign - --identifier "$bundle_id" --timestamp=none \
+    --options runtime --entitlements "$entitlements" "$app"
 fi
 codesign --verify --strict "$app"
 # What macOS will match permissions against.

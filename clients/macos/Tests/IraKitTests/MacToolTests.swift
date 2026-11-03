@@ -1174,6 +1174,26 @@ struct ControlTests {
         #expect(throws: ToolFailure.self) { try MacControl.parseKeys("  ") }
     }
 
+    @Test func shortcutsTheWholeMacTakesAreRefused() throws {
+        // Spotlight would open Terminal; the rest switch apps, quit, lock, or are Ira's own keys.
+        for combo in ["cmd+space", "cmd+space t e r m i n a l return", "ctrl+space", "option+space",
+                      "cmd+option+space", "cmd+tab", "cmd+shift+tab", "cmd+option+esc", "ctrl+cmd+q",
+                      "cmd+shift+q", "ctrl+option+cmd+v", "ctrl+option+cmd+c", "fn+c", "fn+n"] {
+            #expect(throws: ToolFailure.self) { try MacControl.parseKeys(combo) }
+        }
+        // Inside the app they still work.
+        #expect(try MacControl.parseKeys("shift+space fn+delete cmd+q cmd+`").map(\.spoken)
+            == ["Shift-Space", "Fn-Delete", "Command-Q", "Command-`"])
+    }
+
+    @Test func keysStopWhenTheKeyboardLeavesTheApp() {
+        #expect(MacControl.moved(frontPID: 10, focusedPID: 10, target: 10) == nil)
+        #expect(MacControl.moved(frontPID: 10, focusedPID: nil, target: 10) == nil)
+        #expect(MacControl.moved(frontPID: 22, focusedPID: 22, target: 10) == "another app came to the front")
+        // Spotlight takes the keyboard while the app stays in front.
+        #expect(MacControl.moved(frontPID: 10, focusedPID: 33, target: 10) == "another app took the keyboard")
+    }
+
     @Test func aControlIsFoundByItsLabel() throws {
         let field = FakeNode("AXTextField", ["Search"], y: 10)
         let search = FakeNode("AXButton", [], actions: ["AXPress"], y: 10, [FakeNode("AXStaticText", ["Search"])])

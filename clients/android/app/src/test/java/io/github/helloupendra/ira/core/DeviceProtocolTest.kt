@@ -44,6 +44,10 @@ class DeviceProtocolTest {
         assertEquals("9b0c", call.id)
         assertEquals("calls_recent", call.tool)
         assertEquals(3, call.args.int("limit"))
+        // Not said: not asked on this phone (an older server says nothing).
+        assertEquals(false, call.here)
+        val here = DeviceProtocol.parse("""{"type": "call", "id": "9b0d", "tool": "sms_read", "args": {}, "here": true}""") as DeviceFrame.Call
+        assertEquals(true, here.here)
         assertEquals(DeviceFrame.Skills(listOf("calls", "contacts")), DeviceProtocol.parse("""{"type": "skills", "skills": ["calls", "contacts"]}"""))
         assertEquals(DeviceFrame.Event("task_done", "Done", "The task finished."), DeviceProtocol.parse("""{"type": "event", "event": "task_done", "title": "Done", "text": "The task finished.", "at": 1.0}"""))
         assertEquals(DeviceFrame.Ping, DeviceProtocol.parse("""{"type": "ping"}"""))

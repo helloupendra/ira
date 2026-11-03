@@ -68,6 +68,43 @@ def test_a_device_they_do_not_have_is_named_too():
 def test_a_device_by_its_own_name():
     studio = Roster(9, "Studio", "mac", True)
     assert named_devices("studio par dekho", [studio, PIXEL]) == {9}
+    studio_mac = Roster(9, "Studio Mac", "mac", True)
+    assert named_devices("What's open on Studio Mac?", [studio_mac, PIXEL]) == {9}
+
+
+@pytest.mark.parametrize(
+    ("said", "ids"),
+    [
+        # A plain word for a computer names it only as a place.
+        ("Remind me to charge my laptop", None),
+        ("Call the computer repair shop", None),
+        ("buy a new laptop bag", None),
+        ("What's open on my laptop?", {1}),
+        ("laptop pe kya khula hai", {1}),
+        ("Read my laptop's screen", {1}),
+        ("computer se file bhejo", {1}),
+        ("laptop ka number kya hai", None),
+    ],
+)
+def test_a_plain_word_names_a_device_only_as_a_place(said: str, ids: set[int] | None):
+    assert named_devices(said, ALL) == ids
+
+
+def test_windows_is_also_what_a_room_has():
+    office = Roster(7, "Office PC", "windows", True, ("screen",))
+    assert named_devices("close the windows when it rains", [office, PIXEL]) is None
+    assert named_devices("windows par kya chal raha hai", [office, PIXEL]) == {7}
+    assert named_devices("What's on the office pc?", [office, PIXEL]) == {7}
+
+
+def test_the_owners_name_in_a_label_is_a_person_not_the_device():
+    # "Text Upendra bhai" is about a person: the Pixel that sends texts stays on offer.
+    phone = Roster(5, "Upendra's iPhone", "ios", True, ("calendar",))
+    assert named_devices("Text Upendra bhai that I'm late", [phone, PIXEL]) is None
+    assert named_devices("Upendra’s iPhone ki screen padho", [phone, PIXEL]) == {5}
+    # A model word is not a name: "the air conditioner" is not the MacBook Air.
+    air = Roster(6, "MacBook Air", "mac", True)
+    assert named_devices("turn on the air conditioner", [air, PIXEL]) is None
 
 
 def call(name: str, arguments: dict[str, Any] | None = None, text: str = "") -> ChatResponse:
@@ -261,6 +298,53 @@ def test_the_words_of_a_claim_and_a_promise():
         assert promises(words), words
     for words in ("Yeh hai aapka calendar.", "दो और दो चार", "Thanks!"):
         assert not claims_done(words) and not promises(words), words
+
+
+@pytest.mark.parametrize(
+    "words",
+    [
+        "Done.",
+        "All done!",
+        "Ok, done. Safari is open.",
+        "I've opened Safari.",
+        "I just sent it to Avery.",
+        "Opened Safari for you.",
+        "Your alarm has been set for 6.",
+        "It's done.",
+        "I read your screen: the timer says 4 minutes.",
+        "Alarm set ho gaya.",
+        "Maine message bhej diya.",
+        "मैंने मैसेज भेज दिया।",
+        "Main ne bhej diya.",
+    ],
+)
+def test_her_own_word_that_she_did_something_is_a_claim(words: str):
+    assert claims_done(words), words
+
+
+@pytest.mark.parametrize(
+    "words",
+    [
+        # News and history: something happened, not something she did.
+        "The shop opened in 1990.",
+        "Sunrise Dental opened a new clinic last year.",
+        "The report is done by Friday, says the email.",
+        # The past it tells of.
+        "Haan, woh meeting cancel ho gaya tha.",
+        "मीटिंग कैंसल हो गई थी।",
+        # What another did.
+        "Avery ne bhej diya.",
+        "Aapne kal hi bhej diya.",
+        "एवरी ने मैसेज भेज दिया।",
+        "He opened the door.",
+        # A question, and not done.
+        "Kya ho gaya?",
+        "I haven't opened it yet.",
+        "I read that the shop closes at 9.",
+    ],
+)
+def test_news_the_past_and_others_doings_are_no_claim(words: str):
+    assert not claims_done(words), words
 
 
 def test_the_gate_holds_only_from_a_doubtful_sentence():
@@ -556,6 +640,30 @@ async def test_a_tool_called_again_after_its_rounds_does_not_run():
         e for e in events if e["type"] == "tool_result" and "already been tried" in e["result"]
     )
     assert result["ok"] is False and events[-1]["text"] == "Yeh mila."
+
+
+async def test_a_screen_job_goes_on_step_by_step_past_three_rounds():
+    # Read, act, read again: a screen tool between other steps is no flailing.
+    steps = [call("screen_read"), call("app_open", {"name": "Safari"})] * 3
+    runtime, owner, ids, ran = world([*steps, call("screen_read"), "Yeh mila."])
+    events = await turn(runtime, owner, "screen padho aur Safari kholo", ids["mac"])
+    assert [name for _, name in ran] == ["screen_read", "app_open"] * 3 + ["screen_read"]
+    results = [e["result"] for e in events if e["type"] == "tool_result"]
+    assert not any("already been tried" in result for result in results)
+
+
+async def test_reading_one_window_after_another_is_no_flailing():
+    windows = [call("screen_read", {"app": app}) for app in ("Safari", "Mail", "Notes", "Slack")]
+    runtime, owner, ids, ran = world([*windows, "Yeh mila."])
+    await turn(runtime, owner, "sab windows padho", ids["mac"])
+    assert [name for _, name in ran] == ["screen_read"] * 4
+
+
+async def test_another_device_tool_still_has_three_rounds_whatever_it_is_asked():
+    days = [call("calendar_read", {"day": day}) for day in (1, 2, 3, 4)]
+    runtime, owner, ids, ran = world([*days, "Kuch nahi mila."])
+    await turn(runtime, owner, "calendar dekho", ids["pixel"])
+    assert [name for _, name in ran] == ["calendar_read"] * 3
 
 
 async def test_several_calls_in_one_round_count_as_one():

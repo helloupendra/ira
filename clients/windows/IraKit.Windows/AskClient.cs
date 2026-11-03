@@ -83,6 +83,21 @@ public sealed class AskClient(HttpClient http, ServerAddress server, string toke
         using var response = await Send(request, HttpCompletionOption.ResponseContentRead, ct);
     }
 
+    /// <summary>Removes this PC's Windows Hello key from the server, so Ira no longer lists the PC as one that approves.</summary>
+    public async Task RemoveHelloAsync(long deviceId, CancellationToken ct = default)
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Delete, server.Api($"/v1/me/approval-keys/{deviceId}"));
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
+        try
+        {
+            using var response = await Send(request, HttpCompletionOption.ResponseContentRead, ct);
+        }
+        catch (IraError e) when (e.Status == 404)
+        {
+            // gone already
+        }
+    }
+
     public Task<ActionOutcome> CancelAsync(string actionId, CancellationToken ct = default) =>
         ActAsync($"/v1/actions/{Uri.EscapeDataString(actionId)}/cancel", null, ct);
 

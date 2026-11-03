@@ -17,7 +17,8 @@ import contextlib
 import logging
 import time
 import uuid
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Iterator
+from contextvars import ContextVar
 from dataclasses import dataclass, field
 from typing import Any, Protocol
 
@@ -54,6 +55,21 @@ log = logging.getLogger("ira.devices")
 
 MAX_ERROR = 500
 LISTENER_QUEUE = 100
+
+# The device the person is asking from, while a tool of the turn runs. Each call tells its
+# device whether it was asked right there ("here"): Google Play lets the phone read SMS and
+# the call log only while the person talks to Ira on that phone, not from the Mac or the web.
+ASKED_FROM: ContextVar[int | None] = ContextVar("asked_from", default=None)
+
+
+@contextlib.contextmanager
+def asked_from(device_id: int | None) -> Iterator[None]:
+    token = ASKED_FROM.set(device_id)
+    try:
+        yield
+    finally:
+        ASKED_FROM.reset(token)
+
 
 # Tools a person asks for from anywhere ("what is the AI doing on my Mac?"): while their
 # device is offline Ira still offers them, and the call says plainly that it is offline,
@@ -342,7 +358,10 @@ class DeviceHub:
         seconds = self.call_seconds if timeout is None else timeout
         started = time.monotonic()
         try:
-            await connection.send({"type": "call", "id": call_id, "tool": tool, "args": args})
+            here = ASKED_FROM.get() == device_id
+            await connection.send(
+                {"type": "call", "id": call_id, "tool": tool, "args": args, "here": here}
+            )
             return await asyncio.wait_for(future, seconds)
         except TimeoutError:
             raise ToolTimeout(

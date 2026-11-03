@@ -126,6 +126,13 @@ def test_no_other_way_round_the_terminal_block():
         "file:///Users/me/Downloads/setup.command",
         "x-apple.systempreferences://",
         "ms-settings://",
+        # Without "//" too: the server's own check, whatever the app does.
+        "javascript:alert(1)",
+        "shortcuts:run-shortcut?name=Wipe",
+        "ms-settings:privacy",
+        "data:text/html,<script>x</script>",
+        "file:C:/Windows/System32/cmd.exe",
+        " JavaScript:void(0)",
     ):
         assert open_refusal("url_open", {"url": url}) == URL_REFUSAL, url
     for tool, arguments in [
@@ -134,6 +141,9 @@ def test_no_other_way_round_the_terminal_block():
         ("file_open", {"path": "/Applications/Safari.app"}),
         ("url_open", {"url": "https://example.com"}),
         ("url_open", {"url": "example.com/menu"}),
+        ("url_open", {"url": "localhost:8080/console"}),
+        ("url_open", {"url": "example.com:8443/menu"}),
+        ("url_open", {"url": "HTTP://example.com"}),
     ]:
         assert open_refusal(tool, arguments) is None, arguments
 

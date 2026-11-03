@@ -125,6 +125,27 @@ public partial class LiveIraTests(ITestOutputHelper output)
             Assert.Equal([fromWeb.Id, sentFile.Id], (await drop.ListAsync()).Items.Select(i => i.Id));
             output.WriteLine("drop: sent text and a file, received from the web, saved, listed, deleted");
 
+            // Windows Hello: a key enrolled with the PIN, then removed when Hello is turned off,
+            // so Ira stops listing the PC as one that approves. Removing it twice is fine.
+            const string pin = "482913";
+            using (var web = new HttpClient(new HttpClientHandler { CookieContainer = new CookieContainer() }))
+            {
+                web.DefaultRequestHeaders.Add("X-Ira-Request", "1");
+                (await web.PostAsJsonAsync(address.Api("/v1/auth/login"), new { email = "owner@example.com", password = Password })).EnsureSuccessStatusCode();
+                (await web.PutAsJsonAsync(address.Api("/v1/me/pin"), new { password = Password, pin })).EnsureSuccessStatusCode();
+            }
+            using var rsa = System.Security.Cryptography.RSA.Create(2048);
+            await ask.EnrolHelloAsync(Convert.ToBase64String(rsa.ExportSubjectPublicKeyInfo()), pin);
+            using var keys = new HttpRequestMessage(HttpMethod.Get, address.Api("/v1/me/approval-keys"));
+            keys.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", paired.Token);
+            Assert.Contains($"\"device_id\":{paired.DeviceId}", (await (await http.SendAsync(keys)).Content.ReadAsStringAsync()).Replace(" ", ""));
+            await ask.RemoveHelloAsync(paired.DeviceId);
+            await ask.RemoveHelloAsync(paired.DeviceId);
+            using var after = new HttpRequestMessage(HttpMethod.Get, address.Api("/v1/me/approval-keys"));
+            after.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", paired.Token);
+            Assert.Equal("[]", (await (await http.SendAsync(after)).Content.ReadAsStringAsync()).Trim());
+            output.WriteLine("hello: a key enrolled with the PIN, removed, and gone from Ira's list");
+
             await stop.CancelAsync();
             await running.WaitAsync(TimeSpan.FromSeconds(10));
         }

@@ -149,8 +149,37 @@ public enum MacControl {
             guard let key = keyNames[last] else {
                 throw ToolFailure("“\(last)” is not a key I know: use letters, digits, return, tab, space, esc, delete, up, down, left, right, home, end, pageup, pagedown or f1–f12")
             }
+            if reserved(name: last, code: key.code, flags: flags) {
+                throw ToolFailure("I never press \(combo): the whole Mac takes it, not the app in front. Name the app to act in instead")
+            }
             return KeyPress(code: CGKeyCode(key.code), flags: flags.rawValue, spoken: (spoken + [key.spoken]).joined(separator: "-"))
         }
+    }
+
+    /// Shortcuts the whole Mac takes, not the app in front, so a key Ira pressed would count as
+    /// the person's elsewhere: Spotlight and the input sources (a modifier with Space; Option-Space
+    /// is also Ira's own panel key), switching apps, Force Quit, locking and logging out, anything
+    /// with Control-Option-Command (Ira's Drop keys among them), and the Globe key's letter
+    /// shortcuts (Control Centre, Notification Centre, the Dock, Quick Note). "cmd+space t e r m
+    /// i n a l return" would otherwise open Terminal through Spotlight.
+    static func reserved(name: String, code: Int, flags: CGEventFlags) -> Bool {
+        let command = flags.contains(.maskCommand), option = flags.contains(.maskAlternate)
+        let control = flags.contains(.maskControl), shift = flags.contains(.maskShift)
+        if code == kVK_Space && (command || option || control) { return true }
+        if code == kVK_Tab && command { return true }
+        if code == kVK_Escape && command && option { return true }
+        if code == kVK_ANSI_Q && command && (control || shift) { return true }
+        if control && option && command { return true }
+        if flags.contains(.maskSecondaryFn) && name.count == 1 && name.first?.isLetter == true { return true }
+        return false
+    }
+
+    /// Why the keys must stop, or nil to go on: the app checked must still be in front and hold
+    /// the keyboard. Spotlight or another app taking it stops the rest of the presses.
+    static func moved(frontPID: pid_t?, focusedPID: pid_t?, target: pid_t) -> String? {
+        if frontPID != target { return "another app came to the front" }
+        if let focusedPID, focusedPID != target { return "another app took the keyboard" }
+        return nil
     }
 
     // MARK: Finding a control by its label

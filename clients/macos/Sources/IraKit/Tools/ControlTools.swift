@@ -93,6 +93,19 @@ struct ControlTools: Sendable {
         return try await body()
     }
 
+    /// After a press or a line: the keyboard must still be in the app checked, and not in a
+    /// password field. Anything else stops the rest, so one press that landed somewhere else
+    /// (Spotlight, another app) can't carry the next ones there.
+    func stillIn(_ target: Target, after: String) async throws {
+        try await Task.sleep(nanoseconds: 120_000_000)  // let the press take effect
+        let front = await MainActor.run { NSWorkspace.shared.frontmostApplication?.processIdentifier }
+        let focused = AXNode(AXUIElementCreateSystemWide()).focused?.pid
+        if let why = MacControl.moved(frontPID: front, focusedPID: focused, target: target.pid) {
+            throw ToolFailure("after \(after), the keyboard left \(target.name) (\(why)), so I stopped there. Check with screen_read")
+        }
+        try refuseSecureFocus(in: target)
+    }
+
     func refuseSecureFocus(in target: Target) throws {
         if IsSecureEventInputEnabled() {
             throw ToolFailure("a password field is active on this Mac (secure typing is on), so I don't type or press keys now. Do this step yourself")
@@ -117,9 +130,17 @@ struct ControlTools: Sendable {
         }
         try refuseSecureFocus(in: target)
         let field = MacControl.kind(focused.role)
-        await acting {
-            ControlTools.post(text: text)
-            if pressReturn { ControlTools.post(MacControl.KeyPress(code: CGKeyCode(kVK_Return), flags: 0, spoken: "Return")) }
+        let returnKey = MacControl.KeyPress(code: CGKeyCode(kVK_Return), flags: 0, spoken: "Return")
+        // Line by line: each Return may open something, and the next line must not land there.
+        let lines = text.replacingOccurrences(of: "\r\n", with: "\n").components(separatedBy: "\n")
+        try await acting {
+            for (index, line) in lines.enumerated() {
+                if !line.isEmpty { ControlTools.post(text: line) }
+                guard index < lines.count - 1 else { break }
+                ControlTools.post(returnKey)
+                try await stillIn(target, after: "line \(index + 1) of \(lines.count) and Return")
+            }
+            if pressReturn { ControlTools.post(returnKey) }
         }
         // A check that needs no screen text in the answer: does the field now hold it?
         let lastLine = text.split(separator: "\n").last.map(String.init) ?? text
@@ -144,10 +165,15 @@ struct ControlTools: Sendable {
         let presses = try MacControl.parseKeys(try args.required("keys", limit: 200, what: "which keys, e.g. cmd+l or return"))
         let target = try await target(try MacControl.step(args))
         try refuseSecureFocus(in: target)
-        await acting {
-            for press in presses {
+        // One at a time, checking where each landed: never a run of presses sent blind.
+        try await acting {
+            for (index, press) in presses.enumerated() {
                 ControlTools.post(press)
-                usleep(60_000)
+                if index < presses.count - 1 {
+                    try await stillIn(target, after: "press \(index + 1) of \(presses.count) (\(press.spoken))")
+                } else {
+                    usleep(60_000)
+                }
             }
         }
         let front = await inFront()

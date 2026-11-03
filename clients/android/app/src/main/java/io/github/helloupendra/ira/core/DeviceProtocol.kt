@@ -71,7 +71,7 @@ object DeviceProtocol {
                 if (id.isNullOrEmpty() || tool.isNullOrEmpty()) {
                     DeviceFrame.Unknown("a call without an id or a tool")
                 } else {
-                    DeviceFrame.Call(id, tool, m.obj("args") ?: JsonObject(emptyMap()))
+                    DeviceFrame.Call(id, tool, m.obj("args") ?: JsonObject(emptyMap()), here = m.bool("here") == true)
                 }
             }
             "skills" -> DeviceFrame.Skills(m.strings("skills"))
@@ -125,7 +125,8 @@ sealed interface DeviceFrame {
         val wakePhrase: String?,
     ) : DeviceFrame
 
-    data class Call(val id: String, val tool: String, val args: JsonObject) : DeviceFrame
+    /** [here]: the person asked for it on this phone (not from the Mac or the web). */
+    data class Call(val id: String, val tool: String, val args: JsonObject, val here: Boolean = false) : DeviceFrame
 
     /** The skills switched on for this device changed. */
     data class Skills(val skills: List<String>) : DeviceFrame

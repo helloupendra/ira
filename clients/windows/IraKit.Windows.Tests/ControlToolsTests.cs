@@ -30,6 +30,45 @@ public class ControlToolsTests
         Assert.Throws<ToolFailure>(() => ControlTools.Keyboard.Parse(string.Join(' ', Enumerable.Repeat("down", 13))));
     }
 
+    [Theory]
+    // Start, as the Windows key: "ctrl+esc c m d enter" would open a Command Prompt.
+    [InlineData("ctrl+esc")]
+    [InlineData("ctrl+esc c m d enter")]
+    [InlineData("alt+esc")]
+    // Any Ctrl+Alt shortcut: Windows and other apps take them everywhere.
+    [InlineData("ctrl+alt+t")]
+    // Ira's own: every panel shortcut Settings offers, and Drop's send and copy.
+    [InlineData("ctrl+alt+space")]
+    [InlineData("ctrl+shift+space")]
+    [InlineData("alt+shift+space")]
+    [InlineData("ctrl+alt+i")]
+    [InlineData("ctrl+alt+shift+v")]
+    [InlineData("ctrl+alt+shift+c")]
+    [InlineData("down shift+alt+space")]
+    public void Shortcuts_that_act_outside_the_window_are_refused(string keys) =>
+        Assert.Contains("I never press", Assert.Throws<ToolFailure>(() => ControlTools.Keyboard.Parse(keys)).Message);
+
+    [Theory]
+    [InlineData("esc")]
+    [InlineData("ctrl+shift+t")]
+    [InlineData("shift+tab")]
+    [InlineData("alt+f")]
+    [InlineData("ctrl+space")]
+    [InlineData("shift+space")]
+    public void Shortcuts_inside_the_window_still_work(string keys) => Assert.Single(ControlTools.Keyboard.Parse(keys));
+
+    [Fact]
+    public void Keys_stop_when_a_press_moved_the_keyboard_elsewhere()
+    {
+        IntPtr app = 10, dialog = 11, start = 12;
+        Assert.Null(ControlTools.Moved(app, app, 5, 5, null));
+        // A dialog the app itself opened (Save as, say) is still the app.
+        Assert.Null(ControlTools.Moved(dialog, app, 5, 5, null));
+        Assert.Equal("another app took the keyboard", ControlTools.Moved(start, app, 9, 5, null));
+        Assert.Equal("Ira doesn't act there", ControlTools.Moved(dialog, app, 5, 5, "I never act in File Explorer"));
+        Assert.Equal("nothing is in front", ControlTools.Moved(IntPtr.Zero, app, 0, 5, null));
+    }
+
     [Fact]
     public void The_PC_refuses_terminals_Task_Manager_and_password_managers_by_program()
     {

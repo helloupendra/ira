@@ -20,7 +20,7 @@ function element() {
 }
 
 async function newCall() {
-  const world = { now: 1000, sent: [], volume: [], sources: [], lines: [], turns: [] };
+  const world = { now: 1000, sent: [], volume: [], sources: [], lines: [], turns: [], steps: [] };
   const elements = {};
   let socket;
   class WebSocket {
@@ -103,7 +103,20 @@ async function newCall() {
     scrollDown() {},
     animateMeter() {},
     micMessage: () => "",
+    // A tool's steps, as app.js shows them in the chat.
+    toolPhrase: (name) => `Checking ${name}…`,
+    startWorking: (li) => {
+      sandbox.state.working = { li };
+      world.steps.push("start");
+    },
+    workingOn: (name) => world.steps.push(`on ${name}`),
+    workedOn: (name) => world.steps.push(`done ${name}`),
+    stopWorking: () => {
+      sandbox.state.working = null;
+      world.steps.push("stop");
+    },
   };
+  sandbox.state.working = null;
   vm.createContext(sandbox);
   vm.runInContext(SOURCE, sandbox);
   const live = vm.runInContext("IraLive", sandbox);
@@ -135,6 +148,33 @@ const QUIET = 0;
 const VOICE = 0.2;
 
 const scenarios = {
+  // As the chat shows them: the step in words and its receipt; and "let me look", written
+  // before the tool, is not glued to the answer when "done" comes without its own text.
+  async "a tool's steps show, and its lead-in is not the answer"() {
+    const call = await newCall();
+    call.server({ type: "heard", turn: 1, text: "kal ka calendar" });
+    call.server({ type: "delta", turn: 1, text: "Let me look. " });
+    call.server({ type: "tool", turn: 1, name: "calendar_read" });
+    call.server({ type: "tool_result", turn: 1, name: "calendar_read", ok: true });
+    call.server({ type: "delta", turn: 1, text: "Kal 3 baje meeting hai." });
+    call.server({ type: "done", turn: 1, text: "" });
+    const ira = call.lines.filter((li) => li.kind === "ira").pop();
+    assert.strictEqual(ira.text.textContent, "Kal 3 baje meeting hai.");
+    assert.deepStrictEqual(call.steps, ["start", "on calendar_read", "done calendar_read", "stop"]);
+    const remembered = call.turns[call.turns.length - 1];
+    assert.strictEqual(JSON.stringify(remembered.how.tools), JSON.stringify([{ name: "calendar_read", ok: true }]));
+  },
+
+  async "an answer with no tool is as before"() {
+    const call = await newCall();
+    call.server({ type: "heard", turn: 1, text: "namaste" });
+    call.server({ type: "delta", turn: 1, text: "Namaste! " });
+    call.server({ type: "done", turn: 1, text: "Namaste! Kaise ho?" });
+    assert.strictEqual(call.lines.filter((li) => li.kind === "ira").pop().text.textContent, "Namaste! Kaise ho?");
+    assert.deepStrictEqual(call.steps, []);
+    assert.strictEqual(JSON.stringify(call.turns[call.turns.length - 1].how.tools), "[]");
+  },
+
   async "a cough is not speech"() {
     const call = await newCall();
     call.frames(QUIET, 10);

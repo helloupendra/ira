@@ -32,6 +32,7 @@ from pydantic import ValidationError
 from ira import toollog
 from ira.approvals import never_app, never_type, open_refusal
 from ira.conversations import Conversations
+from ira.devices.hub import asked_from
 from ira.devices.naming import Roster, named_devices
 from ira.models.base import ChatResponse, Message, StreamDone, TextDelta, ToolCall
 from ira.models.gateway import Gateway, GatewayError
@@ -146,7 +147,10 @@ YES_RULE = (
     "would do: the person is then shown a card and asked."
 )
 # A device tool is offered for this many rounds of a turn. Several calls in one round count once.
+# The screen and control tools work step by step: for them it is the same call this many rounds
+# in a row (the turn's own limit, max_tool_rounds, still bounds the job).
 SAME_TOOL_ROUNDS = 3
+STEP_SKILLS = frozenset({"screen", "control"})
 TOOL_SPENT = (
     "Not run: this tool has already been tried several times in this turn. Answer with what it "
     "gave, and say what you could not find."
@@ -425,16 +429,17 @@ class Assistant:
                 + "; ".join(
                     f"{self.device_label(d)}: {', '.join(apps)}" for d, apps in trusted.items()
                 )
-                + ". Sending, calls, payments and deleting still ask.\n"
+                + ". Only on the device the person talks from: on another, each step asks. "
+                "Sending, calls, payments and deleting still ask.\n"
             )
         if approved:
             prompt += (
                 "- The person approved screen and app control with their PIN, on:\n"
                 + "".join(f"  - {line}\n" for line in approved)
-                + "  There, screen_read, screen_act, the Mac's control tools, app_open, "
-                "url_open and media tools run at once: do not ask for a PIN or a yes for "
-                "them, and say briefly what you did. Sending, calls, payments and deleting "
-                "still ask.\n"
+                + "  There, screen_read, screen_act, the computers' control tools (mac_*, pc_*), "
+                "app_open, url_open and media tools run at once, even when the person talks "
+                "from another device: do not ask for a PIN or a yes for them, and say briefly "
+                "what you did. Sending, calls, payments and deleting still ask.\n"
             )
         off = self.switched_off(user_id) if self.switched_off is not None else []
         if off:
@@ -761,6 +766,7 @@ class Assistant:
         last_words = ""  # what the round before a forced one said, in case that one says nothing
         used: list[str] = []
         rounds_of: Counter[str] = Counter()
+        in_a_row: Counter[tuple[str, str]] = Counter()  # the same call, round after round
         spent: set[str] = set()
         waiting = False
         asked_for: set[str] = set()
@@ -1000,10 +1006,21 @@ class Assistant:
             )
             history.extend(results)
             # A device tool tried round after round has given what it has: answer with that.
+            # Using a screen goes step by step (read, click, read again, type), so those tools
+            # are spent only by the same call, with the same arguments, round after round.
             rounds_of.update({c.name for c in response.tool_calls})
+            this_round = {(c.name, _same_call(c)) for c in response.tool_calls}
+            in_a_row = Counter({call: in_a_row[call] + 1 for call in this_round})
             spent = {
                 name
                 for name, count in rounds_of.items()
+                if count >= SAME_TOOL_ROUNDS
+                and name in personal
+                and personal[name].source == "device"
+                and personal[name].skill not in STEP_SKILLS
+            } | {
+                name
+                for (name, _), count in in_a_row.items()
                 if count >= SAME_TOOL_ROUNDS
                 and name in personal
                 and personal[name].source == "device"
@@ -1235,7 +1252,8 @@ class Assistant:
     ) -> ToolRun:
         """A device action the person allowed ahead (a window, a trusted app): run it."""
         try:
-            value = await extra.run(arguments)
+            with asked_from(self._from.get(conversation_id)):
+                value = await extra.run(arguments)
         except ToolError as exc:
             content = wrap_untrusted(extra.source, extra.label, _result({"error": str(exc)}))
             return ToolRun(content, False, safe_call, private=True, outcome="error")
@@ -1325,15 +1343,11 @@ class Assistant:
             return run
         elsewhere = self._elsewhere(extra, arguments, conversation_id)
         if elsewhere is not None:
-            # Asked from one device, acting on another: never at once, never unsaid. The
-            # read-back names the other device, and the person says yes first.
+            # Asked from one device, acting on another: never unsaid. The read-back names the
+            # other device and the person says yes first, unless they opened an approval window
+            # for that very device with their PIN (below): its next steps then run as there.
             extra = dataclasses.replace(extra, tier=max(2, extra.tier), label=elsewhere)
-        if (
-            extra.tier >= 2
-            and self.approvals is not None
-            and extra.source == "device"
-            and elsewhere is None
-        ):
+        if extra.tier >= 2 and self.approvals is not None and extra.source == "device":
             try:
                 target, _ = extra.target(arguments)
             except ToolError:
@@ -1355,9 +1369,12 @@ class Assistant:
                     extra, arguments, safe_call, conversation_id, target, "approved"
                 )
             # A trusted app counts only for the app it acts in: one named that is not the
-            # app in front is not trusted.
-            if (app is None or app == front) and self.approvals.trusts(
-                user_id, target, front, extra.name, extra.skill
+            # app in front is not trusted. And only on the device the person talks from: on
+            # another, they can't see what it does, so each step there waits for their yes.
+            if (
+                elsewhere is None
+                and (app is None or app == front)
+                and self.approvals.trusts(user_id, target, front, extra.name, extra.skill)
             ):
                 # The app in front is one the person trusts: tap and type there at once.
                 return await self._run_now(
@@ -1398,7 +1415,8 @@ class Assistant:
             )
             return _proposed(pending, safe_call)
         try:
-            value = await asyncio.wait_for(extra.run(arguments), self.tool_seconds)
+            with asked_from(self._from.get(conversation_id)):
+                value = await asyncio.wait_for(extra.run(arguments), self.tool_seconds)
             self._note_front(conversation_id, extra, arguments, value)
         except TimeoutError:
             return _failed(f"it did not answer within {self.tool_seconds:g} seconds", safe_call)
@@ -1445,6 +1463,11 @@ def _refused(call: ToolCall) -> ToolRun:
 def _safe(call: ToolCall) -> ToolCall:
     """The call as it is replayed in the history: arguments that are a JSON object."""
     return ToolCall(call.id, call.name, call.replay_arguments())
+
+
+def _same_call(call: ToolCall) -> str:
+    """A call's arguments as one string, the same however the model ordered or spaced them."""
+    return json.dumps(call.parsed_arguments() or {}, sort_keys=True, ensure_ascii=False)
 
 
 def _result(value: Any, limit: int = MAX_TOOL_RESULT_CHARS) -> str:

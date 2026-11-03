@@ -114,10 +114,14 @@ The server answers:
 **Calls.** The server calls a tool:
 
 ```json
-{"type": "call", "id": "9b0c...", "tool": "file_read", "args": {"path": "~/Downloads/invoice.pdf"}}
+{"type": "call", "id": "9b0c...", "tool": "file_read", "args": {"path": "~/Downloads/invoice.pdf"}, "here": true}
 ```
 
-and the device answers with the same `id`:
+`here` is true when the person asked on this very device, and false when they asked from
+another device, the web or a channel. The Android app's Google Play build reads SMS and the
+call log only when it is true: Play allows those only while the person talks to Ira on the phone.
+
+The device answers with the same `id`:
 
 ```json
 {"type": "result", "id": "9b0c...", "ok": true, "content": {"summary": "Read invoice.pdf (PDF).", "text": "..."}}

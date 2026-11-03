@@ -37,6 +37,7 @@ internal sealed class SettingsWindow : Window
     private readonly StackPanel _skills = new() { Spacing = 4 };
     private readonly StackPanel _hello = new() { Spacing = 8 };
     private bool? _helloShown; // what the Hello section shows: null not paired, then off or on
+    private string? _helloNotice; // why turning it off reached this PC only
     private readonly ListView _reads = new() { SelectionMode = ListViewSelectionMode.None };
     private readonly SelectorBarItem _readTab = new() { Text = "What I read" };
     private readonly SelectorBar _tabs = new();
@@ -195,6 +196,7 @@ internal sealed class SettingsWindow : Window
         if (_hello.Children.Count > 0 && state == _helloShown) return;
         _helloShown = state;
         _hello.Children.Clear();
+        if (_helloNotice is { } notice) _hello.Children.Add(Note(notice));
         if (state is null)
         {
             _hello.Children.Add(Note("Pair this PC with your Ira first."));
@@ -205,6 +207,17 @@ internal sealed class SettingsWindow : Window
             var off = new Button { Content = "Turn off" };
             off.Click += async (_, _) =>
             {
+                off.IsEnabled = false;
+                // Ira forgets the key too, so its pages stop listing this PC as one that approves.
+                _helloNotice = null;
+                try
+                {
+                    if (_controller.Ask is { } ask && _controller.Settings is { } settings) await ask.RemoveHelloAsync(settings.DeviceId);
+                }
+                catch (IraError)
+                {
+                    _helloNotice = "Off on this PC. Ira could not be told now: remove the key on Ira's Approvals page.";
+                }
                 await HelloKey.DeleteAsync();
                 _controller.SetHello(false);
             };

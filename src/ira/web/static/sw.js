@@ -3,7 +3,7 @@
 // audio and actions must always come from the server, never from a cache.
 // It also takes what is shared to the installed app (Share → Ira) for Drop.
 
-const CACHE = "ira-shell-v37";
+const CACHE = "ira-shell-v38";
 const SHARE = "ira-share";
 const SHELL = [
   "/",
@@ -76,11 +76,22 @@ self.addEventListener("fetch", (event) => {
     fetch(request)
       .then((response) => {
         if (response.ok && SHELL.includes(url.pathname)) {
+          // Kept by its path alone: the page asks for "/app.js?v=28", and offline any "?v=" gets it.
           const copy = response.clone();
-          caches.open(CACHE).then((cache) => cache.put(event.request, copy));
+          caches.open(CACHE).then((cache) => cache.put(url.pathname, copy));
         }
         return response;
       })
-      .catch(() => caches.match(event.request).then((hit) => hit || caches.match("/"))),
+      .catch(() => offline(event.request, url)),
   );
 });
+
+// Offline: a shell file by its path, whatever "?v=" the page put on it. Only a page load falls
+// back to the app's page; a script or style that is not kept fails as itself, never as HTML.
+async function offline(request, url) {
+  const cache = await caches.open(CACHE);
+  const hit = await cache.match(url.pathname);
+  if (hit) return hit;
+  if (request.mode === "navigate") return (await cache.match("/")) || Response.error();
+  return Response.error();
+}

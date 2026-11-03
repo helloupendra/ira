@@ -167,3 +167,135 @@ async def test_a_tool_nobody_has_is_still_unknown():
     await turn(runtime, owner, "do it", iphone.id)
     told = [m for m in runtime.test_provider.calls[1]["messages"] if m.role == "tool"][-1].content
     assert "unknown tool 'made_up'" in told
+
+
+CLICK = {"type": "object", "properties": {"label": {"type": "string"}, "app": {"type": "string"}}}
+
+
+def control_world(script: list[Any]):
+    """A Mac with screen control, and an iPhone to talk from."""
+    provider = ScriptedProvider(script)
+    runtime = make_runtime(provider=provider)
+    runtime.test_provider = provider
+    owner = runtime.accounts.create_first_owner("owner@example.com", PASSWORD)
+    devices = runtime.hub.devices
+    code, _ = devices.start_pairing(owner.id, "mac", "MacBook", ["control", "screen"])
+    _, mac = devices.redeem(code)
+    code, _ = devices.start_pairing(owner.id, "ios", "My iPhone", ["contacts"])
+    _, iphone = devices.redeem(code)
+    mac_tools = {
+        "screen_read": DeviceTool("screen_read", "Read the screen.", NOTHING, "screen", 0),
+        "mac_click": DeviceTool("mac_click", "Click a control.", CLICK, "control", 3),
+    }
+    iphone_tools = {
+        "contacts_lookup": DeviceTool("contacts_lookup", "Look up.", OPEN, "contacts", 0)
+    }
+    runtime.hub.connections[mac.id] = Connection(mac, Socket(), mac_tools, 1.0)
+    runtime.hub.connections[iphone.id] = Connection(iphone, Socket(), iphone_tools, 2.0)
+    ran: list[tuple[int, str]] = []
+
+    async def fake_call(device_id: int, name: str, arguments: dict[str, Any]) -> Any:
+        ran.append((device_id, name))
+        return {"app": "com.apple.Safari", "summary": "Done."}
+
+    runtime.hub.call = fake_call  # type: ignore[method-assign]
+    return runtime, owner, mac, iphone, ran
+
+
+def proposals(events: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    return [e["action"] for e in events if e["type"] == "action"]
+
+
+async def test_a_window_opened_for_the_mac_runs_its_steps_from_the_iphone_too():
+    # The PIN was given for the MacBook: its next steps run, wherever the person talks from.
+    runtime, owner, mac, iphone, ran = control_world(
+        [call("mac_click", {"label": "Search"}), "Ok."]
+    )
+    runtime.approvals.open(owner.id, mac.id)
+    events = await turn(runtime, owner, "mac par search dabao", iphone.id)
+    assert ran == [(mac.id, "mac_click")] and proposals(events) == []
+    system = runtime.test_provider.calls[0]["messages"][0].content
+    assert "even when the person talks from another device" in system
+
+
+async def test_a_window_for_another_device_covers_nothing_on_the_mac():
+    runtime, owner, mac, iphone, ran = control_world([call("mac_click", {"label": "Search"}), "?"])
+    runtime.approvals.open(owner.id, iphone.id)
+    events = await turn(runtime, owner, "mac par search dabao", iphone.id)
+    assert ran == []
+    [proposed] = proposals(events)
+    assert "not My iPhone" in proposed["summary"]
+
+
+async def test_a_trusted_app_runs_at_once_only_on_the_device_talked_from():
+    script = [call("screen_read", {}), call("mac_click", {"label": "Search"}), "Ok."]
+    # On the Mac itself, Safari trusted and in front: the click runs at once.
+    runtime, owner, mac, _, ran = control_world(list(script))
+    runtime.approvals.set_trusted(owner.id, mac.id, ["com.apple.Safari"])
+    events = await turn(runtime, owner, "search dabao", mac.id)
+    assert ran == [(mac.id, "screen_read"), (mac.id, "mac_click")] and proposals(events) == []
+    # From the iPhone, the person can't see it: the click does not run at once. (After a screen
+    # was read, it is not even proposed: what a screen shows may be someone else's words.)
+    runtime, owner, mac, iphone, ran = control_world(list(script))
+    runtime.approvals.set_trusted(owner.id, mac.id, ["com.apple.Safari"])
+    events = await turn(runtime, owner, "mac par search dabao", iphone.id)
+    assert ran == [(mac.id, "screen_read")]
+    click = next(e for e in events if e["type"] == "tool_result" and e["name"] == "mac_click")
+    assert click["ok"] is False
+
+
+async def test_a_terminal_on_another_device_is_refused_not_asked():
+    # Before, a step on another device skipped this check and was only asked.
+    step = call("mac_click", {"label": "Run", "app": "Terminal"})
+    runtime, owner, mac, iphone, ran = control_world([step, "Nahi."])
+    runtime.approvals.open(owner.id, mac.id)
+    events = await turn(runtime, owner, "mac par terminal mein run dabao", iphone.id)
+    assert ran == [] and proposals(events) == []
+    told = [m for m in runtime.test_provider.calls[1]["messages"] if m.role == "tool"][-1].content
+    assert "never acts in Terminal" in told
+
+
+class Frames(Socket):
+    def __init__(self) -> None:
+        self.sent: list[dict[str, Any]] = []
+
+    async def send_text(self, data: str) -> None:
+        self.sent.append(json.loads(data))
+
+
+async def test_a_call_tells_its_device_whether_it_was_asked_there():
+    # Google Play lets the phone read SMS and the call log only while the person talks to Ira
+    # on that phone: each call says whether it was asked right there.
+    from ira.devices.hub import asked_from
+    from ira.tools.registry import ToolTimeout
+
+    runtime, _, mac, iphone, _ = world(["Ok."])
+    hub = runtime.hub
+    del hub.call  # the real one, not the world's fake
+    socket = Frames()
+    hub.connections[iphone.id] = Connection(iphone, socket, hub.connections[iphone.id].tools, 2.0)
+    for asked, here in ((iphone.id, True), (mac.id, False), (None, False)):
+        with asked_from(asked), pytest.raises(ToolTimeout):
+            await hub.call(iphone.id, "contacts_lookup", {"name": "Avery"}, timeout=0.01)
+        assert socket.sent[-1]["type"] == "call" and socket.sent[-1]["here"] is here
+
+
+async def test_a_turn_says_which_device_it_asks_from_while_its_tools_run():
+    from ira.devices.hub import ASKED_FROM
+
+    runtime, owner, mac, iphone, _ = world(
+        [call("contacts_lookup", {"name": "Avery"}), "Mil gaya.", call("screen_read", {}), "Hai."]
+    )
+    seen: list[tuple[str, int | None]] = []
+
+    async def record(device_id: int, name: str, arguments: dict[str, Any]) -> Any:
+        seen.append((name, ASKED_FROM.get()))
+        return {"found": True}
+
+    runtime.hub.call = record  # type: ignore[method-assign]
+    await turn(runtime, owner, "Avery ka number", iphone.id)
+    await turn(runtime, owner, "mac par kya hai", iphone.id)
+    # Asked on the iPhone: the iPhone's own lookup is "here", the Mac's screen is not.
+    assert seen == [("contacts_lookup", iphone.id), ("screen_read", iphone.id)]
+    assert ASKED_FROM.get() is None  # nothing is left set after the turn
+    _ = mac

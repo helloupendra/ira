@@ -3,7 +3,7 @@ import Foundation
 /// A simple energy voice detector, run on the Mac on 20 ms frames of 16 kHz audio.
 ///
 /// * Speech starts when the level stays above the threshold for `startMs`
-///   (60 ms), so a click or a cough does not count.
+///   (160 ms), so a click or a cough does not count.
 /// * When it starts, the last `leadInMs` (about 300 ms) before it are sent
 ///   too, so the first syllable is not cut.
 /// * Speech ends after `hangoverMs` (about 600 ms) of quiet; the end is

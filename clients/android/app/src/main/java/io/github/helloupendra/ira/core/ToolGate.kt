@@ -13,6 +13,8 @@ object ToolGate {
         val callOn: Boolean,
         val granted: Set<String>,
         val special: Set<SpecialAccess>,
+        /** The person asked for this on this phone, not from another device (see [AskedHere]). */
+        val askedHere: Boolean = true,
     )
 
     fun check(spec: ToolSpec, state: State): String? {
@@ -27,6 +29,11 @@ object ToolGate {
                     "Digital assistant app); calls and SMS need it"
             }
             if (!state.callOn) return "calls and SMS are read only while you talk to Ira on the phone"
+            // The app open is not enough: a read asked from the Mac or the web is not the person
+            // talking to Ira on the phone. Sending still waits for their yes on the card.
+            if (spec.tier == 0 && !state.askedHere) {
+                return "calls and SMS are read only when you ask on the phone itself, not from another device"
+            }
         }
         val missing = spec.permissions.filter { it !in state.granted }
         if (missing.isNotEmpty()) {

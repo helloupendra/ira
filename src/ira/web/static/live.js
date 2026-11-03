@@ -1,6 +1,7 @@
 // A live call with Ira: talk and listen like a phone call, no button between turns.
 // The protocol is docs/realtime.md (version 1). Loaded after app.js, whose helpers
-// ($, state, addTurn, remember, setStatus, announce, actionCard, rms, scrollDown) it uses.
+// ($, state, addTurn, remember, setStatus, announce, actionCard, rms, scrollDown, and
+// startWorking, workingOn, workedOn, stopWorking, toolPhrase for a tool's steps) it uses.
 // The voice detector runs here, on the device: audio leaves only while you speak.
 "use strict";
 
@@ -158,6 +159,7 @@ const IraLive = (() => {
       stopped: new Set(), // turns whose audio was cut off
       turns: new Map(), // turn number -> its Ira bubble
       yours: new Map(), // turn number -> your line, and what was remembered of it
+      tools: new Map(), // turn number -> the tools it used, for the answer's "how"
       ready: false,
       wakeLock: null,
     };
@@ -183,6 +185,7 @@ const IraLive = (() => {
     if (!call) return;
     const ending = call;
     call = null;
+    for (const li of ending.turns.values()) doneWorking(li);
     try {
       if (ending.ws.readyState === WebSocket.OPEN) ending.ws.send(JSON.stringify({ type: "bye" }));
       ending.ws.close();
@@ -401,9 +404,16 @@ const IraLive = (() => {
     }
     const li = call.turns.get(turn);
     if (li) {
+      doneWorking(li);
       li.remove();
       call.turns.delete(turn);
     }
+    call.tools.delete(turn);
+  }
+
+  // The answer this bubble holds is no longer being worked on: its steps and their receipts go.
+  function doneWorking(li) {
+    if (state.working && state.working.li === li) stopWorking();
   }
 
   function onMessage(data) {
@@ -440,9 +450,30 @@ const IraLive = (() => {
       }
       case "delta": {
         const li = bubble(message.turn);
+        doneWorking(li);
         const text = $(".turn-text", li);
         text.textContent += message.text;
         scrollDown();
+        break;
+      }
+      case "tool": {
+        // Ira is using a tool: say so, as the chat does, with its receipt while it runs. What
+        // she wrote before it was a lead-in ("let me look"), not the answer: it goes.
+        const li = bubble(message.turn);
+        $(".turn-text", li).textContent = "";
+        if (!state.working || state.working.li !== li) startWorking(li);
+        workingOn(message.name);
+        label(toolPhrase(message.name));
+        if (!call.tools.has(message.turn)) call.tools.set(message.turn, []);
+        call.tools.get(message.turn).push({ name: message.name });
+        break;
+      }
+      case "tool_result": {
+        workedOn(message.name);
+        const used = [...(call.tools.get(message.turn) || [])]
+          .reverse()
+          .find((tool) => tool.name === message.name && tool.ok === undefined);
+        if (used) used.ok = message.ok !== false;
         break;
       }
       case "audio":
@@ -454,8 +485,10 @@ const IraLive = (() => {
         break;
       case "done": {
         const li = bubble(message.turn);
+        doneWorking(li);
         if (message.text) $(".turn-text", li).textContent = message.text;
-        remember({ role: "ira", text: message.text, how: { model: null, tools: [] } });
+        remember({ role: "ira", text: message.text, how: { model: null, tools: call.tools.get(message.turn) || [] } });
+        call.tools.delete(message.turn);
         if (message.message_id && typeof IraPersonal !== "undefined") IraPersonal.answered(li, message.message_id);
         announce(message.text);
         call.doneThrough = Math.max(call.doneThrough, message.turn);
@@ -466,6 +499,7 @@ const IraLive = (() => {
         break;
       }
       case "interrupted":
+        if (call.turns.has(message.turn)) doneWorking(call.turns.get(message.turn));
         call.stopped.add(message.turn);
         call.doneThrough = Math.max(call.doneThrough, message.turn);
         // Your words were heard: she stops now, even an answer that was fully sent.
