@@ -265,13 +265,23 @@ OWN_DATA_SKILLS = frozenset(
 )
 
 
+# A tool that reads, by its name, and skills whose acts hand back what something else wrote.
+_READS = re.compile(r"_(?:read|search|find|list|recent|status|tabs|elements)$")
+RETURNS_OTHERS_WORDS = frozenset({"shortcuts"})
+# Ira's own tools that keep words for later, when they come back as her own.
+KEEPS_WORDS = frozenset({"remind_me"})
+
+
 def taints(tool: PersonalTool) -> bool:
     """Whether what this tool returns is text written by others, so that an action that
     needs a yes or a PIN may then come only from the person's own words. A tool that acts
-    (Tier 1, run at once) returns its own status ("Opened YouTube"), which does not."""
+    returns its own status ("Opened YouTube"), which does not, but a read taints whatever its
+    tier: Android's screen_read takes a PIN, and shows what is on the screen all the same."""
     if tool.source in ("web", "connector", "drop"):
         return True
-    if tool.source != "device" or tool.tier >= 1:
+    if tool.source != "device":
+        return False
+    if tool.tier >= 1 and not _READS.search(tool.name) and tool.skill not in RETURNS_OTHERS_WORDS:
         return False
     return (tool.skill or "") not in OWN_DATA_SKILLS
 
@@ -610,6 +620,7 @@ class Assistant:
             )
             if outcome.status in ("executed", "failed"):
                 # The model sees what it did (or why it failed) and carries on with the plan.
+                self.guard.cancel_older(pending, actor=actor, channel=channel)
                 async for event in self._turn(
                     text, conversation_id, channel, actor, True, user_id, confirmed=True
                 ):
@@ -617,6 +628,8 @@ class Assistant:
                 return
         else:
             outcome = self.guard.cancel(pending.id, actor=actor, channel=channel, user_id=user_id)
+        # Their word answered the newest. An older proposal must not run on a later "ok".
+        self.guard.cancel_older(pending, actor=actor, channel=channel)
         message = outcome.message
         self.conversations.append(
             conversation_id,
@@ -822,9 +835,11 @@ class Assistant:
         call_ids = {c.id for m in history for c in m.tool_calls or []}
         # This turn has read text written by others. A turn that carries on after a PIN starts
         # so: the person has said nothing new since what came before it.
-        tainted = text is None
+        # So does one carrying on after a "yes": that word says nothing of what comes next.
+        tainted = text is None or confirmed
+        said = [_last_user_text(history[:start]), asked] if confirmed else [asked]
         asked_check = AskedFor(
-            self.gateway, [asked], tier=tier, seconds=patience * 2 if patience else None
+            self.gateway, said, tier=tier, seconds=patience * 2 if patience else None
         )
         asked_check.nothing_named = nothing_named
         withheld: set[str] = set()
@@ -935,7 +950,13 @@ class Assistant:
             assert response is not None
             model = response.model
             if not response.tool_calls and response.text:
-                prose, recovered = recover(response.text, {t["name"] for t in tools})
+                # Once a turn has read others' words, a call written as text may be theirs: quoted,
+                # not meant. The model is asked to make it properly instead.
+                prose, recovered = (
+                    (response.text, [])
+                    if tainted
+                    else recover(response.text, {t["name"] for t in tools})
+                )
                 if recovered:  # a call written as text: run it, as the model meant
                     log.warning("%s wrote %d tool call(s) as text", model, len(recovered))
                     response.text, response.tool_calls = prose, recovered
@@ -1512,7 +1533,10 @@ class Assistant:
         # After a read, an act goes on only on the person's own words.
         if (
             tainted
-            and (extra.tier >= 2 or (extra.tier >= 1 and extra.source == "device"))
+            and (
+                extra.tier >= 2
+                or (extra.tier >= 1 and (extra.source == "device" or extra.name in KEEPS_WORDS))
+            )
             and not await _may_follow_a_read(extra, asked)
         ):
             return _refused(safe_call)
@@ -1555,13 +1579,18 @@ class Assistant:
         except TimeoutError:
             return _failed(f"it did not answer within {self.tool_seconds:g} seconds", safe_call)
         except ToolError as exc:
-            if extra.source != "device":
+            if extra.source == "ira":
                 return _failed(str(exc), safe_call)
-            # A device's own error text is its output: wrapped and private; it taints the turn
-            # when the tool reads what others wrote.
+            # A device's or a connection's error text is its output: wrapped and private; it
+            # taints the turn when the tool reads what others wrote.
             content = wrap_untrusted(extra.source, extra.label, _result({"error": str(exc)}))
             return ToolRun(
-                content, False, safe_call, untrusted=taints(extra), private=True, outcome="error"
+                content,
+                False,
+                safe_call,
+                untrusted=taints(extra),
+                private=extra.private,
+                outcome="error",
             )
         except Exception as exc:
             log.exception("tool %s raised", call.name)
@@ -1592,7 +1621,7 @@ async def _may_follow_a_read(extra: PersonalTool, asked: AskedFor | None) -> boo
     """Whether this act may go on to its usual gate in a turn that has read what others wrote: only
     on the person's own words, and never one that reaches others or takes a PIN, so that a mail
     cannot put a recipient on a card."""
-    if asked is None or extra.source != "device":
+    if asked is None or (extra.source != "device" and extra.name not in KEEPS_WORDS):
         return False
     if extra.tier >= 3 or outward(extra.name, extra.skill):
         return False

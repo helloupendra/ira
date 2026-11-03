@@ -489,6 +489,23 @@ class ActionGuard:
         )
         return _row_to_action(row) if row else None
 
+    def cancel_older(
+        self, answered: PendingAction, *, actor: str | None = None, channel: str | None = None
+    ) -> int:
+        """Cancel this person's other Tier 2 proposals in the conversation, older than the one
+        they just answered: their word was for the one they could see last, and those must not run
+        on a later "ok". A card they can see and press is a different thing: only a word settles
+        these. Returns how many."""
+        rows = self.store.query(
+            "SELECT id FROM pending_actions WHERE conversation_id = ? AND status = 'pending' "
+            "AND tier = 2 AND user_id IS ? "
+            "AND rowid < (SELECT rowid FROM pending_actions WHERE id = ?)",
+            (answered.conversation_id, answered.user_id, answered.id),
+        )
+        for row in rows:
+            self.cancel(row["id"], actor=actor, channel=channel, user_id=answered.user_id)
+        return len(rows)
+
     def awaiting_yes(self, conversation_id: str, user_id: int | None) -> PendingAction | None:
         """The newest Tier 2 proposal in a conversation that this person may say yes to."""
         pending = self.latest_pending(conversation_id)

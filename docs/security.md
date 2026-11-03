@@ -215,6 +215,14 @@ An open approval window (below) still runs its covered steps from the device it 
 **A tool refused for what it is** is not offered again that turn, so she says what stopped her
 instead of trying around it.
 
+**What taints a turn goes by what a tool reads, not its tier**: Android's `screen_read` takes a PIN
+and still shows others' words, and a turn carrying on after a "yes" starts tainted, since that word
+says nothing of what comes next. A connection's error text is wrapped and taints too. A call the
+model writes as text is run only when it ends the answer, and never once the turn has read others'
+words: it may be quoting them. Words kept for later (`remind_me`) need the check as well, so a mail
+cannot come back days later as Ira's own. A word to the newest of several proposals also drops the
+older ones, so one the person never saw cannot run on a later "ok".
+
 **Rounds that push a model.** When a turn stops short and the model is asked to go on, it is offered
 what reads and only the acts the check passed. A tool is required only when an act that passed has
 not run; otherwise it may simply answer.

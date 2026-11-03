@@ -62,6 +62,9 @@ _STARTS = (
 )
 
 
+_WORDS_AFTER = re.compile(r"[^\W\d_]{2}")
+
+
 def _value(text: str) -> Any:
     text = text.strip()
     try:
@@ -109,11 +112,22 @@ def _found(text: str) -> list[tuple[int, str, dict[str, Any] | None]]:
     return sorted(found, key=lambda item: item[0])
 
 
+def _after_last_call(text: str) -> str:
+    ends = [
+        match.end()
+        for pattern in (_INVOKE, _KIMI, _HERMES, _TAGGED, _NAMED, _GLM)
+        for match in pattern.finditer(text)
+    ]
+    return _WRAPPERS.sub("", text[max(ends, default=0) :])
+
+
 def recover(text: str, offered: set[str]) -> tuple[str, list[ToolCall]]:
     """(the prose before the markup, the calls) when every call names an offered tool with
     an object of arguments; otherwise (text, []) and the text stays as it was."""
     found = _found(text or "")
     if not found or any(name not in offered or args is None for _, name, args in found):
+        return text, []
+    if _WORDS_AFTER.search(_after_last_call(text)):  # it goes on to talk about it: only quoted
         return text, []
     calls = [
         ToolCall(f"recovered_{secrets.token_hex(4)}", name, json.dumps(args, ensure_ascii=False))
