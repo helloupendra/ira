@@ -827,3 +827,38 @@ async def test_the_turn_says_which_round_its_final_words_came_from():
     runtime.assistant.max_tool_rounds = 1
     events = await turn(runtime, owner, "screen padho", ids["mac"])
     assert events[-1]["said_in"] == "wrap-up"
+
+
+@pytest.mark.parametrize(
+    "said",
+    [
+        "I have a degree in computer science",
+        "at the computer repair shop",
+        "the computer repair shop",
+        "laptop ka charger kharab hai",
+        "laptop ka bill kahan hai",
+        "लैपटॉप का चार्जर कहाँ है",
+        "charge my laptop",
+    ],
+)
+def test_said_of_the_thing_it_names_no_device(said: str):
+    assert named_devices(said, ALL) is None
+
+
+@pytest.mark.parametrize(
+    "said",
+    [
+        "What's on my laptop?",
+        "Which apps are running on my computer?",
+        "open Safari on my laptop please",
+        "what is on my laptop screen",
+        "in my laptop",
+        "from the computer, read the file",
+        "laptop ki screen padho",
+        "computer pe timer dekho",
+        "लैपटॉप पर क्या खुला है",
+        "मेरे कंप्यूटर की स्क्रीन",
+    ],
+)
+def test_said_as_a_place_it_names_the_computer(said: str):
+    assert named_devices(said, ALL) == {1}

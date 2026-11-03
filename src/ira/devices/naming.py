@@ -68,6 +68,19 @@ _PHONE_PLACE = re.compile(
 )
 
 
+# What may follow a device said as a place: a part of it, or the rest of the sentence.
+_PHRASE_GOES_ON = (
+    r"(?:screen|display|window|desktop|please|now|right|and|or|too|also|today|kya|kaun|what|which)"
+    r"(?![a-z0-9])"
+)
+# "laptop ka number", "laptop ka charger": said of the thing, not of what is on it.
+_NOT_ON_IT = (
+    r"(?:number|no|nambar|charger|cable|cover|bag|case|stand|price|daam|dam|kimat|keemat|warranty|"
+    r"repair|bill)(?![a-z0-9])"
+)
+_NOT_ON_IT_HI = "नंबर|नम्बर|चार्जर|केबल|कवर|बैग|कीमत|दाम|वारंटी|बिल"
+
+
 def _says(text: str, word: str) -> bool:
     if re.search(f"[{_DEVANAGARI}]", word):
         return bool(re.search(rf"(?<![{_DEVANAGARI}]){re.escape(word)}(?![{_DEVANAGARI}])", text))
@@ -76,19 +89,26 @@ def _says(text: str, word: str) -> bool:
 
 def _as_place(text: str, word: str) -> bool:
     """The word said as where something is or happens: "on my laptop", "laptop par", "laptop se",
-    "laptop ki screen", "my laptop's screen"; not "charge my laptop" or "laptop ka number"."""
+    "laptop ki screen", "my laptop's screen"; not "charge my laptop", "laptop ka charger", "a degree
+    in computer science" or "at the computer repair shop"."""
     w = re.escape(word)
     if re.search(f"[{_DEVANAGARI}]", word):
         d = _DEVANAGARI
         return bool(
-            re.search(rf"(?<![{d}]){w}\s+(?:पर|पे|में|से|का|के|की)(?![{d}])(?!\s*(?:नंबर|नम्बर))", text)
+            re.search(
+                rf"(?<![{d}]){w}\s+(?:पर|पे|में|से|का|के|की)(?![{d}])(?!\s*(?:{_NOT_ON_IT_HI}))", text
+            )
         )
+    # After a preposition it must say whose it is, and be where the phrase ends or lead to a part of
+    # the device: "in computer science" and "the computer repair shop" are about something else.
+    whose = r"(?:my|the|this|your)\s+"
+    owned = rf"(?:on|from|to|using|via)\s+(?:{whose})?|(?:in|of|at)\s+{whose}"
     return bool(
         re.search(
-            rf"(?<![a-z0-9])(?:on|from|in|of|to|at|using|via)\s+(?:(?:my|the|this|your)\s+)?{w}(?![a-z0-9])"
+            rf"(?<![a-z0-9])(?:{owned}){w}(?![a-z0-9])(?=\s*(?:$|[.,;:!?)]|{_PHRASE_GOES_ON}))"
             rf"|(?<![a-z0-9]){w}'s(?![a-z0-9])"
             rf"|(?<![a-z0-9]){w}\s+(?:par|pe|per|mein|me|se)(?![a-z0-9])"
-            rf"|(?<![a-z0-9]){w}\s+(?:ka|ke|ki)\s+(?!number|no\b|nambar)",
+            rf"|(?<![a-z0-9]){w}\s+(?:ka|ke|ki)\s+(?!{_NOT_ON_IT})",
             text,
         )
     )
