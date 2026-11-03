@@ -325,15 +325,6 @@ class Devices:
         )
         return cursor.rowcount == 1
 
-    def revoke_user(self, user_id: int) -> list[int]:
-        """Revoke every device of a person (their account was removed). Returns the ids."""
-        ids = [d.id for d in self.for_user(user_id)]
-        self.store.execute(
-            "UPDATE devices SET revoked_at = ? WHERE user_id = ? AND revoked_at IS NULL",
-            (self.clock(), user_id),
-        )
-        return ids
-
     def set_skills(self, device_id: int, skills: list[str]) -> None:
         self.store.execute(
             "UPDATE devices SET skills = ? WHERE id = ?",

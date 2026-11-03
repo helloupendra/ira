@@ -465,11 +465,10 @@ class Accounts:
             )
         return token, invite
 
-    def invites(self, *, include_closed: bool = False) -> list[Invite]:
+    def invites(self) -> list[Invite]:
         rows = self.store.query("SELECT * FROM invites ORDER BY created_at DESC")
         now = self.clock()
-        found = [_invite(r) for r in rows]
-        return found if include_closed else [i for i in found if i.state(now) == "pending"]
+        return [i for i in (_invite(r) for r in rows) if i.state(now) == "pending"]
 
     def get_invite(self, invite_id: str) -> Invite | None:
         row = self.store.one("SELECT * FROM invites WHERE id = ?", (invite_id,))

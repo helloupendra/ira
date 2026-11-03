@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import json
+import logging
 import re
 import secrets
 import time
@@ -34,8 +35,7 @@ class NeedsSignIn(ConnectionError_):
 SIGN_IN_SECONDS = 600.0  # the person has ten minutes to finish signing in
 
 
-# A sign-in nobody finished is forgotten after this long.
-SIGN_IN_SECONDS = 15 * 60
+log = logging.getLogger("ira.connectors")
 
 
 @dataclass
@@ -424,16 +424,35 @@ class Connectors:
 
     async def remove(self, user_id: int, connection_id: str) -> None:
         connection = self.get(user_id, connection_id)
-        for live in (
-            self.telegrams.pop(connection.id, None),
-            self.logins.pop(connection.id, (None,))[0],
-        ):
+        telegram = self.telegrams.pop(connection.id, None)
+        await self._log_out_of_telegram(connection, telegram)
+        for live in (telegram, self.logins.pop(connection.id, (None,))[0]):
             if live is not None:
                 await live.close()
         worker = self.workers.pop(connection.id, None)
         if worker is not None:
             await worker.close()
         self.store.execute("DELETE FROM connections WHERE id = ?", (connection.id,))
+
+    async def _log_out_of_telegram(self, connection: Connection, live: Any) -> None:
+        """Ira's session ends at Telegram too, or it would stay listed on the person's account. A
+        failure here must not stop the removal: they can end it in Telegram's own settings."""
+        if connection.kind != "telegram":
+            return
+        try:
+            client = live
+            if client is None:
+                secret = self._secret(connection)
+                if not secret.get("session"):
+                    return
+                client = self.telegram(
+                    int(secret["api_id"]), str(secret["api_hash"]), str(secret["session"])
+                )
+            await client.log_out()
+            if client is not live:
+                await client.close()
+        except Exception as exc:
+            log.warning("could not log out of Telegram: %s", type(exc).__name__)
 
     def _forget_old_sign_ins(self) -> None:
         now = time.time()

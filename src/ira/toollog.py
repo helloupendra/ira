@@ -16,7 +16,6 @@ from ira.store import Store
 # ok/error: a tool ran (or failed); proposed: an action now waits for a yes or a PIN;
 # refused: not run (untrusted content asked for it, or a limit); executed/failed: an
 # action ran after its confirmation.
-OUTCOMES = ("ok", "error", "proposed", "refused", "executed", "failed")
 
 
 def record(

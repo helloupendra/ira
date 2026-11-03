@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import io
+import wave
+
 import pytest
 
 from ira.channels.telegram import TelegramApi, TelegramBot, create_pairing_code
@@ -174,17 +177,44 @@ async def test_a_pin_with_nothing_pending_is_still_deleted(bot, api, runtime, ow
     assert provider.calls == []
 
 
+def seconds_of_wav(seconds: int) -> bytes:
+    out = io.BytesIO()
+    with wave.open(out, "wb") as audio:
+        audio.setnchannels(1)
+        audio.setsampwidth(2)
+        audio.setframerate(16000)
+        audio.writeframes(b"\0\0" * 16000 * seconds)
+    return out.getvalue()
+
+
+WAV = seconds_of_wav(1)
+
+
+async def test_a_voice_note_longer_than_it_says_is_refused(
+    bot, api, runtime, owner, provider, monkeypatch
+):
+    await pair(bot, runtime, owner)
+    limit = runtime.settings.voice.max_audio_seconds
+    monkeypatch.setattr(
+        "ira.channels.telegram.ogg_to_wav", lambda data: seconds_of_wav(int(limit) + 2)
+    )
+    api.files["voice-2"] = b"OggS-fake"
+    await bot.handle_update(update(message_id=31, voice={"file_id": "voice-2", "duration": 1}))
+    assert runtime.stt.received == []
+    assert "couldn't read that voice note" in api.sent()[-1]
+
+
 async def test_voice_note_is_transcribed_answered_and_spoken(
     bot, api, runtime, owner, provider, monkeypatch
 ):
     await pair(bot, runtime, owner)
-    monkeypatch.setattr("ira.channels.telegram.ogg_to_wav", lambda data: b"RIFF-fake-wav")
+    monkeypatch.setattr("ira.channels.telegram.ogg_to_wav", lambda data: WAV)
     api.files["voice-1"] = b"OggS-fake"
     provider.script = ["We open at nine."]
 
     await bot.handle_update(update(message_id=30, voice={"file_id": "voice-1", "duration": 3}))
 
-    assert runtime.stt.received == [b"RIFF-fake-wav"]
+    assert runtime.stt.received == [WAV]
     assert api.sent()[-1] == 'Heard: "what are your opening hours"\n\nWe open at nine.'
     assert any(c[0] == "sendVoice" for c in api.calls)
     assert runtime.tts.spoken == ["We open at nine."]
@@ -194,7 +224,7 @@ async def test_a_spoken_pin_is_deleted_and_not_used(
     bot, api, runtime, owner, provider, monkeypatch
 ):
     await pair(bot, runtime, owner)
-    monkeypatch.setattr("ira.channels.telegram.ogg_to_wav", lambda data: b"RIFF")
+    monkeypatch.setattr("ira.channels.telegram.ogg_to_wav", lambda data: WAV)
     runtime.stt.text = "4321"
     api.files["v"] = b"OggS"
 

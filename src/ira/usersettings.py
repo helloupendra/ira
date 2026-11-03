@@ -61,11 +61,6 @@ def clean_name(value: str, limit: int) -> str:
     return " ".join(value.split())[:limit]
 
 
-def today_for(prefs: Prefs) -> dt.date:
-    """Today in the person's own time zone, else the server's."""
-    return now_for(prefs).date()
-
-
 def now_for(prefs: Prefs, epoch: float | None = None) -> dt.datetime:
     """Now in the person's own time zone, else the server's, as an aware time."""
     from zoneinfo import ZoneInfo

@@ -27,7 +27,7 @@ from ira.models.http import scrub
 from ira.runtime import Runtime
 from ira.security import looks_like_pin, sha256_hex, spoken_digits
 from ira.store import Store
-from ira.voice.audio import AudioError, ogg_to_wav
+from ira.voice.audio import AudioError, check_wav, ogg_to_wav
 from ira.voice.shorten import speakable
 
 log = logging.getLogger("ira.telegram")
@@ -584,6 +584,8 @@ class TelegramBot:
         try:
             ogg = await self.api.download_file(voice["file_id"])
             wav = await asyncio.to_thread(ogg_to_wav, ogg)
+            # Its own length, not what the message said of it.
+            check_wav(wav, max_seconds=self.runtime.settings.voice.max_audio_seconds)
             transcript = (await stt.transcribe(wav)).strip()
         except AudioError as exc:
             await self._send(chat_id, f"I couldn't read that voice note: {exc}")

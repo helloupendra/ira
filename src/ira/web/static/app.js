@@ -73,8 +73,9 @@ class Unreachable extends Error {
 
 class ModelFailure extends Error {}
 
-async function api(path, { method = "GET", json, body, headers = {} } = {}) {
+async function api(path, { method = "GET", json, body, headers = {}, signal } = {}) {
   const init = { method, credentials: "same-origin", headers: { "X-Ira-Request": "1", ...headers } };
+  if (signal) init.signal = signal;
   if (json !== undefined) {
     init.headers["Content-Type"] = "application/json";
     init.body = JSON.stringify(json);
@@ -428,6 +429,7 @@ function sessionExpired(text) {
 $("#logout").addEventListener("click", async () => {
   $("#menu").close();
   stopSpeaking();
+  if (state.answering) state.answering.abort();
   if (typeof IraPersonal !== "undefined") IraPersonal.left();
   if (typeof IraLive !== "undefined") IraLive.stop();
   try {
@@ -635,7 +637,11 @@ async function restoreToday() {
   state.conversationId = null;
   $("#hero").hidden = false;
   const saved = storage.get("ira.today");
-  if (!saved || saved.user !== state.info.user.id || saved.day !== today()) return;
+  if (!saved) return;
+  if (saved.user !== state.info.user.id || saved.day !== today()) {
+    storage.remove("ira.today"); // tool outputs must not stay here once they are of no use
+    return;
+  }
   if (saved.conversationId) {
     try {
       await openConversation(saved.conversationId); // the server's copy is the truth
@@ -833,6 +839,7 @@ async function loadNow() {
 }
 
 function newConversation() {
+  if (state.answering) state.answering.abort();
   stopSpeaking();
   state.turns = [];
   state.conversationId = null;
@@ -960,10 +967,13 @@ async function send(text, { voice = false, retry = false } = {}) {
   setMode("thinking");
   setStatus("Thinking…");
   startWorking(li);
+  const answering = new AbortController();
+  state.answering = answering;
   try {
     const response = await api("/v1/ask/stream", {
       method: "POST",
       json: { text, conversation_id: state.conversationId },
+      signal: answering.signal,
     });
     if (response.status === 401) {
       li.remove();
@@ -1012,9 +1022,11 @@ async function send(text, { voice = false, retry = false } = {}) {
     if (full && (speakOn() || voice)) await speak(full);
   } catch (error) {
     stopWorking();
-    failTurn(li, error, text);
+    if (answering.signal.aborted) li.remove(); // they moved on: "New", or signing out
+    else failTurn(li, error, text);
   } finally {
     stopWorking();
+    if (state.answering === answering) state.answering = null;
     if (state.info) {
       setMode("idle");
       scrollDown();

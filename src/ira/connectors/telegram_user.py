@@ -104,6 +104,14 @@ class TelegramUser:
             self.connected = True
         return self.client
 
+    async def log_out(self) -> None:
+        """End this session at Telegram, not only here."""
+        client = await self._ready()
+        result = client.log_out()
+        if hasattr(result, "__await__"):
+            await result
+        self.connected = False
+
     async def close(self) -> None:
         if self.connected:
             result = self.client.disconnect()

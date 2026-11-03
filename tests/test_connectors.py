@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import os
 import stat
+import time
 from typing import Any
 from urllib.parse import parse_qs
 
@@ -603,6 +604,7 @@ class StandInTelethon:
 
     password_needed = False
     instances: list = []
+    logged_out = 0
 
     def __init__(self, api_id, api_hash, session):
         from types import SimpleNamespace
@@ -622,6 +624,9 @@ class StandInTelethon:
         from types import SimpleNamespace
 
         return SimpleNamespace(phone_code_hash="hash-1")
+
+    async def log_out(self):
+        StandInTelethon.logged_out += 1
 
     async def is_user_authorized(self):
         return self.authorized
@@ -729,3 +734,52 @@ async def test_telegram_as_the_person(store):
     )
     assert (await again.tools_for(1)[0].run({}))["chats"]
     await again.close()
+
+
+async def test_removing_telegram_ends_the_session_at_telegram(store):
+    from ira.connectors.telegram_user import TelegramUser
+
+    StandInTelethon.logged_out = 0
+    StandInTelethon.password_needed = False
+    pytest.importorskip("telethon")
+    connectors = Connectors(
+        store,
+        lambda: Sealer(KEY),
+        ConnectorsConfig(),
+        telegram=lambda a, h, s: TelegramUser(a, h, s, client_factory=StandInTelethon),
+    )
+    added = await connectors.add_telegram(
+        1, "Telegram", 12345, "0123456789abcdef" * 2, "+1 555 0100"
+    )
+    await connectors.telegram_code(1, added.id, "12345")
+    await connectors.remove(1, added.id)
+    assert StandInTelethon.logged_out == 1
+
+
+async def test_a_failed_log_out_does_not_stop_the_removal(store):
+    class Refuses:
+        def __init__(self, *args):
+            pass
+
+        async def log_out(self):
+            raise RuntimeError("no network")
+
+        async def close(self):
+            pass
+
+    connectors = Connectors(
+        store, lambda: Sealer(KEY), ConnectorsConfig(), telegram=lambda a, h, s: Refuses()
+    )
+    connection = type("C", (), {"id": "c1", "kind": "telegram"})()
+    await connectors._log_out_of_telegram(connection, Refuses())  # raises nothing
+
+
+def test_a_google_sign_in_nobody_finished_is_forgotten(store):
+    from ira.connectors.service import SIGN_IN_SECONDS, GoogleSignIn
+
+    connectors = Connectors(store, lambda: Sealer(KEY), ConnectorsConfig())
+    old = GoogleSignIn("c", 1, "v", "r", started=time.time() - SIGN_IN_SECONDS - 1)
+    new = GoogleSignIn("c", 1, "v", "r")
+    connectors.by_state.update({"old": old, "new": new})
+    connectors._forget_old_sign_ins()
+    assert set(connectors.by_state) == {"new"}
