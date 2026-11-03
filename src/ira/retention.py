@@ -2,7 +2,7 @@
 
 Only what nobody was promised is deleted on its own: live calls' timings by default; the
 cost log, "What Ira did", the audit log and the change log only when the owner sets days
-for them; sessions once they ended, and invites and pairing codes that were never used.
+for them; sessions once they ended; invites and device pairings never used; and chat pairing codes.
 Conversations, Drop, devices, reminders and a business's actions have their own rules and
 are never touched here. Rows go a thousand at a time, so live calls never wait long.
 """
@@ -52,7 +52,8 @@ def clean(store: Store, config: RetentionConfig, now: float | None = None) -> di
 
     ended = now - config.ended_days * DAY
     drop("sessions", "revoked_at < ? OR expires_at < ?", (ended, ended))
-    # Used invites and pairings stay: they say who brought in whom, and which code paired a device.
+    # Used invites and device pairings stay: they say who brought in whom, and which code paired a
+    # device. A chat's pairing code says nothing once it has been used, so it goes.
     drop("invites", "used_at IS NULL AND (revoked_at < ? OR expires_at < ?)", (ended, ended))
     drop("device_pairings", "used_at IS NULL AND expires_at < ?", (ended,))
     drop("pairing_codes", "used_at < ? OR expires_at < ?", (ended, ended))

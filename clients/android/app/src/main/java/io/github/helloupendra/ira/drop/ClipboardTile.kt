@@ -67,7 +67,9 @@ class ClipboardActivity : ComponentActivity() {
         }
         when {
             !app.paired -> done("Pair this phone with your Ira first.")
-            uri != null && uri.scheme == "content" -> app.drop.sendFiles(listOf(uri), null, done)
+            // Only what another app holds: never a file of this app's own.
+            uri != null && uri.scheme == "content" && uri.authority?.startsWith(packageName) != true ->
+                app.drop.sendFiles(listOf(uri), null, done)
             text.isNotEmpty() -> app.drop.sendText(text, done)
             else -> done("The clipboard is empty.")
         }

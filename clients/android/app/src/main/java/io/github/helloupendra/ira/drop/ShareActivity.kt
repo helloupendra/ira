@@ -32,6 +32,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -83,7 +84,8 @@ class ShareActivity : ComponentActivity() {
 @Composable
 private fun ShareSheet(app: IraApp, shared: ShareActivity.Shared, close: () -> Unit) {
     val uploads by app.drop.uploads.collectAsState()
-    var state by remember { mutableStateOf("ask") }
+    // Saved across a rotation, or a file being sent could be sent again.
+    var state by rememberSaveable { mutableStateOf("ask") }
     var problem by remember { mutableStateOf<String?>(null) }
     // Off the main thread: another app's provider can take its time, or never answer.
     val described by produceState(emptyList<Pair<String, Long>>(), shared) {

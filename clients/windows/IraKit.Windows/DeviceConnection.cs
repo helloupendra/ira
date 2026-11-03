@@ -84,7 +84,8 @@ public sealed class DeviceConnection(
             {
                 break;
             }
-            catch (Exception e) when (e is WebSocketException or HttpRequestException or IOException or IraError or JsonException)
+            // InvalidOperationException and FormatException: a frame with a field of an odd type.
+            catch (Exception e) when (e is WebSocketException or HttpRequestException or IOException or IraError or JsonException or InvalidOperationException or FormatException)
             {
                 reason = e is IraError ? e.Message : $"can't reach {server.Host}";
             }
@@ -113,7 +114,16 @@ public sealed class DeviceConnection(
         socket.Options.SetRequestHeader("Authorization", $"Bearer {token}");
         socket.Options.SetRequestHeader("User-Agent", $"ira-windows/{version}");
         socket.Options.KeepAliveInterval = TimeSpan.Zero; // Ira's own ping, below
-        await socket.ConnectAsync(server.WebSocket(WebsocketPath), ct);
+        socket.Options.CollectHttpResponseDetails = true;
+        try
+        {
+            await socket.ConnectAsync(server.WebSocket(WebsocketPath), ct);
+        }
+        catch (WebSocketException) when (socket.HttpStatusCode is System.Net.HttpStatusCode.Unauthorized or System.Net.HttpStatusCode.Forbidden)
+        {
+            // Removed while it was offline: no use trying again and again.
+            throw new DeviceRevokedError("This PC was removed from your Ira. Pair it again to use it.");
+        }
 
         await SendAsync(socket, new JsonObject
         {
