@@ -1,30 +1,38 @@
-import { lazy, Suspense, useEffect, type ReactNode } from 'react';
-import { Redirect, Route, Router, Switch, useLocation, useSearch } from 'wouter';
-import { roleLabel, whyNot, type Permission } from './lib/roles';
-import Invite from './pages/Invite';
-import Login from './pages/Login';
-import Setup from './pages/Setup';
-import { Mark } from './ui/icons';
-import { Layout } from './ui/Layout';
-import { Page } from './ui/Page';
-import { SessionProvider, useSession } from './ui/Session';
-import { ErrorState, Forbidden, Loading } from './ui/states';
-import { ToastProvider, useToast } from './ui/toast';
+import { lazy, Suspense, useEffect, type ReactNode } from "react";
+import {
+  Redirect,
+  Route,
+  Router,
+  Switch,
+  useLocation,
+  useSearch,
+} from "wouter";
+import { roleLabel, whyNot, type Permission } from "./lib/roles";
+import Invite from "./pages/Invite";
+import Login from "./pages/Login";
+import Setup from "./pages/Setup";
+import { Mark } from "./ui/icons";
+import { Layout } from "./ui/Layout";
+import { Page } from "./ui/Page";
+import { SessionProvider, useSession } from "./ui/Session";
+import { ErrorState, Forbidden, Loading } from "./ui/states";
+import { ErrorBoundary } from "./ui/ErrorBoundary";
+import { ToastProvider, useToast } from "./ui/toast";
 
 // One chunk per screen, so the first screen loads only what it shows.
-const Overview = lazy(() => import('./pages/Overview'));
-const Conversations = lazy(() => import('./pages/Conversations'));
-const Conversation = lazy(() => import('./pages/Conversation'));
-const Actions = lazy(() => import('./pages/Actions'));
-const Tools = lazy(() => import('./pages/Tools'));
-const Models = lazy(() => import('./pages/Models'));
-const Channels = lazy(() => import('./pages/Channels'));
-const Devices = lazy(() => import('./pages/Devices'));
-const Reports = lazy(() => import('./pages/Reports'));
-const Users = lazy(() => import('./pages/Users'));
-const Tokens = lazy(() => import('./pages/Tokens'));
-const Audit = lazy(() => import('./pages/Audit'));
-const NotFound = lazy(() => import('./pages/NotFound'));
+const Overview = lazy(() => import("./pages/Overview"));
+const Conversations = lazy(() => import("./pages/Conversations"));
+const Conversation = lazy(() => import("./pages/Conversation"));
+const Actions = lazy(() => import("./pages/Actions"));
+const Tools = lazy(() => import("./pages/Tools"));
+const Models = lazy(() => import("./pages/Models"));
+const Channels = lazy(() => import("./pages/Channels"));
+const Devices = lazy(() => import("./pages/Devices"));
+const Reports = lazy(() => import("./pages/Reports"));
+const Users = lazy(() => import("./pages/Users"));
+const Tokens = lazy(() => import("./pages/Tokens"));
+const Audit = lazy(() => import("./pages/Audit"));
+const NotFound = lazy(() => import("./pages/NotFound"));
 
 export function App() {
   return (
@@ -46,12 +54,20 @@ export function App() {
 }
 
 // Shows a page only when the role holds the permission; the server checks too.
-function Guard({ needs, title, children }: { needs: Permission; title: string; children: ReactNode }) {
+function Guard({
+  needs,
+  title,
+  children,
+}: {
+  needs: Permission;
+  title: string;
+  children: ReactNode;
+}) {
   const { me, can } = useSession();
   if (can(needs)) return <>{children}</>;
   return (
     <Page title={title}>
-      <Forbidden why={whyNot(me?.user.role ?? 'viewer', needs)} />
+      <Forbidden why={whyNot(me?.user.role ?? "viewer", needs)} />
     </Page>
   );
 }
@@ -60,7 +76,7 @@ function NotForYou() {
   const { me, signOut } = useSession();
   const toast = useToast();
   useEffect(() => {
-    document.title = 'IRA console';
+    document.title = "IRA console";
   }, []);
   async function onSignOut() {
     try {
@@ -75,8 +91,9 @@ function NotForYou() {
         <Mark tile size={40} />
         <h1>The console is for owners, admins and viewers</h1>
         <p className="muted">
-          You are signed in as {me?.user.email} with the {roleLabel(me?.user.role ?? '')} role, which uses Ira
-          but cannot read the console.
+          You are signed in as {me?.user.email} with the{" "}
+          {roleLabel(me?.user.role ?? "")} role, which uses Ira but cannot read
+          the console.
         </p>
         <div className="actions-row">
           <a className="btn btn-primary" href="/">
@@ -96,55 +113,62 @@ function Console() {
   const [location] = useLocation();
   const search = useSearch();
 
-  if (session.status === 'loading') {
+  if (session.status === "loading") {
     return (
       <main className="gate">
         <Loading />
       </main>
     );
   }
-  if (session.status === 'error' && session.error) {
+  if (session.status === "error" && session.error) {
     return (
       <main className="gate">
         <div className="gate-card">
-          <ErrorState error={session.error} onRetry={() => void session.refresh()} />
+          <ErrorState
+            error={session.error}
+            onRetry={() => void session.refresh()}
+          />
         </div>
       </main>
     );
   }
-  if (session.status !== 'ready') {
-    const next = location + (search ? `?${search}` : '');
+  if (session.status !== "ready") {
+    const next = location + (search ? `?${search}` : "");
     return <Redirect to={`/login?next=${encodeURIComponent(next)}`} replace />;
   }
-  if (!session.can('admin.read')) return <NotForYou />;
+  if (!session.can("admin.read")) return <NotForYou />;
 
   return (
     <Layout>
-      <Suspense fallback={<Loading />}>
-        <Switch>
-          <Route path="/" component={Overview} />
-          <Route path="/conversations" component={Conversations} />
-          <Route path="/conversations/:id">{(params) => <Conversation id={params.id ?? ''} />}</Route>
-          <Route path="/actions" component={Actions} />
-          <Route path="/tools" component={Tools} />
-          <Route path="/models" component={Models} />
-          <Route path="/channels" component={Channels} />
-          <Route path="/reports" component={Reports} />
-          <Route path="/devices">
-            <Guard needs="ask" title="Devices">
-              <Devices />
-            </Guard>
-          </Route>
-          <Route path="/users">
-            <Guard needs="users" title="Users & roles">
-              <Users />
-            </Guard>
-          </Route>
-          <Route path="/tokens" component={Tokens} />
-          <Route path="/audit" component={Audit} />
-          <Route component={NotFound} />
-        </Switch>
-      </Suspense>
+      <ErrorBoundary>
+        <Suspense fallback={<Loading />}>
+          <Switch>
+            <Route path="/" component={Overview} />
+            <Route path="/conversations" component={Conversations} />
+            <Route path="/conversations/:id">
+              {(params) => <Conversation id={params.id ?? ""} />}
+            </Route>
+            <Route path="/actions" component={Actions} />
+            <Route path="/tools" component={Tools} />
+            <Route path="/models" component={Models} />
+            <Route path="/channels" component={Channels} />
+            <Route path="/reports" component={Reports} />
+            <Route path="/devices">
+              <Guard needs="ask" title="Devices">
+                <Devices />
+              </Guard>
+            </Route>
+            <Route path="/users">
+              <Guard needs="users" title="Users & roles">
+                <Users />
+              </Guard>
+            </Route>
+            <Route path="/tokens" component={Tokens} />
+            <Route path="/audit" component={Audit} />
+            <Route component={NotFound} />
+          </Switch>
+        </Suspense>
+      </ErrorBoundary>
     </Layout>
   );
 }

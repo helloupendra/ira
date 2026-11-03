@@ -200,8 +200,12 @@ function enterChat() {
   show("chat");
   setMode("idle");
   if (state.pendingText) {
-    $("#text").value = state.pendingText;
+    // A question kept across a sign-in is only for the same person.
+    if (!state.pendingFor || (state.info.user && state.info.user.email === state.pendingFor)) {
+      $("#text").value = state.pendingText;
+    }
     state.pendingText = null;
+    state.pendingFor = null;
   }
   if (canAsk && matchMedia("(hover: hover)").matches) $("#text").focus({ preventScroll: true });
   if (typeof IraPersonal !== "undefined") IraPersonal.entered(); // your devices' events
@@ -409,7 +413,10 @@ $("#setup-form").addEventListener("submit", async (event) => {
 function sessionExpired(text) {
   stopSpeaking();
   if (typeof IraLive !== "undefined") IraLive.stop();
+  // Their streams and cards end with their session: the next to sign in must not get them.
+  if (typeof IraPersonal !== "undefined") IraPersonal.left();
   state.pendingText = text || null;
+  state.pendingFor = state.info && state.info.user ? state.info.user.email : null;
   state.info = null;
   const note = $("#login-note");
   note.textContent = "Your session expired. Sign in to continue.";
@@ -1471,14 +1478,17 @@ async function listen() {
   if (!state.info || !state.info.permissions.includes("ask")) return;
   const problem = voiceProblem();
   if (problem) return setStatus(problem);
-  if (state.mode !== "idle") return;
+  if (state.mode !== "idle" || state.startingMic) return;
   stopSpeaking();
   const inBrowser = browserRecognition();
+  state.startingMic = true; // a second tap while the first waits must not open a second capture
   try {
     if (inBrowser) startBrowserListening(inBrowser);
     else await startRecording();
   } catch (error) {
     return setStatus(micMessage(error));
+  } finally {
+    state.startingMic = false;
   }
   $("#handsfree-chip").hidden = !handsFreeOn();
   $("#listen-label").textContent = "Listening…";
@@ -1498,7 +1508,13 @@ async function startRecording() {
     context.close().catch(() => {});
     throw error;
   }
-  await context.audioWorklet.addModule("/recorder-worklet.js");
+  try {
+    await context.audioWorklet.addModule("/recorder-worklet.js");
+  } catch (error) {
+    stream.getTracks().forEach((track) => track.stop()); // or the mic stays on with nothing using it
+    context.close().catch(() => {});
+    throw error;
+  }
   if (context.state !== "running") await context.resume().catch(() => {});
   const source = context.createMediaStreamSource(stream);
   const node = new AudioWorkletNode(context, "recorder");

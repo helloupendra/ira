@@ -101,8 +101,19 @@ const IraLive = (() => {
     if (call.context.state !== "running") call.context.resume().catch(() => {});
   });
 
+  let starting = false; // a second tap while the first waits must not open a second call
+
   async function start() {
-    if (call || !available()) return;
+    if (call || starting || !available()) return;
+    starting = true;
+    try {
+      await begin();
+    } finally {
+      starting = false;
+    }
+  }
+
+  async function begin() {
     // iOS starts sound only inside the tap: the context is made here, before anything waits.
     const context = new AudioContext();
     context.resume().catch(() => {});
@@ -117,7 +128,14 @@ const IraLive = (() => {
       audioSession("auto");
       return setStatus(micMessage(error));
     }
-    await context.audioWorklet.addModule("/recorder-worklet.js");
+    try {
+      await context.audioWorklet.addModule("/recorder-worklet.js");
+    } catch (error) {
+      stream.getTracks().forEach((track) => track.stop()); // or the mic stays on with no call
+      context.close().catch(() => {});
+      audioSession("auto");
+      return setStatus(micMessage(error));
+    }
     if (context.state !== "running") await context.resume().catch(() => {});
     const source = context.createMediaStreamSource(stream);
     const node = new AudioWorkletNode(context, "recorder");

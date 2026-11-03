@@ -19,8 +19,11 @@ function element() {
   };
 }
 
-async function newCall() {
-  const world = { now: 1000, sent: [], volume: [], sources: [], lines: [], turns: [], steps: [] };
+async function newCall(options = {}) {
+  const world = {
+    now: 1000, sent: [], volume: [], sources: [], lines: [], turns: [], steps: [],
+    sockets: 0, microphones: 0, tracksStopped: 0,
+  };
   const elements = {};
   let socket;
   class WebSocket {
@@ -29,6 +32,7 @@ async function newCall() {
     constructor() {
       this.listeners = {};
       socket = this;
+      world.sockets += 1;
     }
     addEventListener(type, listener) {
       this.listeners[type] = listener;
@@ -43,7 +47,11 @@ async function newCall() {
     sampleRate = 16000;
     currentTime = 0;
     destination = {};
-    audioWorklet = { addModule: async () => {} };
+    audioWorklet = {
+      addModule: async () => {
+        if (options.workletFails) throw new Error("no worklet");
+      },
+    };
     resume = async () => {};
     close = async () => {};
     createMediaStreamSource = () => ({ connect() {} });
@@ -80,7 +88,12 @@ async function newCall() {
     AudioWorkletNode,
     window: { isSecureContext: true, AudioWorkletNode, WebSocket },
     navigator: {
-      mediaDevices: { getUserMedia: async () => ({ getTracks: () => [] }) },
+      mediaDevices: {
+        getUserMedia: async () => {
+          world.microphones += 1;
+          return { getTracks: () => [{ stop: () => (world.tracksStopped += 1) }] };
+        },
+      },
     },
     document: { addEventListener() {}, visibilityState: "visible" },
     location: { protocol: "https:", host: "ira.test" },
@@ -120,7 +133,9 @@ async function newCall() {
   vm.createContext(sandbox);
   vm.runInContext(SOURCE, sandbox);
   const live = vm.runInContext("IraLive", sandbox);
-  await live.start();
+  if (options.twoTaps) await Promise.all([live.start(), live.start()]);
+  else await live.start();
+  if (options.workletFails) return world;
   const server = (message) => socket.listeners.message({ data: JSON.stringify(message) });
   server({ type: "ready", conversation_id: "c1" });
   world.server = server;
@@ -148,6 +163,18 @@ const QUIET = 0;
 const VOICE = 0.2;
 
 const scenarios = {
+  async "a second tap while the first waits opens no second call"() {
+    const call = await newCall({ twoTaps: true });
+    assert.strictEqual(call.sockets, 1);
+    assert.strictEqual(call.microphones, 1);
+  },
+
+  async "a call whose audio part fails leaves the mic off"() {
+    const call = await newCall({ workletFails: true });
+    assert.strictEqual(call.sockets, 0);
+    assert.strictEqual(call.tracksStopped, 1);
+  },
+
   // As the chat shows them: the step in words and its receipt; and "let me look", written
   // before the tool, is not glued to the answer when "done" comes without its own text.
   async "a tool's steps show, and its lead-in is not the answer"() {

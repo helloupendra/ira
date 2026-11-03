@@ -15,6 +15,7 @@ from collections.abc import AsyncIterator
 from typing import Any
 
 from fastapi import APIRouter, Depends, FastAPI, HTTPException, Query, Request, Response
+from fastapi.openapi.docs import get_swagger_ui_html
 from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.exceptions import HTTPException as StarletteHTTPException
@@ -47,6 +48,7 @@ from ira.channels.deps import (
     session_body,
     set_session_cookie,
 )
+from ira.channels.limits import limit_body
 from ira.channels.paging import HAS_MORE_HEADER, page
 from ira.channels.schemas import (
     CONVERSATION_ID,
@@ -391,12 +393,8 @@ async def transcribe(
 ) -> TranscribeResponse:
     if runtime.stt is None:
         raise HTTPException(503, detail="speech-to-text is not configured")
-    declared = int(request.headers.get("content-length") or 0)
-    if declared > MAX_AUDIO_BYTES:
-        raise HTTPException(413, detail="audio is larger than 10 MB")
+    limit_body(request, MAX_AUDIO_BYTES, "audio is larger than 10 MB")
     data = await request.body()
-    if len(data) > MAX_AUDIO_BYTES:
-        raise HTTPException(413, detail="audio is larger than 10 MB")
     try:
         info = check_wav(data, max_seconds=runtime.settings.voice.max_audio_seconds)
         wav = await asyncio.to_thread(to_mono16k, data)
@@ -585,6 +583,44 @@ class ConsoleFiles(StaticFiles):
         return response
 
 
+# The docs page's script and style: one exact version, checked by hash, so a bad publish or a
+# compromised CDN cannot run on Ira's origin while a signed-in owner reads them.
+SWAGGER = "https://cdn.jsdelivr.net/npm/swagger-ui-dist@5.32.0"
+SWAGGER_JS_HASH = (
+    "sha384-7xcoc6ZKDFF7Ek627QTC3Bg/K+5Y36NJ8"  # pragma: allowlist secret
+    "MWAE43D2m6+3Sh9XO3tdsfHhrS8gNIQ"  # pragma: allowlist secret
+)
+SWAGGER_CSS_HASH = (
+    "sha384-3nuX7df3EaAoiqLBeyS1Ola0Gpg9ryJKV"  # pragma: allowlist secret
+    "tarubwfnA1cOH8AWHUdbPSIvEqPZ9VH"  # pragma: allowlist secret
+)
+DOCS_CSP = (
+    f"default-src 'none'; script-src {SWAGGER}/ 'unsafe-inline'; "
+    f"style-src {SWAGGER}/ 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; "
+    "frame-ancestors 'none'; base-uri 'none'; form-action 'none'"
+)
+
+
+def _docs_page() -> HTMLResponse:
+    js, css = f"{SWAGGER}/swagger-ui-bundle.js", f"{SWAGGER}/swagger-ui.css"
+    page = get_swagger_ui_html(
+        openapi_url="/v1/openapi.json",
+        title="IRA",
+        swagger_js_url=js,
+        swagger_css_url=css,
+        swagger_favicon_url="/icon.svg",
+    ).body.decode()
+    page = page.replace(
+        f'<script src="{js}"',
+        f'<script src="{js}" integrity="{SWAGGER_JS_HASH}" crossorigin="anonymous"',
+    ).replace(
+        f'href="{css}"', f'href="{css}" integrity="{SWAGGER_CSS_HASH}" crossorigin="anonymous"'
+    )
+    return HTMLResponse(
+        page, headers={"Content-Security-Policy": DOCS_CSP, "X-Frame-Options": "DENY"}
+    )
+
+
 def create_app(runtime: Runtime, *, start_channels: bool = True) -> FastAPI:
     @contextlib.asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
@@ -632,7 +668,7 @@ def create_app(runtime: Runtime, *, start_channels: bool = True) -> FastAPI:
         summary="Hey Ira: a self-hosted voice assistant over your own data and tools.",
         version=__version__,
         openapi_url="/v1/openapi.json",
-        docs_url="/v1/docs",
+        docs_url=None,
         redoc_url=None,
         lifespan=lifespan,
     )
@@ -649,6 +685,10 @@ def create_app(runtime: Runtime, *, start_channels: bool = True) -> FastAPI:
         if request.url.path.startswith("/v1/"):
             response.headers.setdefault("Cache-Control", "no-store")
         return response
+
+    @app.get("/v1/docs", include_in_schema=False)
+    def api_docs() -> HTMLResponse:
+        return _docs_page()
 
     @app.get("/healthz", tags=["system"], response_model=OkResponse, summary="Liveness")
     def healthz() -> OkResponse:

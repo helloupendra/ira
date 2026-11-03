@@ -17,6 +17,7 @@ import logging
 import mimetypes
 import re
 import secrets
+import threading
 import time
 from collections.abc import AsyncIterator, Callable, Iterator
 from dataclasses import dataclass
@@ -126,6 +127,8 @@ class Drop:
         self.max_file_bytes = max_file_bytes
         self.max_text = max_text
         self.quota_bytes = quota_bytes
+        self._arriving: dict[int, int] = {}  # bytes of uploads under way, by person
+        self._arriving_lock = threading.Lock()
         self.keep_seconds = keep_seconds
         self.clock = clock
 
@@ -238,8 +241,8 @@ class Drop:
             mimetypes.guess_type(name)[0] or "application/octet-stream"
         )
         caption = (caption or "").strip()[: self.max_text] or None
-        room = self.quota_bytes - self.used_bytes(user_id)
-        limit = min(self.max_file_bytes, room)
+        limit = self.max_file_bytes
+        arrived = 0
         item_id = self._insert(
             user_id,
             "file",
@@ -264,13 +267,16 @@ class Drop:
                     last = not following
                     size += len(chunk)
                     if size > limit:
-                        too_big = size > self.max_file_bytes
                         raise DropError(
-                            f"a file is limited to {self.max_file_bytes // 1024 // 1024} MB"
-                            if too_big
-                            else "your Drop is full: delete some items first",
-                            413 if too_big else 507,
+                            f"a file is limited to {self.max_file_bytes // 1024 // 1024} MB", 413
                         )
+                    # Those arriving at the same time count too: each is size 0 until it is done.
+                    with self._arriving_lock:
+                        self._arriving[user_id] = self._arriving.get(user_id, 0) + len(chunk)
+                        arrived += len(chunk)
+                        coming = self._arriving[user_id]
+                    if self.used_bytes(user_id) + coming > self.quota_bytes:
+                        raise DropError("your Drop is full: delete some items first", 507)
                     digest.update(chunk)
                     nonce = secrets.token_bytes(12)
                     sealed = self.aead().encrypt(
@@ -283,6 +289,7 @@ class Drop:
             partial.chmod(0o600)
             partial.replace(path)
         except BaseException:
+            self._arrived(user_id, arrived)
             partial.unlink(missing_ok=True)
             self.store.execute("DELETE FROM drop_items WHERE id = ?", (item_id,))
             raise
@@ -290,10 +297,19 @@ class Drop:
             "UPDATE drop_items SET size = ?, sha256 = ? WHERE id = ?",
             (size, digest.hexdigest(), item_id),
         )
+        self._arrived(user_id, arrived)
         log.info("drop %s: file, %d bytes", item_id, size)
         item = self.get(user_id, item_id)
         assert item is not None
         return item
+
+    def _arrived(self, user_id: int, count: int) -> None:
+        with self._arriving_lock:
+            left = self._arriving.get(user_id, 0) - count
+            if left > 0:
+                self._arriving[user_id] = left
+            else:
+                self._arriving.pop(user_id, None)
 
     def read(self, item: Item) -> Iterator[bytes]:
         """A file's bytes, decrypted chunk by chunk; any tampering stops it."""

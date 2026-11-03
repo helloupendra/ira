@@ -2,15 +2,20 @@
 
 from __future__ import annotations
 
+import io
+from pathlib import Path
 from typing import Any
 
 import pytest
+from fastapi.testclient import TestClient
 
 from ira import accounts as accounts_module
 from ira.accounts import AccountError, LoginLimiter
+from ira.channels.http import SWAGGER_CSS_HASH, SWAGGER_JS_HASH, create_app
 from ira.channels.me import export_data
 from ira.channels.telegram import MAX_WAITING_UPDATES, next_offset
 from ira.connectors.google import Google
+from ira.drop import DropError
 from ira.models.base import ChatResponse, StreamDone, TextDelta
 from ira.models.fake import ScriptedProvider
 from ira.models.gateway import Gateway
@@ -151,3 +156,67 @@ def test_the_next_poll_keeps_updates_being_handled_until_there_are_too_many():
     assert next_offset(set(), 0) is None
     many = set(range(100, 100 + MAX_WAITING_UPDATES))
     assert next_offset(many, 200) == 201
+
+
+def http_client(runtime: Any) -> TestClient:
+    return TestClient(create_app(runtime, start_channels=False))
+
+
+def test_the_docs_page_pins_its_script_and_cannot_be_framed(tmp_path: Path):
+    client = http_client(make_runtime(provider=ScriptedProvider(), data_dir=tmp_path))
+    page = client.get("/v1/docs")
+    assert page.status_code == 200
+    assert "swagger-ui-dist@5.32.0/swagger-ui-bundle.js" in page.text
+    assert (
+        f'integrity="{SWAGGER_JS_HASH}"' in page.text
+        and f'integrity="{SWAGGER_CSS_HASH}"' in page.text
+    )
+    assert "frame-ancestors 'none'" in page.headers["content-security-policy"]
+    assert page.headers["x-frame-options"] == "DENY"
+
+
+def sign_in_token(runtime: Any) -> str:
+    owner = runtime.accounts.create_first_owner("owner@example.com", PASSWORD)
+    token, _ = runtime.accounts.create_token(owner, "t", ["ask", "voice", "drop"])
+    return token
+
+
+def test_a_drop_past_the_limit_stops_before_it_is_read_whole(tmp_path: Path):
+    runtime = make_runtime(provider=ScriptedProvider(), data_dir=tmp_path)
+    runtime.drop.max_file_bytes = 1000
+    client = http_client(runtime)
+    headers = {"Authorization": f"Bearer {sign_in_token(runtime)}"}
+    too_big = client.post(
+        "/v1/me/drop", headers=headers, files={"file": ("a.txt", b"x" * 100_000, "text/plain")}
+    )
+    assert too_big.status_code == 413
+
+
+def test_a_text_past_the_limit_is_refused(tmp_path: Path):
+    runtime = make_runtime(provider=ScriptedProvider(), data_dir=tmp_path)
+    client = http_client(runtime)
+    headers = {
+        "Authorization": f"Bearer {sign_in_token(runtime)}",
+        "content-type": "application/json",
+    }
+    answer = client.post(
+        "/v1/me/drop", headers=headers, content=b'{"text":"' + b"x" * 2_000_000 + b'"}'
+    )
+    assert answer.status_code == 413
+
+
+def test_uploads_under_way_count_against_the_quota(tmp_path: Path):
+    runtime = make_runtime(provider=ScriptedProvider(), data_dir=tmp_path)
+    owner = runtime.accounts.create_first_owner("owner@example.com", PASSWORD)
+    runtime.drop.quota_bytes = 1000
+    runtime.drop._arriving[owner.id] = 900
+    with pytest.raises(DropError):
+        runtime.drop.add_file(
+            owner.id, io.BytesIO(b"x" * 200), "a.txt", "text/plain", from_label="Web"
+        )
+    assert runtime.drop._arriving[owner.id] == 900
+    runtime.drop._arriving.clear()
+    item = runtime.drop.add_file(
+        owner.id, io.BytesIO(b"x" * 200), "a.txt", "text/plain", from_label="Web"
+    )
+    assert item.size == 200 and runtime.drop._arriving == {}

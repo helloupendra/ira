@@ -149,7 +149,7 @@ const scenarios = {
     const world = await newWorker();
     await world.get("/live.js?v=26");
     assert.deepEqual(world.served, ["/live.js?v=26"]);
-    const kept = [...world.stores.get("ira-shell-v38").entries.keys()].filter((key) => key.includes("live.js"));
+    const kept = [...world.stores.get("ira-shell-v39").entries.keys()].filter((key) => key.includes("live.js"));
     assert.deepEqual(kept, [`${ORIGIN}/live.js`]);
     world.online = false;
     assert.equal(await text(await world.get("/live.js?v=27")), "copy of /live.js");

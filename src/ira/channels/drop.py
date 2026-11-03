@@ -12,8 +12,13 @@ from pydantic import BaseModel, Field
 
 from ira.accounts import Principal
 from ira.channels.deps import get_runtime, require
+from ira.channels.limits import limit_body
 from ira.drop import DropError, Item
 from ira.runtime import Runtime
+
+# Room for a multipart body's boundaries and fields around the file, and a text's JSON.
+MULTIPART_ROOM = 64 * 1024
+MAX_JSON_BYTES = 1024 * 1024
 
 router = APIRouter(prefix="/v1/me/drop", tags=["drop"])
 # Drop needs its own permission: a session or a paired device has it, an API token only
@@ -93,6 +98,14 @@ async def drop(
 ) -> DropItem:
     label, device_id = source(runtime, who)
     kind = request.headers.get("content-type", "").split(";")[0].strip().lower()
+    if kind == "multipart/form-data":
+        limit_body(
+            request,
+            runtime.drop.max_file_bytes + MULTIPART_ROOM,
+            f"a file is limited to {runtime.drop.max_file_bytes // 1024 // 1024} MB",
+        )
+    else:
+        limit_body(request, MAX_JSON_BYTES)
     try:
         if kind == "multipart/form-data":
             form = await request.form(max_files=1, max_fields=4)
