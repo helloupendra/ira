@@ -220,6 +220,25 @@ class Reply:
 
 
 @dataclass
+class _TurnSoFar:
+    """A turn's messages while it runs, to keep them if it is cut off."""
+
+    history: list[Message] | None = None
+    start: int = 0
+    saved: bool = False
+    # The round in progress: its words, the calls made so far, their results, the model.
+    round: tuple[str | None, list[ToolCall], list[Message], str | None] | None = None
+
+    def messages(self) -> list[Message]:
+        messages = list((self.history or [])[self.start :])
+        if self.round is not None and self.round[1]:
+            text, calls, results, model = self.round
+            messages.append(Message(role="assistant", content=text, tool_calls=calls, model=model))
+            messages.extend(results)
+        return messages
+
+
+@dataclass
 class ToolRun:
     """One tool call's outcome."""
 
@@ -593,13 +612,19 @@ class Assistant:
                 yield {"type": "done", "text": message, "model": None}
                 return
             if pending is not None and (is_yes(text) or is_no(text)):
-                async for event in self._answer_proposal(
+                # Closed with this one, so a turn cut off keeps what it did at once, not whenever
+                # it is collected.
+                answer = self._answer_proposal(
                     pending, text, conversation_id, channel, actor, user_id
-                ):
-                    yield event
+                )
+                async with contextlib.aclosing(answer):
+                    async for event in answer:
+                        yield event
                 return
-            async for event in self._turn(text, conversation_id, channel, actor, stream, user_id):
-                yield event
+            turn = self._turn(text, conversation_id, channel, actor, stream, user_id)
+            async with contextlib.aclosing(turn):
+                async for event in turn:
+                    yield event
 
     async def _answer_proposal(
         self,
@@ -621,10 +646,12 @@ class Assistant:
             if outcome.status in ("executed", "failed"):
                 # The model sees what it did (or why it failed) and carries on with the plan.
                 self.guard.cancel_older(pending, actor=actor, channel=channel)
-                async for event in self._turn(
+                turn = self._turn(
                     text, conversation_id, channel, actor, True, user_id, confirmed=True
-                ):
-                    yield event
+                )
+                async with contextlib.aclosing(turn):
+                    async for event in turn:
+                        yield event
                 return
         else:
             outcome = self.guard.cancel(pending.id, actor=actor, channel=channel, user_id=user_id)
@@ -757,12 +784,43 @@ class Assistant:
         cue: str | None = None,
         confirmed: bool = False,
     ) -> AsyncIterator[dict[str, Any]]:
+        """One turn, kept even if the client goes away mid-way: what its tools did has happened,
+        and an action it proposed is waiting, whether or not anyone is still reading."""
+        so_far = _TurnSoFar()
+        running = self._run_turn(
+            text, conversation_id, channel, actor, stream, user_id, so_far,
+            cue=cue, confirmed=confirmed,
+        )  # fmt: skip
+        try:
+            async with contextlib.aclosing(running):
+                async for event in running:
+                    yield event
+        finally:
+            # A turn cut off before any tool left nothing behind: a live call merges half a
+            # sentence into the next turn, and it must not be there twice.
+            if not so_far.saved and any(m.role == "tool" for m in so_far.messages()):
+                self.conversations.append(conversation_id, so_far.messages())
+
+    async def _run_turn(
+        self,
+        text: str | None,
+        conversation_id: str,
+        channel: str,
+        actor: str,
+        stream: bool,
+        user_id: int | None,
+        so_far: _TurnSoFar,
+        *,
+        cue: str | None = None,
+        confirmed: bool = False,
+    ) -> AsyncIterator[dict[str, Any]]:
         """One turn. ``text`` None continues the conversation without a new message (after a
         confirmed action); ``cue`` is then said to the model, never stored, unless the
         history already ends with the action's result. ``confirmed``: the text is the yes that
         just ran an action."""
         history = self.history(conversation_id)
         start = len(history)
+        so_far.history, so_far.start = history, start
         self._front.pop(conversation_id, None)  # what was in front last turn may not be now
         if text is not None:
             history.append(Message(role="user", content=text))
@@ -943,6 +1001,7 @@ class Assistant:
                     f"({len(exc.errors)} tried). Please try again in a minute."
                 )
                 history.append(Message(role="assistant", content=message))
+                so_far.saved = True
                 self.conversations.append(conversation_id, history[start:])
                 yield {"type": "error", "message": message}
                 yield {"type": "done", "text": message, "model": None}
@@ -1057,6 +1116,7 @@ class Assistant:
 
             replayed: list[ToolCall] = []
             results: list[Message] = []
+            so_far.round = (response.text, replayed, results, model)
             for call in response.tool_calls:
                 event_id = _unique(call.id, call_ids)
                 if event_id != call.id:
@@ -1110,6 +1170,7 @@ class Assistant:
                 Message(role="assistant", content=response.text, tool_calls=replayed, model=model)
             )
             history.extend(results)
+            so_far.round = None
             # A device tool tried round after round has given what it has: answer with that.
             # Using a screen goes step by step (read, click, read again, type), so those tools
             # are spent only by the same call, with the same arguments, round after round.
@@ -1154,6 +1215,7 @@ class Assistant:
             model = wrap_model or model
             history.append(Message(role="assistant", content=final_text, model=wrap_model))
 
+        so_far.saved = True
         ids = self.conversations.append(conversation_id, history[start:])
         if self.after_turn is not None and user_id is not None and text is not None:
             task = asyncio.create_task(self.after_turn(user_id, text))

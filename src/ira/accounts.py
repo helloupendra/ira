@@ -203,6 +203,10 @@ class _Attempts:
     failures: list[float] = field(default_factory=list)
 
 
+# Past this many, those with nothing left in their window are cleared out.
+MAX_LOGIN_KEYS = 10_000
+
+
 class LoginLimiter:
     """Five failed sign-ins for one email or address in 15 minutes blocks it for 15 minutes."""
 
@@ -216,10 +220,26 @@ class LoginLimiter:
         self._lock = threading.Lock()
 
     def _recent(self, key: str) -> list[float]:
+        """The failures still counted for a key. Only looking creates nothing, so that a flood of
+        made-up emails from a blocked address costs no memory."""
+        entry = self._attempts.get(key)
+        if entry is None:
+            return []
         now = self.clock()
-        entry = self._attempts.setdefault(key, _Attempts())
         entry.failures = [t for t in entry.failures if now - t < self.window]
+        if not entry.failures:
+            del self._attempts[key]
+            return []
         return entry.failures
+
+    def _add(self, key: str, at: float) -> None:
+        if len(self._attempts) > MAX_LOGIN_KEYS:
+            self._attempts = {
+                k: e
+                for k, e in self._attempts.items()
+                if any(at - t < self.window for t in e.failures)
+            }
+        self._attempts.setdefault(key, _Attempts()).failures.append(at)
 
     def blocked(self, *keys: str) -> bool:
         with self._lock:
@@ -228,7 +248,7 @@ class LoginLimiter:
     def fail(self, *keys: str) -> None:
         with self._lock:
             for key in keys:
-                self._recent(key).append(self.clock())
+                self._add(key, self.clock())
 
     def take(self, *keys: str) -> float | None:
         """Count an attempt as failed before the password is checked, so that many at once
@@ -239,7 +259,7 @@ class LoginLimiter:
                 return None
             at = self.clock()
             for key in keys:
-                self._recent(key).append(at)
+                self._add(key, at)
             return at
 
     def release(self, at: float, *keys: str) -> None:
@@ -480,7 +500,11 @@ class Accounts:
         its history, the new password and the invited role.
         """
         _check_password(password)
-        password_hash = _hasher.hash(password)
+        # Before the hash, which takes 64 MB: garbage tokens must cost nothing.
+        if self.open_invite(token) is None:
+            raise AccountError("this invitation is not valid any more; ask for a new one")
+        with self.checking:
+            password_hash = _hasher.hash(password)
         now = self.clock()
         with self.store.transaction():
             invite = self.open_invite(token)

@@ -155,9 +155,23 @@ class Conversations:
             "WHERE m.conversation_id = ? AND m.at >= c.reset_at ORDER BY m.id DESC LIMIT ?",
             (conversation_id, limit),
         )
+        rows = list(reversed(rows))
+        # A long run of tool calls can fill the window with no message of theirs in it: go back to
+        # the one that started it, and let the budget trim, or the next turn would know nothing.
+        if rows and not any(row["role"] == "user" for row in rows):
+            rows = self.store.query(
+                "SELECT m.*, a.status AS a_status, a.result AS a_result, a.summary AS a_summary, "
+                "a.expires_at AS a_expires, a.device_id AS a_device, a.tool AS a_tool "
+                "FROM messages m JOIN conversations c ON c.id = m.conversation_id "
+                "LEFT JOIN pending_actions a ON a.id = m.action_id "
+                "WHERE m.conversation_id = ? AND m.at >= c.reset_at AND m.id >= COALESCE(("
+                "SELECT MAX(u.id) FROM messages u WHERE u.conversation_id = ? AND u.role = 'user' "
+                "AND u.id < ?), ?) ORDER BY m.id",
+                (conversation_id, conversation_id, rows[0]["id"], rows[0]["id"]),
+            )
         now = self.clock()
         messages = []
-        for row in reversed(rows):
+        for row in rows:
             message = _decode(row)
             if message.role == "tool" and row["action_id"]:
                 message.content = settled(row, now, self.personal) or message.content

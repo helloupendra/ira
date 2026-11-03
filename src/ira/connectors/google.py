@@ -23,7 +23,7 @@ import secrets
 import time
 from collections.abc import Awaitable, Callable
 from typing import Any
-from urllib.parse import urlencode
+from urllib.parse import quote, urlencode
 
 import httpx
 
@@ -226,8 +226,19 @@ class Google:
             params["q"] = query
         calendars = await self.get(f"{CALENDAR}/users/me/calendarList", token)
         events = []
+        failed: ToolError | None = None
         for calendar in (calendars.get("items") or [])[:10]:
-            listed = await self.get(f"{CALENDAR}/calendars/{calendar['id']}/events", token, params)
+            # An id can hold "#" (holidays, birthdays), and one calendar failing must not lose the
+            # rest.
+            try:
+                listed = await self.get(
+                    f"{CALENDAR}/calendars/{quote(str(calendar['id']), safe='')}/events",
+                    token,
+                    params,
+                )
+            except ToolError as exc:
+                failed = exc
+                continue
             for event in listed.get("items") or []:
                 events.append(
                     {
@@ -240,6 +251,8 @@ class Google:
                         "where": event.get("location"),
                     }
                 )
+        if failed is not None and not events:
+            raise failed  # none could be read: that is not an empty calendar
         events.sort(key=lambda e: str(e["start"]))
         return {"events": events[:100]}
 

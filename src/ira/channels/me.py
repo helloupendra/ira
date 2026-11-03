@@ -318,8 +318,8 @@ def export_data(runtime: Runtime, principal: Principal) -> dict[str, Any]:
             runtime,
             "SELECT id, tool, params, summary, conversation_id, channel, created_at, status, "
             "result, finished_at, tier, device_id FROM pending_actions "
-            "WHERE user_id = ? OR actor = ? ORDER BY created_at",
-            (user_id, principal.user.email),
+            "WHERE user_id = ? ORDER BY created_at",  # never by email: it can pass to someone else
+            (user_id,),
         ),
         "devices": [
             {

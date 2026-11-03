@@ -88,6 +88,13 @@ def split_ref(ref: str) -> tuple[str, str]:
     return provider, model
 
 
+def _unexpected(ref: str, exc: Exception) -> ProviderError:
+    """Anything else a provider raises, as a failure of that model. Only the error's type goes on:
+    its text may hold a credential."""
+    log.warning("%s failed unexpectedly: %s", ref, type(exc).__name__)
+    return ProviderError(f"{ref}: {type(exc).__name__}", kind="server")
+
+
 class Gateway:
     def __init__(
         self,
@@ -265,6 +272,12 @@ class Gateway:
                 self._cool_down(ref, error)
                 self._record(request, tier, purpose, tried, ref, None, error.kind, started)
                 continue
+            except Exception as exc:  # an expired credential, an odd reply: the next may answer
+                error = _unexpected(ref, exc)
+                errors.append((ref, error))
+                self._cool_down(ref, error)
+                self._record(request, tier, purpose, tried, ref, None, error.kind, started)
+                continue
             except BaseException:  # the caller gave up (cancelled): the attempt still counts
                 self._record(request, tier, purpose, tried, ref, None, "abandoned", started)
                 raise
@@ -331,6 +344,10 @@ class Gateway:
                         raise ProviderError(
                             f"{ref}: stream stalled for {allowed}s", kind="timeout"
                         ) from None
+                    except ProviderError:
+                        raise
+                    except Exception as exc:
+                        raise _unexpected(ref, exc) from exc
                     allowed = self.timeout_seconds  # it has begun: the first limit is behind it
                     if isinstance(event, TextDelta):
                         shown = thinking.feed(event.text)

@@ -485,3 +485,50 @@ async def test_a_reminder_after_a_read_needs_their_words():
     events = await world.turn("screen dekho", "mac")
     assert refused(events) == ["remind_me"]
     assert world.runtime.store.query("SELECT * FROM reminders") == []
+
+
+# A turn cut off, and the history after a long one.
+
+
+async def test_a_turn_cut_off_is_kept_with_what_its_tools_did():
+    world = World([step("app_open", app="Safari"), "Khul gaya."])
+    events = world.runtime.assistant.events(
+        "safari kholo", conversation_id="c1", channel="api", actor=world.owner.email,
+        user_id=world.owner.id, device_id=world.devices["mac"].id,
+    )  # fmt: skip
+    async for event in events:
+        if event["type"] == "tool_result":
+            break
+    await events.aclose()
+    assert world.ran == ["app_open"]
+    stored = world.runtime.assistant.conversations.load("c1", 30)
+    assert [m.role for m in stored] == ["user", "assistant", "tool"]
+    assert stored[0].content == "safari kholo" and stored[1].tool_calls[0].name == "app_open"
+
+
+async def test_a_turn_cut_off_before_any_tool_leaves_nothing():
+    world = World(["Bolo."])
+    events = world.runtime.assistant.events(
+        "safari", conversation_id="c1", channel="api", actor=world.owner.email,
+        user_id=world.owner.id, device_id=world.devices["mac"].id,
+    )  # fmt: skip
+    await events.__anext__()
+    await events.aclose()
+    assert world.runtime.assistant.conversations.load("c1", 30) == []
+
+
+async def test_a_long_run_of_tools_leaves_the_next_turn_its_request():
+    assistant_turns = [step("screen_read") for _ in range(20)]
+    world = World([*assistant_turns, "Ho gaya."])
+    conversations = world.runtime.assistant.conversations
+    conversations.ensure("c1", channel="api", user_id=world.owner.id)
+    from ira.models.base import Message
+
+    long_run: list[Message] = [Message(role="user", content="poora form bharo")]
+    for n in range(20):
+        call = ToolCall(f"c{n}", "screen_read", "{}")
+        long_run.append(Message(role="assistant", content="", tool_calls=[call]))
+        long_run.append(Message(role="tool", content="x", tool_call_id=call.id, name="screen_read"))
+    conversations.append("c1", long_run)
+    loaded = conversations.load("c1", limit=30)
+    assert loaded[0].content == "poora form bharo" and loaded[0].role == "user"

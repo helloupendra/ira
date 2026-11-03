@@ -31,6 +31,16 @@ from ira.voice.audio import AudioError, ogg_to_wav
 from ira.voice.shorten import speakable
 
 log = logging.getLogger("ira.telegram")
+# Updates being handled before a poll moves past them.
+MAX_WAITING_UPDATES = 50
+
+
+def next_offset(handling: set[int], newest: int) -> int | None:
+    """Where the next poll starts: at the oldest update still being handled, unless too many are."""
+    if handling and len(handling) < MAX_WAITING_UPDATES:
+        return min(handling)
+    return newest + 1 if newest else None
+
 
 PAIRING_SECONDS = 600
 BOT_INFO_SECONDS = 3600  # how long a getMe answer is kept
@@ -291,9 +301,9 @@ class TelegramBot:
                     self._dispatch(update)
                 # Telegram forgets an update once a poll asks for the ones after it, so ask
                 # only past those already handled: an update being handled when the server
-                # restarts comes again, instead of being lost.
-                waiting = sorted(self._handling)
-                offset = waiting[0] if waiting else (self._newest + 1 if self._newest else None)
+                # restarts comes again, instead of being lost. Except with a backlog: a poll
+                # returns at most 100, and one busy chat must not keep the others from being seen.
+                offset = next_offset(self._handling, self._newest)
                 if updates and not fresh:
                     await asyncio.sleep(1)  # only updates still being handled came back
         finally:
