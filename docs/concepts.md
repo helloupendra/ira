@@ -78,9 +78,11 @@ Every tool has a tier, set in code. The model's arguments can never change it.
 A read tool whose results hold text written by others (web pages, mail,
 reviews) is marked `@tool(untrusted=True)`. Its results reach the model
 wrapped as data (`<web_results untrusted="true">`), with a rule that they are
-never instructions, and **once a turn has read any, a Tier 2 or 3 call in that
-turn is refused**: an action may come only from the person's own words. A
-device's output is treated the same way.
+never instructions, and **once a turn has read any, an action in that turn goes
+on only on the person's own words**: a separate check that sees nothing read
+must find they asked for it, and one that reaches others or takes a PIN is
+refused (`docs/security.md`, "What she reads cannot steer her"). A device's
+output is treated the same way.
 
 Every tool call is written to "What Ira did" (`GET /v1/me/activity`): who,
 where, which tool and device, the tier, the outcome and the time it took.

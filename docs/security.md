@@ -55,8 +55,8 @@ on its own it can never change anything.
   model and is never stored; Telegram deletes such a voice note.
 - **What taints a turn.** After Ira reads text that others wrote (a
   screen, a message, a notification, a file, mail, a web page, a calendar,
-  a connection's output), an action that needs a yes or a PIN may come only
-  from the person's own words in a new message. A device's own status ("Opened
+  a connection's output), an act may come only from the person's own words
+  ("What she reads cannot steer her", below). A device's own status ("Opened
   YouTube", an alarm set) and the person's own data (their contacts, call
   log, location) do not taint it. A skill the server does not know does.
 - **Never "running" for ever.** A confirmed action that does not finish in
@@ -79,8 +79,9 @@ on its own it can never change anything.
   "yes" from the person who asked, 3 needs a PIN. The model cannot lower it.
 - Text written by others (web results, a device's output, a tool marked
   `untrusted`) reaches the model wrapped as data, with a rule that it is
-  never instructions. A turn that has read any of it cannot propose a Tier 2
-  or 3 action; the call is refused and logged as `refused`.
+  never instructions. In a turn that has read any of it, an act goes on only
+  on the person's own words ("What she reads cannot steer her", below); any
+  other call is refused and logged as `refused`.
 - A "yes" to a Tier 2 proposal never goes to a model: the assistant matches a
   short yes or no ("haan", "theek hai", "nahi") itself, only from the person
   who asked, in the same conversation, within 120 seconds.
@@ -193,6 +194,34 @@ on its own it can never change anything.
 - Answers are inserted as text, never as HTML.
 - The service worker never caches `/v1`.
 - API responses are `Cache-Control: no-store`.
+
+## What she reads cannot steer her
+
+A screen, a page or a mail may try to give Ira a task. The model that reads them cannot be trusted
+to ignore that, so these rules are in code. The first three apply once a turn has read text others
+wrote.
+
+**The asked-for check.** A separate model call (`ira.asked`) is given what the person said and what
+the action is, and answers which actions those words ask for. It is never given a tool's result, a
+window's text or the conversation's past, so nothing read can change its answer. An error, or an
+answer it cannot read, is a no.
+
+**An act after a read.** An act of a device, even one that needs no yes, goes on to its usual gate
+only if the check passes. These never follow a read, whatever was said: a tool that reaches others
+or runs what a card cannot show in full (`NEVER` below, shortcuts, coding tasks), anything that
+takes a PIN, Drop, memory, and any action of a connection. The person says so in a new message.
+An open approval window (below) still runs its covered steps from the device it is on.
+
+**A tool refused for what it is** is not offered again that turn, so she says what stopped her
+instead of trying around it.
+
+**Rounds that push a model.** When a turn stops short and the model is asked to go on, it is offered
+what reads and only the acts the check passed. A tool is required only when an act that passed has
+not run; otherwise it may simply answer.
+
+**A read nobody asked for.** With no device named in this message or the last, a read of what the
+person holds (messages, calls, mail, files, notes, the clipboard and so on) on a device other than
+the one they talk from needs the check too: "YouTube on karo" does not read the phone's SMS.
 
 ## Approvals: fewer PINs for one task
 

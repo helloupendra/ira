@@ -30,7 +30,8 @@ from typing import Any
 from pydantic import ValidationError
 
 from ira import toollog
-from ira.approvals import never_app, never_type, open_refusal
+from ira.approvals import covered, never_app, never_type, open_refusal, outward, private_read
+from ira.asked import AskedFor
 from ira.conversations import Conversations
 from ira.devices.hub import asked_from
 from ira.devices.naming import Roster, named_devices
@@ -39,6 +40,8 @@ from ira.models.gateway import Gateway, GatewayError
 from ira.models.leaked import MarkupGate, before_markup, recover
 from ira.promises import (
     PromiseGate,
+    asks_about_messages,
+    asks_about_the_screen,
     asks_more_than_one_thing,
     asks_which_device,
     asks_yes_in_words,
@@ -142,6 +145,19 @@ GOAL_RULE = (
     "now, using what the last tool returned. Only when all of it is done, or you truly cannot go "
     "on, call finish_turn, with what you found and what is left."
 )
+# The same, when nothing they asked for is known to be left: no tool is required.
+GOAL_RULE_FREE = (
+    "Look again at what the person asked. If any part of it is not done yet, call the next tool "
+    "now, using what the last tool returned. Otherwise answer now with what you found."
+)
+LOOK_RULE = (
+    "They asked about their screen, and you have not looked, so you cannot know what is on it. "
+    "Call screen_read now. Never describe a screen you have not read."
+)
+MESSAGES_RULE = (
+    "Notifications hold only what is showing now, not the messages themselves. They asked about "
+    "messages: call sms_read as well before you say what there is or is not."
+)
 YES_RULE = (
     "Do not ask for a yes in words: only the app can take it. Call the tool with exactly what you "
     "would do: the person is then shown a card and asked."
@@ -151,6 +167,14 @@ YES_RULE = (
 # in a row (the turn's own limit, max_tool_rounds, still bounds the job).
 SAME_TOOL_ROUNDS = 3
 STEP_SKILLS = frozenset({"screen", "control"})
+TOOL_NOT_ASKED = (
+    "Not run: the person did not ask for this. Answer with what you found, and offer it if it "
+    "would help."
+)
+READ_NOT_ASKED = (
+    "Not run: this reads what the person holds on a device they did not name, and what they said "
+    "does not ask for it. If you truly need it, ask them."
+)
 TOOL_SPENT = (
     "Not run: this tool has already been tried several times in this turn. Answer with what it "
     "gave, and say what you could not find."
@@ -206,6 +230,7 @@ class ToolRun:
     untrusted: bool = False  # the result holds text written by others
     private: bool = False  # a device's output: only its own user sees it
     outcome: str = "ok"  # for "What Ira did"
+    spent: bool = False  # refused for what it is, not how it was called: trying again cannot help
 
 
 # The person's own tools for one turn: their devices', and the skills they switched on.
@@ -265,9 +290,8 @@ REFUSED_MEMORY = (
     "would remember, and ask them to say it."
 )
 REFUSED_UNTRUSTED = (
-    "refused: this turn has read content from a device or the web, and an action that needs "
-    "a yes or a PIN may come only from the person's own words. Tell them what you would do, "
-    "and ask them to say so themselves."
+    "refused: this turn has read content from a device or the web, and this needs the person's "
+    "own words. Tell them what you would do, and ask them to say so themselves."
 )
 
 
@@ -606,11 +630,13 @@ class Assistant:
         user_id: int | None,
         conversation_id: str | None = None,
         named: set[int] | None = None,
+        stay_here: bool = False,
     ) -> dict[str, PersonalTool]:
         """This person's own tools for the turn; a registry tool's name always wins. Held from
         a device, its own tools say so, and one several devices offer goes to it by default.
         What the turn must not reach is not on offer at all: another device's tools when the
-        person named one, and from a device, what changes something on one they did not name."""
+        person named one, and from a device, what changes something on one they did not name.
+        ``stay_here``: nothing they said names a device, so one several offer stays on this one."""
         if self.personal_tools is None or user_id is None:
             return {}
         here = self._from.get(conversation_id) if conversation_id is not None else None
@@ -622,7 +648,8 @@ class Assistant:
         for extra in self.personal_tools(user_id):
             if extra.name in self.registry or extra.name in offered:
                 continue
-            seen = extra if here is None else self._from_here(extra, here)
+            stay = stay_here and not approved  # an approval for a device counts as naming it
+            seen = extra if here is None else self._from_here(extra, here, stay)
             why = None if extra.source != "device" else _not_on_offer(seen, named, here, approved)
             if why is not None:
                 hidden[extra.name] = why
@@ -632,7 +659,7 @@ class Assistant:
             self._hidden[conversation_id] = hidden
         return offered
 
-    def _from_here(self, tool: PersonalTool, here: int) -> PersonalTool:
+    def _from_here(self, tool: PersonalTool, here: int, stay: bool = False) -> PersonalTool:
         """A device's tool as seen from the device `here`, which the person talks from."""
         if tool.source != "device":
             return tool
@@ -641,7 +668,7 @@ class Assistant:
             routed = tool.route
 
             def route(arguments: dict[str, Any]) -> tuple[int, dict[str, Any]]:
-                if not arguments.get("device"):  # unnamed: the device the person talks from
+                if stay or not arguments.get("device"):  # unnamed: the device they talk from
                     return here, {k: v for k, v in arguments.items() if k != "device"}
                 return routed(arguments)
 
@@ -735,7 +762,10 @@ class Assistant:
             else []
         )
         named = named_devices(asked, roster) if roster else None
-        personal = self._offered(user_id, conversation_id, named)
+        # "aur parson ka?" after "mac pe dekho" is still about the Mac.
+        before = named_devices(_last_user_text(history[:start]), roster) if roster else None
+        nothing_named = named is None and before is None
+        personal = self._offered(user_id, conversation_id, named, stay_here=nothing_named)
         tools = self.registry.schemas() + [t.schema() for t in personal.values()]
         untrusted = bool(personal) or any(
             t.untrusted for t in self.registry if self.registry.is_enabled(t.name)
@@ -771,6 +801,18 @@ class Assistant:
         waiting = False
         asked_for: set[str] = set()
         named_up = named is not None and any(d.connected and d.id in named for d in roster)
+        look = personal.get("screen_read")
+        # Asked about the screen here: words before a look can only be made up.
+        must_look = (
+            look is not None
+            and here is not None
+            and named is None
+            and asks_about_the_screen(asked)
+            and (look.device_id == here or here in look.devices.values())
+        )
+        windows_open = self.approvals is not None and bool(
+            user_id is not None and self.approvals.for_user(user_id)
+        )
         tier = self.voice_tier if spoken and self.voice_tier else self.tier
         patience = self.voice_first_token_seconds if spoken else self.first_token_seconds
         model: str | None = None
@@ -781,6 +823,13 @@ class Assistant:
         # This turn has read text written by others. A turn that carries on after a PIN starts
         # so: the person has said nothing new since what came before it.
         tainted = text is None
+        asked_check = AskedFor(
+            self.gateway, [asked], tier=tier, seconds=patience * 2 if patience else None
+        )
+        asked_check.nothing_named = nothing_named
+        withheld: set[str] = set()
+        refusals: Counter[str] = Counter()
+        said_in = ""  # which round the final words came from, to trace a bad one
 
         budget, tight = self.history_chars, False
         asked_again = False
@@ -790,7 +839,7 @@ class Assistant:
             current_from = next(
                 (i for i in range(len(history) - 1, -1, -1) if history[i].role == "user"), start
             )
-        for _ in range(self.max_tool_rounds):
+        for round_number in range(self.max_tool_rounds):
             sent = fit(history, budget, current_from=current_from, tight=tight)
             messages = [Message(role="system", content=system), *sent]
             if cue and history and history[-1].role != "tool":
@@ -802,6 +851,7 @@ class Assistant:
             # known. With a check still to come on the whole answer, nothing at all does.
             hold_all = on_devices and (
                 (named_up and not used and "named" not in asked_for)
+                or (must_look and not used and "look" not in asked_for)
                 or (used and "goal" not in asked_for and asks_more_than_one_thing(asked))
             )
             promise = PromiseGate(hold_all) if on_devices else None
@@ -821,8 +871,6 @@ class Assistant:
                     finished = finished or said is not None
                     if not response.tool_calls and not (response.text or "").strip():
                         response.text = last_words  # a forced round with nothing to say
-                    if response.tool_calls:
-                        asked_for.discard("goal")  # it went on: the next stop is checked too
                     piece = _without_foreign(response.text or "", keep_foreign)
                     piece = promise.feed(piece) + promise.flush() if promise else piece
                     if piece:
@@ -856,6 +904,7 @@ class Assistant:
                 if last_words and any(e.kind == "empty" for _, e in exc.errors):
                     # What it said before it was asked to go on is better than asking them again.
                     final_text = without_promises(last_words, claims=not used)
+                    said_in = "last words"
                     if _letters(final_text) >= 2:
                         yield {"type": "delta", "text": final_text}
                         history.append(Message(role="assistant", content=final_text))
@@ -870,7 +919,7 @@ class Assistant:
                     # A model was reached but said nothing: ask again, never answer blank.
                     from ira.language import detect
 
-                    final_text, model = SAY_AGAIN[detect(asked)], None
+                    final_text, model, said_in = SAY_AGAIN[detect(asked)], None, "fixed line"
                     yield {"type": "delta", "text": final_text}
                     history.append(Message(role="assistant", content=final_text))
                     break
@@ -925,14 +974,39 @@ class Assistant:
                     off = named is not None and not named_up and _letters(kept) >= 2
                     why = None if off or (finished and not empty) else _ask_again(
                         words, empty, asked, used, here, named, named_up, asked_for, proposable,
-                        self.device_label,
+                        self.device_label, must_look, "sms_read" in personal,
                     )  # fmt: skip
                     if why is not None:
                         log.warning("%s: asked to go on (%s)", model, why[0])
                         asked_for.add(why[0])
                         last_words = words
-                        system += f"- {why[1]}\n"
-                        must_act = bool(tools)
+                        # A round we push must not end in what nobody asked for.
+                        acts = {
+                            name: description
+                            for name, description in self._actions(personal).items()
+                            if any(t["name"] == name for t in tools)
+                        }
+                        wanted = await asked_check.which(acts) if acts else set()
+                        tools = [
+                            t
+                            for t in tools
+                            if t["name"] not in acts
+                            or t["name"] in wanted
+                            or (windows_open and _a_means(personal.get(t["name"])))
+                        ]
+                        withheld |= set(acts) - {t["name"] for t in tools}
+                        if why[0] == "yes":  # what it would do, and nothing to read on the way
+                            only = [t for t in tools if t["name"] in wanted]
+                            tools = only or tools
+                        # With an approval open, clicks and looks are only the means.
+                        left = {
+                            name
+                            for name in wanted - set(used)
+                            if not (windows_open and _a_means(personal.get(name)))
+                        }
+                        must_act = bool(tools) and (why[0] != "goal" or bool(left))
+                        rule = why[1] if must_act or why[0] != "goal" else GOAL_RULE_FREE
+                        system += f"- {rule}\n"
                         continue
                     if empty:  # it had its chance: what it found stands, its promises do not
                         from ira.language import detect
@@ -951,6 +1025,7 @@ class Assistant:
                     response.text = SAY_AGAIN[detect(asked)]
                     yield {"type": "delta", "text": response.text}
                 final_text = response.text
+                said_in = "forced" if forcing else "first" if round_number == 0 else "later"
                 if _QUOTED_START.match(final_text or ""):
                     # The leftovers of a call half-written as text, or of a dropped clause.
                     log.warning(
@@ -974,12 +1049,21 @@ class Assistant:
                 }
                 if call.name in spent:
                     run = _failed(TOOL_SPENT, _safe(call))
+                elif call.name in withheld:
+                    run = _failed(TOOL_NOT_ASKED, _safe(call))
                 else:
                     run = await self._run_tool(
-                        call, conversation_id, channel, actor, user_id, personal, tainted
-                    )
+                        call, conversation_id, channel, actor, user_id, personal, tainted,
+                        asked_check,
+                    )  # fmt: skip
                 tainted = tainted or run.untrusted
                 used.append(call.name)
+                if run.outcome == "refused":  # and not again and again in other words
+                    refusals[call.name] += 1
+                    if run.spent or refusals[call.name] >= SAME_TOOL_ROUNDS:
+                        withheld.add(call.name)
+                if run.ok:
+                    asked_for.discard("goal")  # it went on: the next stop is checked too
                 waiting = waiting or run.pending is not None
                 replayed.append(run.call)
                 results.append(
@@ -1025,9 +1109,9 @@ class Assistant:
                 and name in personal
                 and personal[name].source == "device"
             }
-            tools = [t for t in tools if t["name"] not in spent] or tools
+            tools = [t for t in tools if t["name"] not in spent | withheld] or tools
         else:
-            final_text, wrap_model = "", None
+            final_text, wrap_model, said_in = "", None, "wrap-up"
             # Out of steps, and no round is left to check its words: promises are only cut.
             wrap_gate = PromiseGate() if on_devices else None
             async for piece, wrapped_by in self._wrap_up(
@@ -1060,6 +1144,11 @@ class Assistant:
             "model": model,
             "message_id": ids[-1],
             "checks": sorted(asked_for),
+            "asked_calls": asked_check.calls,
+            "asked_seconds": round(asked_check.elapsed, 2),
+            "asked": dict(asked_check.known),
+            "asked_unreadable": asked_check.unreadable,
+            "said_in": said_in,
         }
 
     async def _again_in_language(
@@ -1143,6 +1232,7 @@ class Assistant:
         user_id: int | None = None,
         personal: dict[str, PersonalTool] | None = None,
         tainted: bool = False,
+        asked: AskedFor | None = None,
     ) -> ToolRun:
         """Run a Tier 0 or 1 tool, or propose a Tier 2 or 3 action; log it either way."""
         started = time.monotonic()
@@ -1165,7 +1255,7 @@ class Assistant:
             run.outcome = "refused"
         elif extra is not None:
             run = await self._run_personal(
-                extra, call, conversation_id, channel, actor, user_id, tainted
+                extra, call, conversation_id, channel, actor, user_id, tainted, asked
             )
         else:
             assert tool is not None
@@ -1240,6 +1330,36 @@ class Assistant:
             content = wrap_untrusted("web", tool.name, _result(value))
             return ToolRun(content, True, safe_call, untrusted=True)
         return ToolRun(_result(value), True, safe_call)
+
+    def _actions(self, personal: dict[str, PersonalTool]) -> dict[str, str]:
+        """What can change something, of all a turn offers: {name: what it does}."""
+        out = {t.name: t.description for t in personal.values() if t.tier >= 1}
+        for tool in self.registry:
+            if (tool.tier >= 1 or tool.kind == "action") and self.registry.is_enabled(tool.name):
+                out[tool.name] = tool.description
+        return out
+
+    async def _read_nobody_asked_for(
+        self,
+        extra: PersonalTool,
+        arguments: dict[str, Any],
+        conversation_id: str,
+        asked: AskedFor | None,
+    ) -> bool:
+        """A read of what the person holds on a device other than the one they talk from, with no
+        device named and nothing in their words asking for it: "YouTube on karo" does not read
+        the Pixel's SMS. On the device they talk from, or a device they named, it may."""
+        if asked is None or not asked.nothing_named or extra.tier != 0 or extra.source != "device":
+            return False
+        if not private_read(extra.skill):
+            return False
+        try:
+            target, _ = extra.target(arguments)
+        except ToolError:
+            return False
+        if target == self._from.get(conversation_id):
+            return False
+        return not await asked.allows(extra.name, extra.description)
 
     async def _run_now(
         self,
@@ -1322,9 +1442,15 @@ class Assistant:
         actor: str,
         user_id: int | None,
         tainted: bool,
+        asked: AskedFor | None = None,
     ) -> ToolRun:
         arguments = call.parsed_arguments() or {}
         safe_call = _safe(call)
+        if await self._read_nobody_asked_for(extra, arguments, conversation_id, asked):
+            run = _failed(READ_NOT_ASKED, safe_call)
+            run.outcome = "refused"
+            run.spent = True
+            return run
         if tainted and extra.skill == "drop" and extra.tier >= 1:
             # Text others wrote must not be sent on to the person's devices unasked.
             run = _failed(REFUSED_DROP, safe_call)
@@ -1383,10 +1509,15 @@ class Assistant:
                 return await self._run_now(
                     extra, arguments, safe_call, conversation_id, target, "trusted_app"
                 )
+        # After a read, an act goes on only on the person's own words.
+        if (
+            tainted
+            and (extra.tier >= 2 or (extra.tier >= 1 and extra.source == "device"))
+            and not await _may_follow_a_read(extra, asked)
+        ):
+            return _refused(safe_call)
         if extra.tier >= 2:
             # The tier is the device's or the skill's, from code; the model cannot lower it.
-            if tainted:
-                return _refused(safe_call)
             try:
                 device_id, params = extra.target(arguments)
             except ToolError as exc:
@@ -1457,9 +1588,26 @@ def _proposed(pending: PendingAction, call: ToolCall) -> ToolRun:
     return ToolRun(_result(proposal), True, call, pending, outcome="proposed")
 
 
+async def _may_follow_a_read(extra: PersonalTool, asked: AskedFor | None) -> bool:
+    """Whether this act may go on to its usual gate in a turn that has read what others wrote: only
+    on the person's own words, and never one that reaches others or takes a PIN, so that a mail
+    cannot put a recipient on a card."""
+    if asked is None or extra.source != "device":
+        return False
+    if extra.tier >= 3 or outward(extra.name, extra.skill):
+        return False
+    return await asked.allows(extra.name, extra.description)
+
+
+def _a_means(tool: PersonalTool | None) -> bool:
+    """A step of operating a device, that an open approval offers whatever the goal is."""
+    return tool is not None and covered(tool.name, tool.skill)
+
+
 def _refused(call: ToolCall) -> ToolRun:
     run = _failed(REFUSED_UNTRUSTED, call)
     run.outcome = "refused"
+    run.spent = True
     return run
 
 
@@ -1578,6 +1726,8 @@ def _ask_again(
     asked_for: set[str],
     proposable: bool,
     label: Callable[[int], str],
+    must_look: bool = False,
+    can_read_sms: bool = False,
 ) -> tuple[str, str] | None:
     """One more chance for a turn that ended short of the goal: which, and the rule that says
     so. Each is asked once, so a turn always ends."""
@@ -1590,6 +1740,16 @@ def _ask_again(
         return "yes", YES_RULE
     if named_up and not used and "named" not in asked_for and not names_a_never_read_app(asked):
         return "named", NAMED_RULE
+    if must_look and not used and "look" not in asked_for and not says_cannot(words):
+        return "look", LOOK_RULE
+    if (
+        can_read_sms
+        and "notifications_read" in used
+        and "sms_read" not in used
+        and "messages" not in asked_for
+        and asks_about_messages(asked)
+    ):
+        return "messages", MESSAGES_RULE
     if used and "goal" not in asked_for and asks_more_than_one_thing(asked):
         return "goal", GOAL_RULE
     return None

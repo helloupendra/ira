@@ -71,10 +71,14 @@ _WHICH = re.compile(
 )
 # Asking for a yes in words: only the app's card can take it.
 _YES_IN_WORDS = re.compile(
-    r"haan bol|haan kah|han bol|say yes|reply yes|please confirm|kya bhej|bhej dun|bhej doon|"
+    r"ha+n[\"'”]?\s*(?:bol|kah|keh)|yes/no|say yes|reply yes|please confirm|kya bhej|"
+    r"bhej dun|bhej doon|confirm kar|confirm kij|sahi hai\s*\?|theek hai\s*\?|naam bata|"
+    r"kya mai?n?\b[^?।]*(?:karoon|karun|kar doon|kar dun|bhejun|bhejoon|laaoon|laun|kholun|"
+    r"kholoon|dabaun|dabaoon)\b|"
     r"bhejun\b|shall i (?:send|open|set|call|do)|should i (?:send|open|set|call|do)|"
     r"do you want me to|want me to (?:send|open|set|call)"
-    r"|हाँ बोल|हां बोल|हाँ कह|हां कह|कन्फर्म कर|क्या भेज",
+    r"|हाँ[\"'”]?\s*(?:बोल|कह)|हां[\"'”]?\s*(?:बोल|कह)|कन्फर्म कर|क्या भेज|सही है\s*\?|नाम बता"
+    r"|क्या मैं[^?।]*(?:करूँ|करूं|भेजूँ|भेजूं|खोलूँ|खोलूं|लाऊँ|लाऊं|दबाऊँ|दबाऊं)",
     re.IGNORECASE,
 )
 # Saying it cannot, or that the device is off: an answer, and what led to it in the sentence is too.
@@ -97,6 +101,10 @@ _CHATTER = re.compile(
     r"theek hai|thik hai|achha|acha|haan|han|nahi|"
     r"धन्यवाद|शुक्रिया|नमस्ते|नमस्कार|ठीक है|अच्छा|हाँ|हां|नहीं)[\s.!।]*",
     re.IGNORECASE,
+)
+_SCREEN = re.compile(r"(?<![a-z])(?:screen|window)(?![a-z])|स्क्रीन|विंडो", re.IGNORECASE)
+_MESSAGES = re.compile(
+    r"(?<![a-z])(?:sms|messages?|massage)(?![a-z])|मैसेज|संदेश|एसएमएस", re.IGNORECASE
 )
 _SENTENCE = re.compile(r"[^.!?।\n]*[.!?।\n]+|[^.!?।\n]+$")
 _SENTENCE_END = re.compile(r"[.!?।\n]")
@@ -164,8 +172,19 @@ def asks_yes_in_words(text: str) -> bool:
     return bool(_YES_IN_WORDS.search(text))
 
 
+def asks_about_the_screen(text: str) -> bool:
+    return bool(_SCREEN.search(text))
+
+
+def asks_about_messages(text: str) -> bool:
+    return bool(_MESSAGES.search(text))
+
+
 def asks_more_than_one_thing(text: str) -> bool:
-    return bool(_AND_THEN.search(text))
+    """A leading "aur" or "and" only carries on from the last turn: "aur purane?"."""
+    text = text.strip()
+    first = _AND_THEN.match(text)
+    return bool(_AND_THEN.search(text, first.end() if first else 0))
 
 
 def doubtful(text: str) -> bool:

@@ -407,7 +407,7 @@ async def test_finishing_in_words_is_the_answer_but_a_promise_in_them_is_not():
     events = await turn(runtime, owner, "screen padho", ids["mac"])
     assert ran == [] and events[-1]["text"] == "Yeh yahan nahi ho sakta."
     again = call("finish_turn", {"say": "Main abhi dekhti hoon."})
-    runtime, owner, ids, ran = world(["Main dekhti hoon.", again])
+    runtime, owner, ids, ran = world(["Main dekhti hoon.", again, again])  # told to look, too
     events = await turn(runtime, owner, "screen padho", ids["mac"])
     assert events[-1]["text"] in NOT_DONE.values()
 
@@ -754,3 +754,76 @@ async def test_from_another_device_a_window_covers_a_step_with_nothing_read():
     runtime.approvals.open(owner.id, ids["mac"].id, None)
     await turn(runtime, owner, "mac par button dabao", ids["pixel"])
     assert [name for _, name in ran] == ["mac_click"]
+
+
+def share_the_calendar(runtime: Any, ids: dict[str, Any]) -> None:
+    shared = DeviceTool("calendar_read", "Read the calendar.", NOTHING, "screen", 0)
+    mac = runtime.hub.connections[ids["mac"].id]
+    mac.tools = {**mac.tools, "calendar_read": shared}
+
+
+async def test_a_tool_on_several_devices_stays_here_when_only_the_model_names_another():
+    runtime, owner, ids, ran = world([call("calendar_read", {"device": "MacBook"}), "Yeh hai."])
+    share_the_calendar(runtime, ids)
+    await turn(runtime, owner, "मेरे कल के कैलेंडर में क्या है", ids["pixel"])
+    assert ran == [(ids["pixel"].id, "calendar_read")]
+
+
+async def test_the_message_before_still_names_the_device():
+    script = [
+        call("calendar_read", {"device": "MacBook"}),
+        "Yeh hai.",
+        call("calendar_read", {"device": "MacBook"}),
+        "Yeh bhi.",
+    ]
+    runtime, owner, ids, ran = world(script)
+    share_the_calendar(runtime, ids)
+    await turn(runtime, owner, "mac pe calendar dekho", ids["pixel"])
+    await turn(runtime, owner, "aur parson ka?", ids["pixel"])
+    assert ran == [(ids["mac"].id, "calendar_read")] * 2
+
+
+async def test_an_approval_for_a_device_counts_as_naming_it_for_a_shared_tool():
+    runtime, owner, ids, ran = world([call("calendar_read", {"device": "MacBook"}), "Yeh hai."])
+    share_the_calendar(runtime, ids)
+    runtime.approvals.open(owner.id, ids["mac"].id, None)
+    await turn(runtime, owner, "calendar dekho", ids["pixel"])
+    assert ran == [(ids["mac"].id, "calendar_read")]
+
+
+async def test_a_screen_she_has_not_read_is_never_described():
+    made_up = "Your screen shows Visual Studio Code with font size 14."
+    runtime, owner, ids, ran = world([made_up, call("screen_read"), "It shows Notes."])
+    events = await turn(runtime, owner, "Read my screen", ids["mac"])
+    assert [name for _, name in ran] == ["screen_read"]
+    assert "Visual Studio" not in said(events) and events[-1]["text"] == "It shows Notes."
+
+
+async def test_a_screen_she_cannot_read_from_here_is_not_pushed():
+    words = "Screen reading is off, so I can't read it."
+    runtime, owner, ids, ran = world([words])
+    events = await turn(runtime, owner, "Read my screen", ids["mac"])
+    assert events[-1]["text"] == words and ran == []
+
+
+async def test_no_look_is_pushed_on_a_device_with_no_screen_tool():
+    runtime, owner, ids, ran = world(["This phone has no screen tool."])
+    events = await turn(runtime, owner, "screen padho", ids["pixel"])
+    assert events[-1]["text"] == "This phone has no screen tool." and ran == []
+
+
+async def test_the_turn_says_which_round_its_final_words_came_from():
+    runtime, owner, ids, _ = world(["Paris."])
+    events = await turn(runtime, owner, "capital of France", ids["mac"])
+    assert events[-1]["said_in"] == "first"
+    runtime, owner, ids, _ = world([call("screen_read"), "Yeh mila."])
+    events = await turn(runtime, owner, "screen padho", ids["mac"])
+    assert events[-1]["said_in"] == "later"
+    done = call("finish_turn", {"say": "It cannot."})
+    runtime, owner, ids, _ = world(["Main dekhti hoon.", done, done])
+    events = await turn(runtime, owner, "screen padho", ids["mac"])
+    assert events[-1]["said_in"] == "forced"
+    runtime, owner, ids, _ = world([call("screen_read"), "Yeh mila."])
+    runtime.assistant.max_tool_rounds = 1
+    events = await turn(runtime, owner, "screen padho", ids["mac"])
+    assert events[-1]["said_in"] == "wrap-up"

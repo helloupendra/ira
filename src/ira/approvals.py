@@ -122,6 +122,22 @@ _HOST_PORT = re.compile(
 )
 
 
+# Reads that hold only what is on the screen or the device's own state, not the person's data.
+OPEN_SKILLS = frozenset({"screen", "control", "browser", "apps", "media", "settings"})
+# A step that sends a mail or starts a task is as outward as its name says, whatever it is called.
+OUTWARD_SKILLS = frozenset({"shortcuts", "tasks"})
+
+
+def outward(tool: str, skill: str | None) -> bool:
+    """It reaches others or runs what no card can show in full, so a read may never lead to it."""
+    return bool(NEVER.search(tool)) or (skill or "") in OUTWARD_SKILLS
+
+
+def private_read(skill: str | None) -> bool:
+    """A read of what the person holds, not of what is on the screen. An unknown skill is one."""
+    return (skill or "") not in OPEN_SKILLS
+
+
 def never_app(app: str | None) -> bool:
     """Terminal, iTerm, Script Editor, Automator, and on Windows the Command Prompt, PowerShell,
     Windows Terminal and the Registry Editor: never acted in, never trusted.
