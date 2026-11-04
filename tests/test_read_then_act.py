@@ -10,13 +10,21 @@ from typing import Any
 import pytest
 
 from ira.asked import READ_RULE, RULE, AskedFor, _names
-from ira.assistant import OPEN_AN_APP_RULE, WHAT_AN_APP_SHOWS_RULE, taints
+from ira.assistant import (
+    AGAIN_RULE,
+    MAIL_RULE,
+    NO_SCREEN_RULE,
+    OPEN_AN_APP_RULE,
+    WHAT_AN_APP_SHOWS_RULE,
+    taints,
+)
 from ira.devices.hub import Connection, ToolError
 from ira.devices.protocol import DeviceTool
 from ira.models.base import ChatResponse, ToolCall
 from ira.models.fake import ScriptedProvider
 from ira.models.gateway import Gateway
 from ira.promises import (
+    asks_about_mail,
     asks_about_messages,
     asks_more_than_one_thing,
     asks_only_to_open,
@@ -42,6 +50,8 @@ MAC = [
     ("mac_click", "control", 3),
     ("file_read", "files", 0),
     ("clipboard_read", "clipboard", 0),
+    ("mail_search", "mail", 0),
+    ("contacts_lookup", "contacts", 0),
 ]
 PHONE = [
     ("calls_recent", "calls", 0),
@@ -404,6 +414,110 @@ async def test_notifications_alone_do_not_answer_a_question_about_messages():
     assert world.ran == ["notifications_read", "sms_read"] and events[-1]["text"] == "Ek SMS hai."
     assert world.provider.forced == ["required"]
     assert [t["name"] for t in world.provider.calls[2]["tools"]] == ["sms_read"]  # no way out
+
+
+def said(events: list[dict[str, Any]]) -> str:
+    return "".join(e["text"] for e in events if e["type"] == "delta")
+
+
+@pytest.mark.parametrize(
+    "words",
+    ["एवरी का ईमेल ढूंढो", "मैकबुक पर मेल में देखो", "Find Avery's mail", "e-mail check karo"],
+)
+def test_words_that_ask_about_a_mail(words):
+    assert asks_about_mail(words)
+
+
+@pytest.mark.parametrize("words", ["मेला कब है", "the female doctor", "Avery ka number kya hai"])
+def test_words_that_do_not_ask_about_a_mail(words):
+    assert not asks_about_mail(words)
+
+
+async def test_contacts_alone_do_not_answer_a_question_about_a_mail():
+    # 3 Nov 2026: "find Avery's email and say what day it is from" looked only in contacts, and
+    # said there was no such mail. A contact list never holds one.
+    world = World(
+        [
+            step("contacts_lookup"),
+            "एवरी का कोई ईमेल नहीं मिला।",
+            step("mail_search"),
+            "शुक्रवार का है।",
+            "शुक्रवार का है।",
+        ]
+    )
+    events = await world.turn("एवरी का ईमेल ढूंढो और बताओ किस दिन का है")
+    assert world.ran == ["contacts_lookup", "mail_search"]
+    assert events[-1]["text"] == "शुक्रवार का है।"
+    assert "नहीं मिला" not in said(events)  # what it said before it looked never went out
+    assert world.provider.forced[0] == "required"
+    assert MAIL_RULE in (world.provider.calls[2]["messages"][0].content or "")
+
+
+async def test_an_address_found_in_contacts_answers_a_question_about_one():
+    world = World([step("contacts_lookup"), "Avery ka email avery@example.com hai."])
+    events = await world.turn("Avery ka email kya hai")
+    assert world.ran == ["contacts_lookup"] and world.provider.forced == []
+    assert events[-1]["text"] == "Avery ka email avery@example.com hai."
+
+
+async def test_a_question_that_wanted_only_an_address_may_end_without_a_search():
+    world = World(
+        [
+            step("contacts_lookup"),
+            "Avery ka address contacts mein nahi hai.",
+            ChatResponse(
+                text="",
+                tool_calls=[
+                    ToolCall("f1", "finish_turn", json.dumps({"say": "Avery ka address nahi hai."}))
+                ],
+            ),
+        ]
+    )
+    events = await world.turn("Avery ka email id kya hai")
+    assert world.ran == ["contacts_lookup"]
+    assert events[-1]["text"] == "Avery ka address nahi hai."
+
+
+async def test_a_number_from_contacts_is_no_question_about_a_mail():
+    world = World([step("contacts_lookup"), "Number +1 555 0100 hai."])
+    events = await world.turn("Avery ka number kya hai")
+    assert world.ran == ["contacts_lookup"] and world.provider.forced == []
+    assert events[-1]["text"] == "Number +1 555 0100 hai."
+
+
+async def test_a_screen_no_tool_can_read_is_only_said():
+    # 3 Nov 2026: "iPhone ki screen padho" was pushed to use the iPhone's tools, went through its
+    # location and reminders, and ended in made-up advice.
+    world = World(["Pixel ki screen main nahi padh sakti."])
+    events = await world.turn("pixel ki screen padho", "mac")
+    assert world.ran == [] and world.provider.forced == []
+    assert events[-1]["text"] == "Pixel ki screen main nahi padh sakti."
+    system = world.provider.calls[0]["messages"][0].content or ""
+    assert NO_SCREEN_RULE.split("{names}")[1] in system
+
+
+async def test_a_named_screen_a_tool_can_read_is_still_read():
+    world = World(["Main nahi padh sakti.", READ, "Invoice khula hai."])
+    events = await world.turn("mac ki screen padho", "pixel")
+    assert world.ran == ["screen_read"] and events[-1]["text"] == "Invoice khula hai."
+    assert "has no tool that reads" not in (world.provider.calls[0]["messages"][0].content or "")
+
+
+DUTCH = "Je kunnen de sessie op je MacBook bekijken. Wil je dat ik het scherm lees?"
+
+
+async def test_an_answer_in_dutch_never_goes_out_on_a_device_turn():
+    # 3 Nov 2026: Kimi K2.5 answered an English question about a device in Dutch.
+    world = World([DUTCH, "One session is running."])
+    events = await world.turn("Which AI session is running?")
+    assert said(events) == "One session is running." == events[-1]["text"]
+    assert AGAIN_RULE in (world.provider.calls[1]["messages"][0].content or "")
+
+
+async def test_someone_who_writes_dutch_is_answered_in_it():
+    world = World([DUTCH])
+    events = await world.turn("Wil je dat het scherm voor ik lees, kunnen je dat?")
+    assert said(events) == DUTCH == events[-1]["text"]
 
 
 # The device named is off.

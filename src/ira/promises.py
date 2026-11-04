@@ -10,6 +10,8 @@ from __future__ import annotations
 
 import re
 
+from ira.language import in_dutch
+
 # Her own word that something just happened: "Done.", "I've opened Safari", "Opened it.", "Your
 # alarm has been set". Not news or what another did: "The shop opened in 1990", "He sent it".
 _DONE = re.compile(
@@ -109,6 +111,9 @@ _SCREEN = re.compile(r"(?<![a-z])(?:screen|window)(?![a-z])|स्क्री�
 _MESSAGES = re.compile(
     r"(?<![a-z])(?:sms|messages?|massage)(?![a-z])|मैसेज|संदेश|एसएमएस", re.IGNORECASE
 )
+_MAIL = re.compile(
+    r"(?<![a-z])(?:e-?mails?|mails?|inbox)(?![a-z])|ईमेल|इनबॉक्स|(?<![ऀ-ॿ])मेल(?![ऀ-ॿ])", re.IGNORECASE
+)
 # That a device is off or out of reach, however it is put.
 _DEVICE_OFF = re.compile(
     r"offline|online|connect|reach|switched off|turned off|\bband\b|\bnot on\b"
@@ -204,6 +209,10 @@ def asks_about_messages(text: str) -> bool:
     return bool(_MESSAGES.search(text))
 
 
+def asks_about_mail(text: str) -> bool:
+    return bool(_MAIL.search(text))
+
+
 def asks_more_than_one_thing(text: str) -> bool:
     """A leading "aur" or "and" only carries on from the last turn: "aur purane?"."""
     text = text.strip()
@@ -212,7 +221,13 @@ def asks_more_than_one_thing(text: str) -> bool:
 
 
 def doubtful(text: str) -> bool:
-    return claims_done(text) or promises(text) or asks_which_device(text) or asks_yes_in_words(text)
+    return (
+        claims_done(text)
+        or promises(text)
+        or asks_which_device(text)
+        or asks_yes_in_words(text)
+        or in_dutch(text)
+    )
 
 
 def without_promises(text: str, claims: bool = False) -> str:

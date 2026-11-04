@@ -35,11 +35,13 @@ from ira.asked import AskedFor
 from ira.conversations import Conversations
 from ira.devices.hub import asked_from
 from ira.devices.naming import Roster, named_devices
+from ira.language import in_dutch
 from ira.models.base import ChatResponse, Message, StreamDone, TextDelta, ToolCall
 from ira.models.gateway import Gateway, GatewayError
 from ira.models.leaked import MarkupGate, before_markup, recover
 from ira.promises import (
     PromiseGate,
+    asks_about_mail,
     asks_about_messages,
     asks_about_the_screen,
     asks_more_than_one_thing,
@@ -114,8 +116,8 @@ CONFIRMED_CUE = "(I confirmed it. Go on with what I asked.)"
 # does not write them; an answer with nothing left is asked for once more.
 FOREIGN_SCRIPT = re.compile(r"[\u3000-\u30ff\u3400-\u9fff\uac00-\ud7af\uff00-\uffef]+")
 AGAIN_RULE = (
-    "Your last answer was in Chinese. Answer again only in the person's language: Hindi in "
-    "Devanagari, Hinglish in Latin letters, or English, as they wrote."
+    "Your last answer was in a language they do not use. Answer again only in the person's "
+    "language: Hindi in Devanagari, Hinglish in Latin letters, or English, as they wrote."
 )
 # A call written as text that cannot run (a tool not offered, arguments that are no object):
 # the answer is asked for once more; if it comes so again, the markup is cut.
@@ -160,6 +162,16 @@ LOOK_RULE = (
 MESSAGES_RULE = (
     "Notifications hold only what is showing now, not the messages themselves. They asked about "
     "messages: call sms_read as well before you say what there is or is not."
+)
+MAIL_RULE = (
+    "Contacts hold addresses, not mail. They asked about a mail: call mail_search before you say "
+    "what there is or is not. Only if all they wanted was an address, call finish_turn and say "
+    "so."
+)
+NO_SCREEN_RULE = (
+    "{names} has no tool that reads its screen, and nothing here can read it. If that is what "
+    "they asked, say so in one sentence and stop: call nothing in its place, and give no advice "
+    "on how to do it."
 )
 YES_RULE = (
     "Do not ask for a yes in words: only the app can take it. Call the tool with exactly what you "
@@ -913,6 +925,17 @@ class Assistant:
             and asks_about_the_screen(asked)
             and (look.device_id == here or here in look.devices.values())
         )
+        # Asked to read the screen of a device with no tool for it: only saying so is right, and
+        # no round should push it to reach for that device's other tools.
+        no_look = (
+            named_up
+            and asks_about_the_screen(asked)
+            and (look is None or not (named or set()) & {look.device_id, *look.devices.values()})
+        )
+        if no_look:
+            names = ", ".join(self.device_label(device) for device in sorted(named or ()))
+            system += f"- {NO_SCREEN_RULE.format(names=names)}\n"
+        can_read_mail = "mail_search" in personal
         windows_open = self.approvals is not None and bool(
             user_id is not None and self.approvals.for_user(user_id)
         )
@@ -955,10 +978,11 @@ class Assistant:
             # Nothing that may be an empty promise goes out before the model's next move is
             # known. With a check still to come on the whole answer, nothing at all does.
             hold_all = on_devices and (
-                (named_up and not used and "named" not in asked_for)
+                (named_up and not no_look and not used and "named" not in asked_for)
                 or (must_look and not used and "look" not in asked_for)
                 or (bool(named) and not named_up and not used)
                 or (used and "goal" not in asked_for and asks_more_than_one_thing(asked))
+                or (can_read_mail and _mail_left_unread(asked, used, asked_for))
             )
             promise = PromiseGate(hold_all) if on_devices else None
             forcing, must_act = must_act, False
@@ -1075,6 +1099,15 @@ class Assistant:
                     yield {"type": "delta", "text": cleaned}
                 response.text = cleaned.strip()
 
+            if not keep_foreign and in_dutch(response.text or "") and not in_dutch(asked):
+                log.warning("%s answered in Dutch; asking again", model)
+                if promise is not None:
+                    promise.take()
+                response.text = ""
+                if not response.tool_calls:
+                    response.text = await self._again_in_language(messages, tools, tier, asked)
+                    yield {"type": "delta", "text": response.text}
+
             if promise is not None:
                 held = promise.take()
                 if (
@@ -1103,8 +1136,9 @@ class Assistant:
                     # The device named is off: no tool can do it, so another round cannot help.
                     off = named is not None and not named_up and _letters(kept) >= 2
                     why = None if off or (finished and not empty) else _ask_again(
-                        words, empty, asked, used, here, named, named_up, asked_for, proposable,
-                        self.device_label, must_look, "sms_read" in personal,
+                        words, empty, asked, used, here, named, named_up and not no_look,
+                        asked_for, proposable, self.device_label, must_look,
+                        "sms_read" in personal, can_read_mail,
                     )  # fmt: skip
                     if why is not None:
                         log.warning("%s: asked to go on (%s)", model, why[0])
@@ -1295,7 +1329,7 @@ class Assistant:
     async def _again_in_language(
         self, messages: list[Message], tools: list[dict[str, Any]], tier: str | None, asked: str
     ) -> str:
-        """The answer came in Chinese (or another script the person does not use): ask once
+        """The answer came in Chinese (or another language the person does not use): ask once
         more, plainly, and failing that say so in their language rather than stay silent."""
         from ira.language import detect
 
@@ -1897,6 +1931,7 @@ def _ask_again(
     label: Callable[[int], str],
     must_look: bool = False,
     can_read_sms: bool = False,
+    can_read_mail: bool = False,
 ) -> tuple[str, str] | None:
     """One more chance for a turn that ended short of the goal: which, and the rule that says
     so. Each is asked once, so a turn always ends."""
@@ -1919,9 +1954,21 @@ def _ask_again(
         and asks_about_messages(asked)
     ):
         return "messages", MESSAGES_RULE
+    if can_read_mail and "@" not in words and _mail_left_unread(asked, used, asked_for):
+        return "mail", MAIL_RULE
     if used and "goal" not in asked_for and asks_more_than_one_thing(asked):
         return "goal", GOAL_RULE
     return None
+
+
+def _mail_left_unread(asked: str, used: list[str], asked_for: set[str]) -> bool:
+    """Asked about a mail, the turn looked in contacts, and the mail itself was never searched."""
+    return (
+        "contacts_lookup" in used
+        and "mail_search" not in used
+        and "mail" not in asked_for
+        and asks_about_mail(asked)
+    )
 
 
 def _finish_words(response: ChatResponse) -> str | None:
@@ -1957,6 +2004,15 @@ _QUOTED = re.compile(r"\"[^\"]*\"|“[^”]*”|「[^」]*」|『[^』]*』")
 _QUOTED_START = re.compile(r'^\W*\w{0,20}\W*(?:"[^"]{1,80}"\s*){2,}')
 
 
+def _gap(match: re.Match[str]) -> str:
+    """Characters taken from inside a sentence leave a space: "call se了几个 baat" must not read
+    "call sebaat"."""
+    text = match.string
+    before = text[match.start() - 1 : match.start()]
+    after = text[match.end() : match.end() + 1]
+    return " " if before.strip() and after.strip() and after not in ".,!?;:" else ""
+
+
 def _clause_without_foreign(clause: str) -> str:
     """One clause, with stray characters of an unexpected script taken out; or nothing, when
     the clause was written in that script and only names or quoted words would be left (a
@@ -1966,7 +2022,7 @@ def _clause_without_foreign(clause: str) -> str:
     rest = _QUOTED.sub(" ", FOREIGN_SCRIPT.sub(" ", clause)).split()
     if sum(1 for word in rest if any(c.isalpha() for c in word)) < 3:
         return ""
-    return re.sub(r"(?<=\S) {2,}(?=\S)", " ", FOREIGN_SCRIPT.sub("", clause))
+    return re.sub(r"(?<=\S) {2,}(?=\S)", " ", FOREIGN_SCRIPT.sub(_gap, clause))
 
 
 def _without_foreign(text: str | None, keep: bool) -> str:

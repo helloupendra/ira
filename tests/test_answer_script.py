@@ -8,6 +8,7 @@ from typing import Any
 import pytest
 
 from ira.assistant import AGAIN_RULE, REFUSED_UNTRUSTED, SAY_AGAIN, ForeignGate, _without_foreign
+from ira.language import in_dutch
 from ira.models.base import ChatResponse, ToolCall
 from ira.models.fake import ScriptedProvider
 from ira.tools.personal import PersonalTool
@@ -52,6 +53,13 @@ def test_clauses_in_another_script_streamed_or_whole():
     # A few stray characters in a real sentence: only they go.
     assert _without_foreign("了几个月 Kal subah das baje yaad dila dungi.", False) == (
         " Kal subah das baje yaad dila dungi."
+    )
+    # From inside a sentence they leave a space, so its words do not run together.
+    assert _without_foreign("IT kabhi aisa call se了几个月Baat nahin karti.", False) == (
+        "IT kabhi aisa call se Baat nahin karti."
+    )
+    assert _without_foreign("Kal subah das baje 了几个 yaad dila dungi了.", False) == (
+        "Kal subah das baje yaad dila dungi."
     )
     plain = 'Plain English, "quoted" too.'
     assert _without_foreign(plain, False) == plain
@@ -146,3 +154,20 @@ async def test_only_what_others_wrote_taints_the_turn(first, then, refused):
         assert REFUSED_UNTRUSTED in result and reply.action is None
     else:
         assert "pending_confirmation" in result and reply.action is not None
+
+
+@pytest.mark.parametrize(
+    ("text", "dutch"),
+    [
+        ('Je kunnen de AI-sessie op je MacBook bekijken in TaskPulse ("Today" venster).', True),
+        ("Wil je dat ik het scherm lees om te zien wat er aan de gang is?", True),
+        ("Er is geen AI-sessietool beschikbaar voor je apparaten.", True),
+        ("Wat een dag.", False),  # too little to tell
+        ("There is 1 AI session running on your MacBook.", False),
+        ("Mac par Chrome mein 2 tabs khule hain, aap kya dekhna chahte hain?", False),
+        ("मैक पर 2 टैब खुले हैं।", False),
+        ("", False),
+    ],
+)
+def test_what_reads_as_dutch(text, dutch):
+    assert in_dutch(text) is dutch

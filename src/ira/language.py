@@ -28,6 +28,15 @@ HINDI_WORDS = frozenset(
         "chahiye chahte batayein bataiye dijiye lagbhag baki baaki",
     )
 )
+# The small words of Dutch, which Kimi K2.5 once answered in unasked. None of them is English, or
+# common in Hindi written in Latin letters.
+DUTCH_WORDS = frozenset(
+    re.findall(
+        r"[a-z]+",
+        "het een niet geen ik je jij jouw uw wil kunnen kun heb heeft voor naar bij ook wat dat "
+        "deze zijn worden",
+    )
+)
 DEVANAGARI_WORD = re.compile(r"[ऀ-ॿ]+")
 LATIN_WORD = re.compile(r"[A-Za-z]+(?:'[a-z]+)?")
 # Data, not prose: web addresses and domains, "quoted" and **bold** spans.
@@ -40,6 +49,13 @@ def prose(text: str) -> str:
     if LATIN_WORD.search(stripped) or DEVANAGARI_WORD.search(stripped):
         return stripped
     return text
+
+
+def in_dutch(text: str) -> bool:
+    """Written in Dutch: three of its small words at least, and a fifth of what is said."""
+    words = [w.lower() for w in LATIN_WORD.findall(prose(text))]
+    dutch = sum(1 for w in words if w in DUTCH_WORDS)
+    return dutch >= 3 and dutch / len(words) >= 0.2
 
 
 def detect(text: str) -> str:
