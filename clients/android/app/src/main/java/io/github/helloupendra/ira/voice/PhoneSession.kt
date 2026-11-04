@@ -59,6 +59,10 @@ class PhoneSession(
     private var toolStarted: Double? = null
     private var asks = 0
     private var call: okhttp3.Call? = null
+
+    /** The ask under way. Anything still arriving from another one belongs to an older conversation. */
+    @Volatile
+    private var current: String? = null
     private var stopped = false
 
     // Voice mode.
@@ -82,6 +86,7 @@ class PhoneSession(
         // Not listening while Ira works on this and speaks (it would hear her); back after.
         recognizer?.cancel()
         val key = "ask${++asks}:${System.currentTimeMillis()}"
+        current = key
         toolStarted = null
         state.update {
             it.copy(status = CallStatus.Thinking, notice = null, caption = "", step = Steps.THINKING, askedAt = nowMs(), stepsDone = emptyList())
@@ -96,10 +101,11 @@ class PhoneSession(
                         server.trimEnd('/') + AskStream.PATH,
                         bearer,
                         AskStream.body(clean, conversationId()),
-                        onCall = { call = it },
+                        onCall = { if (current == key) call = it else it.cancel() },
                     ) { line ->
                         val event = AskStream.parseLine(line) ?: return@streamLines
                         main.post {
+                            if (current != key) return@post
                             if (!accepted) {
                                 // The server has the question: show it, and let the field clear.
                                 accepted = true
@@ -114,6 +120,10 @@ class PhoneSession(
                     -1
                 }
             main.post {
+                if (current != key) {
+                    if (!accepted) done(null) // the person went on: the box must not stay waiting
+                    return@post
+                }
                 call = null
                 busy = false
                 if (state.value.step != null) state.update { it.copy(step = null, askedAt = null, stepsDone = emptyList()) }
@@ -402,6 +412,21 @@ class PhoneSession(
     private fun stopSpeaking() {
         tts?.stop()
         player?.stop()
+    }
+
+    /** New: an answer still coming belongs to the old conversation, and nothing of it stays. */
+    fun startOver() {
+        stopSpeaking()
+        stopped = true
+        current = null
+        call?.cancel()
+        call = null
+        busy = false
+        toolStarted = null
+        state.update {
+            it.copy(step = null, askedAt = null, stepsDone = emptyList(), action = null, notice = null, caption = "")
+        }
+        idle()
     }
 
     override fun stopIra() {

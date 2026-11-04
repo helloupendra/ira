@@ -206,7 +206,15 @@ fun TalkScreen(app: IraApp, talkRequests: Int, onSkills: () -> Unit, onSettings:
     }
     Box(Modifier.fillMaxSize().background(Presence.colors.bg)) {
         Column(Modifier.fillMaxSize().imePadding()) {
-            TalkHeader(ui, link, onDrop = onDrop, onSkills = onSkills, onSettings = onSettings)
+            val live = ui.mode == TalkMode.LIVE && ui.status != CallStatus.Ended
+            TalkHeader(
+                ui,
+                link,
+                onNew = if ((lines.isNotEmpty() || ui.step != null) && !live) app::newConversation else null,
+                onDrop = onDrop,
+                onSkills = onSkills,
+                onSettings = onSettings,
+            )
             val setup = !checklistHidden && !Checklist.complete(facts) && !ui.listening
             if (setup) {
                 ChecklistCard(
@@ -510,14 +518,21 @@ private fun StepMark(done: Boolean) {
     }
 }
 
-/** "Ira" with what is happening under it, and Drop, Skills and Settings as icons. */
+/** "Ira" with what is happening under it, and New (once there is a conversation), Drop, Skills and Settings as icons. */
 @Composable
-private fun TalkHeader(ui: CallUi, link: LinkState, onDrop: () -> Unit, onSkills: () -> Unit, onSettings: () -> Unit) {
+private fun TalkHeader(
+    ui: CallUi,
+    link: LinkState,
+    onNew: (() -> Unit)?,
+    onDrop: () -> Unit,
+    onSkills: () -> Unit,
+    onSettings: () -> Unit,
+) {
     val text =
         when (ui.status) {
             CallStatus.Off -> "Tap the mic or type"
             CallStatus.Connecting -> "Connecting..."
-            CallStatus.Listening -> if (ui.listening) "Listening" else "Type, or tap the microphone"
+            CallStatus.Listening -> if (ui.listening) "Listening" else "Tap the mic or type"
             CallStatus.Hearing -> "Hearing you"
             CallStatus.Thinking -> "Thinking"
             CallStatus.Speaking -> "Speaking. Talk to interrupt."
@@ -545,6 +560,7 @@ private fun TalkHeader(ui: CallUi, link: LinkState, onDrop: () -> Unit, onSkills
             }
             Text("$mode$text · $tools", fontSize = 12.sp, color = colors.muted, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
+        onNew?.let { IconAction(R.drawable.ic_new, "New", it, tint = colors.muted) }
         IconAction(R.drawable.ic_drop, "Drop", onDrop, tint = colors.muted)
         IconAction(R.drawable.ic_skills, "Skills", onSkills, tint = colors.muted)
         IconAction(R.drawable.ic_settings, "Settings", onSettings, tint = colors.muted)

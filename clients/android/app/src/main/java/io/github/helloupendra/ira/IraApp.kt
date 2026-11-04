@@ -289,6 +289,14 @@ class IraApp : Application() {
         session.send(text, done)
     }
 
+    /** New: a fresh conversation, here and on the server. A live call keeps its own. */
+    fun newConversation() {
+        if (call.value is LiveSession) return
+        (call.value as? PhoneSession)?.startOver()
+        transcript.clear()
+        settings.conversationId = null
+    }
+
     /**
      * The microphone: a live call when the server has one (`/v1/info` live), else the phone's
      * own speech recognition. Called from a screen the person is using.
