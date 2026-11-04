@@ -84,6 +84,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -99,7 +100,9 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.runtime.mutableDoubleStateOf
 import io.github.helloupendra.ira.core.Steps
+import io.github.helloupendra.ira.core.Markup
 import io.github.helloupendra.ira.core.Now
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.withStyle
@@ -512,7 +515,7 @@ private fun StepMark(done: Boolean) {
 private fun TalkHeader(ui: CallUi, link: LinkState, onDrop: () -> Unit, onSkills: () -> Unit, onSettings: () -> Unit) {
     val text =
         when (ui.status) {
-            CallStatus.Off -> "Tap the microphone to talk, or type"
+            CallStatus.Off -> "Tap the mic or type"
             CallStatus.Connecting -> "Connecting..."
             CallStatus.Listening -> if (ui.listening) "Listening" else "Type, or tap the microphone"
             CallStatus.Hearing -> "Hearing you"
@@ -641,6 +644,20 @@ private fun NowCard(card: Now.Card, onClick: (() -> Unit)?) {
     }
 }
 
+/** An answer's Markdown as styled text. */
+private fun styled(text: String): AnnotatedString =
+    buildAnnotatedString {
+        for (span in Markup.spans(text)) {
+            withStyle(
+                SpanStyle(
+                    fontWeight = if (span.bold) FontWeight.SemiBold else null,
+                    fontStyle = if (span.italic) FontStyle.Italic else null,
+                    fontFamily = if (span.code) FontFamily.Monospace else null,
+                ),
+            ) { append(span.text) }
+        }
+    }
+
 @Composable
 private fun Bubble(line: Transcript.Line, onReport: (Transcript.Line) -> Unit) {
     val colors = Presence.colors
@@ -667,7 +684,7 @@ private fun Bubble(line: Transcript.Line, onReport: (Transcript.Line) -> Unit) {
         Lens(30.dp)
         Spacer(Modifier.width(12.dp))
         Text(
-            text,
+            styled(text),
             fontSize = 16.sp,
             lineHeight = 25.sp,
             color = colors.ink,

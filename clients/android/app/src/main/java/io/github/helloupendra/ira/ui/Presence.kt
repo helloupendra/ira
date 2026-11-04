@@ -12,6 +12,7 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
@@ -314,6 +315,7 @@ fun AskPill(
                 textStyle = TextStyle(fontSize = 16.sp, color = colors.ink),
                 cursorBrush = SolidColor(colors.green),
                 maxLines = 4,
+                modifier = Modifier.fillMaxWidth(),
             )
         }
         Box(

@@ -6,10 +6,13 @@ import android.provider.Telephony
 import android.telephony.SmsManager
 import io.github.helloupendra.ira.core.Args
 import io.github.helloupendra.ira.core.Permissions
+import io.github.helloupendra.ira.core.SmsCount
 import io.github.helloupendra.ira.core.ToolFailure
 import kotlinx.serialization.json.JsonElement
 
 /** SMS: reading the inbox and sending a message. */
+private const val MAX_SCANNED = 500
+
 class MessageTools(private val context: Context) {
     fun smsRead(args: Args): JsonElement {
         val from = args.string("from", 80)
@@ -29,6 +32,9 @@ class MessageTools(private val context: Context) {
         val names = ContactNames(context)
         val fromKey = from?.let { if (it.any(Char::isDigit)) Args.numberKey(it) else null }
         val messages = ArrayList<Map<String, Any?>>()
+        var found = 0
+        var unread = 0
+        var scanned = 0
         context.contentResolver.query(
             Telephony.Sms.Inbox.CONTENT_URI,
             arrayOf(Telephony.Sms.ADDRESS, Telephony.Sms.BODY, Telephony.Sms.DATE, Telephony.Sms.READ),
@@ -36,11 +42,10 @@ class MessageTools(private val context: Context) {
             values.toTypedArray().ifEmpty { null },
             "${Telephony.Sms.DATE} DESC",
         )?.use { c ->
-            var scanned = 0
-            while (c.moveToNext() && messages.size < limit && scanned < 500) {
+            while (c.moveToNext() && scanned < MAX_SCANNED) {
                 scanned++
                 val address = c.getString(0).orEmpty()
-                val name = names.forNumber(address)
+                val name = if (from != null || messages.size < limit) names.forNumber(address) else null
                 if (from != null) {
                     val matches =
                         if (fromKey != null) {
@@ -50,23 +55,29 @@ class MessageTools(private val context: Context) {
                         }
                     if (!matches) continue
                 }
-                messages +=
-                    mapOf(
-                        "from" to (name ?: address),
-                        "number" to address,
-                        "at" to CallTools.local(c.getLong(2)),
-                        "unread" to (c.getInt(3) == 0),
-                        "text" to Results.clip(c.getString(1), 1_000),
-                    )
+                found++
+                val isUnread = c.getInt(3) == 0
+                if (isUnread) unread++
+                if (messages.size < limit) {
+                    messages +=
+                        mapOf(
+                            "from" to (name ?: address),
+                            "number" to address,
+                            "at" to CallTools.local(c.getLong(2)),
+                            "unread" to isUnread,
+                            "text" to Results.clip(c.getString(1), 1_000),
+                        )
+                }
             }
         }
         val summary =
             if (messages.isEmpty()) {
                 "No messages match."
             } else {
-                messages.take(3).joinToString("; ") { "${it["from"]} at ${it["at"]}: ${Results.clip(it["text"] as String?, 120)}" }
+                SmsCount.line(found, unread, messages.size, scanned >= MAX_SCANNED) + " " +
+                    messages.take(3).joinToString("; ") { "${it["from"]} at ${it["at"]}: ${Results.clip(it["text"] as String?, 120)}" }
             }
-        return Results.of("messages" to messages, "summary" to summary)
+        return Results.of("messages" to messages, "found" to found, "unread" to unread, "summary" to summary)
     }
 
     fun smsSend(args: Args): JsonElement {
