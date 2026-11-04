@@ -45,8 +45,8 @@ class MarkupTest {
 
     @Test
     fun `the count of messages says what the list leaves out`() {
-        assertEquals("32 messages, 0 unread; the newest 5 are here.", SmsCount.line(32, 0, 5, false))
-        assertEquals("2 messages, 1 unread.", SmsCount.line(2, 1, 2, false))
-        assertEquals("500 or more messages, 3 unread; the newest 5 are here.", SmsCount.line(500, 3, 5, true))
+        assertEquals("0 unread (new), 32 in all; the newest 5 are here.", SmsCount.line(32, 0, 5, false))
+        assertEquals("1 unread (new), 2 in all.", SmsCount.line(2, 1, 2, false))
+        assertEquals("3 unread (new), 500 or more in all; the newest 5 are here.", SmsCount.line(500, 3, 5, true))
     }
 }

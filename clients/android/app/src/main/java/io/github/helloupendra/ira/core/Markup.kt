@@ -55,6 +55,6 @@ object SmsCount {
     fun line(found: Int, unread: Int, shown: Int, stoppedLooking: Boolean): String {
         val many = if (stoppedLooking) "$found or more" else "$found"
         val rest = if (shown < found) "; the newest $shown are here." else "."
-        return "$many messages, $unread unread$rest"
+        return "$unread unread (new), $many in all$rest"
     }
 }
