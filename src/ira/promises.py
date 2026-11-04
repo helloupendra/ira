@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import re
 
-from ira.language import in_dutch
+from ira.language import detect, in_dutch
 
 # Her own word that something just happened: "Done.", "I've opened Safari", "Opened it.", "Your
 # alarm has been set". Not news or what another did: "The shop opened in 1990", "He sent it".
@@ -247,12 +247,16 @@ def without_promises(text: str, claims: bool = False) -> str:
 class PromiseGate:
     """Streamed text, sentence by sentence, held back from the first sentence that may be an empty
     promise: what the model does next decides whether it is ever said. With ``hold_all`` nothing
-    goes out until then."""
+    goes out until then. With ``latin_only`` a sentence in Devanagari is held as well."""
 
-    def __init__(self, hold_all: bool = False) -> None:
+    def __init__(self, hold_all: bool = False, latin_only: bool = False) -> None:
         self._open = ""
         self.held = ""
         self._holding = hold_all
+        self._latin_only = latin_only
+
+    def _doubtful(self, sentence: str) -> bool:
+        return doubtful(sentence) or (self._latin_only and detect(sentence) == "hi")
 
     def feed(self, piece: str) -> str:
         if self._holding:
@@ -262,7 +266,7 @@ class PromiseGate:
         out = ""
         while (end := _SENTENCE_END.search(self._open)) is not None:
             sentence, self._open = self._open[: end.end()], self._open[end.end() :]
-            if doubtful(sentence):
+            if self._doubtful(sentence):
                 self._holding = True
                 self.held = sentence + self._open
                 self._open = ""
@@ -275,7 +279,7 @@ class PromiseGate:
         rest, self._open = self._open, ""
         if not rest:
             return ""
-        if doubtful(rest):
+        if self._doubtful(rest):
             self._holding = True
             self.held += rest
             return ""

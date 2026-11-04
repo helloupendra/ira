@@ -35,7 +35,7 @@ from ira.asked import AskedFor
 from ira.conversations import Conversations
 from ira.devices.hub import asked_from
 from ira.devices.naming import Roster, named_devices
-from ira.language import in_dutch
+from ira.language import detect, in_dutch, written_in_latin
 from ira.models.base import ChatResponse, Message, StreamDone, TextDelta, ToolCall
 from ira.models.gateway import Gateway, GatewayError
 from ira.models.leaked import MarkupGate, before_markup, recover
@@ -162,6 +162,10 @@ LOOK_RULE = (
 MESSAGES_RULE = (
     "Notifications hold only what is showing now, not the messages themselves. They asked about "
     "messages: call sms_read as well before you say what there is or is not."
+)
+LATIN_RULE = (
+    "Their latest message is in Latin letters: write your whole answer in Latin letters, Hindi "
+    "words too, with no Devanagari, whatever earlier messages or a tool's result are written in."
 )
 MAIL_RULE = (
     "Contacts hold addresses, not mail. They asked about a mail: call mail_search before you say "
@@ -936,6 +940,14 @@ class Assistant:
             names = ", ".join(self.device_label(device) for device in sorted(named or ()))
             system += f"- {NO_SCREEN_RULE.format(names=names)}\n"
         can_read_mail = "mail_search" in personal
+        # Read, not heard: Devanagari is what a voice reads best, so a call keeps its rule.
+        latin_only = (
+            not spoken
+            and written_in_latin(asked)
+            and self.user_settings.get(user_id).reply_language == "auto"
+        )
+        if latin_only:
+            system += f"- {LATIN_RULE}\n"
         windows_open = self.approvals is not None and bool(
             user_id is not None and self.approvals.for_user(user_id)
         )
@@ -984,7 +996,7 @@ class Assistant:
                 or (used and "goal" not in asked_for and asks_more_than_one_thing(asked))
                 or (can_read_mail and _mail_left_unread(asked, used, asked_for))
             )
-            promise = PromiseGate(hold_all) if on_devices else None
+            promise = PromiseGate(hold_all, latin_only) if on_devices else None
             forcing, must_act = must_act, False
             try:
                 response: ChatResponse | None = None
@@ -1047,8 +1059,6 @@ class Assistant:
                 log.warning("gateway failed: %s", exc)
                 if any(e.kind == "empty" for _, e in exc.errors):
                     # A model was reached but said nothing: ask again, never answer blank.
-                    from ira.language import detect
-
                     final_text, model, said_in = SAY_AGAIN[detect(asked)], None, "fixed line"
                     yield {"type": "delta", "text": final_text}
                     history.append(Message(role="assistant", content=final_text))
@@ -1084,8 +1094,6 @@ class Assistant:
                         continue
                     response.text = prose
                     if _letters(prose) < 2:
-                        from ira.language import detect
-
                         response.text = SAY_AGAIN[detect(asked)]
                         yield {"type": "delta", "text": response.text}
 
@@ -1099,8 +1107,13 @@ class Assistant:
                     yield {"type": "delta", "text": cleaned}
                 response.text = cleaned.strip()
 
-            if not keep_foreign and in_dutch(response.text or "") and not in_dutch(asked):
-                log.warning("%s answered in Dutch; asking again", model)
+            written = response.text or ""
+            if not keep_foreign and (
+                (in_dutch(written) and not in_dutch(asked))
+                # Only what was held back: what went out cannot be said again in other letters.
+                or (latin_only and promise is not None and detect(written) == "hi")
+            ):
+                log.warning("%s answered in the wrong language; asking again", model)
                 if promise is not None:
                     promise.take()
                 response.text = ""
@@ -1123,8 +1136,6 @@ class Assistant:
                         asked_for.add("offline")
                         system += f"- {OFFLINE_RULE}\n"
                         continue
-                    from ira.language import detect
-
                     names = ", ".join(self.device_label(device) for device in sorted(named))
                     response.text = held = OFFLINE_NOW[detect(asked)].format(names=names)
                 if not response.tool_calls and not waiting:
@@ -1183,8 +1194,6 @@ class Assistant:
                         system += f"- {rule}\n"
                         continue
                     if empty:  # it had its chance: what it found stands, its promises do not
-                        from ira.language import detect
-
                         log.warning("%s still said it did something, with no tool", model)
                         kept = kept if _letters(kept) >= 2 else NOT_DONE[detect(asked)]
                         response.text = held = kept
@@ -1193,8 +1202,6 @@ class Assistant:
 
             if not response.tool_calls:
                 if not (response.text or "").strip():  # nothing left once cleaned
-                    from ira.language import detect
-
                     log.warning("%s left nothing to say; asking the person again", model)
                     response.text = SAY_AGAIN[detect(asked)]
                     yield {"type": "delta", "text": response.text}
@@ -1331,8 +1338,6 @@ class Assistant:
     ) -> str:
         """The answer came in Chinese (or another language the person does not use): ask once
         more, plainly, and failing that say so in their language rather than stay silent."""
-        from ira.language import detect
-
         system = (messages[0].content or "") + f"- {AGAIN_RULE}\n"
         try:
             response = await self.gateway.chat(

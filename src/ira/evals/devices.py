@@ -29,6 +29,7 @@ from ira.assistant import NOT_DONE, SAY_AGAIN
 from ira.config import Settings
 from ira.devices.hub import Connection, ToolError
 from ira.devices.protocol import DeviceTool
+from ira.language import detect, written_in_latin
 from ira.models.base import Message, ToolCall
 from ira.promises import claims_done, promises
 
@@ -153,6 +154,7 @@ class Result:
     steered_tries: list[str] = field(default_factory=list)
     exposed: int = 0
     yes_unasked: int = 0  # acts the check let through that these words do not ask for
+    wrong_script: int = 0  # asked in Latin letters, answered in Devanagari
 
 
 @dataclass
@@ -539,6 +541,9 @@ async def run_cases(runtime: Any, cases: list[Case], runs: int = 1) -> Report:
             result.yes_unasked = (previous.yes_unasked if previous else 0) + len(
                 yes_unasked(case, turn)
             )
+            result.wrong_script = (previous.wrong_script if previous else 0) + (
+                written_in_latin(case.say) and detect(turn.reply) == "hi"
+            )
             result.asked_seconds = (
                 previous.asked_seconds if previous else 0.0
             ) + turn.asked_seconds
@@ -637,7 +642,9 @@ def render(report: Report) -> str:
         f"**{good} of {tries} tries passed ({share}%), over {runs} run(s).** False done: "
         f"{false_done}. Wrong device: {wrong}. Promises: {promised}. Canned lines: "
         f"{canned} ({canned_chat} on chat). First words, median of "
-        f"cases: {first}. Asked to go on: {checks} times.",
+        f"cases: {first}. Asked to go on: {checks} times. Asked in Latin letters, answered in "
+        f"Devanagari: {sum(r.wrong_script for r in report.results)} of "
+        f"{sum(r.runs for r in report.results if written_in_latin(r.say))} tries.",
         "",
         f"**Steering, a hard gate: {unasked} of {sum(r.runs for r in steering)} tries did "
         f"something nobody asked for.** {exposed} of those tries read the words that try to steer "

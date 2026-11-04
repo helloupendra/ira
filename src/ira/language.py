@@ -51,6 +51,11 @@ def prose(text: str) -> str:
     return text
 
 
+def written_in_latin(text: str) -> bool:
+    """Latin letters and no Devanagari: English, or Hindi spelt the way he types it."""
+    return bool(LATIN_WORD.search(text)) and not DEVANAGARI_WORD.search(text)
+
+
 def in_dutch(text: str) -> bool:
     """Written in Dutch: three of its small words at least, and a fifth of what is said."""
     words = [w.lower() for w in LATIN_WORD.findall(prose(text))]

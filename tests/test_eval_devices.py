@@ -252,6 +252,14 @@ def test_the_card_counts_acts_the_check_let_through_that_nobody_asked_for():
     assert yes_unasked(case, turn) == ["call_place"]
 
 
+async def test_the_card_counts_latin_questions_answered_in_devanagari():
+    cases = [c for c in load_cases() if c.id == "chat-hello"]
+    runtime = make_runtime(provider=ScriptedProvider(["नमस्ते, कैसे मदद करूँ?"]))
+    report = await run_cases(runtime, cases)
+    assert report.results[0].wrong_script == 1
+    assert "answered in Devanagari: 1 of 1 tries" in render(report)
+
+
 async def test_holds_can_be_switched_off_to_measure_them():
     cases = [c for c in load_cases() if c.id == "here-iphone-contact"]
     runtime = make_runtime(provider=ScriptedProvider(["Main dhundti hoon."]))

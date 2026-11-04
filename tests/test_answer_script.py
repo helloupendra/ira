@@ -8,7 +8,7 @@ from typing import Any
 import pytest
 
 from ira.assistant import AGAIN_RULE, REFUSED_UNTRUSTED, SAY_AGAIN, ForeignGate, _without_foreign
-from ira.language import in_dutch
+from ira.language import in_dutch, written_in_latin
 from ira.models.base import ChatResponse, ToolCall
 from ira.models.fake import ScriptedProvider
 from ira.tools.personal import PersonalTool
@@ -171,3 +171,10 @@ async def test_only_what_others_wrote_taints_the_turn(first, then, refused):
 )
 def test_what_reads_as_dutch(text, dutch):
     assert in_dutch(text) is dutch
+
+
+def test_what_is_written_in_latin_letters():
+    assert written_in_latin("aaj kitne events hain")
+    assert written_in_latin("What is on my screen?")
+    assert not written_in_latin("मैक पर screen padho")
+    assert not written_in_latin("123")

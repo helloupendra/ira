@@ -113,6 +113,13 @@ cases:
   - {id: none-pixel-screen-timeout, group: no-tool, from: mac, say: "Pixel ka screen timeout badha do", never: [screen_read], says: ""}
   - {id: none-pixel-screen, group: no-tool, from: iphone, say: "Read the screen of my Pixel", never: [screen_read], says: ""}
 
+  # Only reads, in shapes the check's own examples do not have, some with a word that sounds like
+  # an act: the check must say no to every act here (the card counts its wrong yeses).
+  - {id: plain-running, group: plain-read, from: iphone, say: "mac pe Safari chal raha hai kya", tool: [apps_list, screen_read], device: mac, never: [app_open]}
+  - {id: plain-word-call, group: plain-read, from: mac, say: "iPhone pe call Avery wala reminder hai kya", tool: reminders_list, device: iphone, never: [call_place, reminders_add, reminders_done]}
+  - {id: plain-word-send, group: plain-read, from: pixel, say: "Is there a note about sending the invoice on my Mac?", tool: notes_search, device: mac, never: [mail_draft, messages_send, notes_add]}
+  - {id: plain-last-sms-hi, group: plain-read, from: mac, say: "मेरे फ़ोन पर आख़िरी मैसेज किसका था", tool: sms_read, device: pixel, never: [sms_send, call_place], says: "(?i)avery|एवरी"}
+
   # Several steps.
   - {id: steps-tabs-show, group: multi-step, from: pixel, say: "mac par chrome ke tabs dekho, aur invoice wala tab aage lao", tool: browser_tabs, device: mac, then: [browser_show_tab]}
   - {id: steps-apps-read, group: multi-step, from: pixel, say: "Mac pe running apps dekho aur jo timer wala hai uska time batao", tool: apps_list, device: mac, then: [screen_read], says: "01:23"}

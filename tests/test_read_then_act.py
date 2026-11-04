@@ -12,6 +12,7 @@ import pytest
 from ira.asked import READ_RULE, RULE, AskedFor, _names
 from ira.assistant import (
     AGAIN_RULE,
+    LATIN_RULE,
     MAIL_RULE,
     NO_SCREEN_RULE,
     OPEN_AN_APP_RULE,
@@ -539,6 +540,37 @@ async def test_an_answer_in_dutch_never_goes_out_on_a_device_turn():
     events = await world.turn("Which AI session is running?")
     assert said(events) == "One session is running." == events[-1]["text"]
     assert AGAIN_RULE in (world.provider.calls[1]["messages"][0].content or "")
+
+
+async def test_latin_letters_get_latin_letters_on_a_device_turn():
+    # 5 Nov 2026, on a real Pixel: four Hinglish questions out of four were answered in Devanagari.
+    world = World(["आज कोई इवेंट नहीं है।", "Aaj koi event nahi hai."])
+    events = await world.turn("aaj mere calendar mein kitne events hain")
+    assert said(events) == "Aaj koi event nahi hai." == events[-1]["text"]
+    system = world.provider.calls[0]["messages"][0].content or ""
+    assert LATIN_RULE in system
+    assert AGAIN_RULE in (world.provider.calls[1]["messages"][0].content or "")
+
+
+async def test_devanagari_gets_devanagari():
+    world = World(["आज कोई इवेंट नहीं है।"])
+    events = await world.turn("आज कैलेंडर में क्या है")
+    assert events[-1]["text"] == "आज कोई इवेंट नहीं है।" and len(world.provider.calls) == 1
+    assert LATIN_RULE not in (world.provider.calls[0]["messages"][0].content or "")
+
+
+async def test_a_name_in_devanagari_in_a_latin_answer_stands():
+    world = World(["Aaj ka ek event hai, राम ke saath, shaam ko."])
+    events = await world.turn("aaj mere calendar mein kya hai")
+    assert events[-1]["text"] == "Aaj ka ek event hai, राम ke saath, shaam ko."
+    assert len(world.provider.calls) == 1
+
+
+async def test_someone_who_chose_hindi_is_not_held_to_their_letters():
+    world = World(["आज कोई इवेंट नहीं है।"])
+    world.runtime.assistant.user_settings.set(world.owner.id, "reply_language", "hi")
+    events = await world.turn("aaj mere calendar mein kya hai")
+    assert events[-1]["text"] == "आज कोई इवेंट नहीं है।" and len(world.provider.calls) == 1
 
 
 async def test_someone_who_writes_dutch_is_answered_in_it():
