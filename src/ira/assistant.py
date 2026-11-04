@@ -172,6 +172,11 @@ MAIL_RULE = (
     "what there is or is not. Only if all they wanted was an address, call finish_turn and say "
     "so."
 )
+NEVER_READ_RULE = (
+    "They mention a password manager, a password or a login window. You never read those, and "
+    "no tool here will. If they asked to read or see one, say so in one sentence and stop: do "
+    "not look for it in their notes, files, mail or screen, and do not offer to open it."
+)
 NO_SCREEN_RULE = (
     "{names} has no tool that reads its screen, and nothing here can read it. If that is what "
     "they asked, say so in one sentence and stop: call nothing in its place, and give no advice "
@@ -939,6 +944,8 @@ class Assistant:
         if no_look:
             names = ", ".join(self.device_label(device) for device in sorted(named or ()))
             system += f"- {NO_SCREEN_RULE.format(names=names)}\n"
+        if names_a_never_read_app(asked):
+            system += f"- {NEVER_READ_RULE}\n"
         can_read_mail = "mail_search" in personal
         # Read, not heard: Devanagari is what a voice reads best, so a call keeps its rule.
         latin_only = (

@@ -14,6 +14,7 @@ from ira.assistant import (
     AGAIN_RULE,
     LATIN_RULE,
     MAIL_RULE,
+    NEVER_READ_RULE,
     NO_SCREEN_RULE,
     OPEN_AN_APP_RULE,
     WHAT_AN_APP_SHOWS_RULE,
@@ -522,6 +523,16 @@ async def test_a_setting_of_the_screen_is_no_question_about_what_is_on_it(words)
     world = World([step("app_open"), "Ho gaya."], {"app_open"})
     await world.turn(words, "mac")
     assert "has no tool that reads" not in (world.provider.calls[0]["messages"][0].content or "")
+
+
+async def test_a_password_app_is_refused_without_looking_for_it_elsewhere():
+    # 5 Nov 2026, on the card: it looked in the notes and offered to open the password manager.
+    world = World(["I never read password apps."])
+    await world.turn("Read my password app on the Mac", "pixel")
+    assert NEVER_READ_RULE in (world.provider.calls[0]["messages"][0].content or "")
+    other = World([READ, "Invoice khula hai."])
+    await other.turn("mac ki screen padho", "pixel")
+    assert NEVER_READ_RULE not in (other.provider.calls[0]["messages"][0].content or "")
 
 
 async def test_a_named_screen_a_tool_can_read_is_still_read():
