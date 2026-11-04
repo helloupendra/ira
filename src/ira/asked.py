@@ -21,9 +21,16 @@ log = logging.getLogger(__name__)
 
 RULE = (
     "You judge one thing: which of the listed actions the person's own words ask for, or cannot "
-    "be done without. They may speak English, Hindi or Hinglish. Looking at something, or asking "
-    "about it, does not ask to act on it, and an action that merely could be useful is not asked "
-    "for. Answer with a JSON array of the names and nothing else, [] if none."
+    "be done without. They may speak English, Hindi or Hinglish. Finding, reading, looking at "
+    "something or being told about it is done without any of these actions, so it asks for none "
+    "of them, unless what they asked to read must first be brought to the front. An action that "
+    "merely could be useful, or that its name makes sound related, is not asked for. Most words "
+    "ask for none or one.\n"
+    'Examples. "Find the landlord\'s mail and say what it asks": none, neither writing a mail '
+    'nor opening an app nor typing. "kal ka missed call dekho, number batao": none, not placing '
+    'a call. "contract file dhundo, amount batao": none. "chrome ka report tab aage lao": '
+    'showing that tab. "Sam ko bolo late hoon": sending that message.\n'
+    "Answer with a JSON array of the names and nothing else, [] if none."
 )
 # A read is another question. Asking about something asks to look at it, and what it costs to be
 # wrong differs: a read goes only to the person, and a false "I can't" is worse than a slow answer.

@@ -140,6 +140,13 @@ def refused(events: list[dict[str, Any]]) -> list[str]:
 # The check itself.
 
 
+def test_the_check_knows_that_reading_needs_no_action():
+    # 3 Nov 2026: "find Avery's mail and say what it says" passed the check for drafting a mail,
+    # typing and clicking, and a forced round then wrote a draft nobody asked for.
+    assert "Finding, reading" in RULE and "asks for none" in RULE
+    assert "name makes sound related" in RULE
+
+
 @pytest.mark.parametrize(
     ("answer", "names"),
     [
@@ -422,7 +429,13 @@ def said(events: list[dict[str, Any]]) -> str:
 
 @pytest.mark.parametrize(
     "words",
-    ["एवरी का ईमेल ढूंढो", "मैकबुक पर मेल में देखो", "Find Avery's mail", "e-mail check karo"],
+    [
+        "एवरी का ईमेल ढूंढो",
+        "मैकबुक पर मेल में देखो",
+        "Find Avery's mail",
+        "e-mail check karo",
+        "meri gmail dekho",
+    ],
 )
 def test_words_that_ask_about_a_mail(words):
     assert asks_about_mail(words)
@@ -494,6 +507,20 @@ async def test_a_screen_no_tool_can_read_is_only_said():
     assert events[-1]["text"] == "Pixel ki screen main nahi padh sakti."
     system = world.provider.calls[0]["messages"][0].content or ""
     assert NO_SCREEN_RULE.split("{names}")[1] in system
+
+
+@pytest.mark.parametrize(
+    "words",
+    [
+        "Pixel ka screen timeout badha do",
+        "pixel ki screen brightness kam karo",
+        "pixel screen lock",
+    ],
+)
+async def test_a_setting_of_the_screen_is_no_question_about_what_is_on_it(words):
+    world = World([step("app_open"), "Ho gaya."], {"app_open"})
+    await world.turn(words, "mac")
+    assert "has no tool that reads" not in (world.provider.calls[0]["messages"][0].content or "")
 
 
 async def test_a_named_screen_a_tool_can_read_is_still_read():

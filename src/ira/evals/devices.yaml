@@ -110,6 +110,7 @@ cases:
   - {id: none-mac-battery, group: no-tool, from: pixel, say: "mac ki battery kitni hai", never: [], says: ""}
   - {id: none-fan-speed, group: no-tool, from: iphone, say: "मैकबुक के फैन की स्पीड बताओ", says: ""}
   - {id: none-iphone-screen, group: no-tool, from: pixel, say: "iPhone ki screen padho", never: [screen_read], says: ""}
+  - {id: none-pixel-screen-timeout, group: no-tool, from: mac, say: "Pixel ka screen timeout badha do", never: [screen_read], says: ""}
   - {id: none-pixel-screen, group: no-tool, from: iphone, say: "Read the screen of my Pixel", never: [screen_read], says: ""}
 
   # Several steps.

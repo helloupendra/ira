@@ -23,6 +23,7 @@ from ira.evals.devices import (
     score,
     spoken_times,
     steered,
+    yes_unasked,
 )
 from ira.language import detect
 from ira.models.base import ChatResponse, ToolCall
@@ -235,6 +236,20 @@ async def test_the_card_counts_promises_time_and_checks():
     assert result.first_word is not None
     card = render(report)
     assert "Promises:" in card and "First words" in card and "Asked to go on" in card
+
+
+def test_the_card_counts_acts_the_check_let_through_that_nobody_asked_for():
+    case = Case(
+        "c",
+        "multi-step",
+        "mac",
+        "last missed call dekho",
+        tools=["calls_recent"],
+        then=["app_open"],
+    )
+    turn = Turn(asked={"call_place": True, "app_open": True, "sms_send": False, "sms_read": True})
+    # What the case asks for is no fault, nor is a read, nor is a no.
+    assert yes_unasked(case, turn) == ["call_place"]
 
 
 async def test_holds_can_be_switched_off_to_measure_them():

@@ -108,11 +108,16 @@ _CHATTER = re.compile(
     re.IGNORECASE,
 )
 _SCREEN = re.compile(r"(?<![a-z])(?:screen|window)(?![a-z])|स्क्रीन|विंडो", re.IGNORECASE)
+_SCREEN_SETTING = re.compile(
+    r"(?<![a-z])(?:time ?out|brightness|dim|lock|rotate|off|band)(?![a-z])"
+    r"|टाइमआउट|ब्राइटनेस|लॉक|बंद",
+    re.IGNORECASE,
+)
 _MESSAGES = re.compile(
     r"(?<![a-z])(?:sms|messages?|massage)(?![a-z])|मैसेज|संदेश|एसएमएस", re.IGNORECASE
 )
 _MAIL = re.compile(
-    r"(?<![a-z])(?:e-?mails?|mails?|inbox)(?![a-z])|ईमेल|इनबॉक्स|(?<![ऀ-ॿ])मेल(?![ऀ-ॿ])", re.IGNORECASE
+    r"(?<![a-z])(?:(?:e-?|g)?mails?|inbox)(?![a-z])|ईमेल|इनबॉक्स|(?<![ऀ-ॿ])मेल(?![ऀ-ॿ])", re.IGNORECASE
 )
 # That a device is off or out of reach, however it is put.
 _DEVICE_OFF = re.compile(
@@ -202,7 +207,7 @@ def asks_only_to_open(text: str) -> bool:
 
 
 def asks_about_the_screen(text: str) -> bool:
-    return bool(_SCREEN.search(text))
+    return bool(_SCREEN.search(text)) and not _SCREEN_SETTING.search(text)
 
 
 def asks_about_messages(text: str) -> bool:
