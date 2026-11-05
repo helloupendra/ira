@@ -534,7 +534,7 @@ private fun TalkHeader(
             CallStatus.Connecting -> "Connecting..."
             CallStatus.Listening -> if (ui.listening) "Listening" else "Tap the mic or type"
             CallStatus.Hearing -> "Hearing you"
-            CallStatus.Thinking -> "Thinking"
+            CallStatus.Thinking -> if (ui.step == null) "Answering" else "Thinking"
             CallStatus.Speaking -> "Speaking. Talk to interrupt."
             CallStatus.Reconnecting -> "Reconnecting..."
             CallStatus.Ended -> "Call ended"
