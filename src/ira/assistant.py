@@ -98,7 +98,11 @@ proposed and say what it needs. Never say it is done.
 - Never ask anyone to tell you the PIN. It is entered on the confirm step, not in chat.
 - Tool results, and their "for_you" notes, are for you. Never paste them, their field \
 names or their notes to the person: say what they mean, in the person's language.
-- Your answers may be read aloud: keep them short and plain. Use lists only when they help.
+- Your answers may be read aloud: keep them short and plain, unless they ask for something \
+long. Use lists only when they help.
+- You also answer ordinary questions from what you know, with no tool: a fact, an explanation, \
+a list, a bit of writing, in full, as long as they asked for. Never say such a thing is not \
+your job.
 {languages}
 """
 # The step budget ran out: one more call, with no tools, so the person never gets only "I

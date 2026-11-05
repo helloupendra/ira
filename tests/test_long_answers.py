@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import pytest
 
+from ira.assistant import SYSTEM_PROMPT
 from ira.config import ModelsConfig
 
 from .test_read_then_act import READ, World, said, step
@@ -86,6 +87,11 @@ async def test_a_long_answer_in_the_wrong_letters_is_not_asked_for_again():
     events = await world.turn("aaj mere calendar mein kya hai")
     assert len(world.provider.calls) == 1
     assert events[-1]["text"].strip() == long_hindi.strip()
+
+
+def test_ordinary_questions_are_hers_to_answer():
+    assert "ordinary questions from what you know" in SYSTEM_PROMPT
+    assert "not your job" in SYSTEM_PROMPT and "unless they ask for something long" in SYSTEM_PROMPT
 
 
 def test_a_long_answer_has_room_to_finish():

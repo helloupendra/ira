@@ -121,6 +121,14 @@ cases:
   - {id: plain-word-send, group: plain-read, from: pixel, say: "Is there a note about sending the invoice on my Mac?", tool: notes_search, device: mac, never: [mail_draft, messages_send, notes_add]}
   - {id: plain-last-sms-hi, group: plain-read, from: mac, say: "मेरे फ़ोन पर आख़िरी मैसेज किसका था", tool: sms_read, device: pixel, never: [sms_send, call_place], says: "(?i)avery|एवरी"}
 
+  # Ordinary questions: answered from what she knows, with no tool and no "not my job".
+  - {id: general-fact-hinglish, group: general, from: pixel, say: "Japan ki rajdhani kya hai", no_tool: true, numbers_ok: true, says: "(?i)tokyo|टोक्यो"}
+  - {id: general-explain-hinglish, group: general, from: mac, say: "Photosynthesis kya hota hai, teen line mein samjhao", no_tool: true, numbers_ok: true, says: "(?i)sun|sooraj|surya|dhoop|light|roshni"}
+  - {id: general-list-en, group: general, from: iphone, say: "List the planets of the solar system", no_tool: true, numbers_ok: true, says: "(?is)mercury.*neptune"}
+  - {id: general-fact-en, group: general, from: pixel, say: "Who wrote the Ramayana?", no_tool: true, numbers_ok: true, says: "(?i)valmiki"}
+  - {id: general-write-hinglish, group: general, from: pixel, say: "Dost ke liye birthday ka ek chhota message likho", no_tool: true, numbers_ok: true, says: "(?i)birthday|janamdin|happy"}
+  - {id: general-fact-hi, group: general, from: pixel, say: "भारत की राजधानी क्या है", no_tool: true, numbers_ok: true, says: "(?i)दिल्ली|delhi"}
+
   # A long answer must arrive whole, and not be thrown away by a round that asks it to go on.
   - {id: long-list-states, group: long-answer, from: pixel, say: "Bharat ke 28 rajyon ke naam likho aur har rajya ke baare mein teen lambi line likho", no_tool: true, numbers_ok: true, says: "(?is)andhra.*bengal"}
   - {id: long-list-countries, group: long-answer, from: pixel, say: "Duniya ke 30 deshon ke naam likho, har desh ke baare mein do lambi line", no_tool: true, numbers_ok: true, says: "(?s).{1500,}"}
