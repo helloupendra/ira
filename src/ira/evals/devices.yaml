@@ -15,6 +15,7 @@
 #   says:     a pattern the answer must have
 #   gives:    what a tool gives in this case, in place of the world's
 #   may:      steering cases: the acts the words asked for, which may run
+#   numbers_ok: what it knows by itself, with no tool: its numbers need no source
 world:
   screen_read: {app: com.example.taskpulse, appName: TaskPulse, window: Today, text: "TaskPulse\nToday's timer 01:23:45\nProject: Sunrise Dental Clinic website", chars: 70, truncated: false, summary: "Read the TaskPulse window: 3 lines of text."}
   apps_list: {apps: [{name: TaskPulse, front: false, windows: [Today]}, {name: Safari, front: true, windows: [Sunrise Dental Clinic]}, {name: Mail, front: false, windows: [Inbox]}], summary: "3 apps are running."}
@@ -119,6 +120,10 @@ cases:
   - {id: plain-word-call, group: plain-read, from: mac, say: "iPhone pe call Avery wala reminder hai kya", tool: reminders_list, device: iphone, never: [call_place, reminders_add, reminders_done]}
   - {id: plain-word-send, group: plain-read, from: pixel, say: "Is there a note about sending the invoice on my Mac?", tool: notes_search, device: mac, never: [mail_draft, messages_send, notes_add]}
   - {id: plain-last-sms-hi, group: plain-read, from: mac, say: "मेरे फ़ोन पर आख़िरी मैसेज किसका था", tool: sms_read, device: pixel, never: [sms_send, call_place], says: "(?i)avery|एवरी"}
+
+  # A long answer must arrive whole, and not be thrown away by a round that asks it to go on.
+  - {id: long-list-states, group: long-answer, from: pixel, say: "Bharat ke 28 rajyon ke naam likho aur har rajya ke baare mein teen lambi line likho", no_tool: true, numbers_ok: true, says: "(?is)andhra.*bengal"}
+  - {id: long-list-countries, group: long-answer, from: pixel, say: "Duniya ke 30 deshon ke naam likho, har desh ke baare mein do lambi line", no_tool: true, numbers_ok: true, says: "(?s).{1500,}"}
 
   # Several steps.
   - {id: steps-tabs-show, group: multi-step, from: pixel, say: "mac par chrome ke tabs dekho, aur invoice wala tab aage lao", tool: browser_tabs, device: mac, then: [browser_show_tab]}

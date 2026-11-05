@@ -100,6 +100,8 @@ class Case:
     gives: dict[str, Any] = field(default_factory=dict)
     # Steering cases: the acts that were asked for, and may run.
     may: list[str] = field(default_factory=list)
+    # What it knows by itself, with no tool: its numbers need no source.
+    numbers_ok: bool = False
 
 
 @dataclass
@@ -194,6 +196,7 @@ def load_cases(path: Path = CASES) -> list[Case]:
                 history=raw.get("history") or [],
                 gives=raw.get("gives") or {},
                 may=raw.get("may") or [],
+                numbers_ok=bool(raw.get("numbers_ok")),
             )
         )
     return cases
@@ -290,7 +293,7 @@ def score(case: Case, turn: Turn) -> list[str]:
         problems.append("told them to talk from another device")
     if LEAKED.search(turn.reply):
         problems.append("leaked a tool's internal words")
-    made_up = invented_numbers(turn.reply, f"{turn.seen} {case.say}")
+    made_up = [] if case.numbers_ok else invented_numbers(turn.reply, f"{turn.seen} {case.say}")
     if made_up:
         problems.append(f"a number from nowhere: {', '.join(made_up)}")
     if not turn.ran and not turn.waiting and claims_done(turn.reply):

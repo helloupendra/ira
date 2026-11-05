@@ -130,6 +130,11 @@ SAY_AGAIN = {
     "hinglish": "Maaf kijiye, samajh nahi aaya. Phir se boliye?",
     "en": "Sorry, I didn't get that. Could you say it again?",
 }
+# This many letters are an answer, whatever one sentence of them says: only that sentence goes.
+LONG_ANSWER = 400
+# Written in the wrong letters and longer than this, an answer stands: asking for it again would
+# make them wait as long once more.
+LONGEST_TO_ASK_AGAIN = 1500
 # A turn that said something happened when no tool ran, after one more chance.
 NOT_DONE = {
     "hi": "मैंने अभी कुछ नहीं किया। फिर से कहेंगे?",
@@ -918,6 +923,7 @@ class Assistant:
         offer_finish = True
         finished = False
         last_words = ""  # what the round before a forced one said, in case that one says nothing
+        goal_words = ""  # what it said before it was asked to go on, while no tool has run since
         used: list[str] = []
         rounds_of: Counter[str] = Counter()
         in_a_row: Counter[tuple[str, str]] = Counter()  # the same call, round after round
@@ -1001,6 +1007,7 @@ class Assistant:
                 or (must_look and not used and "look" not in asked_for)
                 or (bool(named) and not named_up and not used)
                 or (used and "goal" not in asked_for and asks_more_than_one_thing(asked))
+                or bool(goal_words)
                 or (can_read_mail and _mail_left_unread(asked, used, asked_for))
             )
             promise = PromiseGate(hold_all, latin_only) if on_devices else None
@@ -1115,17 +1122,22 @@ class Assistant:
                 response.text = cleaned.strip()
 
             written = response.text or ""
-            if not keep_foreign and (
-                (in_dutch(written) and not in_dutch(asked))
-                # Only what was held back: what went out cannot be said again in other letters.
-                or (latin_only and promise is not None and detect(written) == "hi")
-            ):
+            # Only what was held back: what went out cannot be said again in other letters.
+            wrong_letters = (
+                latin_only
+                and promise is not None
+                and len(written) <= LONGEST_TO_ASK_AGAIN
+                and detect(written) == "hi"
+            )
+            if not keep_foreign and ((in_dutch(written) and not in_dutch(asked)) or wrong_letters):
                 log.warning("%s answered in the wrong language; asking again", model)
                 if promise is not None:
                     promise.take()
                 response.text = ""
                 if not response.tool_calls:
-                    response.text = await self._again_in_language(messages, tools, tier, asked)
+                    response.text = await self._again_in_language(
+                        messages, tools, tier, asked, keep=written if wrong_letters else None
+                    )
                     yield {"type": "delta", "text": response.text}
 
             if promise is not None:
@@ -1147,10 +1159,21 @@ class Assistant:
                     response.text = held = OFFLINE_NOW[detect(asked)].format(names=names)
                 if not response.tool_calls and not waiting:
                     words = response.text or ""
+                    if _letters(goal_words) >= LONG_ANSWER and _letters(words) * 2 < _letters(
+                        goal_words
+                    ):
+                        # Asked to go on, it ran nothing and said far less of a long answer: what
+                        # it said first stands. A short first answer may well be the worse one.
+                        response.text = held = words = goal_words
                     empty = promises(words) or (
                         not used and claims_done(words) and not says_cannot(words)
                     )
                     kept = without_promises(words, claims=not used) if empty else words
+                    if empty and _letters(kept) >= LONG_ANSWER:
+                        log.warning("%s: a long answer; only its promises were taken out", model)
+                        response.text = words = kept
+                        held = without_promises(held, claims=not used)
+                        empty = False
                     # The device named is off: no tool can do it, so another round cannot help.
                     off = named is not None and not named_up and _letters(kept) >= 2
                     why = None if off or (finished and not empty) else _ask_again(
@@ -1198,8 +1221,12 @@ class Assistant:
                         }
                         must_act = bool(tools) and (why[0] != "goal" or bool(left))
                         rule = why[1] if must_act or why[0] != "goal" else GOAL_RULE_FREE
-                        system += f"- {rule}\n"
-                        continue
+                        # Only the web was used and nothing asked for is left: this answer stands.
+                        if why[0] != "goal" or left or any(name in personal for name in used):
+                            system += f"- {rule}\n"
+                            goal_words = kept if why[0] == "goal" else goal_words
+                            continue
+                        must_act = False
                     if empty:  # it had its chance: what it found stands, its promises do not
                         log.warning("%s still said it did something, with no tool", model)
                         kept = kept if _letters(kept) >= 2 else NOT_DONE[detect(asked)]
@@ -1251,6 +1278,7 @@ class Assistant:
                         withheld.add(call.name)
                 if run.ok:
                     asked_for.discard("goal")  # it went on: the next stop is checked too
+                    goal_words = ""
                 waiting = waiting or run.pending is not None
                 replayed.append(run.call)
                 results.append(
@@ -1341,10 +1369,16 @@ class Assistant:
         }
 
     async def _again_in_language(
-        self, messages: list[Message], tools: list[dict[str, Any]], tier: str | None, asked: str
+        self,
+        messages: list[Message],
+        tools: list[dict[str, Any]],
+        tier: str | None,
+        asked: str,
+        keep: str | None = None,
     ) -> str:
         """The answer came in Chinese (or another language the person does not use): ask once
-        more, plainly, and failing that say so in their language rather than stay silent."""
+        more, plainly. Failing that, what they can still read stands (`keep`); with nothing to
+        keep, say so in their language rather than stay silent."""
         system = (messages[0].content or "") + f"- {AGAIN_RULE}\n"
         try:
             response = await self.gateway.chat(
@@ -1355,7 +1389,8 @@ class Assistant:
                 return text
         except GatewayError as exc:
             log.warning("asking again failed: %s", exc)
-        return SAY_AGAIN[detect(asked)]
+        log.warning("asking again gave no answer; %s", "the first stands" if keep else "fixed line")
+        return keep or SAY_AGAIN[detect(asked)]
 
     async def _wrap_up(
         self,

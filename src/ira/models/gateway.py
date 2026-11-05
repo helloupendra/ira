@@ -105,7 +105,7 @@ class Gateway:
         store: Store | None = None,
         cooldown_seconds: float = 60.0,
         timeout_seconds: float = 60.0,
-        max_tokens: int = 1024,
+        max_tokens: int = 6000,
         clock: Callable[[], float] = time.monotonic,
     ) -> None:
         for tier, refs in tiers.items():

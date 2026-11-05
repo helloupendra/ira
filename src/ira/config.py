@@ -60,7 +60,7 @@ class ModelsConfig(_Strict):
     prices: dict[str, PriceConfig] = Field(default_factory=dict)
     cooldown_seconds: float = 60
     timeout_seconds: float = 60
-    max_tokens: int = 1024
+    max_tokens: int = 6000
 
 
 class STTConfig(_Strict):
