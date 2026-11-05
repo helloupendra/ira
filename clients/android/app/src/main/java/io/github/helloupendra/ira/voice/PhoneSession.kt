@@ -154,7 +154,11 @@ class PhoneSession(
                 state.update { it.copy(stepsDone = it.stepsDone + Steps.receipt(event.name, seconds)) }
             }
             is AskStream.Event.Action -> state.update { it.copy(action = event.card) }
-            is AskStream.Event.Delta -> transcript.ira(key) { it.copy(text = it.text + event.text) }
+            is AskStream.Event.Delta -> {
+                transcript.ira(key) { it.copy(text = it.text + event.text) }
+                // Her words are on screen: she is past thinking, until a tool starts.
+                if (state.value.step != null) state.update { it.copy(step = null) }
+            }
             is AskStream.Event.Error -> {
                 state.update { it.copy(notice = "Ira could not answer just now: no model replied. Ask again in a moment.") }
             }
