@@ -46,13 +46,22 @@ _GLM = re.compile(
     re.S,
 )
 _GLM_ARGUMENT = re.compile(r"<arg_key>(.*?)</arg_key>\s*<arg_value>(.*?)</arg_value>", re.S)
+# The name in a tag of its own, then the arguments as parameters: Kimi K2.5, 5 Nov 2026.
+_TOOL_TAG = re.compile(
+    r"<tool>\s*([A-Za-z0-9_-]{1,64})\s*</tool>"
+    r'((?:\s*<parameter\s+name="[^"]{1,64}"\s*>.*?</parameter>)*)',
+    re.S,
+)
 _WRAPPERS = re.compile(
     r"</?function_calls>|<\|tool_calls_section_(begin|end)\|>|<\|tool_call_begin\|>", re.S
 )
 # Where a call written as text starts, in any of the ways above or DeepSeek's DSML.
-_START = re.compile(r"<tool_call>|<invoke\s|</?function_calls>|<\|tool_call|<｜DSML｜|<\|DSML\|")
+_START = re.compile(
+    r"<tool_call>|<tool>|<invoke\s|</?function_calls>|<\|tool_call|<｜DSML｜|<\|DSML\|"
+)
 _STARTS = (
     "<tool_call>",
+    "<tool>",
     "<invoke",
     "<function_calls>",
     "</function_calls>",
@@ -109,13 +118,16 @@ def _found(text: str) -> list[tuple[int, str, dict[str, Any] | None]]:
     for match in _GLM.finditer(text):
         arguments = {k.strip(): _value(v) for k, v in _GLM_ARGUMENT.findall(match.group(2))}
         found.append((match.start(), match.group(1), arguments))
+    for match in _TOOL_TAG.finditer(text):
+        parameters = {k: _value(v) for k, v in _PARAMETER.findall(match.group(2))}
+        found.append((match.start(), match.group(1), parameters))
     return sorted(found, key=lambda item: item[0])
 
 
 def _after_last_call(text: str) -> str:
     ends = [
         match.end()
-        for pattern in (_INVOKE, _KIMI, _HERMES, _TAGGED, _NAMED, _GLM)
+        for pattern in (_INVOKE, _KIMI, _HERMES, _TAGGED, _NAMED, _GLM, _TOOL_TAG)
         for match in pattern.finditer(text)
     ]
     return _WRAPPERS.sub("", text[max(ends, default=0) :])

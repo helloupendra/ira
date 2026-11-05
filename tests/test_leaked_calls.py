@@ -112,6 +112,29 @@ def test_a_tagged_call_to_a_tool_not_offered_stays_text():
     assert recover(text, OFFERED) == (text, [])
 
 
+TOOL_TAG = (
+    '<tool>app_open</tool> <parameter name="device">My iPhone</parameter> '
+    '<parameter name="name">YouTube</parameter>'
+)
+
+
+def test_the_name_in_a_tool_tag_as_on_the_card_of_5_november():
+    prose, calls = recover("YouTube kholti hoon. " + TOOL_TAG, {"app_open"})
+    assert prose == "YouTube kholti hoon."
+    assert [c.name for c in calls] == ["app_open"]
+    assert json.loads(calls[0].arguments) == {"device": "My iPhone", "name": "YouTube"}
+    assert recover(TOOL_TAG, {"sms_read"}) == (TOOL_TAG, [])  # not offered: it stays text
+    assert before_markup("Haan. " + TOOL_TAG) == "Haan."
+
+
+def test_the_gate_never_shows_a_tool_tag():
+    gate = MarkupGate()
+    pieces = ["Theek hai. ", "<to", "ol>app_open</tool>", " <parameter name"]
+    assert "".join(gate.feed(p) for p in pieces) + gate.flush() == "Theek hai. "
+    other = MarkupGate()
+    assert other.feed("a <to") + other.feed("day") + other.flush() == "a <today"
+
+
 def test_the_prose_before_markup_that_cannot_run():
     assert before_markup("Main dekhti hoon:\n<tool_call><x>{}</tool_call>") == "Main dekhti hoon:"
     assert before_markup("Padh rahi hoon.\n\n<｜DSML｜function_calls>") == "Padh rahi hoon."
