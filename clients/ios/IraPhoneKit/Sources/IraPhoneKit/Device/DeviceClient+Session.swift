@@ -1,4 +1,5 @@
 import Foundation
+import os
 
 /// A welcomed connection: calls, pings and skills until it closes.
 extension DeviceClient {
@@ -11,10 +12,11 @@ extension DeviceClient {
                 try? await sender.send(DeviceProtocol.ping.encoded())
             }
         }
-        var calls: [Task<Void, Never>] = []
+        // Each call's task, kept only while it runs: a long connection must not collect them.
+        var calls: [(task: Task<Void, Never>, done: OSAllocatedUnfairLock<Bool>)] = []
         defer {
             pinger.cancel()
-            calls.forEach { $0.cancel() }
+            calls.forEach { $0.task.cancel() }
         }
         while !isStopped {
             let message: WebSocketMessage
@@ -33,10 +35,12 @@ extension DeviceClient {
             }
             switch frame {
             case .call(let id, let tool, let args):
-                calls.removeAll { $0.isCancelled }
+                calls.removeAll { call in call.task.isCancelled || call.done.withLock { $0 } }
                 let tools = self.tools
                 let log = self.log
-                calls.append(Task {
+                let done = OSAllocatedUnfairLock(initialState: false)
+                let task = Task {
+                    defer { done.withLock { $0 = true } }
                     // Every call is logged: its tool, how long, and how it ended. Never contents.
                     let started = Date()
                     let reply: JSONValue
@@ -57,7 +61,8 @@ extension DeviceClient {
                     } catch {
                         log.warning("call \(tool): the answer could not be sent (the connection ended)")
                     }
-                })
+                }
+                calls.append((task: task, done: done))
             case .ping:
                 try? await sender.send(DeviceProtocol.pong.encoded())
             case .skills(let now):
