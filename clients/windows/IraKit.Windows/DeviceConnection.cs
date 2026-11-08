@@ -84,6 +84,11 @@ public sealed class DeviceConnection(
             {
                 break;
             }
+            catch (OperationCanceledException)
+            {
+                // Its own limit, such as the wait for the welcome, not a stop: try again.
+                reason = "your Ira did not answer in time";
+            }
             // InvalidOperationException and FormatException: a frame with a field of an odd type.
             catch (Exception e) when (e is WebSocketException or HttpRequestException or IOException or IraError or JsonException or InvalidOperationException or FormatException)
             {
