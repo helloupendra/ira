@@ -1730,6 +1730,8 @@ class Assistant:
             if elsewhere is not None and tainted:
                 # From another device they cannot see what a page may have talked her into.
                 window = None
+            if window is not None and await _steered(extra, tainted, asked):
+                window = None
             if window is not None:  # approved with a PIN for a few minutes: run it now
                 self.approvals.step(window)
                 return await self._run_now(
@@ -1742,6 +1744,7 @@ class Assistant:
                 elsewhere is None
                 and (app is None or app == front)
                 and self.approvals.trusts(user_id, target, front, extra.name, extra.skill)
+                and not await _steered(extra, tainted, asked)
             ):
                 # The app in front is one the person trusts: tap and type there at once.
                 return await self._run_now(
@@ -1855,6 +1858,14 @@ async def _may_follow_a_read(extra: PersonalTool, asked: AskedFor | None) -> boo
     if extra.tier >= 3 or outward(extra.name, extra.skill):
         return False
     return await asked.allows(extra.name, extra.description)
+
+
+async def _steered(extra: PersonalTool, tainted: bool, asked: AskedFor | None) -> bool:
+    """A step on an open window or a trusted app, in a turn that has read others' words, that
+    the person's own words do not ask for: what a page says must not steer the clicks."""
+    if not tainted:
+        return False
+    return asked is None or not await asked.allows(extra.name, extra.description)
 
 
 def _a_means(tool: PersonalTool | None) -> bool:

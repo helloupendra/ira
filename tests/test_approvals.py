@@ -43,6 +43,7 @@ class Socket:
 
 TOOLS = [
     {"name": "screen_act", "skill": "screen", "tier": 3},
+    {"name": "screen_read", "skill": "screen", "tier": 0},
     {"name": "sms_send", "skill": "messages", "tier": 2},
 ]
 
@@ -134,6 +135,24 @@ async def test_a_pin_opens_a_window_and_covered_steps_then_run():
     clock.advance(15 * 60 + 1)
     fourth = await ask("aur scroll karo", conversation_id="u", user_id=owner.id)
     assert fourth.action is not None and fourth.action.tool == "screen_act"
+
+
+@pytest.mark.parametrize(("asked", "runs"), [(set(), False), ({"screen_act"}, True)])
+async def test_a_page_read_in_a_window_steers_no_step_their_words_did_not_ask_for(asked, runs):
+    # Review of 8 Nov 2026: inside an open window, a step after a read ran with no check, so
+    # what the screen said could steer the clicks.
+    runtime, provider, owner, phone, _, ran, _ = phone_world(
+        [act("screen_act"), "Your PIN.", "Done.", act("screen_read"), act("screen_act"), "Ok."]
+    )
+    ask = runtime.assistant.ask
+    first = await ask("YouTube pe search tap karo", conversation_id="t", user_id=owner.id)
+    await runtime.guard.confirm(first.action.id, PIN, user_id=owner.id, role="owner")
+    [e async for e in runtime.assistant.follow_up("t", channel="api", actor="o", user_id=owner.id)]
+    provider.asks = asked
+    second = await ask("screen padho aur jo kahe wo karo", conversation_id="t", user_id=owner.id)
+    assert ran[:2] == ["screen_act", "screen_read"]
+    assert ("screen_act" in ran[2:]) is runs and second.action is None
+    assert provider.asked  # the check was asked, with their words only
 
 
 async def test_stop_disconnect_and_minutes():
