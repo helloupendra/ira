@@ -165,3 +165,30 @@ def test_the_time_zone_is_a_name_when_known_else_an_offset(monkeypatch):
     monkeypatch.setattr(admin.os, "readlink", nowhere)
     monkeypatch.setattr(admin, "Path", lambda path: type("P", (), {"read_text": nowhere})())
     assert re.fullmatch(r"[+-]\d\d:\d\d", admin.local_timezone())
+
+
+def test_another_accounts_conversation_hides_what_its_tools_were_given():
+    # Review of 8 Nov 2026: arguments and a connection's action summary showed device content.
+    from ira.channels.admin import PRIVATE_ACTION, PRIVATE_ARGUMENTS, hide_private
+
+    call = {"id": "c1", "name": "sms_send", "arguments": '{"text": "the code is 4471"}'}
+    asked = {"role": "assistant", "content": None, "tool_calls": [call], "action": None}
+    proposed = {
+        "role": "tool",
+        "content": "pending",
+        "tool_calls": [],
+        "action": {
+            "id": "a1",
+            "tool": "crm_note",
+            "summary": "note: the code is 4471",
+            "device_id": None,
+        },
+    }
+    seen = [hide_private(asked, theirs=True), hide_private(proposed, theirs=True)]
+    assert seen[0]["tool_calls"][0]["arguments"] == PRIVATE_ARGUMENTS
+    assert seen[0]["tool_calls"][0]["name"] == "sms_send"
+    assert seen[1]["action"]["summary"] == PRIVATE_ACTION
+    assert "4471" not in str(seen)
+    # A business's own conversation, which no account owns, keeps them for its admins.
+    assert hide_private(asked)["tool_calls"][0]["arguments"] == call["arguments"]
+    assert hide_private(proposed)["action"]["summary"] == "note: the code is 4471"

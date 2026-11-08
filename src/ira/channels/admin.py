@@ -259,22 +259,29 @@ def conversation(
         raise HTTPException(404, detail="no such conversation")
     runtime.guard.expire_overdue()
     messages = runtime.conversations.transcript(conversation_id)
-    if runtime.conversations.owner(conversation_id) != principal.user.id:
-        messages = [hide_private(m) for m in messages]
+    owner = runtime.conversations.owner(conversation_id)
+    if owner != principal.user.id:
+        messages = [hide_private(m, theirs=owner is not None) for m in messages]
     return [MessageRow(**m) for m in messages]
 
 
 PRIVATE_OUTPUT = "(private: what this person's device returned is shown only to them)"
 PRIVATE_ACTION = "(private: an action on this person's own device)"
+PRIVATE_ARGUMENTS = '{"private": "what was asked of this tool is shown only to this person"}'
 
 
-def hide_private(message: dict[str, Any]) -> dict[str, Any]:
-    """Someone else's message as an admin sees it: no device output, no device action."""
+def hide_private(message: dict[str, Any], theirs: bool = False) -> dict[str, Any]:
+    """Someone else's message as an admin sees it: no device output, no device action. In
+    another account's own conversation (`theirs`) no tool's arguments and no action's summary
+    either: what a device returned is copied into them as often as not."""
     if message.get("private"):
         message = {**message, "content": PRIVATE_OUTPUT}
     action = message.get("action")
-    if action and action.get("device_id") is not None:
+    if action and (theirs or action.get("device_id") is not None):
         message = {**message, "action": {**action, "summary": PRIVATE_ACTION}}
+    if theirs and message.get("tool_calls"):
+        calls = [{**call, "arguments": PRIVATE_ARGUMENTS} for call in message["tool_calls"]]
+        message = {**message, "tool_calls": calls}
     return message
 
 
