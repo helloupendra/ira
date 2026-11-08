@@ -1,13 +1,21 @@
 package io.github.helloupendra.ira.tools
 
+import android.app.PendingIntent
+import android.content.BroadcastReceiver
 import android.content.Context
+import android.content.Intent
+import android.content.IntentFilter
 import android.os.Build
 import android.provider.Telephony
 import android.telephony.SmsManager
+import androidx.core.content.ContextCompat
 import io.github.helloupendra.ira.core.Args
 import io.github.helloupendra.ira.core.Permissions
 import io.github.helloupendra.ira.core.SmsCount
+import io.github.helloupendra.ira.core.SmsOutcome
 import io.github.helloupendra.ira.core.ToolFailure
+import java.util.concurrent.LinkedBlockingQueue
+import java.util.concurrent.TimeUnit
 import kotlinx.serialization.json.JsonElement
 
 /** SMS: reading the inbox and sending a message. */
@@ -93,8 +101,47 @@ class MessageTools(private val context: Context) {
                 SmsManager.getDefault()
             } ?: throw ToolFailure("this phone cannot send SMS")
         val parts = sms.divideMessage(text)
-        if (parts.size > 1) sms.sendMultipartTextMessage(number, null, parts, null, null) else sms.sendTextMessage(number, null, text, null, null)
+        val codes = sendAndWait(sms, number, text, parts)
         val who = name ?: number
-        return Results.of("number" to number, "name" to name, "parts" to parts.size, "summary" to "Sent the SMS to $who.")
+        SmsOutcome.failure(codes)?.let { throw ToolFailure("the SMS to $who did not go: $it") }
+        val sent = SmsOutcome.sent(codes)
+        // Not confirmed in time: the phone has it and may still send it, so it is no failure.
+        val summary = if (sent) "Sent the SMS to $who." else "Gave the SMS to $who to the phone; it has not yet said it went."
+        return Results.of("number" to number, "name" to name, "parts" to parts.size, "sent" to sent, "summary" to summary)
+    }
+
+    /** Send, then wait a little for the phone to say each part went (or why it did not). */
+    private fun sendAndWait(sms: SmsManager, number: String, text: String, parts: ArrayList<String>): List<Int?> {
+        val action = "${context.packageName}.SMS_SENT.${System.nanoTime()}"
+        val codes = LinkedBlockingQueue<Int>()
+        val receiver =
+            object : BroadcastReceiver() {
+                override fun onReceive(c: Context, intent: Intent) {
+                    codes.offer(resultCode)
+                }
+            }
+        ContextCompat.registerReceiver(context, receiver, IntentFilter(action), ContextCompat.RECEIVER_NOT_EXPORTED)
+        try {
+            val sent =
+                ArrayList(
+                    parts.indices.map {
+                        PendingIntent.getBroadcast(
+                            context,
+                            it,
+                            Intent(action).setPackage(context.packageName),
+                            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_ONE_SHOT,
+                        )
+                    },
+                )
+            if (parts.size > 1) sms.sendMultipartTextMessage(number, null, parts, sent, null) else sms.sendTextMessage(number, null, text, sent[0], null)
+            val until = System.nanoTime() + SEND_WAIT_MS * 1_000_000L
+            return parts.indices.map { codes.poll(maxOf(0L, (until - System.nanoTime()) / 1_000_000L), TimeUnit.MILLISECONDS) }
+        } finally {
+            runCatching { context.unregisterReceiver(receiver) }
+        }
+    }
+
+    private companion object {
+        const val SEND_WAIT_MS = 20_000L
     }
 }
