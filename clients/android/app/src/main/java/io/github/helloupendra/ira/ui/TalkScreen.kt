@@ -109,7 +109,7 @@ import androidx.compose.ui.text.withStyle
 import io.github.helloupendra.ira.voice.nowMs
 
 @Composable
-fun TalkScreen(app: IraApp, talkRequests: Int, onSkills: () -> Unit, onSettings: () -> Unit, onDrop: () -> Unit = {}) {
+fun TalkScreen(app: IraApp, talkRequest: Long, onTalkTaken: (Long) -> Unit = {}, onSkills: () -> Unit, onSettings: () -> Unit, onDrop: () -> Unit = {}) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val session by app.session.collectAsState()
@@ -178,7 +178,12 @@ fun TalkScreen(app: IraApp, talkRequests: Int, onSkills: () -> Unit, onSettings:
     fun talk() = microphone(call = true)
 
     // The assistant gesture opened Ira: start listening at once.
-    LaunchedEffect(talkRequests) { if (talkRequests > 0 && session?.ui?.value?.listening != true) talk() }
+    LaunchedEffect(talkRequest) {
+        if (talkRequest > 0L) {
+            onTalkTaken(talkRequest)
+            if (session?.ui?.value?.listening != true) talk()
+        }
+    }
 
     val skillsOn by app.skillsOn.collectAsState()
     val facts =

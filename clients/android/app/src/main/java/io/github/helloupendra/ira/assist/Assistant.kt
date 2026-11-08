@@ -7,6 +7,7 @@ import android.service.voice.VoiceInteractionSession
 import android.service.voice.VoiceInteractionSessionService
 import android.speech.RecognitionService
 import android.speech.SpeechRecognizer
+import io.github.helloupendra.ira.core.TalkKey
 import io.github.helloupendra.ira.ui.MainActivity
 
 /**
@@ -31,6 +32,7 @@ class IraSession(service: VoiceInteractionSessionService) : VoiceInteractionSess
         val intent =
             Intent(context, MainActivity::class.java)
                 .setAction(MainActivity.ACTION_TALK)
+                .putExtra(TalkKey.EXTRA, TalkKey.value)
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
         startAssistantActivity(intent)
         hide()

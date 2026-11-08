@@ -15,13 +15,12 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
-import androidx.compose.ui.semantics.Role
-import androidx.compose.foundation.selection.toggleable
-import androidx.compose.material3.Checkbox
 import androidx.compose.material3.Button
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
@@ -34,13 +33,16 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
@@ -65,7 +67,9 @@ enum class Screen { Talk, Skills, Settings, Approvals, Drop }
 const val PRIVACY_URL = "https://helloupendra.github.io/ira/docs/privacy/"
 
 @Composable
-fun IraScreens(app: IraApp, talkRequests: Int, dropRequests: Int = 0) {
+fun IraScreens(app: IraApp, talkRequest: Long, dropRequests: Int = 0) {
+    // Taken once: coming back to Talk from Settings must not start the microphone again.
+    var talkTaken by rememberSaveable { mutableLongStateOf(0L) }
     var paired by remember { mutableStateOf(app.paired) }
     var screen by remember { mutableStateOf(Screen.Talk) }
     LaunchedEffect(dropRequests) { if (dropRequests > 0 && paired) screen = Screen.Drop }
@@ -81,7 +85,7 @@ fun IraScreens(app: IraApp, talkRequests: Int, dropRequests: Int = 0) {
             BackHandler(enabled = screen != Screen.Talk) { screen = Screen.Talk }
             when (screen) {
                 Screen.Talk ->
-                    TalkScreen(app, talkRequests, onSkills = { screen = Screen.Skills }, onSettings = { screen = Screen.Settings }, onDrop = { screen = Screen.Drop })
+                    TalkScreen(app, if (talkRequest > talkTaken) talkRequest else 0L, onTalkTaken = { talkTaken = it }, onSkills = { screen = Screen.Skills }, onSettings = { screen = Screen.Settings }, onDrop = { screen = Screen.Drop })
                 Screen.Skills -> SkillsScreen(app, onBack = { screen = Screen.Talk })
                 Screen.Settings ->
                     SettingsScreen(app, onBack = { screen = Screen.Talk }, onApprovals = { screen = Screen.Approvals }, onUnpaired = {
