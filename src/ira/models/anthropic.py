@@ -177,6 +177,7 @@ class AnthropicProvider:
         output_tokens = 0
         stop_reason: str | None = None
         alive = False  # the model has begun: words, a tool call or its reasoning
+        finished = False  # message_stop came: the stream did not simply stop
         async with self.http.stream_lines("/v1/messages", payload, timeout=timeout) as lines:
             async for data in sse_data(lines):
                 try:
@@ -213,8 +214,14 @@ class AnthropicProvider:
                     stop_reason = (event.get("delta") or {}).get("stop_reason") or stop_reason
                     output_tokens = (event.get("usage") or {}).get("output_tokens") or output_tokens
                 elif kind == "message_stop":
+                    finished = True
                     break
 
+        if not finished:
+            # A half-made call must never run; with no words yet another model may answer.
+            if blocks or not "".join(text).strip():
+                raise ProviderError("the stream stopped before the model finished", kind="server")
+            stop_reason = stop_reason or "incomplete"
         calls = [
             ToolCall(id=b["id"], name=b["name"], arguments=b["json"] or "{}")
             for _, b in sorted(blocks.items())

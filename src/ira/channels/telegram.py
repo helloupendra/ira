@@ -25,7 +25,7 @@ from ira.config import secret
 from ira.models.base import ProviderError
 from ira.models.http import scrub
 from ira.runtime import Runtime
-from ira.security import looks_like_pin, sha256_hex, spoken_digits
+from ira.security import holds_a_pin, looks_like_pin, sha256_hex, spoken_digits
 from ira.store import Store
 from ira.voice.audio import AudioError, check_wav, ogg_to_wav
 from ira.voice.shorten import speakable
@@ -391,6 +391,12 @@ class TelegramBot:
         conversation_id = telegram_conversation(
             self.runtime.assistant.conversations, chat_id, principal.user.id
         )
+
+        if text and holds_a_pin(text) and not looks_like_pin(text):
+            # A PIN inside a sentence: gone from the chat, and never sent to a model.
+            await self._delete(chat_id, message_id)
+            await self._send(chat_id, "For safety I never read PINs in chat. Send the PIN alone.")
+            return
 
         if text and looks_like_pin(text):
             # Delete first: the PIN must not sit in the chat history, whatever happens next.

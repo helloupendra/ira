@@ -63,10 +63,11 @@ def default_tier(name: str, description: str, annotations: Any) -> int:
         return 3
     if SENSITIVE.search(name.replace("_", " ")):
         return 3
-    if hint("read_only_hint") is True or hint("readOnlyHint") is True:
-        return 0
+    # A server's own read-only hint does not outrank what its description says it does.
     if SENSITIVE.search(words):
         return 3
+    if hint("read_only_hint") is True or hint("readOnlyHint") is True:
+        return 0
     return 2
 
 

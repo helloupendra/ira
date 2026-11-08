@@ -67,6 +67,15 @@ class LearningService:
             return float(min(at, now))
         return now
 
+    def purge_all(self) -> int:
+        """Forget, for every person, the observations older than their days allow: someone who
+        no longer uses Ira, or switched learning off, keeps nothing past that either."""
+        rows = self.data.store.query("SELECT DISTINCT user_id FROM observations")
+        return sum(
+            self.data.purge(row["user_id"], self.user_settings.get(row["user_id"]).learning_days)
+            for row in rows
+        )
+
     async def record(
         self,
         user_id: int,

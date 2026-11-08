@@ -56,7 +56,7 @@ from ira.promises import (
     says_device_is_off,
     without_promises,
 )
-from ira.security import looks_like_pin
+from ira.security import holds_a_pin, looks_like_pin
 from ira.store import Store
 from ira.tools.actions import ActionGuard, PendingAction
 from ira.tools.personal import UNTRUSTED_RULE, PersonalTool, is_no, is_yes, wrap_untrusted
@@ -639,8 +639,8 @@ class Assistant:
         ``can_approve``: the credential may say yes to an action (an ask-only token may not).
         ``device_id``: the device the person talks from (its own token), when it is one."""
         text = text.strip()
-        if looks_like_pin(text):
-            # A bare PIN typed into chat: keep it away from every model.
+        if looks_like_pin(text) or holds_a_pin(text):
+            # A PIN typed into chat, bare or in a sentence: keep it away from every model.
             message = "For safety I never read PINs in chat. Use the confirm step to enter it."
             yield {"type": "delta", "text": message}
             yield {"type": "done", "text": message, "model": None}

@@ -359,10 +359,12 @@ class DeviceHub:
         started = time.monotonic()
         try:
             here = ASKED_FROM.get() == device_id
-            await connection.send(
-                {"type": "call", "id": call_id, "tool": tool, "args": args, "here": here}
-            )
-            return await asyncio.wait_for(future, seconds)
+            # One deadline for both: a send stuck behind a slow socket must not hold the slot.
+            async with asyncio.timeout(seconds):
+                await connection.send(
+                    {"type": "call", "id": call_id, "tool": tool, "args": args, "here": here}
+                )
+                return await future
         except TimeoutError:
             raise ToolTimeout(
                 f"the device did not answer within {seconds:g} seconds: it may still have done it"

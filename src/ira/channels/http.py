@@ -528,13 +528,14 @@ ADMIN_PLACEHOLDER = """<!doctype html><html lang="en"><head><meta charset="utf-8
 
 
 async def _clean_up(runtime: Runtime) -> None:
-    """Every hour, delete Drop items past their time, with their files, and the log rows past
-    the days set under ``retention``."""
+    """Every hour, delete Drop items past their time, with their files, the log rows past
+    the days set under ``retention``, and observations past each person's days."""
     from ira import retention
 
     jobs = (
         ("Drop", runtime.drop.clean),
         ("old log rows", lambda: retention.clean(runtime.store, runtime.settings.retention)),
+        ("old observations", lambda: runtime.learning.purge_all() if runtime.learning else 0),
     )
     while True:
         for name, job in jobs:

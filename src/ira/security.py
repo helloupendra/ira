@@ -46,6 +46,20 @@ _DEVANAGARI_DIGITS = str.maketrans("०१२३४५६७८९", "0123456789
 _SEPARATORS = re.compile(r"[\s.,;:!?'\"()\[\]{}\-–—_/।]+")
 
 
+# "my PIN is 4321, approve it": the word and four to eight digits. A postal "pin code" is not one.
+_PIN_WORD = re.compile(
+    r"(?<![a-z])(?:pin|passcode|pass code)(?![a-z])(?!\s*code)|पिन(?!\s*कोड)", re.IGNORECASE
+)
+_PIN_DIGITS = re.compile(r"(?<!\d)\d{4,8}(?!\d)")
+
+
+def holds_a_pin(text: str) -> bool:
+    """A sentence that gives a PIN: it must reach no model and no stored history."""
+    return bool(_PIN_WORD.search(text)) and bool(
+        _PIN_DIGITS.search(text.translate(_DEVANAGARI_DIGITS))
+    )
+
+
 def spoken_digits(text: str) -> str | None:
     """The digits of a message made only of digits and digit words ("4321.", "1 2 3 4",
     "ek do teen char", "मेरा पिन चार तीन दो एक है"), else None."""

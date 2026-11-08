@@ -106,6 +106,18 @@ def parse_completion(data: dict[str, Any], model: str) -> ChatResponse:
     )
 
 
+def _unfinished(
+    finished: bool, calls: bool, text: list[str], stop_reason: str | None
+) -> str | None:
+    """A stream that stopped with no end marked: a half-made call must never run, and with no
+    words yet another model may answer. Words alone stand, marked as cut short."""
+    if finished:
+        return stop_reason
+    if calls or not "".join(text).strip():
+        raise ProviderError("the stream stopped before the model finished", kind="server")
+    return stop_reason or "incomplete"
+
+
 class OpenAICompatProvider:
     def __init__(
         self,
@@ -174,9 +186,11 @@ class OpenAICompatProvider:
         usage = Usage(known=False)  # until a chunk carries it
         stop_reason: str | None = None
         alive = False  # the model has begun: words, a tool call or its reasoning
+        finished = False  # [DONE] or a finish reason came: the stream did not simply stop
         async with self.http.stream_lines("/chat/completions", payload, timeout=timeout) as lines:
             async for data in sse_data(lines):
                 if data == "[DONE]":
+                    finished = True
                     break
                 try:
                     chunk = json.loads(data)
@@ -213,7 +227,9 @@ class OpenAICompatProvider:
                         slot["arguments"] += _arguments_text(function.get("arguments"))
                     if choice.get("finish_reason"):
                         stop_reason = choice["finish_reason"]
+                        finished = True
 
+        stop_reason = _unfinished(finished, bool(slots), text, stop_reason)
         calls = [
             ToolCall(
                 id=slot["id"] or f"call_{index}", name=slot["name"], arguments=slot["arguments"]
