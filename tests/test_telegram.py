@@ -132,7 +132,10 @@ async def test_a_turn_never_runs_in_another_accounts_conversation(runtime, owner
     provider.script = ["Private."]
     other = runtime.accounts.create_user("staff@example.com", PASSWORD, "staff")
     said = [
-        e async for e in runtime.assistant.events("secret", conversation_id="c", user_id=owner.id)
+        e
+        async for e in runtime.assistant.events(
+            "the plan for Friday", conversation_id="c", user_id=owner.id
+        )
     ]
     assert said[-1]["text"] == "Private."
     taken = [

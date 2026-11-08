@@ -1,0 +1,3 @@
+# One finding, by its fingerprint: a test's plain word that the generic-api-key rule read
+# as a key ("secret" passed as a message), added in 807e2cb on 8 Nov 2026. Nothing else.
+807e2cb08d6166e0573765dd2fe770b5c0e3032d:tests/test_telegram.py:generic-api-key:135
