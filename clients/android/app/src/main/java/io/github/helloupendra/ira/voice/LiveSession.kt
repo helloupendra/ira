@@ -157,6 +157,7 @@ class LiveSession(
     override fun end(reason: String?) {
         if (ended) return
         ended = true
+        generation++ // a callback already on its way, such as a late ready, is for a call now over
         main.removeCallbacksAndMessages(null)
         calls.stop()
         listening = false
@@ -250,6 +251,7 @@ class LiveSession(
     }
 
     private fun onText(text: String) {
+        if (ended) return
         val message = LiveProtocol.parse(text)
         apply(machine.onServer(message, nowMs()))
         when (message) {

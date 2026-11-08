@@ -12,11 +12,12 @@ import android.os.IBinder
 import androidx.core.app.NotificationCompat
 import androidx.core.app.ServiceCompat
 import androidx.core.content.ContextCompat
-import io.github.helloupendra.ira.net.IraLog
 import io.github.helloupendra.ira.IraApp
 import io.github.helloupendra.ira.R
+import io.github.helloupendra.ira.net.IraLog
 import io.github.helloupendra.ira.tools.PhoneState
 import io.github.helloupendra.ira.ui.MainActivity
+import io.github.helloupendra.ira.voice.LiveSession
 
 /**
  * A foreground service of type `microphone`, on only while a call with Ira is on.
@@ -27,6 +28,9 @@ import io.github.helloupendra.ira.ui.MainActivity
  */
 class ConversationService : Service() {
     override fun onBind(intent: Intent?): IBinder? = null
+
+    /** The call this service started; another may follow it before this service is gone. */
+    private var live: LiveSession? = null
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         val app = application as IraApp
@@ -49,12 +53,14 @@ class ConversationService : Service() {
             stopSelf()
             return START_NOT_STICKY
         }
-        if (app.startLive() == null) stopSelf()
+        live = app.startLive()
+        if (live == null) stopSelf()
         return START_NOT_STICKY
     }
 
     override fun onDestroy() {
-        (application as IraApp).endCall()
+        // This call only: when live voice failed, the phone's own speech has taken over already.
+        live?.end(null)
         super.onDestroy()
     }
 
