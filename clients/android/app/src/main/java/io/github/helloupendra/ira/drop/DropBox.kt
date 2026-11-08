@@ -67,6 +67,18 @@ class DropBox(private val app: IraApp) {
         return server to token
     }
 
+    /** The phone is paired with another account now, or none: what comes back is not its own. */
+    private fun stillOurs(server: String, token: String): Boolean = paired() == (server to token)
+
+    /** Unpaired: nothing of the last account's Drop stays, here or arriving late. */
+    fun forget() {
+        list.value = emptyList()
+        older.value = false
+        sending.value = emptyList()
+        loaded = false
+        maxFileMb = Drop.MAX_FILE_MB
+    }
+
     /** Run [work] off the main thread, then [done] on it with what went wrong, or null. */
     private fun background(name: String, done: (String?) -> Unit, work: (server: String, token: String) -> String?) {
         val (server, token) = paired() ?: return done(NOT_PAIRED)
@@ -96,6 +108,7 @@ class DropBox(private val app: IraApp) {
             if (reply.status != 200 || page == null) return@background refused(reply)
             Net.get("${server.trimEnd('/')}${Drop.PATH}/settings", token).takeIf { it.status == 200 }?.let { maxFileMb = Drop.maxFileMb(it.body) }
             main.post {
+                if (!stillOurs(server, token)) return@post
                 list.value = page.items
                 older.value = page.hasMore
                 loaded = true
@@ -110,6 +123,7 @@ class DropBox(private val app: IraApp) {
             val reply = Net.get(Drop.listUrl(server, beforeId = oldest.id), token)
             val page = Drop.page(reply.body) ?: return@background refused(reply)
             main.post {
+                if (!stillOurs(server, token)) return@post
                 list.update { Drop.merge(it, page.items) }
                 older.value = page.hasMore
             }
@@ -123,7 +137,10 @@ class DropBox(private val app: IraApp) {
         val newest = list.value.firstOrNull() ?: return refresh()
         background("ira-drop", {}) { server, token ->
             val page = Drop.page(Net.get(Drop.listUrl(server, afterId = newest.id), token).body) ?: return@background null
-            main.post { list.update { Drop.merge(it, page.items) } }
+            main.post {
+                if (!stillOurs(server, token)) return@post
+                list.update { Drop.merge(it, page.items) }
+            }
             null
         }
     }
@@ -148,7 +165,10 @@ class DropBox(private val app: IraApp) {
             val item = Drop.item(reply.body)
             if (reply.status != 201 || item == null) return@background refused(reply)
             IraLog.info("drop: sent ${item.kind}")
-            main.post { list.update { Drop.merge(it, listOf(item)) } }
+            main.post {
+                if (!stillOurs(server, token)) return@post
+                list.update { Drop.merge(it, listOf(item)) }
+            }
             null
         }
     }
@@ -197,6 +217,7 @@ class DropBox(private val app: IraApp) {
                     }
                     IraLog.info("drop: sent a file")
                     main.post {
+                        if (!stillOurs(server, token)) return@post
                         sending.update { all -> all.filterNot { it.key == key } }
                         list.update { Drop.merge(it, listOf(item)) }
                     }
@@ -240,7 +261,10 @@ class DropBox(private val app: IraApp) {
         background("ira-drop", done) { server, token ->
             val status = Net.delete(Drop.itemUrl(server, item.id), token)
             if (status !in 200..299 && status != 404) return@background "Your Ira answered HTTP $status."
-            main.post { list.update { items -> items.filterNot { it.id == item.id } } }
+            main.post {
+                if (!stillOurs(server, token)) return@post
+                list.update { items -> items.filterNot { it.id == item.id } }
+            }
             null
         }
 

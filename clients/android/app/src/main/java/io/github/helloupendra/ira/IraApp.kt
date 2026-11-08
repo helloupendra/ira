@@ -227,8 +227,7 @@ class IraApp : Application() {
 
             override fun replace(paired: Paired) {
                 endCall()
-                transcript.clear()
-                info = null
+                forgetAccount()
                 savePairing(paired)
             }
         }
@@ -243,9 +242,18 @@ class IraApp : Application() {
             settings.forgetPairing()
             skills.value = emptySet()
             linkState.value = LinkState.Off
+            forgetAccount()
             done()
         }
         if (current != null) current.unpair(finish) else finish()
+    }
+
+    /** What this phone held for the account it was paired with: none of it shows for the next. */
+    private fun forgetAccount() {
+        transcript.clear()
+        info = null
+        approvalState.value = null
+        drop.forget()
     }
 
     // The conversation.
