@@ -231,7 +231,7 @@ jobs:
           if-no-files-found: error
 
   secrets:
-    needs: test
+    # On its own: a push that fails lint or tests is still scanned for secrets.
     runs-on: ubuntu-latest
     permissions:
       contents: read

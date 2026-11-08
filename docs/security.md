@@ -362,7 +362,10 @@ The never-list still applies.
   audit and change logs and "What Ira did" until you set days).
 - **Prompt injection through tool results is not filtered.** If a tool
   returns text written by outsiders (emails, reviews), the model may follow
-  instructions in it. The PIN still stands between it and any change.
+  instructions in it. What limits it: after such a read, an action runs only if the
+  person's own words ask for it; a Tier 2 action still needs their yes and a Tier 3 one
+  their PIN. Tier 1 actions (opening an app, a note) and steps inside an approval window
+  they opened run without either, so the PIN is not between injected text and every change.
 
 ## Keeping secrets out of the repository
 
