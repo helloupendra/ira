@@ -106,6 +106,44 @@ async def test_pairing_is_one_time_and_deletes_the_code(bot, api, runtime, owner
     assert "not valid" in other.api.sent()[-1]
 
 
+async def test_a_chat_paired_again_with_another_account_starts_afresh(
+    bot, api, runtime, owner, provider
+):
+    # Review of 8 Nov 2026: the chat kept its conversation, so B's model saw what A had said.
+    provider.script = ["Noted.", "Hello."]
+    await pair(bot, runtime, owner)
+    await bot.handle_update(update("my plan is to sell the clinic", message_id=2))
+    other = runtime.accounts.create_user("staff@example.com", PASSWORD, "staff")
+    code = create_pairing_code(runtime.store, other.id)
+    await bot.handle_update(update(f"/pair {code}", message_id=3))
+    await bot.handle_update(update("hello", message_id=4))
+    seen = [m.content or "" for m in provider.calls[-1]["messages"]]
+    assert not any("sell the clinic" in text for text in seen)
+    assert api.sent()[-1] == "Hello."
+    # And the first account keeps its own when the chat comes back to it.
+    code = create_pairing_code(runtime.store, owner.id)
+    provider.script = ["Yes."]
+    await bot.handle_update(update(f"/pair {code}", message_id=5))
+    await bot.handle_update(update("what was my plan?", message_id=6))
+    assert any("sell the clinic" in (m.content or "") for m in provider.calls[-1]["messages"])
+
+
+async def test_a_turn_never_runs_in_another_accounts_conversation(runtime, owner, provider):
+    provider.script = ["Private."]
+    other = runtime.accounts.create_user("staff@example.com", PASSWORD, "staff")
+    said = [
+        e async for e in runtime.assistant.events("secret", conversation_id="c", user_id=owner.id)
+    ]
+    assert said[-1]["text"] == "Private."
+    taken = [
+        e
+        async for e in runtime.assistant.events(
+            "what was said?", conversation_id="c", user_id=other.id
+        )
+    ]
+    assert "another account" in taken[-1]["text"] and len(provider.calls) == 1
+
+
 async def test_group_chats_are_ignored(bot, api, runtime, owner):
     await pair(bot, runtime, owner)
     api.calls.clear()

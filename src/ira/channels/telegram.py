@@ -154,6 +154,14 @@ class TelegramApi:
 # --- pairing -----------------------------------------------------------------------
 
 
+def telegram_conversation(conversations: Any, chat_id: int, user_id: int) -> str:
+    """The chat's conversation for this account. A chat paired again with another account starts
+    another conversation: the words said to the first account are not the next one's to see."""
+    first = f"telegram:{chat_id}"
+    owner = conversations.owner(first)
+    return first if owner in (None, user_id) else f"telegram:{chat_id}:u{user_id}"
+
+
 def create_pairing_code(
     store: Store, user_id: int, seconds: float = PAIRING_SECONDS, *, now: float | None = None
 ) -> str:
@@ -380,7 +388,9 @@ class TelegramBot:
                 "UPDATE telegram_chats SET name = ? WHERE chat_id = ? AND name IS NOT ?",
                 (name, chat_id, name),
             )
-        conversation_id = f"telegram:{chat_id}"
+        conversation_id = telegram_conversation(
+            self.runtime.assistant.conversations, chat_id, principal.user.id
+        )
 
         if text and looks_like_pin(text):
             # Delete first: the PIN must not sit in the chat history, whatever happens next.

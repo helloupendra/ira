@@ -650,6 +650,14 @@ class Assistant:
             return
 
         self.conversations.ensure(conversation_id, channel=channel, user_id=user_id)
+        owner = self.conversations.owner(conversation_id)
+        if user_id is not None and owner is not None and owner != user_id:
+            # Another account's conversation: none of it may reach this one's model or answer.
+            log.warning("a turn asked for another account's conversation; refused")
+            message = "This conversation belongs to another account. Start a new one."
+            yield {"type": "delta", "text": message}
+            yield {"type": "done", "text": message, "model": None}
+            return
         if device_id is not None:
             self._from[conversation_id] = device_id
         else:
